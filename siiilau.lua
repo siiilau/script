@@ -1,4 +1,4 @@
--- SIIILAU MODE BALAP v16 | MOONWALK ROBUST | K = Menu | F = Speed | R = Hide | G = Moonwalk
+-- SIIILAU MODE BALAP v17 | AUTO-GUARD EDITION | K = Menu | F = Speed | R = Hide | G = Moonwalk
 local Players=game:GetService("Players")
 local RS=game:GetService("RunService")
 local UIS=game:GetService("UserInputService")
@@ -9,12 +9,12 @@ local DEF_WS=17
 local DEF_JP=52.5
 
 local S={Speed=false,SpeedV=17.25,Jump=false,JumpV=51.5,Bright=false,Hide=false,
-Clean=false,FPS=false,Cross=false,Moon=false}
+Clean=false,FPS=false,Cross=false,Moon=false,ClockV=12}
 local vis=false
 
 local DFL={B=Lighting.Brightness,C=Lighting.ClockTime,A=Lighting.Ambient,OA=Lighting.OutdoorAmbient,GS=Lighting.GlobalShadows}
 local savedFX={} local savedMats={}
-local cleanConn=nil local fpsConn=nil
+local cleanConn=nil local fpsConn=nil local fpsLightConn=nil
 local hideConns={}
 
 local parent=LP:FindFirstChild("PlayerGui")
@@ -23,6 +23,11 @@ if not parent then pcall(function() parent=game:FindFirstChildOfClass("CoreGui")
 
 local function notify(t)
     pcall(function() game:GetService("StarterGui"):SetCore("SendNotification",{Title="SIIILAU",Text=t,Duration=2}) end)
+end
+
+local function angleLerp(a,b,t)
+    local diff=(b-a+math.pi)%(2*math.pi)-math.pi
+    return a+diff*t
 end
 
 --========== TEMA ==========--
@@ -43,8 +48,8 @@ gui.DisplayOrder=999
 gui.Parent=parent
 
 local fr=Instance.new("Frame")
-fr.Size=UDim2.new(0,175,0,330)
-fr.Position=UDim2.new(0,25,0,70)
+fr.Size=UDim2.new(0,175,0,350)
+fr.Position=UDim2.new(0,25,0,60)
 fr.BackgroundColor3=C_BG
 fr.BorderSizePixel=0
 fr.Visible=false
@@ -176,7 +181,7 @@ local function toggle(name,key,onCB)
     return set
 end
 
-local function valueRow(name,min,max,def,key)
+local function valueRow(name,min,max,def,key,fmt)
     local row=Instance.new("Frame")
     row.Size=UDim2.new(1,0,0,18)
     row.BackgroundColor3=C_ROW2
@@ -200,7 +205,7 @@ local function valueRow(name,min,max,def,key)
     val.Size=UDim2.new(0,40,1,0)
     val.Position=UDim2.new(0,48,0,0)
     val.BackgroundTransparency=1
-    val.Text=string.format("%.2f",def)
+    val.Text=string.format(fmt or "%.2f",def)
     val.TextColor3=C_GOLD
     val.Font=Enum.Font.GothamBold
     val.TextSize=10
@@ -224,7 +229,7 @@ local function valueRow(name,min,max,def,key)
             v=math.floor(v/0.25+0.5)*0.25
             v=math.clamp(v,min,max)
             S[key]=v
-            val.Text=string.format("%.2f",v)
+            val.Text=string.format(fmt or "%.2f",v)
             notify(name..": "..v)
         end)
     end
@@ -232,7 +237,7 @@ local function valueRow(name,min,max,def,key)
     mkBtn("+.25",132,function(v) return v+0.25 end)
 end
 
---========== CLEAN PARTICLES ==========--
+--========== CLEAN PARTICLES (event + re-check otomatis) ==========--
 local function isEffect(o)
     return o:IsA("ParticleEmitter") or o:IsA("Smoke") or o:IsA("Fire") or o:IsA("Trail") or o:IsA("Sparkles")
 end
@@ -252,7 +257,7 @@ local function cleanOFF()
     end
 end
 
---========== FPS BOOST ==========--
+--========== FPS BOOST (event + guard post-effect baru) ==========--
 local function fpsON()
     Lighting.GlobalShadows=false
     for _,o in pairs(Lighting:GetChildren()) do
@@ -274,9 +279,18 @@ local function fpsON()
             o.Material=Enum.Material.SmoothPlastic
         end
     end)
+    -- post-effect baru yang ditambahkan game langsung dimatikan
+    fpsLightConn=Lighting.ChildAdded:Connect(function(o)
+        task.wait()
+        if o and o:IsA("PostEffect") then
+            if savedFX[o]==nil then savedFX[o]=o.Enabled end
+            o.Enabled=false
+        end
+    end)
 end
 local function fpsOFF()
     if fpsConn then fpsConn:Disconnect() fpsConn=nil end
+    if fpsLightConn then fpsLightConn:Disconnect() fpsLightConn=nil end
     Lighting.GlobalShadows=DFL.GS
     for o,e in pairs(savedFX) do pcall(function() o.Enabled=e end) end
     savedFX={}
@@ -371,15 +385,9 @@ local function hideOFF()
     end
 end
 
---========== MOONWALK v3 (SUPER ROBUST — 2 LAPISAN) ==========--
--- Lapisan 1: RenderStepped → setiap frame sebelum render
--- Lapisan 2: Heartbeat → setelah fisika, menimpa rotasi apapun
---            (controller game / anti-cheat yang mencoba memutar badan
---             akan langsung dikoreksi di frame yang sama)
--- Tidak pakai BindToRenderStep → kompatibel semua executor.
+--========== MOONWALK (2 lapisan, sama seperti v16) ==========--
 local moonYaw=nil
 local moonConns={}
-local moonOFF -- forward declaration
 
 local function applyMoon(dt)
     if not S.Moon then return end
@@ -387,34 +395,30 @@ local function applyMoon(dt)
     local h=ch and ch:FindFirstChildOfClass("Humanoid")
     local root=ch and ch:FindFirstChild("HumanoidRootPart")
     if not h or not root then return end
-    if h.Sit then return end -- jangan ganggu saat duduk/kendaraan
+    if h.Sit then return end
     if h.AutoRotate~=false then h.AutoRotate=false end
-
     local cam=workspace.CurrentCamera
     if not cam then return end
     local lv=cam.CFrame.LookVector
     local flat=Vector3.new(lv.X,0,lv.Z)
     if flat.Magnitude<0.001 then return end
     flat=flat.Unit
-
-    -- target: badan menghadap 180° dari kamera (terkunci, gaya shiftlock)
     local target=math.atan2(-flat.X,-flat.Z)+math.pi
     if moonYaw==nil then moonYaw=target end
     local diff=(target-moonYaw+math.pi)%(2*math.pi)-math.pi
     moonYaw=moonYaw+diff*math.clamp(dt*15,0,1)
-
     root.CFrame=CFrame.new(root.Position)*CFrame.Angles(0,moonYaw,0)
 end
 
 local function moonON()
-    moonOFF()
+    for _,c in pairs(moonConns) do pcall(function() c:Disconnect() end) end
+    moonConns={}
     moonYaw=nil
     table.insert(moonConns,RS.RenderStepped:Connect(function() applyMoon(1/60) end))
     table.insert(moonConns,RS.Heartbeat:Connect(function() applyMoon(1/60) end))
-    -- terapkan langsung 1x agar badan langsung berbalik tanpa jeda
     applyMoon(1)
 end
-moonOFF=function()
+local function moonOFF()
     for _,c in pairs(moonConns) do pcall(function() c:Disconnect() end) end
     moonConns={}
     moonYaw=nil
@@ -451,18 +455,25 @@ end)
 
 header("👁 VISUALS")
 
+-- AUTO BRIGHTNESS: sekarang GUARD — waktu DIKUNCI ke jam pilihan,
+-- game mengubah malam/hujan apapun → langsung dikembalikan terang
 toggle("Auto Brightness","Bright",function(on)
     if on then
+        Lighting.ClockTime=S.ClockV
         Lighting.Brightness=2
         Lighting.Ambient=Color3.fromRGB(70,70,70)
         Lighting.OutdoorAmbient=Color3.fromRGB(110,110,110)
+        notify("Brightness ON! Waktu dikunci jam "..S.ClockV)
     else
         Lighting.Brightness=DFL.B
         Lighting.Ambient=DFL.A
         Lighting.OutdoorAmbient=DFL.OA
+        Lighting.ClockTime=DFL.C
+        notify("Brightness: OFF")
     end
-    notify("Brightness: "..(on and "ON" or "OFF"))
 end)
+-- Jam kunci siang: 6-18, default 12 (siang terang)
+valueRow("Jam",6,18,12,"ClockV","%.2f")
 
 toggle("Hide Players [R]","Hide",function(on)
     if on then hideON() else hideOFF() end
@@ -516,7 +527,7 @@ wm.TextSize=10
 wm.LayoutOrder=#holder:GetChildren()
 wm.Parent=holder
 
---========== LOOP RINGAN (Speed & Jump saja) ==========--
+--========== LOOP RINGAN (Speed & Jump) ==========--
 RS.Heartbeat:Connect(function()
     if not (S.Speed or S.Jump) then return end
     local ch=LP.Character
@@ -526,6 +537,41 @@ RS.Heartbeat:Connect(function()
     if S.Jump then
         h.UseJumpPower=true
         h.JumpPower=S.JumpV
+    end
+end)
+
+--========== GUARD LOOP (SATU loop untuk semua guard otomatis) ==========
+-- Brightness : dicek tiap 0.5 dtk → jam/brightness/ambient dikunci
+-- Clean      : dicek tiap 3 dtk → efek yang di-enable ulang game dimatikan lagi
+-- FPS        : dicek tiap 5 dtk → post-effect & material baru dirapikan lagi
+task.spawn(function()
+    local t=0
+    while gui.Parent do
+        task.wait(0.5)
+        t=t+0.5
+        -- GUARD BRIGHTNESS + JAM (kunci waktu)
+        if S.Bright then
+            if math.abs(Lighting.ClockTime-S.ClockV)>0.3 then Lighting.ClockTime=S.ClockV end
+            Lighting.Brightness=2
+            Lighting.Ambient=Color3.fromRGB(70,70,70)
+            Lighting.OutdoorAmbient=Color3.fromRGB(110,110,110)
+        end
+        -- GUARD CLEAN (re-check 3 dtk, hanya saat ON)
+        if S.Clean and t%3<0.5 then
+            for _,o in pairs(workspace:GetDescendants()) do
+                if isEffect(o) and o.Enabled then o.Enabled=false end
+            end
+        end
+        -- GUARD FPS (re-check 5 dtk, hanya saat ON)
+        if S.FPS and t%5<0.5 then
+            Lighting.GlobalShadows=false
+            for _,o in pairs(Lighting:GetChildren()) do
+                if o:IsA("PostEffect") and o.Enabled then
+                    if savedFX[o]==nil then savedFX[o]=true end
+                    o.Enabled=false
+                end
+            end
+        end
     end
 end)
 
@@ -545,4 +591,4 @@ UIS.InputBegan:Connect(function(i,gp)
     end
 end)
 
-notify("SIIILAU v16 loaded! K = menu")
+notify("SIIILAU v17 loaded! K = menu")
