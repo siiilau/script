@@ -1,4 +1,4 @@
--- SIIILAU MODE BALAP v18 | ZERO-STUTTER EDITION | K = Menu | F = Speed | R = Hide | G = Moonwalk
+-- SIIILAU MODE BALAP v19 | MOONWALK FIXED | K = Menu | F = Speed | R = Hide | G = Moonwalk
 local Players=game:GetService("Players")
 local RS=game:GetService("RunService")
 local UIS=game:GetService("UserInputService")
@@ -12,7 +12,7 @@ local S={Speed=false,SpeedV=17.25,Jump=false,JumpV=51.5,Bright=false,Hide=false,
 Clean=false,FPS=false,Cross=false,Moon=false,ClockV=12}
 local vis=false
 
-local DFL={B=Lighting.Brightness,C=Lighting.ClockTime,A=Lighting.Ambient,OA=Lighting.OutdoorAmbient,GS=Lighting.GlobalShadows,TD=true,EDS=Lighting.EnvironmentDiffuseScale,ESS=Lighting.EnvironmentSpecularScale}
+local DFL={B=Lighting.Brightness,C=Lighting.ClockTime,A=Lighting.Ambient,OA=Lighting.OutdoorAmbient,GS=Lighting.GlobalShadows,EDS=Lighting.EnvironmentDiffuseScale,ESS=Lighting.EnvironmentSpecularScale,TD=true}
 local cleanConns={} local fpsConns={} local hideConns={}
 
 local parent=LP:FindFirstChild("PlayerGui")
@@ -167,7 +167,8 @@ local function toggle(name,key,onCB)
         if v then btn.Text="ON" btn.BackgroundColor3=C_ON
         else btn.Text="OFF" btn.BackgroundColor3=C_OFF end
         S[key]=v
-        if onCB then pcall(onCB,v) end
+        local ok,err=pcall(onCB,v)
+        if not ok then warn("[SIIILAU] "..name..": "..tostring(err)) end
     end
     btn.MouseButton1Click:Connect(function() set(not st) end)
     UI[key]=set
@@ -230,29 +231,24 @@ local function valueRow(name,min,max,def,key,fmt)
     mkBtn("+.25",132,function(v) return v+0.25 end)
 end
 
---========================================================--
--- CLEAN PARTICLES: 100% EVENT-DRIVEN, TANPA SCAN ULANG
--- (dulu scan workspace tiap 3 dtk = penyebab patah-patah)
---========================================================--
+--========== CLEAN PARTICLES (event-driven + anti re-enable) ==========--
 local function isEffect(o)
     return o:IsA("ParticleEmitter") or o:IsA("Smoke") or o:IsA("Fire") or o:IsA("Trail") or o:IsA("Sparkles")
 end
 local function killEffect(o)
-    -- matikan + pasang signal: kalau game enable ulang → langsung matikan lagi
     o.Enabled=false
     table.insert(cleanConns,o:GetPropertyChangedSignal("Enabled"):Connect(function()
         if S.Clean and o.Enabled then o.Enabled=false end
     end))
 end
 local function cleanON()
-    -- scan awal DIBAGI CHUNK (yield tiap 1500 objek) → tanpa freeze
     task.spawn(function()
         local n=0
         for _,o in pairs(workspace:GetDescendants()) do
             if isEffect(o) then killEffect(o) end
             n=n+1
             if n>=1500 then n=0 task.wait() end
-            if not S.Clean then return end -- user cancel
+            if not S.Clean then return end
         end
     end)
     table.insert(cleanConns,workspace.DescendantAdded:Connect(function(o)
@@ -272,21 +268,18 @@ local function cleanOFF()
     end)
 end
 
---========================================================--
--- FPS BOOST: RINGAN (TANPA ganti material!)
--- (dulu ganti material SEMUA part = freeze besar + restore berat)
---========================================================--
+--========== FPS BOOST (ringan, tanpa ganti material) ==========--
 local function fpsON()
     Lighting.GlobalShadows=false
     Lighting.EnvironmentDiffuseScale=0
     Lighting.EnvironmentSpecularScale=0
-    pcall(function() workspace.Terrain.Decoration=false end) -- rumput/semak hilang (FPS besar)
-    table.insert(fpsConns,Lighting.ChildAdded:Connect(function(o)
-        if o and o:IsA("PostEffect") then o.Enabled=false end
-    end))
+    pcall(function() workspace.Terrain.Decoration=false end)
     for _,o in pairs(Lighting:GetChildren()) do
         if o:IsA("PostEffect") then o.Enabled=false end
     end
+    table.insert(fpsConns,Lighting.ChildAdded:Connect(function(o)
+        if o and o:IsA("PostEffect") then o.Enabled=false end
+    end))
 end
 local function fpsOFF()
     for _,c in pairs(fpsConns) do pcall(function() c:Disconnect() end) end
@@ -330,7 +323,7 @@ local function crossOFF()
     local old=parent:FindFirstChild("SiiCross") if old then old:Destroy() end
 end
 
---========== HIDE PLAYERS (event-based, chunked) ==========--
+--========== HIDE PLAYERS ==========--
 local function watchChar(plr)
     local char=plr.Character
     if char then
@@ -387,41 +380,51 @@ local function hideOFF()
 end
 
 --========================================================--
--- MOONWALK: SATU tulisan CFrame per frame (dulu 2x per frame
--- RenderStepped+Heartbeat = jitter). Heartbeat + dt asli = mulus.
+-- MOONWALK v4 — BUG DIPERBAIKI
+-- Penyebab rusak: moonON() memanggil moonOFF() yang BELUM
+-- didefinisikan → error "attempt to call nil" → tertelan
+-- pcall → koneksi TIDAK PERNAH dibuat → tombol ON tapi
+-- tidak terjadi apa-apa. Sekarang urutan sudah benar.
 --========================================================--
-local moonYaw=nil
-local moonConn=nil
+local Moon={yaw=nil,conns={}}
 
-local function moonON()
-    moonOFF()
-    moonYaw=nil
-    moonConn=RS.Heartbeat:Connect(function(dt)
-        if not S.Moon then return end
-        local ch=LP.Character
-        local h=ch and ch:FindFirstChildOfClass("Humanoid")
-        local root=ch and ch:FindFirstChild("HumanoidRootPart")
-        if not h or not root or h.Sit then return end
-        h.AutoRotate=false
-        local cam=workspace.CurrentCamera
-        if not cam then return end
-        local lv=cam.CFrame.LookVector
-        local flat=Vector3.new(lv.X,0,lv.Z)
-        if flat.Magnitude<0.001 then return end
-        flat=flat.Unit
-        local target=math.atan2(-flat.X,-flat.Z)+math.pi
-        if moonYaw==nil then moonYaw=target end
-        local diff=(target-moonYaw+math.pi)%(2*math.pi)-math.pi
-        moonYaw=moonYaw+diff*math.clamp(dt*15,0,1)
-        root.CFrame=CFrame.new(root.Position)*CFrame.Angles(0,moonYaw,0)
-    end)
-end
-local function moonOFF()
-    if moonConn then moonConn:Disconnect() moonConn=nil end
-    moonYaw=nil
+local function moonStop()
+    for _,c in pairs(Moon.conns) do pcall(function() c:Disconnect() end) end
+    Moon.conns={}
+    Moon.yaw=nil
     local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
     if h then h.AutoRotate=true end
 end
+
+local function applyMoon(dt)
+    if not S.Moon then return end
+    local ch=LP.Character
+    local h=ch and ch:FindFirstChildOfClass("Humanoid")
+    local root=ch and ch:FindFirstChild("HumanoidRootPart")
+    if not h or not root or h.Sit then return end
+    h.AutoRotate=false
+    local cam=workspace.CurrentCamera
+    if not cam then return end
+    local lv=cam.CFrame.LookVector
+    local flat=Vector3.new(lv.X,0,lv.Z)
+    if flat.Magnitude<0.001 then return end
+    flat=flat.Unit
+    local target=math.atan2(-flat.X,-flat.Z)+math.pi
+    if Moon.yaw==nil then Moon.yaw=target end
+    local diff=(target-Moon.yaw+math.pi)%(2*math.pi)-math.pi
+    Moon.yaw=Moon.yaw+diff*math.clamp(dt*15,0,1)
+    root.CFrame=CFrame.new(root.Position)*CFrame.Angles(0,Moon.yaw,0)
+end
+
+local function moonStart()
+    moonStop() -- sekarang SUDAH terdefinisi (urutan diperbaiki)
+    table.insert(Moon.conns,RS.RenderStepped:Connect(function() applyMoon(1/60) end))
+    table.insert(Moon.conns,RS.Heartbeat:Connect(function() applyMoon(1/60) end))
+    applyMoon(1) -- badan langsung berbalik 180° tanpa jeda
+end
+
+-- respawn: reset lock agar langsung menghadap belakang kamera lagi
+LP.CharacterAdded:Connect(function() Moon.yaw=nil end)
 
 --========== ISI MENU ==========--
 header("⚡ MOVEMENT")
@@ -446,8 +449,8 @@ toggle("Crosshair","Cross",function(on)
 end)
 
 toggle("Moonwalk [G]","Moon",function(on)
-    if on then moonON() else moonOFF() end
-    notify("Moonwalk: "..(on and "ON" or "OFF"))
+    if on then moonStart() else moonStop() end
+    notify("Moonwalk: "..(on and "ON (badan 180°)" or "OFF"))
 end)
 
 header("👁 VISUALS")
@@ -496,8 +499,7 @@ rst.LayoutOrder=#holder:GetChildren()
 rst.Parent=holder
 Instance.new("UICorner",rst).CornerRadius=UDim.new(0,6)
 rst.MouseButton1Click:Connect(function()
-    moonOFF()
-    cleanOFF() fpsOFF() hideOFF()
+    moonStop() cleanOFF() fpsOFF() hideOFF()
     for _,k in pairs({"Speed","Jump","Bright","Hide","Clean","FPS","Cross","Moon"}) do
         if UI[k] then UI[k](false) end
     end
@@ -522,7 +524,7 @@ wm.TextSize=10
 wm.LayoutOrder=#holder:GetChildren()
 wm.Parent=holder
 
---========== LOOP SPEED/JUMP (ringan) ==========--
+--========== LOOP SPEED/JUMP ==========--
 RS.Heartbeat:Connect(function()
     if not (S.Speed or S.Jump) then return end
     local ch=LP.Character
@@ -535,7 +537,7 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
---========== GUARD BRIGHTNESS (satu properti ringan, tanpa scan) ==========--
+--========== GUARD BRIGHTNESS (hanya 4 properti, tanpa scan) ==========--
 task.spawn(function()
     while gui.Parent do
         task.wait(1)
@@ -564,4 +566,4 @@ UIS.InputBegan:Connect(function(i,gp)
     end
 end)
 
-notify("SIIILAU v18 loaded! K = menu")
+notify("SIIILAU v19 loaded! K = menu")
