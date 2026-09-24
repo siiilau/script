@@ -1,4 +1,4 @@
--- SIIILAU MODE BALAP v17 | AUTO-GUARD EDITION | K = Menu | F = Speed | R = Hide | G = Moonwalk
+-- SIIILAU MODE BALAP v18 | ZERO-STUTTER EDITION | K = Menu | F = Speed | R = Hide | G = Moonwalk
 local Players=game:GetService("Players")
 local RS=game:GetService("RunService")
 local UIS=game:GetService("UserInputService")
@@ -12,10 +12,8 @@ local S={Speed=false,SpeedV=17.25,Jump=false,JumpV=51.5,Bright=false,Hide=false,
 Clean=false,FPS=false,Cross=false,Moon=false,ClockV=12}
 local vis=false
 
-local DFL={B=Lighting.Brightness,C=Lighting.ClockTime,A=Lighting.Ambient,OA=Lighting.OutdoorAmbient,GS=Lighting.GlobalShadows}
-local savedFX={} local savedMats={}
-local cleanConn=nil local fpsConn=nil local fpsLightConn=nil
-local hideConns={}
+local DFL={B=Lighting.Brightness,C=Lighting.ClockTime,A=Lighting.Ambient,OA=Lighting.OutdoorAmbient,GS=Lighting.GlobalShadows,TD=true,EDS=Lighting.EnvironmentDiffuseScale,ESS=Lighting.EnvironmentSpecularScale}
+local cleanConns={} local fpsConns={} local hideConns={}
 
 local parent=LP:FindFirstChild("PlayerGui")
 pcall(function() if gethui then parent=gethui() end end)
@@ -23,11 +21,6 @@ if not parent then pcall(function() parent=game:FindFirstChildOfClass("CoreGui")
 
 local function notify(t)
     pcall(function() game:GetService("StarterGui"):SetCore("SendNotification",{Title="SIIILAU",Text=t,Duration=2}) end)
-end
-
-local function angleLerp(a,b,t)
-    local diff=(b-a+math.pi)%(2*math.pi)-math.pi
-    return a+diff*t
 end
 
 --========== TEMA ==========--
@@ -237,65 +230,74 @@ local function valueRow(name,min,max,def,key,fmt)
     mkBtn("+.25",132,function(v) return v+0.25 end)
 end
 
---========== CLEAN PARTICLES (event + re-check otomatis) ==========--
+--========================================================--
+-- CLEAN PARTICLES: 100% EVENT-DRIVEN, TANPA SCAN ULANG
+-- (dulu scan workspace tiap 3 dtk = penyebab patah-patah)
+--========================================================--
 local function isEffect(o)
     return o:IsA("ParticleEmitter") or o:IsA("Smoke") or o:IsA("Fire") or o:IsA("Trail") or o:IsA("Sparkles")
 end
+local function killEffect(o)
+    -- matikan + pasang signal: kalau game enable ulang → langsung matikan lagi
+    o.Enabled=false
+    table.insert(cleanConns,o:GetPropertyChangedSignal("Enabled"):Connect(function()
+        if S.Clean and o.Enabled then o.Enabled=false end
+    end))
+end
 local function cleanON()
-    for _,o in pairs(workspace:GetDescendants()) do
-        if isEffect(o) then o.Enabled=false end
-    end
-    cleanConn=workspace.DescendantAdded:Connect(function(o)
-        task.wait()
-        if o and o.Parent and isEffect(o) then o.Enabled=false end
+    -- scan awal DIBAGI CHUNK (yield tiap 1500 objek) → tanpa freeze
+    task.spawn(function()
+        local n=0
+        for _,o in pairs(workspace:GetDescendants()) do
+            if isEffect(o) then killEffect(o) end
+            n=n+1
+            if n>=1500 then n=0 task.wait() end
+            if not S.Clean then return end -- user cancel
+        end
     end)
+    table.insert(cleanConns,workspace.DescendantAdded:Connect(function(o)
+        if o and o.Parent and isEffect(o) then killEffect(o) end
+    end))
 end
 local function cleanOFF()
-    if cleanConn then cleanConn:Disconnect() cleanConn=nil end
-    for _,o in pairs(workspace:GetDescendants()) do
-        if isEffect(o) then o.Enabled=true end
-    end
+    for _,c in pairs(cleanConns) do pcall(function() c:Disconnect() end) end
+    cleanConns={}
+    task.spawn(function()
+        local n=0
+        for _,o in pairs(workspace:GetDescendants()) do
+            if isEffect(o) then pcall(function() o.Enabled=true end) end
+            n=n+1
+            if n>=1500 then n=0 task.wait() end
+        end
+    end)
 end
 
---========== FPS BOOST (event + guard post-effect baru) ==========--
+--========================================================--
+-- FPS BOOST: RINGAN (TANPA ganti material!)
+-- (dulu ganti material SEMUA part = freeze besar + restore berat)
+--========================================================--
 local function fpsON()
     Lighting.GlobalShadows=false
+    Lighting.EnvironmentDiffuseScale=0
+    Lighting.EnvironmentSpecularScale=0
+    pcall(function() workspace.Terrain.Decoration=false end) -- rumput/semak hilang (FPS besar)
+    table.insert(fpsConns,Lighting.ChildAdded:Connect(function(o)
+        if o and o:IsA("PostEffect") then o.Enabled=false end
+    end))
     for _,o in pairs(Lighting:GetChildren()) do
-        if o:IsA("PostEffect") then
-            if savedFX[o]==nil then savedFX[o]=o.Enabled end
-            o.Enabled=false
-        end
+        if o:IsA("PostEffect") then o.Enabled=false end
     end
-    for _,o in pairs(workspace:GetDescendants()) do
-        if o:IsA("BasePart") and o.Parent then
-            savedMats[o]=o.Material
-            o.Material=Enum.Material.SmoothPlastic
-        end
-    end
-    fpsConn=workspace.DescendantAdded:Connect(function(o)
-        task.wait()
-        if o and o.Parent and o:IsA("BasePart") then
-            savedMats[o]=o.Material
-            o.Material=Enum.Material.SmoothPlastic
-        end
-    end)
-    -- post-effect baru yang ditambahkan game langsung dimatikan
-    fpsLightConn=Lighting.ChildAdded:Connect(function(o)
-        task.wait()
-        if o and o:IsA("PostEffect") then
-            if savedFX[o]==nil then savedFX[o]=o.Enabled end
-            o.Enabled=false
-        end
-    end)
 end
 local function fpsOFF()
-    if fpsConn then fpsConn:Disconnect() fpsConn=nil end
-    if fpsLightConn then fpsLightConn:Disconnect() fpsLightConn=nil end
+    for _,c in pairs(fpsConns) do pcall(function() c:Disconnect() end) end
+    fpsConns={}
     Lighting.GlobalShadows=DFL.GS
-    for o,e in pairs(savedFX) do pcall(function() o.Enabled=e end) end
-    savedFX={}
-    for o,m in pairs(savedMats) do pcall(function() if o.Parent then o.Material=m end end) end
-    savedMats={}
+    Lighting.EnvironmentDiffuseScale=DFL.EDS
+    Lighting.EnvironmentSpecularScale=DFL.ESS
+    pcall(function() workspace.Terrain.Decoration=DFL.TD end)
+    for _,o in pairs(Lighting:GetChildren()) do
+        if o:IsA("PostEffect") then pcall(function() o.Enabled=true end) end
+    end
 end
 
 --========== CROSSHAIR ==========--
@@ -328,52 +330,51 @@ local function crossOFF()
     local old=parent:FindFirstChild("SiiCross") if old then old:Destroy() end
 end
 
---========== HIDE PLAYERS ==========--
+--========== HIDE PLAYERS (event-based, chunked) ==========--
 local function watchChar(plr)
     local char=plr.Character
     if char then
-        for _,o in pairs(char:GetDescendants()) do
-            if o:IsA("BasePart") or o:IsA("Decal") then o.LocalTransparencyModifier=1
-            elseif o:IsA("BillboardGui") then o.Enabled=false end
-        end
-        hideConns[plr]=char.DescendantAdded:Connect(function(o)
+        task.spawn(function()
+            local n=0
+            for _,o in pairs(char:GetDescendants()) do
+                if o:IsA("BasePart") or o:IsA("Decal") then o.LocalTransparencyModifier=1
+                elseif o:IsA("BillboardGui") then o.Enabled=false end
+                n=n+1
+                if n>=1000 then n=0 task.wait() end
+            end
+        end)
+        table.insert(hideConns,char.DescendantAdded:Connect(function(o)
             task.wait()
             if S.Hide and o and o.Parent then
                 if o:IsA("BasePart") or o:IsA("Decal") then o.LocalTransparencyModifier=1
                 elseif o:IsA("BillboardGui") then o.Enabled=false end
             end
-        end)
+        end))
     end
 end
 local function hideON()
     for _,plr in pairs(Players:GetPlayers()) do
         if plr~=LP then
             watchChar(plr)
-            plr.CharacterAdded:Connect(function()
+            table.insert(hideConns,plr.CharacterAdded:Connect(function()
                 task.wait(0.3)
-                if S.Hide then
-                    if hideConns[plr] then hideConns[plr]:Disconnect() end
-                    watchChar(plr)
-                end
-            end)
+                if S.Hide then watchChar(plr) end
+            end))
         end
     end
-    hideConns.__new=Players.PlayerAdded:Connect(function(plr)
+    table.insert(hideConns,Players.PlayerAdded:Connect(function(plr)
         task.wait(1)
         if S.Hide then
             watchChar(plr)
-            plr.CharacterAdded:Connect(function()
+            table.insert(hideConns,plr.CharacterAdded:Connect(function()
                 task.wait(0.3)
-                if S.Hide then
-                    if hideConns[plr] then hideConns[plr]:Disconnect() end
-                    watchChar(plr)
-                end
-            end)
+                if S.Hide then watchChar(plr) end
+            end))
         end
-    end)
+    end))
 end
 local function hideOFF()
-    for _,conn in pairs(hideConns) do pcall(function() conn:Disconnect() end) end
+    for _,c in pairs(hideConns) do pcall(function() c:Disconnect() end) end
     hideConns={}
     for _,plr in pairs(Players:GetPlayers()) do
         if plr~=LP and plr.Character then
@@ -385,42 +386,38 @@ local function hideOFF()
     end
 end
 
---========== MOONWALK (2 lapisan, sama seperti v16) ==========--
+--========================================================--
+-- MOONWALK: SATU tulisan CFrame per frame (dulu 2x per frame
+-- RenderStepped+Heartbeat = jitter). Heartbeat + dt asli = mulus.
+--========================================================--
 local moonYaw=nil
-local moonConns={}
-
-local function applyMoon(dt)
-    if not S.Moon then return end
-    local ch=LP.Character
-    local h=ch and ch:FindFirstChildOfClass("Humanoid")
-    local root=ch and ch:FindFirstChild("HumanoidRootPart")
-    if not h or not root then return end
-    if h.Sit then return end
-    if h.AutoRotate~=false then h.AutoRotate=false end
-    local cam=workspace.CurrentCamera
-    if not cam then return end
-    local lv=cam.CFrame.LookVector
-    local flat=Vector3.new(lv.X,0,lv.Z)
-    if flat.Magnitude<0.001 then return end
-    flat=flat.Unit
-    local target=math.atan2(-flat.X,-flat.Z)+math.pi
-    if moonYaw==nil then moonYaw=target end
-    local diff=(target-moonYaw+math.pi)%(2*math.pi)-math.pi
-    moonYaw=moonYaw+diff*math.clamp(dt*15,0,1)
-    root.CFrame=CFrame.new(root.Position)*CFrame.Angles(0,moonYaw,0)
-end
+local moonConn=nil
 
 local function moonON()
-    for _,c in pairs(moonConns) do pcall(function() c:Disconnect() end) end
-    moonConns={}
+    moonOFF()
     moonYaw=nil
-    table.insert(moonConns,RS.RenderStepped:Connect(function() applyMoon(1/60) end))
-    table.insert(moonConns,RS.Heartbeat:Connect(function() applyMoon(1/60) end))
-    applyMoon(1)
+    moonConn=RS.Heartbeat:Connect(function(dt)
+        if not S.Moon then return end
+        local ch=LP.Character
+        local h=ch and ch:FindFirstChildOfClass("Humanoid")
+        local root=ch and ch:FindFirstChild("HumanoidRootPart")
+        if not h or not root or h.Sit then return end
+        h.AutoRotate=false
+        local cam=workspace.CurrentCamera
+        if not cam then return end
+        local lv=cam.CFrame.LookVector
+        local flat=Vector3.new(lv.X,0,lv.Z)
+        if flat.Magnitude<0.001 then return end
+        flat=flat.Unit
+        local target=math.atan2(-flat.X,-flat.Z)+math.pi
+        if moonYaw==nil then moonYaw=target end
+        local diff=(target-moonYaw+math.pi)%(2*math.pi)-math.pi
+        moonYaw=moonYaw+diff*math.clamp(dt*15,0,1)
+        root.CFrame=CFrame.new(root.Position)*CFrame.Angles(0,moonYaw,0)
+    end)
 end
 local function moonOFF()
-    for _,c in pairs(moonConns) do pcall(function() c:Disconnect() end) end
-    moonConns={}
+    if moonConn then moonConn:Disconnect() moonConn=nil end
     moonYaw=nil
     local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
     if h then h.AutoRotate=true end
@@ -450,20 +447,18 @@ end)
 
 toggle("Moonwalk [G]","Moon",function(on)
     if on then moonON() else moonOFF() end
-    notify("Moonwalk: "..(on and "ON (badan 180°)" or "OFF"))
+    notify("Moonwalk: "..(on and "ON" or "OFF"))
 end)
 
 header("👁 VISUALS")
 
--- AUTO BRIGHTNESS: sekarang GUARD — waktu DIKUNCI ke jam pilihan,
--- game mengubah malam/hujan apapun → langsung dikembalikan terang
 toggle("Auto Brightness","Bright",function(on)
     if on then
         Lighting.ClockTime=S.ClockV
         Lighting.Brightness=2
         Lighting.Ambient=Color3.fromRGB(70,70,70)
         Lighting.OutdoorAmbient=Color3.fromRGB(110,110,110)
-        notify("Brightness ON! Waktu dikunci jam "..S.ClockV)
+        notify("Brightness ON! Jam dikunci "..S.ClockV)
     else
         Lighting.Brightness=DFL.B
         Lighting.Ambient=DFL.A
@@ -472,7 +467,6 @@ toggle("Auto Brightness","Bright",function(on)
         notify("Brightness: OFF")
     end
 end)
--- Jam kunci siang: 6-18, default 12 (siang terang)
 valueRow("Jam",6,18,12,"ClockV","%.2f")
 
 toggle("Hide Players [R]","Hide",function(on)
@@ -503,15 +497,16 @@ rst.Parent=holder
 Instance.new("UICorner",rst).CornerRadius=UDim.new(0,6)
 rst.MouseButton1Click:Connect(function()
     moonOFF()
+    cleanOFF() fpsOFF() hideOFF()
     for _,k in pairs({"Speed","Jump","Bright","Hide","Clean","FPS","Cross","Moon"}) do
         if UI[k] then UI[k](false) end
     end
     Lighting.Brightness=DFL.B Lighting.ClockTime=DFL.C
     Lighting.Ambient=DFL.A Lighting.OutdoorAmbient=DFL.OA Lighting.GlobalShadows=DFL.GS
+    Lighting.EnvironmentDiffuseScale=DFL.EDS Lighting.EnvironmentSpecularScale=DFL.ESS
+    pcall(function() workspace.Terrain.Decoration=DFL.TD end)
     local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
     if h then h.WalkSpeed=16 h.JumpPower=50 h.AutoRotate=true end
-    for o,e in pairs(savedFX) do pcall(function() o.Enabled=e end) end
-    for o,m in pairs(savedMats) do pcall(function() if o.Parent then o.Material=m end end) end
     crossOFF()
     gui:Destroy()
     notify("Direset & dihancurkan")
@@ -527,7 +522,7 @@ wm.TextSize=10
 wm.LayoutOrder=#holder:GetChildren()
 wm.Parent=holder
 
---========== LOOP RINGAN (Speed & Jump) ==========--
+--========== LOOP SPEED/JUMP (ringan) ==========--
 RS.Heartbeat:Connect(function()
     if not (S.Speed or S.Jump) then return end
     local ch=LP.Character
@@ -540,37 +535,15 @@ RS.Heartbeat:Connect(function()
     end
 end)
 
---========== GUARD LOOP (SATU loop untuk semua guard otomatis) ==========
--- Brightness : dicek tiap 0.5 dtk → jam/brightness/ambient dikunci
--- Clean      : dicek tiap 3 dtk → efek yang di-enable ulang game dimatikan lagi
--- FPS        : dicek tiap 5 dtk → post-effect & material baru dirapikan lagi
+--========== GUARD BRIGHTNESS (satu properti ringan, tanpa scan) ==========--
 task.spawn(function()
-    local t=0
     while gui.Parent do
-        task.wait(0.5)
-        t=t+0.5
-        -- GUARD BRIGHTNESS + JAM (kunci waktu)
+        task.wait(1)
         if S.Bright then
             if math.abs(Lighting.ClockTime-S.ClockV)>0.3 then Lighting.ClockTime=S.ClockV end
             Lighting.Brightness=2
             Lighting.Ambient=Color3.fromRGB(70,70,70)
             Lighting.OutdoorAmbient=Color3.fromRGB(110,110,110)
-        end
-        -- GUARD CLEAN (re-check 3 dtk, hanya saat ON)
-        if S.Clean and t%3<0.5 then
-            for _,o in pairs(workspace:GetDescendants()) do
-                if isEffect(o) and o.Enabled then o.Enabled=false end
-            end
-        end
-        -- GUARD FPS (re-check 5 dtk, hanya saat ON)
-        if S.FPS and t%5<0.5 then
-            Lighting.GlobalShadows=false
-            for _,o in pairs(Lighting:GetChildren()) do
-                if o:IsA("PostEffect") and o.Enabled then
-                    if savedFX[o]==nil then savedFX[o]=true end
-                    o.Enabled=false
-                end
-            end
         end
     end
 end)
@@ -591,4 +564,4 @@ UIS.InputBegan:Connect(function(i,gp)
     end
 end)
 
-notify("SIIILAU v17 loaded! K = menu")
+notify("SIIILAU v18 loaded! K = menu")
