@@ -1,569 +1,693 @@
--- SIIILAU MODE BALAP v19 | MOONWALK FIXED | K = Menu | F = Speed | R = Hide | G = Moonwalk
-local Players=game:GetService("Players")
-local RS=game:GetService("RunService")
-local UIS=game:GetService("UserInputService")
-local Lighting=game:GetService("Lighting")
-local LP=Players.LocalPlayer
+--[[=============================================================
+    PURPLE HUB v4 - Compact GUI Hub (satu panel, ± 6 x 10 cm)
+    =============================================================
+    Movement      : Speed & Swim [Q] (17.25, step 0.25)
+                    Jump Power (52.25, step 0.25)
+                    Scooshlock (Crosshair)
+    Player Display: Info Other Players [C]  (SELF-HEALING)
+                      baris 1: DisplayName (@username)  - putih besar
+                      baris 2: WS 17 | JP 52.25 | SS 18 - biru besar
+                      update tiap 0.25 detik, otomatis perbaiki
+                      label yang hilang / respawn
+                    Hitbox Players (kotak hijau LED, visual saja)
+    Visual        : Hide Other Players [R] | Hide All Effects
+                    Low Graphic Mode (+ remove fog)
+    Environment   : Nilai Jam (step 15 menit) -> Brightness
+                    otomatis mengikuti jam in-game
+    Bottom        : Reset Script | Hapus Script / Keluar
+    Hotkeys       : F (buka/tutup GUI) | Q | C | R
+    Font          : Normal (Gotham) - terbaca di semua perangkat.
+    ===============================================================]]
 
-local DEF_WS=17
-local DEF_JP=52.5
+--═══════════════ KONFIG ═══════════════
+local DEFAULT_SPEED = 17.25
+local DEFAULT_JUMP  = 52.25
+local STEP          = 0.25
 
-local S={Speed=false,SpeedV=17.25,Jump=false,JumpV=51.5,Bright=false,Hide=false,
-Clean=false,FPS=false,Cross=false,Moon=false,ClockV=12}
-local vis=false
+--═══════════════ LAYANAN & FONT ═══════════════
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting         = game:GetService("Lighting")
+local LocalPlayer      = Players.LocalPlayer
 
-local DFL={B=Lighting.Brightness,C=Lighting.ClockTime,A=Lighting.Ambient,OA=Lighting.OutdoorAmbient,GS=Lighting.GlobalShadows,EDS=Lighting.EnvironmentDiffuseScale,ESS=Lighting.EnvironmentSpecularScale,TD=true}
-local cleanConns={} local fpsConns={} local hideConns={}
+local FONT_TITLE = Enum.Font.GothamBold
+local FONT_MAIN  = Enum.Font.Gotham
+local FONT_BTN   = Enum.Font.GothamBold
 
-local parent=LP:FindFirstChild("PlayerGui")
-pcall(function() if gethui then parent=gethui() end end)
-if not parent then pcall(function() parent=game:FindFirstChildOfClass("CoreGui") end) end
+--═══════════════ TEMA WARNA ═══════════════
+local C = {
+    bg      = Color3.fromRGB(16, 8, 30),
+    panel   = Color3.fromRGB(31, 15, 54),
+    panelD  = Color3.fromRGB(20, 9, 36),
+    purple  = Color3.fromRGB(150, 60, 240),
+    purpleD = Color3.fromRGB(88, 30, 150),
+    white   = Color3.fromRGB(255, 255, 255),
+    text    = Color3.fromRGB(235, 228, 255),
+    dim     = Color3.fromRGB(155, 135, 200),
+    blue    = Color3.fromRGB(0, 145, 255),
+    blueBrt = Color3.fromRGB(60, 190, 255),
+    green   = Color3.fromRGB(0, 255, 90),
+    red     = Color3.fromRGB(255, 70, 70),
+    black   = Color3.fromRGB(8, 4, 16),
+    offBg   = Color3.fromRGB(42, 24, 68),
+}
 
-local function notify(t)
-    pcall(function() game:GetService("StarterGui"):SetCore("SendNotification",{Title="SIIILAU",Text=t,Duration=2}) end)
+local function new(class, props, parent)
+    local inst = Instance.new(class)
+    if props then for k, v in pairs(props) do inst[k] = v end end
+    inst.Parent = parent
+    return inst
+end
+local function fmt(v) return string.format("%.2f", v) end
+local function numStr(v)  -- aman untuk nil / bukan angka -> "-"
+    if type(v) ~= "number" or v ~= v then return "-" end
+    local s = string.format("%.2f", v)
+    s = s:gsub("(%.[0-9]-)0+$", "%1"):gsub("%.$", "")
+    return s
 end
 
---========== TEMA ==========--
-local C_BG=Color3.fromRGB(13,9,22)
-local C_ROW=Color3.fromRGB(28,22,46)
-local C_ROW2=Color3.fromRGB(22,17,38)
-local C_ON=Color3.fromRGB(0,175,200)
-local C_OFF=Color3.fromRGB(172,25,58)
-local C_MINUS=Color3.fromRGB(56,45,88)
-local C_GOLD=Color3.fromRGB(255,220,80)
-local C_PURPLE=Color3.fromRGB(165,110,250)
-local C_TXT=Color3.fromRGB(235,230,245)
+--═══════════════ BRIGHTNESS <-> NILAI JAM ═══════════════
+local function brightnessFromTime(t)  -- malam 0.5 -> siang 3.0
+    local d = math.clamp(math.sin((t - 6) / 12 * math.pi), 0, 1)
+    return 0.5 + d * 2.5
+end
+local function formatClock(t)
+    t = t % 24
+    local h = math.floor(t)
+    local m = math.floor((t - h) * 60 + 0.5)
+    if m == 60 then h, m = h + 1, 0 end
+    if h == 24 then h = 0 end
+    return string.format("%02d:%02d", h, m)
+end
 
-local gui=Instance.new("ScreenGui")
-gui.Name="SiiilauBalap"
-gui.ResetOnSpawn=false
-gui.DisplayOrder=999
-gui.Parent=parent
+--═══════════════ GUI DASAR ═══════════════
+local gui = new("ScreenGui", {Name = "PurpleHub", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling})
+pcall(function() gui.Parent = (type(gethui) == "function" and gethui()) or game:GetService("CoreGui") end)
+if not gui.Parent then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
-local fr=Instance.new("Frame")
-fr.Size=UDim2.new(0,175,0,350)
-fr.Position=UDim2.new(0,25,0,60)
-fr.BackgroundColor3=C_BG
-fr.BorderSizePixel=0
-fr.Visible=false
-fr.Parent=gui
-Instance.new("UICorner",fr).CornerRadius=UDim.new(0,10)
-local border=Instance.new("UIStroke",fr)
-border.Color=C_PURPLE
-border.Thickness=1.5
-border.Transparency=0.15
+local main = new("Frame", {
+    Size = UDim2.fromOffset(240, 350),
+    Position = UDim2.new(0.5, -120, 0.5, -175),
+    BackgroundColor3 = C.bg, BorderSizePixel = 0, Active = true,
+}, gui)
+new("UICorner", {CornerRadius = UDim.new(0, 10)}, main)
+new("UIStroke", {Color = C.purple, Thickness = 1, Transparency = 0.25}, main)
 
-local tb=Instance.new("Frame")
-tb.Size=UDim2.new(1,0,0,28)
-tb.BackgroundColor3=Color3.fromRGB(20,14,34)
-tb.BorderSizePixel=0
-tb.Parent=fr
-Instance.new("UICorner",tb).CornerRadius=UDim.new(0,10)
+local title = new("Frame", {Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = C.purpleD, BorderSizePixel = 0}, main)
+new("UICorner", {CornerRadius = UDim.new(0, 10)}, title)
+new("Frame", {Size = UDim2.new(1, 0, 0, 10), Position = UDim2.new(0, 0, 1, -10), BackgroundColor3 = C.purpleD, BorderSizePixel = 0}, title)
+new("TextLabel", {
+    Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+    Text = "Purple Hub", Font = FONT_TITLE, TextSize = 13, TextColor3 = C.white,
+}, title)
 
-local logo=Instance.new("Frame")
-logo.Size=UDim2.new(0,20,0,20)
-logo.Position=UDim2.new(0,4,0,4)
-logo.BackgroundColor3=Color3.fromRGB(10,6,18)
-logo.Parent=tb
-Instance.new("UICorner",logo).CornerRadius=UDim.new(1,0)
-local lstroke=Instance.new("UIStroke",logo)
-lstroke.Color=C_PURPLE
-lstroke.Thickness=1
-local sTxt=Instance.new("TextLabel")
-sTxt.Size=UDim2.new(1,0,1,0)
-sTxt.BackgroundTransparency=1
-sTxt.Text="S"
-sTxt.TextColor3=Color3.fromRGB(240,240,250)
-sTxt.Font=Enum.Font.GothamBlack
-sTxt.TextSize=12
-sTxt.Parent=logo
+local scroll = new("ScrollingFrame", {
+    Position = UDim2.new(0, 5, 0, 29), Size = UDim2.new(1, -10, 1, -64),
+    BackgroundTransparency = 1, BorderSizePixel = 0,
+    ScrollBarThickness = 3, ScrollBarImageColor3 = C.purple,
+    CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, main)
+new("UIListLayout", {Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder}, scroll)
 
-local tt=Instance.new("TextLabel")
-tt.Size=UDim2.new(1,-28,1,0)
-tt.Position=UDim2.new(0,26,0,0)
-tt.BackgroundTransparency=1
-tt.RichText=true
-tt.Text="🏎️ <font color=\"#FFDC50\">SIIILAU</font> <font color=\"#9A93A8\">[K]</font>"
-tt.Font=Enum.Font.GothamBold
-tt.TextSize=11
-tt.TextXAlignment=Enum.TextXAlignment.Left
-tt.Parent=tb
+local bottom = new("Frame", {Position = UDim2.new(0, 0, 1, -30), Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = C.panelD, BorderSizePixel = 0}, main)
+new("UICorner", {CornerRadius = UDim.new(0, 10)}, bottom)
+local resetBtn = new("TextButton", {
+    Size = UDim2.new(0.5, -7, 1, -10), Position = UDim2.new(0, 4, 0, 5),
+    BackgroundColor3 = C.blue, BorderSizePixel = 0, Font = FONT_BTN, TextSize = 10,
+    Text = "Reset Script", TextColor3 = C.white,
+}, bottom)
+new("UICorner", {CornerRadius = UDim.new(0, 7)}, resetBtn)
+local exitBtn = new("TextButton", {
+    Size = UDim2.new(0.5, -7, 1, -10), Position = UDim2.new(0.5, 3, 0, 5),
+    BackgroundColor3 = C.black, BorderSizePixel = 0, Font = FONT_BTN, TextSize = 10,
+    Text = "Hapus / Keluar", TextColor3 = C.red,
+}, bottom)
+new("UICorner", {CornerRadius = UDim.new(0, 7)}, exitBtn)
+new("UIStroke", {Color = C.red, Thickness = 1, Transparency = 0.6}, exitBtn)
 
-local dragging=false local dragStart=nil local startPos=nil
-tb.InputBegan:Connect(function(i)
-    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-        dragging=true dragStart=i.Position startPos=fr.Position
+--═══════════════ CROSSHAIR (SCOOSHLOCK) ═══════════════
+local crosshair = new("Frame", {
+    Visible = false, BackgroundTransparency = 1,
+    AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.fromOffset(2, 2), ZIndex = 50,
+}, gui)
+local function crossLine(x, y, w, h)
+    new("Frame", {BackgroundColor3 = C.green, BorderSizePixel = 0, ZIndex = 50,
+        Size = UDim2.fromOffset(w, h), Position = UDim2.new(0, x, 0, y)}, crosshair)
+end
+crossLine(-1, -16, 2, 12)
+crossLine(-1,   4, 2, 12)
+crossLine(-16, -1, 12, 2)
+crossLine(  4, -1, 12, 2)
+crossLine(-1,  -1, 2, 2)
+
+--═══════════════ PEMBANGUN UI ═══════════════
+local order = 0
+local function addSection(text)
+    order += 1
+    new("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+        Text = "• " .. text, Font = FONT_TITLE, TextSize = 11,
+        TextColor3 = C.purple, TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = order,
+    }, scroll)
+end
+
+local function addRow(labelText, opts)
+    opts = opts or {}
+    order += 1
+    local row = new("Frame", {
+        Size = UDim2.new(1, 0, 0, 22), BackgroundColor3 = C.panel,
+        BorderSizePixel = 0, LayoutOrder = order,
+    }, scroll)
+    new("UICorner", {CornerRadius = UDim.new(0, 6)}, row)
+
+    local ref = {row = row}
+    local vshift = opts.toggle and 0 or 44
+    local lw = opts.value and (opts.toggle and -150 or -106) or -46
+    ref.label = new("TextLabel", {
+        Size = UDim2.new(1, lw, 1, 0), Position = UDim2.new(0, 6, 0, 0),
+        BackgroundTransparency = 1, Text = labelText,
+        Font = FONT_MAIN, TextSize = 9, TextColor3 = C.text,
+        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+    }, row)
+
+    if opts.value then
+        ref.minus = new("TextButton", {
+            Size = UDim2.new(0, 14, 1, -8), Position = UDim2.new(1, -142 + vshift, 0, 4),
+            BackgroundColor3 = C.purpleD, BorderSizePixel = 0,
+            Text = "-", Font = FONT_BTN, TextSize = 11, TextColor3 = C.white,
+        }, row)
+        new("UICorner", {CornerRadius = UDim.new(0, 5)}, ref.minus)
+        ref.val = new("TextLabel", {
+            Size = UDim2.new(0, 40, 1, -8), Position = UDim2.new(1, -126 + vshift, 0, 4),
+            BackgroundColor3 = C.black, BorderSizePixel = 0,
+            Text = "--", Font = FONT_MAIN, TextSize = 9, TextColor3 = C.white,
+        }, row)
+        new("UICorner", {CornerRadius = UDim.new(0, 5)}, ref.val)
+        ref.plus = new("TextButton", {
+            Size = UDim2.new(0, 14, 1, -8), Position = UDim2.new(1, -84 + vshift, 0, 4),
+            BackgroundColor3 = C.purpleD, BorderSizePixel = 0,
+            Text = "+", Font = FONT_BTN, TextSize = 11, TextColor3 = C.white,
+        }, row)
+        new("UICorner", {CornerRadius = UDim.new(0, 5)}, ref.plus)
     end
-end)
-UIS.InputChanged:Connect(function(i)
-    if dragging and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-        local d=i.Position-dragStart
-        fr.Position=UDim2.new(startPos.X.Scale,startPos.X.Offset+d.X,startPos.Y.Scale,startPos.Y.Offset+d.Y)
+
+    if opts.toggle then
+        ref.toggle = new("TextButton", {
+            Size = UDim2.new(0, 34, 1, -8), Position = UDim2.new(1, -38, 0, 4),
+            BackgroundColor3 = C.offBg, BorderSizePixel = 0,
+            Text = "OFF", Font = FONT_BTN, TextSize = 9, TextColor3 = C.dim,
+        }, row)
+        new("UICorner", {CornerRadius = UDim.new(0, 5)}, ref.toggle)
     end
-end)
-UIS.InputEnded:Connect(function(i)
-    if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then dragging=false end
-end)
-
-local holder=Instance.new("Frame")
-holder.Position=UDim2.new(0,5,0,31)
-holder.Size=UDim2.new(1,-10,1,-36)
-holder.BackgroundTransparency=1
-holder.Parent=fr
-local lay=Instance.new("UIListLayout",holder)
-lay.Padding=UDim.new(0,2)
-lay.SortOrder=Enum.SortOrder.LayoutOrder
-
---========== KOMPONEN ==========--
-local UI={}
-
-local function header(txt)
-    local h=Instance.new("TextLabel")
-    h.Size=UDim2.new(1,0,0,14)
-    h.BackgroundTransparency=1
-    h.Text=txt
-    h.TextColor3=Color3.fromRGB(255,255,255)
-    h.Font=Enum.Font.GothamBold
-    h.TextSize=10
-    h.LayoutOrder=#holder:GetChildren()
-    h.Parent=holder
+    return ref
 end
 
-local function toggle(name,key,onCB)
-    local row=Instance.new("Frame")
-    row.Size=UDim2.new(1,0,0,19)
-    row.BackgroundColor3=C_ROW
-    row.BorderSizePixel=0
-    row.LayoutOrder=#holder:GetChildren()
-    row.Parent=holder
-    Instance.new("UICorner",row).CornerRadius=UDim.new(0,5)
-
-    local lbl=Instance.new("TextLabel")
-    lbl.Size=UDim2.new(1,-52,1,0)
-    lbl.Position=UDim2.new(0,6,0,0)
-    lbl.BackgroundTransparency=1
-    lbl.Text=name
-    lbl.TextColor3=C_TXT
-    lbl.Font=Enum.Font.Gotham
-    lbl.TextSize=10
-    lbl.TextXAlignment=Enum.TextXAlignment.Left
-    lbl.Parent=row
-
-    local btn=Instance.new("TextButton")
-    btn.Size=UDim2.new(0,42,0,14)
-    btn.Position=UDim2.new(1,-47,0,2.5)
-    btn.BackgroundColor3=C_OFF
-    btn.Text="OFF"
-    btn.TextColor3=Color3.fromRGB(255,235,240)
-    btn.Font=Enum.Font.GothamBold
-    btn.TextSize=9
-    btn.BorderSizePixel=0
-    btn.Parent=row
-    Instance.new("UICorner",btn).CornerRadius=UDim.new(0,5)
-
-    local st=false
-    local function set(v)
-        st=v
-        if v then btn.Text="ON" btn.BackgroundColor3=C_ON
-        else btn.Text="OFF" btn.BackgroundColor3=C_OFF end
-        S[key]=v
-        local ok,err=pcall(onCB,v)
-        if not ok then warn("[SIIILAU] "..name..": "..tostring(err)) end
-    end
-    btn.MouseButton1Click:Connect(function() set(not st) end)
-    UI[key]=set
-    return set
+local function styleToggle(btn, on)
+    btn.Text = on and "ON" or "OFF"
+    btn.BackgroundColor3 = on and C.blue or C.offBg
+    btn.TextColor3 = on and C.white or C.dim
 end
 
-local function valueRow(name,min,max,def,key,fmt)
-    local row=Instance.new("Frame")
-    row.Size=UDim2.new(1,0,0,18)
-    row.BackgroundColor3=C_ROW2
-    row.BorderSizePixel=0
-    row.LayoutOrder=#holder:GetChildren()
-    row.Parent=holder
-    Instance.new("UICorner",row).CornerRadius=UDim.new(0,5)
+--═══════════════ ISI PANEL ═══════════════
+addSection("Movement")
+local rSpeed = addRow("Speed & Swim [Q]", {value = true, toggle = true})
+local rJump  = addRow("Jump Power",       {value = true, toggle = true})
+local rCross = addRow("Scooshlock (Crosshair)", {toggle = true})
 
-    local lbl=Instance.new("TextLabel")
-    lbl.Size=UDim2.new(0,42,1,0)
-    lbl.Position=UDim2.new(0,6,0,0)
-    lbl.BackgroundTransparency=1
-    lbl.Text=name
-    lbl.TextColor3=Color3.fromRGB(200,195,215)
-    lbl.Font=Enum.Font.Gotham
-    lbl.TextSize=9
-    lbl.TextXAlignment=Enum.TextXAlignment.Left
-    lbl.Parent=row
+addSection("Player Display")
+local rInfo = addRow("Info Other Players [C]", {toggle = true})
+local rHit  = addRow("Hitbox Players",          {toggle = true})
 
-    local val=Instance.new("TextLabel")
-    val.Size=UDim2.new(0,40,1,0)
-    val.Position=UDim2.new(0,48,0,0)
-    val.BackgroundTransparency=1
-    val.Text=string.format(fmt or "%.2f",def)
-    val.TextColor3=C_GOLD
-    val.Font=Enum.Font.GothamBold
-    val.TextSize=10
-    val.TextXAlignment=Enum.TextXAlignment.Left
-    val.Parent=row
+addSection("Visual")
+local rHideP = addRow("Hide Other Players [R]", {toggle = true})
+local rHideF = addRow("Hide All Effects",       {toggle = true})
+local rLowG  = addRow("Low Graphic + No Fog",   {toggle = true})
 
-    local function mkBtn(txt,x,fn)
-        local b=Instance.new("TextButton")
-        b.Size=UDim2.new(0,34,0,13)
-        b.Position=UDim2.new(0,x,0,2.5)
-        b.BackgroundColor3=C_MINUS
-        b.Text=txt
-        b.TextColor3=Color3.fromRGB(255,255,255)
-        b.Font=Enum.Font.GothamBold
-        b.TextSize=9
-        b.BorderSizePixel=0
-        b.Parent=row
-        Instance.new("UICorner",b).CornerRadius=UDim.new(0,5)
-        b.MouseButton1Click:Connect(function()
-            local v=fn(S[key])
-            v=math.floor(v/0.25+0.5)*0.25
-            v=math.clamp(v,min,max)
-            S[key]=v
-            val.Text=string.format(fmt or "%.2f",v)
-            notify(name..": "..v)
-        end)
-    end
-    mkBtn("−.25",96,function(v) return v-0.25 end)
-    mkBtn("+.25",132,function(v) return v+0.25 end)
-end
+addSection("Environment")
+local rClock = addRow("Nilai Jam (Brightness)", {value = true})
 
---========== CLEAN PARTICLES (event-driven + anti re-enable) ==========--
-local function isEffect(o)
-    return o:IsA("ParticleEmitter") or o:IsA("Smoke") or o:IsA("Fire") or o:IsA("Trail") or o:IsA("Sparkles")
-end
-local function killEffect(o)
-    o.Enabled=false
-    table.insert(cleanConns,o:GetPropertyChangedSignal("Enabled"):Connect(function()
-        if S.Clean and o.Enabled then o.Enabled=false end
-    end))
-end
-local function cleanON()
-    task.spawn(function()
-        local n=0
-        for _,o in pairs(workspace:GetDescendants()) do
-            if isEffect(o) then killEffect(o) end
-            n=n+1
-            if n>=1500 then n=0 task.wait() end
-            if not S.Clean then return end
-        end
-    end)
-    table.insert(cleanConns,workspace.DescendantAdded:Connect(function(o)
-        if o and o.Parent and isEffect(o) then killEffect(o) end
-    end))
-end
-local function cleanOFF()
-    for _,c in pairs(cleanConns) do pcall(function() c:Disconnect() end) end
-    cleanConns={}
-    task.spawn(function()
-        local n=0
-        for _,o in pairs(workspace:GetDescendants()) do
-            if isEffect(o) then pcall(function() o.Enabled=true end) end
-            n=n+1
-            if n>=1500 then n=0 task.wait() end
-        end
-    end)
-end
-
---========== FPS BOOST (ringan, tanpa ganti material) ==========--
-local function fpsON()
-    Lighting.GlobalShadows=false
-    Lighting.EnvironmentDiffuseScale=0
-    Lighting.EnvironmentSpecularScale=0
-    pcall(function() workspace.Terrain.Decoration=false end)
-    for _,o in pairs(Lighting:GetChildren()) do
-        if o:IsA("PostEffect") then o.Enabled=false end
-    end
-    table.insert(fpsConns,Lighting.ChildAdded:Connect(function(o)
-        if o and o:IsA("PostEffect") then o.Enabled=false end
-    end))
-end
-local function fpsOFF()
-    for _,c in pairs(fpsConns) do pcall(function() c:Disconnect() end) end
-    fpsConns={}
-    Lighting.GlobalShadows=DFL.GS
-    Lighting.EnvironmentDiffuseScale=DFL.EDS
-    Lighting.EnvironmentSpecularScale=DFL.ESS
-    pcall(function() workspace.Terrain.Decoration=DFL.TD end)
-    for _,o in pairs(Lighting:GetChildren()) do
-        if o:IsA("PostEffect") then pcall(function() o.Enabled=true end) end
+--═══════════════ STATE & NILAI ASLI ═══════════════
+local S = {
+    speedOn = false, speedValue = DEFAULT_SPEED,
+    jumpOn = false,  jumpValue = DEFAULT_JUMP,
+    crosshairOn = false, infoOn = false, hitboxOn = false,
+    hidePlayersOn = false, hideFxOn = false, lowGfxOn = false,
+    clockValue = Lighting.ClockTime,
+}
+local orig = {walkSpeed = 16, useJumpPower = true, jumpPower = 50, jumpHeight = 7.2,
+    swimSpeed = 16, brightness = Lighting.Brightness, clockTime = Lighting.ClockTime}
+do
+    local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if h then
+        orig.walkSpeed = h.WalkSpeed
+        orig.useJumpPower = h.UseJumpPower
+        orig.jumpPower = h.JumpPower
+        pcall(function() orig.jumpHeight = h.JumpHeight end)
+        pcall(function() orig.swimSpeed = h.SwimSpeed end)
     end
 end
 
---========== CROSSHAIR ==========--
-local function crossON()
-    local old=parent:FindFirstChild("SiiCross") if old then old:Destroy() end
-    local cg=Instance.new("ScreenGui")
-    cg.Name="SiiCross"
-    cg.ResetOnSpawn=false
-    cg.IgnoreGuiInset=true
-    cg.Parent=parent
-    local ring=Instance.new("Frame")
-    ring.Size=UDim2.new(0,16,0,16)
-    ring.Position=UDim2.new(0.5,-8,0.5,-8)
-    ring.BackgroundTransparency=1
-    ring.Parent=cg
-    local rc=Instance.new("UICorner",ring) rc.CornerRadius=UDim.new(1,0)
-    local st=Instance.new("UIStroke",ring)
-    st.Color=Color3.fromRGB(0,255,120)
-    st.Thickness=1.5
-    st.Transparency=0.3
-    local dot=Instance.new("Frame")
-    dot.Size=UDim2.new(0,3,0,3)
-    dot.Position=UDim2.new(0.5,-1.5,0.5,-1.5)
-    dot.BackgroundColor3=Color3.fromRGB(0,255,120)
-    dot.BorderSizePixel=0
-    dot.Parent=ring
-    Instance.new("UICorner",dot).CornerRadius=UDim.new(1,0)
-end
-local function crossOFF()
-    local old=parent:FindFirstChild("SiiCross") if old then old:Destroy() end
+local conns = {}
+local function addConn(c) table.insert(conns, c) return c end
+local function getHum()
+    local c = LocalPlayer.Character
+    return c and c:FindFirstChildOfClass("Humanoid")
 end
 
---========== HIDE PLAYERS ==========--
-local function watchChar(plr)
-    local char=plr.Character
-    if char then
-        task.spawn(function()
-            local n=0
-            for _,o in pairs(char:GetDescendants()) do
-                if o:IsA("BasePart") or o:IsA("Decal") then o.LocalTransparencyModifier=1
-                elseif o:IsA("BillboardGui") then o.Enabled=false end
-                n=n+1
-                if n>=1000 then n=0 task.wait() end
-            end
-        end)
-        table.insert(hideConns,char.DescendantAdded:Connect(function(o)
-            task.wait()
-            if S.Hide and o and o.Parent then
-                if o:IsA("BasePart") or o:IsA("Decal") then o.LocalTransparencyModifier=1
-                elseif o:IsA("BillboardGui") then o.Enabled=false end
-            end
-        end))
-    end
-end
-local function hideON()
-    for _,plr in pairs(Players:GetPlayers()) do
-        if plr~=LP then
-            watchChar(plr)
-            table.insert(hideConns,plr.CharacterAdded:Connect(function()
-                task.wait(0.3)
-                if S.Hide then watchChar(plr) end
-            end))
-        end
-    end
-    table.insert(hideConns,Players.PlayerAdded:Connect(function(plr)
-        task.wait(1)
-        if S.Hide then
-            watchChar(plr)
-            table.insert(hideConns,plr.CharacterAdded:Connect(function()
-                task.wait(0.3)
-                if S.Hide then watchChar(plr) end
-            end))
-        end
-    end))
-end
-local function hideOFF()
-    for _,c in pairs(hideConns) do pcall(function() c:Disconnect() end) end
-    hideConns={}
-    for _,plr in pairs(Players:GetPlayers()) do
-        if plr~=LP and plr.Character then
-            for _,o in pairs(plr.Character:GetDescendants()) do
-                if o:IsA("BasePart") or o:IsA("Decal") then o.LocalTransparencyModifier=0
-                elseif o:IsA("BillboardGui") then o.Enabled=true end
-            end
-        end
-    end
-end
-
---========================================================--
--- MOONWALK v4 — BUG DIPERBAIKI
--- Penyebab rusak: moonON() memanggil moonOFF() yang BELUM
--- didefinisikan → error "attempt to call nil" → tertelan
--- pcall → koneksi TIDAK PERNAH dibuat → tombol ON tapi
--- tidak terjadi apa-apa. Sekarang urutan sudah benar.
---========================================================--
-local Moon={yaw=nil,conns={}}
-
-local function moonStop()
-    for _,c in pairs(Moon.conns) do pcall(function() c:Disconnect() end) end
-    Moon.conns={}
-    Moon.yaw=nil
-    local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-    if h then h.AutoRotate=true end
-end
-
-local function applyMoon(dt)
-    if not S.Moon then return end
-    local ch=LP.Character
-    local h=ch and ch:FindFirstChildOfClass("Humanoid")
-    local root=ch and ch:FindFirstChild("HumanoidRootPart")
-    if not h or not root or h.Sit then return end
-    h.AutoRotate=false
-    local cam=workspace.CurrentCamera
-    if not cam then return end
-    local lv=cam.CFrame.LookVector
-    local flat=Vector3.new(lv.X,0,lv.Z)
-    if flat.Magnitude<0.001 then return end
-    flat=flat.Unit
-    local target=math.atan2(-flat.X,-flat.Z)+math.pi
-    if Moon.yaw==nil then Moon.yaw=target end
-    local diff=(target-Moon.yaw+math.pi)%(2*math.pi)-math.pi
-    Moon.yaw=Moon.yaw+diff*math.clamp(dt*15,0,1)
-    root.CFrame=CFrame.new(root.Position)*CFrame.Angles(0,Moon.yaw,0)
-end
-
-local function moonStart()
-    moonStop() -- sekarang SUDAH terdefinisi (urutan diperbaiki)
-    table.insert(Moon.conns,RS.RenderStepped:Connect(function() applyMoon(1/60) end))
-    table.insert(Moon.conns,RS.Heartbeat:Connect(function() applyMoon(1/60) end))
-    applyMoon(1) -- badan langsung berbalik 180° tanpa jeda
-end
-
--- respawn: reset lock agar langsung menghadap belakang kamera lagi
-LP.CharacterAdded:Connect(function() Moon.yaw=nil end)
-
---========== ISI MENU ==========--
-header("⚡ MOVEMENT")
-
-toggle("Speed Hack [F]","Speed",function(on)
-    local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-    if h and not on then h.WalkSpeed=DEF_WS end
-    notify("Speed: "..(on and ("ON "..S.SpeedV) or "OFF"))
-end)
-valueRow("Speed",17.25,23.5,17.25,"SpeedV")
-
-toggle("Jump Power","Jump",function(on)
-    local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-    if h and not on then h.JumpPower=DEF_JP end
-    notify("Jump: "..(on and ("ON "..S.JumpV) or "OFF"))
-end)
-valueRow("Jump",51.5,70,51.5,"JumpV")
-
-toggle("Crosshair","Cross",function(on)
-    if on then crossON() else crossOFF() end
-    notify("Crosshair: "..(on and "ON" or "OFF"))
-end)
-
-toggle("Moonwalk [G]","Moon",function(on)
-    if on then moonStart() else moonStop() end
-    notify("Moonwalk: "..(on and "ON (badan 180°)" or "OFF"))
-end)
-
-header("👁 VISUALS")
-
-toggle("Auto Brightness","Bright",function(on)
-    if on then
-        Lighting.ClockTime=S.ClockV
-        Lighting.Brightness=2
-        Lighting.Ambient=Color3.fromRGB(70,70,70)
-        Lighting.OutdoorAmbient=Color3.fromRGB(110,110,110)
-        notify("Brightness ON! Jam dikunci "..S.ClockV)
-    else
-        Lighting.Brightness=DFL.B
-        Lighting.Ambient=DFL.A
-        Lighting.OutdoorAmbient=DFL.OA
-        Lighting.ClockTime=DFL.C
-        notify("Brightness: OFF")
-    end
-end)
-valueRow("Jam",6,18,12,"ClockV","%.2f")
-
-toggle("Hide Players [R]","Hide",function(on)
-    if on then hideON() else hideOFF() end
-    notify("Hide: "..(on and "ON" or "OFF"))
-end)
-
-toggle("Clean Particles","Clean",function(on)
-    if on then cleanON() else cleanOFF() end
-    notify("Clean: "..(on and "ON" or "OFF"))
-end)
-
-toggle("FPS Boost","FPS",function(on)
-    if on then fpsON() else fpsOFF() end
-    notify("FPS Boost: "..(on and "ON" or "OFF"))
-end)
-
-local rst=Instance.new("TextButton")
-rst.Size=UDim2.new(1,0,0,20)
-rst.BackgroundColor3=Color3.fromRGB(205,38,48)
-rst.Text="destroy & reset"
-rst.TextColor3=Color3.fromRGB(255,225,228)
-rst.Font=Enum.Font.GothamBold
-rst.TextSize=11
-rst.BorderSizePixel=0
-rst.LayoutOrder=#holder:GetChildren()
-rst.Parent=holder
-Instance.new("UICorner",rst).CornerRadius=UDim.new(0,6)
-rst.MouseButton1Click:Connect(function()
-    moonStop() cleanOFF() fpsOFF() hideOFF()
-    for _,k in pairs({"Speed","Jump","Bright","Hide","Clean","FPS","Cross","Moon"}) do
-        if UI[k] then UI[k](false) end
-    end
-    Lighting.Brightness=DFL.B Lighting.ClockTime=DFL.C
-    Lighting.Ambient=DFL.A Lighting.OutdoorAmbient=DFL.OA Lighting.GlobalShadows=DFL.GS
-    Lighting.EnvironmentDiffuseScale=DFL.EDS Lighting.EnvironmentSpecularScale=DFL.ESS
-    pcall(function() workspace.Terrain.Decoration=DFL.TD end)
-    local h=LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-    if h then h.WalkSpeed=16 h.JumpPower=50 h.AutoRotate=true end
-    crossOFF()
-    gui:Destroy()
-    notify("Direset & dihancurkan")
-end)
-
-local wm=Instance.new("TextLabel")
-wm.Size=UDim2.new(1,0,0,16)
-wm.BackgroundTransparency=1
-wm.Text="— Siiilau —"
-wm.TextColor3=Color3.fromRGB(160,150,180)
-wm.Font=Enum.Font.GothamBold
-wm.TextSize=10
-wm.LayoutOrder=#holder:GetChildren()
-wm.Parent=holder
-
---========== LOOP SPEED/JUMP ==========--
-RS.Heartbeat:Connect(function()
-    if not (S.Speed or S.Jump) then return end
-    local ch=LP.Character
-    local h=ch and ch:FindFirstChildOfClass("Humanoid")
+--═══════════════ MOVEMENT (dengan penjaga nilai) ═══════════════
+local function applyMovement()
+    local h = getHum()
     if not h then return end
-    if S.Speed then h.WalkSpeed=S.SpeedV end
-    if S.Jump then
-        h.UseJumpPower=true
-        h.JumpPower=S.JumpV
+    if S.speedOn then
+        h.WalkSpeed = S.speedValue
+        pcall(function() h.SwimSpeed = S.speedValue end)
+    else
+        h.WalkSpeed = orig.walkSpeed
+        pcall(function() h.SwimSpeed = orig.swimSpeed end)
     end
-end)
+    if S.jumpOn then
+        pcall(function()
+            h.UseJumpPower = true
+            h.JumpPower = S.jumpValue
+        end)
+    else
+        pcall(function()
+            h.UseJumpPower = orig.useJumpPower
+            h.JumpPower = orig.jumpPower
+            h.JumpHeight = orig.jumpHeight
+        end)
+    end
+end
 
---========== GUARD BRIGHTNESS (hanya 4 properti, tanpa scan) ==========--
-task.spawn(function()
-    while gui.Parent do
-        task.wait(1)
-        if S.Bright then
-            if math.abs(Lighting.ClockTime-S.ClockV)>0.3 then Lighting.ClockTime=S.ClockV end
-            Lighting.Brightness=2
-            Lighting.Ambient=Color3.fromRGB(70,70,70)
-            Lighting.OutdoorAmbient=Color3.fromRGB(110,110,110)
+local function setSpeed(on) S.speedOn = on; applyMovement(); styleToggle(rSpeed.toggle, on) end
+local function setJump(on)  S.jumpOn  = on; applyMovement(); styleToggle(rJump.toggle, on)  end
+
+local function setCrosshair(on)
+    S.crosshairOn = on
+    crosshair.Visible = on
+    styleToggle(rCross.toggle, on)
+end
+
+--═══════════════ INFO OTHER PLAYERS [C] - SELF HEALING ═══════════════
+-- baris 1: DisplayName (@username)  -> putih, besar
+-- baris 2: WS x | JP x | SS x       -> biru, besar, update 0.25s
+local infoRefs = {}
+
+local function cleanupInfo(char)
+    local bb = char and char:FindFirstChild("PH_Info")
+    if bb then bb:Destroy() end
+end
+local function cleanupHitbox(char)
+    if not char then return end
+    local glow = char:FindFirstChild("PH_Glow")
+    if glow then glow:Destroy() end
+    for _, d in ipairs(char:GetDescendants()) do
+        if d.Name == "PH_Box" then d:Destroy() end
+    end
+end
+
+local function attachInfo(plr, char)
+    local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+    if not head then return nil end
+    pcall(cleanupInfo, char)
+    -- Billboard ditaruh di CHARACTER (bukan Head) supaya tidak mudah dihapus game
+    local bb = new("BillboardGui", {
+        Name = "PH_Info", Adornee = head,
+        Size = UDim2.fromOffset(220, 52),           -- diperbesar
+        StudsOffset = Vector3.new(0, 2.9, 0),
+        AlwaysOnTop = true, MaxDistance = 500,
+    }, char)
+    new("TextLabel", {   -- BARIS 1: display + usn (putih, bold, besar)
+        Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold, TextScaled = true,
+        TextColor3 = C.white, TextStrokeTransparency = 0.25,
+        Text = plr.DisplayName .. " (@" .. plr.Name .. ")",
+    }, bb)
+    local stat = new("TextLabel", {  -- BARIS 2: WS | JP | SS (biru terang, besar)
+        Position = UDim2.new(0, 0, 0, 27), Size = UDim2.new(1, 0, 0, 22),
+        BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextScaled = true,
+        TextColor3 = C.blueBrt, TextStrokeTransparency = 0.2,
+        Text = "WS ... | JP ... | SS ...",
+    }, bb)
+    return {bb = bb, stat = stat, char = char}
+end
+
+local function getStats(char)
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return nil, nil, nil end
+    local ws = hum.WalkSpeed
+    local ss, jp
+    pcall(function() ss = hum.SwimSpeed end)
+    pcall(function() jp = (hum.UseJumpPower and hum.JumpPower) or hum.JumpHeight end)
+    return ws, ss, jp
+end
+
+--═══════════════ HITBOX PLAYERS (VISUAL SAJA) ═══════════════
+local function attachHitbox(plr, char)
+    pcall(cleanupHitbox, char)
+    for _, part in ipairs(char:GetChildren()) do  -- mengikuti ukuran/bentuk tiap karakter
+        if part:IsA("BasePart") then
+            new("BoxHandleAdornment", {
+                Name = "PH_Box", Adornee = part, Parent = part,
+                Size = part.Size, Color3 = C.green, Transparency = 0.6,  -- hijau LED
+                AlwaysOnTop = true, ZIndex = 2,
+            }, part)
         end
     end
-end)
+    pcall(function()  -- glow ringan (outline saja, tidak mengubah collision)
+        new("Highlight", {
+            Name = "PH_Glow", Parent = char, FillTransparency = 1,
+            OutlineColor = C.green, OutlineTransparency = 0.35,
+            DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+        }, char)
+    end)
+end
 
---========== HOTKEY (K, F, R, G) ==========--
-UIS.InputBegan:Connect(function(i,gp)
+--═══════════════ SYNC DISPLAYS (self-healing, dipanggil tiap 0.25s) ═══════════════
+local function syncDisplays()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local char = plr.Character
+            if char then
+                ---- INFO OVERHEAD ----
+                if S.infoOn then
+                    local ref = infoRefs[plr]
+                    -- perbaiki otomatis jika: belum ada / respawn / label dihapus game
+                    if not ref or ref.char ~= char or not ref.bb.Parent or not ref.stat.Parent then
+                        local newRef = attachInfo(plr, char)
+                        if newRef then
+                            infoRefs[plr] = newRef
+                            ref = newRef
+                        else
+                            ref = nil
+                        end
+                    end
+                    if ref then
+                        local ws, ss, jp = getStats(char)
+                        ref.stat.Text = "WS " .. numStr(ws) .. " | JP " .. numStr(jp) .. " | SS " .. numStr(ss)
+                    end
+                elseif infoRefs[plr] or char:FindFirstChild("PH_Info") then
+                    infoRefs[plr] = nil
+                    pcall(cleanupInfo, char)
+                end
+                ---- HITBOX ----
+                if S.hitboxOn then
+                    if not char:FindFirstChild("PH_Glow") then
+                        attachHitbox(plr, char)
+                    end
+                elseif char:FindFirstChild("PH_Glow") or char:FindFirstChild("PH_Box") then
+                    pcall(cleanupHitbox, char)
+                end
+            end
+        end
+    end
+end
+
+--═══════════════ HIDE OTHER PLAYERS (LOKAL SAJA) ═══════════════
+local function applyHide()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            for _, d in ipairs(plr.Character:GetDescendants()) do
+                if d:IsA("BasePart") then
+                    d.LocalTransparencyModifier = S.hidePlayersOn and 1 or 0
+                end
+            end
+        end
+    end
+end
+
+local function setHidePlayers(on)
+    S.hidePlayersOn = on
+    if on then
+        task.spawn(function()
+            while S.hidePlayersOn do
+                applyHide()
+                task.wait(0.2)
+            end
+        end)
+    else
+        applyHide()
+    end
+    styleToggle(rHideP.toggle, on)
+end
+
+--═══════════════ HIDE ALL EFFECTS ═══════════════
+local FX_CLASSES = {
+    ParticleEmitter = "Enabled", Fire = "Enabled", Smoke = "Enabled",
+    Sparkles = "Enabled", Beam = "Enabled", Trail = "Enabled",
+    PointLight = "Enabled", SpotLight = "Enabled", SurfaceLight = "Enabled",
+}
+local savedFx, fxConn = {}, nil
+
+local function disableFx(inst)
+    local prop = FX_CLASSES[inst.ClassName]
+    if prop and savedFx[inst] == nil then
+        pcall(function()
+            savedFx[inst] = {prop = prop, value = inst[prop]}
+            inst[prop] = false
+        end)
+    end
+end
+
+local function setHideFx(on)
+    S.hideFxOn = on
+    if on then
+        for _, d in ipairs(workspace:GetDescendants()) do disableFx(d) end
+        fxConn = workspace.DescendantAdded:Connect(disableFx)
+    else
+        if fxConn then fxConn:Disconnect() fxConn = nil end
+        for inst, data in pairs(savedFx) do
+            pcall(function() inst[data.prop] = data.value end)
+        end
+        savedFx = {}
+    end
+    styleToggle(rHideF.toggle, on)
+end
+
+--═══════════════ LOW GRAPHIC MODE (+ REMOVE FOG) ═══════════════
+local savedGfx, gfxConn = {}, nil
+
+local function setLowGfx(on)
+    S.lowGfxOn = on
+    if on then
+        pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+        savedGfx.shadows, savedGfx.fogStart, savedGfx.fogEnd = Lighting.GlobalShadows, Lighting.FogStart, Lighting.FogEnd
+        Lighting.GlobalShadows = false
+        Lighting.FogStart, Lighting.FogEnd = 9e9, 9e9   -- remove fog (termasuk di mode ini)
+        pcall(function()
+            savedGfx.deco = workspace.Terrain.Decoration
+            workspace.Terrain.Decoration = false
+            savedGfx.wave = workspace.Terrain.WaterWaveSize
+            workspace.Terrain.WaterWaveSize = 0
+            savedGfx.refl = workspace.Terrain.WaterReflectance
+            workspace.Terrain.WaterReflectance = 0
+        end)
+        for _, d in ipairs(Lighting:GetDescendants()) do
+            if d:IsA("PostEffect") then savedGfx[d] = d.Enabled; d.Enabled = false end
+        end
+        gfxConn = Lighting.ChildAdded:Connect(function(d)
+            if S.lowGfxOn and d:IsA("PostEffect") then savedGfx[d] = d.Enabled; d.Enabled = false end
+        end)
+    else
+        pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic end)
+        if savedGfx.shadows  ~= nil then Lighting.GlobalShadows = savedGfx.shadows end
+        if savedGfx.fogStart ~= nil then Lighting.FogStart = savedGfx.fogStart end
+        if savedGfx.fogEnd   ~= nil then Lighting.FogEnd = savedGfx.fogEnd end
+        pcall(function()
+            if savedGfx.deco ~= nil then workspace.Terrain.Decoration = savedGfx.deco end
+            if savedGfx.wave ~= nil then workspace.Terrain.WaterWaveSize = savedGfx.wave end
+            if savedGfx.refl ~= nil then workspace.Terrain.WaterReflectance = savedGfx.refl end
+        end)
+        for d, v in pairs(savedGfx) do
+            if typeof(d) == "Instance" then pcall(function() d.Enabled = v end) end
+        end
+        savedGfx = {}
+        if gfxConn then gfxConn:Disconnect() gfxConn = nil end
+    end
+    styleToggle(rLowG.toggle, on)
+end
+
+--═══════════════ NILAI JAM -> BRIGHTNESS ═══════════════
+local lastClock = Lighting.ClockTime
+local clockChangedByUs = false
+
+local function applyAutoBrightness()  -- brightness selalu dihitung dari jam in-game
+    pcall(function() Lighting.Brightness = brightnessFromTime(Lighting.ClockTime) end)
+end
+
+local function bumpClock(d)  -- ubah jam in-game (step 0.25 jam = 15 menit)
+    S.clockValue = (S.clockValue + d) % 24
+    if S.clockValue < 0 then S.clockValue += 24 end
+    rClock.val.Text = formatClock(S.clockValue)
+    clockChangedByUs = true
+    pcall(function() Lighting.ClockTime = S.clockValue end)
+    lastClock = Lighting.ClockTime
+    applyAutoBrightness()   -- brightness langsung menyesuaikan jam baru
+end
+
+--═══════════════ RESET SCRIPT ═══════════════
+local function resetScript()
+    S.speedValue, S.jumpValue = DEFAULT_SPEED, DEFAULT_JUMP
+    setSpeed(false); setJump(false); setCrosshair(false)
+    S.infoOn, S.hitboxOn = false, false
+    syncDisplays()
+    styleToggle(rInfo.toggle, false); styleToggle(rHit.toggle, false)
+    setHidePlayers(false); setHideFx(false); setLowGfx(false)
+    S.clockValue = orig.clockTime
+    clockChangedByUs = false
+    pcall(function() Lighting.ClockTime = orig.clockTime end)
+    lastClock = Lighting.ClockTime
+    rClock.val.Text = formatClock(lastClock)
+    applyAutoBrightness()
+    rSpeed.val.Text, rJump.val.Text = fmt(S.speedValue), fmt(S.jumpValue)
+    main.Position = UDim2.new(0.5, -120, 0.5, -175)
+    main.Visible = true
+    scroll.CanvasPosition = Vector2.new(0, 0)
+end
+
+--═══════════════ HAPUS SCRIPT / KELUAR ═══════════════
+local function unloadScript()
+    S.hidePlayersOn = false
+    setSpeed(false); setJump(false); setCrosshair(false)
+    S.infoOn, S.hitboxOn = false, false
+    syncDisplays()
+    setHideFx(false); setLowGfx(false)
+    applyHide()
+    if clockChangedByUs then pcall(function() Lighting.ClockTime = orig.clockTime end) end
+    pcall(function() Lighting.Brightness = orig.brightness end)
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    conns = {}
+    gui:Destroy()
+end
+
+--═══════════════ WIRING TOMBOL ═══════════════
+rSpeed.toggle.MouseButton1Click:Connect(function() setSpeed(not S.speedOn) end)
+rJump.toggle.MouseButton1Click:Connect(function() setJump(not S.jumpOn) end)
+rCross.toggle.MouseButton1Click:Connect(function() setCrosshair(not S.crosshairOn) end)
+rInfo.toggle.MouseButton1Click:Connect(function()
+    S.infoOn = not S.infoOn
+    syncDisplays()   -- langsung muncul/hilang tanpa nunggu 0.25s
+    styleToggle(rInfo.toggle, S.infoOn)
+end)
+rHit.toggle.MouseButton1Click:Connect(function()
+    S.hitboxOn = not S.hitboxOn
+    syncDisplays()
+    styleToggle(rHit.toggle, S.hitboxOn)
+end)
+rHideP.toggle.MouseButton1Click:Connect(function() setHidePlayers(not S.hidePlayersOn) end)
+rHideF.toggle.MouseButton1Click:Connect(function() setHideFx(not S.hideFxOn) end)
+rLowG.toggle.MouseButton1Click:Connect(function() setLowGfx(not S.lowGfxOn) end)
+
+local function bumpSpeed(d)
+    S.speedValue = math.clamp(S.speedValue + d, 0, 500)
+    rSpeed.val.Text = fmt(S.speedValue)
+    if S.speedOn then applyMovement() end
+end
+local function bumpJump(d)
+    S.jumpValue = math.clamp(S.jumpValue + d, 0, 1000)
+    rJump.val.Text = fmt(S.jumpValue)
+    if S.jumpOn then applyMovement() end
+end
+
+rSpeed.minus.MouseButton1Click:Connect(function() bumpSpeed(-STEP) end)
+rSpeed.plus.MouseButton1Click:Connect(function() bumpSpeed(STEP) end)
+rJump.minus.MouseButton1Click:Connect(function() bumpJump(-STEP) end)
+rJump.plus.MouseButton1Click:Connect(function() bumpJump(STEP) end)
+rClock.minus.MouseButton1Click:Connect(function() bumpClock(-STEP) end)
+rClock.plus.MouseButton1Click:Connect(function() bumpClock(STEP) end)
+
+resetBtn.MouseButton1Click:Connect(resetScript)
+exitBtn.MouseButton1Click:Connect(unloadScript)
+
+--═══════════════ HOTKEY (F = buka/tutup GUI) ═══════════════
+addConn(UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
-    local k=i.KeyCode
-    if k==Enum.KeyCode.K then
-        vis=not vis
-        fr.Visible=vis
-    elseif k==Enum.KeyCode.F then
-        if UI.Speed then UI.Speed(not S.Speed) end
-    elseif k==Enum.KeyCode.R then
-        if UI.Hide then UI.Hide(not S.Hide) end
-    elseif k==Enum.KeyCode.G then
-        if UI.Moon then UI.Moon(not S.Moon) end
+    local k = input.KeyCode
+    if k == Enum.KeyCode.F then
+        main.Visible = not main.Visible
+    elseif k == Enum.KeyCode.Q then
+        setSpeed(not S.speedOn)
+    elseif k == Enum.KeyCode.C then
+        S.infoOn = not S.infoOn
+        syncDisplays()
+        styleToggle(rInfo.toggle, S.infoOn)
+    elseif k == Enum.KeyCode.R then
+        setHidePlayers(not S.hidePlayersOn)
+    end
+end))
+
+--═══════════════ DRAG GUI (title bar) ═══════════════
+local dragging, dragStart, startPos = false, nil, nil
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging, dragStart, startPos = true, input.Position, main.Position
     end
 end)
+addConn(UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end))
+addConn(UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end))
 
-notify("SIIILAU v19 loaded! K = menu")
+--═══════════════ LOOP UTAMA ═══════════════
+-- Tiap frame : penjaga nilai Speed/Swim & Jump Power
+-- Tiap 0.25s : jam -> brightness + sync info/hitbox (self-healing)
+local acc = 0
+addConn(RunService.Heartbeat:Connect(function(dt)
+    if S.speedOn or S.jumpOn then
+        local h = getHum()
+        if h then
+            if S.speedOn then
+                if h.WalkSpeed ~= S.speedValue then h.WalkSpeed = S.speedValue end
+                pcall(function()
+                    if h.SwimSpeed ~= S.speedValue then h.SwimSpeed = S.speedValue end
+                end)
+            end
+            if S.jumpOn then
+                pcall(function()
+                    if not h.UseJumpPower then h.UseJumpPower = true end
+                    if h.JumpPower ~= S.jumpValue then h.JumpPower = S.jumpValue end
+                end)
+            end
+        end
+    end
+    acc += dt
+    if acc < 0.25 then return end
+    acc = 0
+    -- jam berubah -> brightness otomatis mengikuti
+    local t = Lighting.ClockTime
+    if math.abs(t - lastClock) > 0.003 then
+        lastClock = t
+        S.clockValue = t
+        rClock.val.Text = formatClock(t)
+        applyAutoBrightness()
+    end
+    -- info pemain lain + hitbox (self-healing setiap 0.25 detik)
+    syncDisplays()
+end))
+
+--═══════════════ REAPPLY SAAT RESPWN ═══════════════
+addConn(LocalPlayer.CharacterAdded:Connect(function(char)
+    if char:WaitForChild("Humanoid", 10) then
+        task.wait(0.15)
+        applyMovement()
+    end
+end))
+
+addConn(Players.PlayerRemoving:Connect(function(plr)
+    infoRefs[plr] = nil
+end))
+
+--═══════════════ INISIALISASI ═══════════════
+rSpeed.val.Text = fmt(S.speedValue)
+rJump.val.Text  = fmt(S.jumpValue)
+rClock.val.Text = formatClock(S.clockValue)
