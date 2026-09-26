@@ -7,10 +7,15 @@
                     Scooshlock (Crosshair)
     Player Display: Info Other Players [C]  (SELF-HEALING)
                       baris 1: DisplayName (@username) - putih
-                      baris 2: WS 0,00 | JP 52,25 | SS 18,00 - biru
-                      UKURAN SAMA, update REALTIME tiap 0.05 detik,
-                      WS = kecepatan gerak real (diam = 0,00),
-                      HANYA MUNCUL jika jarak <= 15 langkah
+                      baris 2: WS 0,00 | JP 0,00 | SS 0,00 - biru
+                      UKURAN SAMA, update REALTIME tiap 0.05 detik
+                      - WS = kecepatan gerak real (diam = 0,00)
+                      - JP = hanya saat benar-benar melompat,
+                             selain itu 0,00
+                      - SS = hanya saat benar-benar berenang,
+                             selain itu 0,00
+                      -> karakter DIAM = semuanya 0,00
+                      HANYA MUNCUL jika jarak <= 30 langkah
                       (stud) dari avatar utama, lebih jauh auto hide
                     Hitbox Players (kotak hijau LED, visual saja)
     Visual        : Hide Other Players [R] | Hide All Effects
@@ -27,7 +32,7 @@
 local DEFAULT_SPEED = 17.25
 local DEFAULT_JUMP  = 52.25
 local STEP          = 0.25
-local MAX_DIST      = 15    -- jarak maksimum (stud) info player terlihat; 1 langkah ≈ 1 stud
+local MAX_DIST      = 30    -- jarak maksimum (stud) info player terlihat; 1 langkah ≈ 1 stud
 local INFO_INTERVAL = 0.05  -- update realtime WS/JP/SS tiap 0.05 detik
 
 --═══════════════ LAYANAN & FONT ═══════════════
@@ -69,7 +74,7 @@ end
 local function fmt(v) return string.format("%.2f", v) end
 -- format Indonesia: 2 digit di belakang KOMA -> "0,00", "52,25", "18,00"
 local function fmt2(v)
-    if type(v) ~= "number" or v ~= v then return "-" end
+    if type(v) ~= "number" or v ~= v then return "0,00" end
     return (string.format("%.2f", v):gsub("%.", ","))
 end
 
@@ -381,20 +386,38 @@ local function cleanupHitbox(char)
     end
 end
 
--- WS = kecepatan gerak REAL dari velocity (diam = 0,00) | JP = jump power | SS = swim speed
+-- NILAI REAL & AKTIF:
+-- WS = kecepatan gerak horizontal dari velocity (diam = 0,00)
+-- JP = HANYA saat benar-benar melompat/naik, selain itu 0
+-- SS = HANYA saat benar-benar berenang, selain itu 0
+-- -> karakter DIAM = WS 0,00 | JP 0,00 | SS 0,00
 local function getRealStats(char)
+    local ws, jp, ss = 0, 0, 0
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not hum then return 0, nil, nil end
-    local ws = 0
+    if not hum then return ws, jp, ss end
     local root = char:FindFirstChild("HumanoidRootPart")
     if root then
         local v = root.AssemblyLinearVelocity
-        ws = Vector3.new(v.X, 0, v.Z).Magnitude  -- real, tanpa pembulatan kasar
+        ws = Vector3.new(v.X, 0, v.Z).Magnitude
+        if ws < 0.05 then ws = 0 end          -- hapus jitter fisika saat diam
+        -- sedang melompat / naik ke atas?
+        local jumping = false
+        pcall(function()
+            local st = hum:GetState()
+            jumping = (st == Enum.HumanoidStateType.Jumping)
+                or (st == Enum.HumanoidStateType.Freefall and v.Y > 0.5)
+        end)
+        if jumping then
+            pcall(function() jp = (hum.UseJumpPower and hum.JumpPower) or hum.JumpHeight end)
+        end
     end
-    local ss, jp
-    pcall(function() ss = hum.SwimSpeed end)
-    pcall(function() jp = (hum.UseJumpPower and hum.JumpPower) or hum.JumpHeight end)
-    return ws, ss, jp
+    -- sedang berenang?
+    local swimming = false
+    pcall(function() swimming = (hum:GetState() == Enum.HumanoidStateType.Swimming) end)
+    if swimming then
+        pcall(function() ss = hum.SwimSpeed end)
+    end
+    return ws, jp, ss
 end
 
 local function attachInfo(plr, char)
@@ -419,7 +442,7 @@ local function attachInfo(plr, char)
         Position = UDim2.new(0, 0, 0, 23), Size = UDim2.new(1, 0, 0, 22),
         BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 14,
         TextColor3 = C.blueBrt, TextStrokeTransparency = 0.3,
-        Text = "WS 0,00 | JP - | SS -",
+        Text = "WS 0,00 | JP 0,00 | SS 0,00",
         TextTruncate = Enum.TextTruncate.AtEnd,
     }, bb)
     return {bb = bb, stat = stat, char = char}
@@ -474,11 +497,11 @@ local function syncDisplays()
                         end
                         if ref then
                             ref.bb.Enabled = true  -- dekat -> tampilkan
-                            local ws, ss, jp = getRealStats(char)
+                            local ws, jp, ss = getRealStats(char)
                             ref.stat.Text = "WS " .. fmt2(ws) .. " | JP " .. fmt2(jp) .. " | SS " .. fmt2(ss)
                         end
                     else
-                        -- jauh -> sembunyikan (tidak dihancurkan, agar cepat muncul lagi saat mendekat)
+                        -- jauh -> sembunyikan (agar cepat muncul lagi saat mendekat)
                         local ref = infoRefs[plr]
                         if ref and ref.bb.Parent then
                             ref.bb.Enabled = false
