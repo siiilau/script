@@ -13,9 +13,9 @@
                       - JP = hanya saat benar-benar melompat
                       - SS = hanya saat benar-benar berenang
                       -> karakter DIAM = semuanya 0,00
-                      TANPA BATAS JARAK: muncul otomatis saat
-                      karakter masuk area render, hilang saat
-                      keluar render (mengikuti kamera).
+                      TANPA BATAS JARAK (MaxDistance = 1 miliar
+                      stud): info muncul di jarak berapa pun
+                      selama karakter ada di sisi klien.
                     Hitbox Players (kotak hijau LED, visual saja)
     Visual        : Hide Other Players [R] | Hide All Effects
                     Low Graphic Mode (+ remove fog)
@@ -367,7 +367,7 @@ local function setCrosshair(on)
     notify("Scooshlock", on)
 end
 
---═══════════════ INFO OTHER PLAYERS [C] - REALTIME 0.05s ═══════════════
+--═══════════════ INFO OTHER PLAYERS [C] - REALTIME 0.05s, TANPA BATAS JARAK ═══════════════
 local infoRefs = {}
 
 local function cleanupInfo(char)
@@ -416,14 +416,19 @@ local function getRealStats(char)
 end
 
 local function attachInfo(plr, char)
-    local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+    -- Tempel ke bagian karakter mana pun yang sudah ada di klien:
+    -- Head -> HumanoidRootPart -> BasePart pertama yang tersedia.
+    local head = char:FindFirstChild("Head")
+        or char:FindFirstChild("HumanoidRootPart")
+        or char:FindFirstChildWhichIsA("BasePart")
     if not head then return nil end
     pcall(cleanupInfo, char)
     local bb = new("BillboardGui", {
         Name = "PH_Info", Adornee = head,
         Size = UDim2.fromOffset(220, 48),
         StudsOffset = Vector3.new(0, 2.9, 0),
-        AlwaysOnTop = true, MaxDistance = math.huge,  -- ikut render kamera, tanpa batas jarak sendiri
+        AlwaysOnTop = true,
+        MaxDistance = 1e9,   -- 1 MILIAR stud = praktis TANPA BATAS JARAK
     }, char)
     -- BARIS 1 & 2: UKURAN SAMA (TextSize 14, GothamBold, tinggi 22)
     local name = new("TextLabel", {
@@ -465,9 +470,8 @@ local function attachHitbox(plr, char)
 end
 
 --═══════════════ SYNC DISPLAYS (dipanggil tiap 0.05s) ═══════════════
--- TANPA BATAS JARAK: info muncul begitu karakter dirender di layar
--- (billboard hanya merender saat adornee terlihat kamera) dan hilang
--- otomatis saat karakter keluar render.
+-- TANPA BATAS JARAK: info muncul di jarak berapa pun selama karakter
+-- ada di sisi klien. Self-healing menangani streaming/respawn.
 local function syncDisplays()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
