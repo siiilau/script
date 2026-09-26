@@ -7,16 +7,10 @@
                     Scooshlock (Crosshair)
     Player Display: Info Other Players [C]  (SELF-HEALING)
                       baris 1: DisplayName (@username) - putih
-                      baris 2: WS 0,00 | JP 0,00 | SS 0,00 - biru
+                      baris 2: WS 0,00 | JP 0,00 - biru
                       UKURAN SAMA, update REALTIME tiap 0.05 detik
                       - WS = kecepatan gerak real (diam = 0,00)
                       - JP = muncul saat NAIK/melompat (velocity Y)
-                      - SS = 4 lapisan deteksi renang:
-                        1) state Swimming
-                        2) animasi "swim" sedang diputar
-                           (animasi pemain lain PASTI tereplikasi)
-                        3) voxel air terrain di/berahir root
-                        4) raycast ke permukaan air di bawah root
                       -> karakter DIAM = semuanya 0,00
                       TANPA BATAS JARAK (MaxDistance = 1 miliar
                       stud): info muncul di jarak berapa pun
@@ -37,7 +31,7 @@
 local DEFAULT_SPEED = 17.25
 local DEFAULT_JUMP  = 52.25
 local STEP          = 0.25
-local INFO_INTERVAL = 0.05  -- update realtime WS/JP/SS tiap 0.05 detik
+local INFO_INTERVAL = 0.05  -- update realtime WS/JP tiap 0.05 detik
 local LOCK_TIME     = true  -- true = waktu game dibekukan di jam pilihanmu
                             -- false = waktu game tetap jalan, brightness tetap dari jam pilihanmu
 
@@ -388,96 +382,26 @@ local function cleanupHitbox(char)
     end
 end
 
-local terrain = workspace:FindFirstChildOfClass("Terrain")
-
--- LAPISAN 3: cek voxel air terrain — SCAN SEMUA voxel (bukan cuma 1),
--- region lebih besar, sampling menutupi volume di bawah permukaan
-local function voxelsHaveWater(pos)
-    if not terrain then return false end
-    local ok, found = pcall(function()
-        local r = Region3.new(pos - Vector3.new(3, 3, 3), pos + Vector3.new(3, 3, 3)):ExpandToGrid(4)
-        local mats = terrain:ReadVoxels(r, 4)
-        for x = 1, #mats do
-            for y = 1, #mats[x] do
-                for z = 1, #mats[x][y] do
-                    if mats[x][y][z] == Enum.Material.Water then return true end
-                end
-            end
-        end
-        return false
-    end)
-    return ok and found or false
-end
-
--- LAPISAN 4: raycast ke bawah — jika permukaan air terrain ada
--- beberapa stud di bawah root, karakter berada di/atas air
-local function waterBelow(char, rootPos, maxDist)
-    if not terrain then return false end
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {char}
-    params.IgnoreWater = false   -- biarkan ray MENGENAI air
-    local ok, r = pcall(function()
-        return workspace:Raycast(rootPos, Vector3.new(0, -maxDist, 0), params)
-    end)
-    return ok and r ~= nil and r.Instance == terrain and r.Material == Enum.Material.Water
-end
-
--- LAPISAN 2: animasi renang — AnimationTrack pemain LAIN pasti
--- tereplikasi ke klien (nama standar Roblox: "Swim"/"SwimIdle", dll)
-local function isPlayingSwimAnim(char)
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    local animator = hum and hum:FindFirstChildOfClass("Animator")
-    if not animator then return false end
-    local ok, found = pcall(function()
-        for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
-            local anim = tr.Animation
-            local n = (anim and anim.Name or ""):lower()
-            if n:find("swim") or n:find("renang") then return true end
-        end
-        return false
-    end)
-    return ok and found or false
-end
-
 -- NILAI REAL & AKTIF:
 -- WS = kecepatan gerak horizontal dari velocity (diam = 0,00)
 -- JP = muncul saat NAIK (melompat) via velocity Y
--- SS = 4 lapisan deteksi renang (state -> animasi -> voxel -> raycast)
--- -> karakter DIAM = WS 0,00 | JP 0,00 | SS 0,00
+-- -> karakter DIAM = WS 0,00 | JP 0,00
 local function getRealStats(char)
-    local ws, jp, ss = 0, 0, 0
+    local ws, jp = 0, 0
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not hum then return ws, jp, ss end
+    if not hum then return ws, jp end
     local root = char:FindFirstChild("HumanoidRootPart")
     if root then
         local v = root.AssemblyLinearVelocity
         ws = Vector3.new(v.X, 0, v.Z).Magnitude
         if ws < 0.05 then ws = 0 end          -- hapus jitter fisika saat diam
-        -- MLOMPAT: deteksi dari kecepatan naik ke atas (state pemain
+        -- MELOMPAT: deteksi dari kecepatan naik ke atas (state pemain
         -- lain sering tidak tereplikasi)
         if v.Y > 3 then
             pcall(function() jp = (hum.UseJumpPower and hum.JumpPower) or hum.JumpHeight end)
         end
     end
-    -- BERENANG: 4 lapisan deteksi
-    local swimming = false
-    pcall(function() swimming = (hum:GetState() == Enum.HumanoidStateType.Swimming) end)  -- lapisan 1
-    if not swimming then swimming = isPlayingSwimAnim(char) end                            -- lapisan 2
-    if not swimming and root then
-        -- lapisan 3 & 4 hanya dicek kalau karakter tidak berdiri di tanah
-        local floorAir = true
-        pcall(function() floorAir = (hum.FloorMaterial == Enum.Material.Air) end)
-        if floorAir then
-            swimming = voxelsHaveWater(root.Position)                              -- lapisan 3
-                or voxelsHaveWater(root.Position - Vector3.new(0, 2, 0))           -- sedikit di bawah permukaan
-                or waterBelow(char, root.Position, 3)                              -- lapisan 4
-        end
-    end
-    if swimming then
-        pcall(function() ss = hum.SwimSpeed end)
-    end
-    return ws, jp, ss
+    return ws, jp
 end
 
 local function attachInfo(plr, char)
@@ -507,7 +431,7 @@ local function attachInfo(plr, char)
         Position = UDim2.new(0, 0, 0, 23), Size = UDim2.new(1, 0, 0, 22),
         BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 14,
         TextColor3 = C.blueBrt, TextStrokeTransparency = 0.3,
-        Text = "WS 0,00 | JP 0,00 | SS 0,00",
+        Text = "WS 0,00 | JP 0,00",
         TextTruncate = Enum.TextTruncate.AtEnd,
     }, bb)
     return {bb = bb, stat = stat, char = char}
@@ -555,8 +479,8 @@ local function syncDisplays()
                     end
                     if ref then
                         ref.bb.Enabled = true
-                        local ws, jp, ss = getRealStats(char)
-                        ref.stat.Text = "WS " .. fmt2(ws) .. " | JP " .. fmt2(jp) .. " | SS " .. fmt2(ss)
+                        local ws, jp = getRealStats(char)
+                        ref.stat.Text = "WS " .. fmt2(ws) .. " | JP " .. fmt2(jp)
                     end
                 elseif infoRefs[plr] or char:FindFirstChild("PH_Info") then
                     infoRefs[plr] = nil
