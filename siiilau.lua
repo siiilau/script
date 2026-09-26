@@ -1,14 +1,17 @@
 --[[=============================================================
-    PURPLE HUB v4 - Compact GUI Hub (satu panel, ± 6 x 10 cm)
+    ⛓️Siiilau⚡ - Compact GUI Hub (satu panel, ± 6 x 10 cm)
     =============================================================
     Movement      : Speed & Swim [Q] (17.25, step 0.25)
                     Jump Power (52.25, step 0.25)
+                    -> OFF = nilai asli DIPULIHKAN PENUH (sistem
+                       capture/restore per humanoid)
                     Scooshlock (Crosshair)
     Player Display: Info Other Players [C]  (SELF-HEALING)
-                      baris 1: DisplayName (@username)  - putih besar
-                      baris 2: WS 17 | JP 52.25 | SS 18 - biru besar
-                      update tiap 0.25 detik, otomatis perbaiki
-                      label yang hilang / respawn
+                      baris 1: DisplayName (@username) - putih BESAR
+                      baris 2: WS | JP | SS - biru, lebih KECIL
+                      WS = kecepatan gerak REAL (diam = 0),
+                      JP = jump power, SS = swim speed
+                      update tiap 0.25 detik
                     Hitbox Players (kotak hijau LED, visual saja)
     Visual        : Hide Other Players [R] | Hide All Effects
                     Low Graphic Mode (+ remove fog)
@@ -60,7 +63,7 @@ local function new(class, props, parent)
     return inst
 end
 local function fmt(v) return string.format("%.2f", v) end
-local function numStr(v)  -- aman untuk nil / bukan angka -> "-"
+local function numStr(v)  -- aman untuk nil -> "-", buang nol berlebih
     if type(v) ~= "number" or v ~= v then return "-" end
     local s = string.format("%.2f", v)
     s = s:gsub("(%.[0-9]-)0+$", "%1"):gsub("%.$", "")
@@ -82,7 +85,7 @@ local function formatClock(t)
 end
 
 --═══════════════ GUI DASAR ═══════════════
-local gui = new("ScreenGui", {Name = "PurpleHub", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling})
+local gui = new("ScreenGui", {Name = "SiiilauHub", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling})
 pcall(function() gui.Parent = (type(gethui) == "function" and gethui()) or game:GetService("CoreGui") end)
 if not gui.Parent then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
@@ -99,7 +102,7 @@ new("UICorner", {CornerRadius = UDim.new(0, 10)}, title)
 new("Frame", {Size = UDim2.new(1, 0, 0, 10), Position = UDim2.new(0, 0, 1, -10), BackgroundColor3 = C.purpleD, BorderSizePixel = 0}, title)
 new("TextLabel", {
     Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
-    Text = "Purple Hub", Font = FONT_TITLE, TextSize = 13, TextColor3 = C.white,
+    Text = "⛓️Siiilau⚡", Font = FONT_TITLE, TextSize = 13, TextColor3 = C.white,
 }, title)
 
 local scroll = new("ScrollingFrame", {
@@ -229,7 +232,7 @@ local rLowG  = addRow("Low Graphic + No Fog",   {toggle = true})
 addSection("Environment")
 local rClock = addRow("Nilai Jam (Brightness)", {value = true})
 
---═══════════════ STATE & NILAI ASLI ═══════════════
+--═══════════════ STATE ═══════════════
 local S = {
     speedOn = false, speedValue = DEFAULT_SPEED,
     jumpOn = false,  jumpValue = DEFAULT_JUMP,
@@ -237,18 +240,7 @@ local S = {
     hidePlayersOn = false, hideFxOn = false, lowGfxOn = false,
     clockValue = Lighting.ClockTime,
 }
-local orig = {walkSpeed = 16, useJumpPower = true, jumpPower = 50, jumpHeight = 7.2,
-    swimSpeed = 16, brightness = Lighting.Brightness, clockTime = Lighting.ClockTime}
-do
-    local h = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if h then
-        orig.walkSpeed = h.WalkSpeed
-        orig.useJumpPower = h.UseJumpPower
-        orig.jumpPower = h.JumpPower
-        pcall(function() orig.jumpHeight = h.JumpHeight end)
-        pcall(function() orig.swimSpeed = h.SwimSpeed end)
-    end
-end
+local orig = {brightness = Lighting.Brightness, clockTime = Lighting.ClockTime}
 
 local conns = {}
 local function addConn(c) table.insert(conns, c) return c end
@@ -257,33 +249,72 @@ local function getHum()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
---═══════════════ MOVEMENT (dengan penjaga nilai) ═══════════════
+--═══════════════ MOVEMENT + RESTORE BENAR-BENAR KE ASLINYA ═══════════════
+-- Nilai asli TIAP humanoid disimpan saat fitur pertama kali ON.
+-- Saat OFF -> nilai asli dipulihkan penuh (WalkSpeed, SwimSpeed,
+-- JumpPower, JumpHeight, UseJumpPower), bukan diasumsikan.
+local savedHum = {}
+
+local function captureHum(h)
+    if savedHum[h] then return end
+    local rec = {ws = h.WalkSpeed, ujp = h.UseJumpPower, jp = h.JumpPower, ss = nil, jh = nil}
+    pcall(function() rec.ss = h.SwimSpeed end)
+    pcall(function() rec.jh = h.JumpHeight end)
+    savedHum[h] = rec
+end
+
+local function restoreHum(h)
+    local rec = savedHum[h]
+    if not rec then return end
+    pcall(function()
+        h.WalkSpeed   = rec.ws
+        h.UseJumpPower = rec.ujp
+        h.JumpPower   = rec.jp
+        if rec.jh then h.JumpHeight = rec.jh end
+        if rec.ss then h.SwimSpeed  = rec.ss end
+    end)
+    savedHum[h] = nil
+end
+
 local function applyMovement()
     local h = getHum()
     if not h then return end
+    if S.speedOn or S.jumpOn then captureHum(h) end
     if S.speedOn then
         h.WalkSpeed = S.speedValue
         pcall(function() h.SwimSpeed = S.speedValue end)
-    else
-        h.WalkSpeed = orig.walkSpeed
-        pcall(function() h.SwimSpeed = orig.swimSpeed end)
     end
     if S.jumpOn then
         pcall(function()
             h.UseJumpPower = true
             h.JumpPower = S.jumpValue
         end)
-    else
-        pcall(function()
-            h.UseJumpPower = orig.useJumpPower
-            h.JumpPower = orig.jumpPower
-            h.JumpHeight = orig.jumpHeight
-        end)
     end
 end
 
-local function setSpeed(on) S.speedOn = on; applyMovement(); styleToggle(rSpeed.toggle, on) end
-local function setJump(on)  S.jumpOn  = on; applyMovement(); styleToggle(rJump.toggle, on)  end
+local function setSpeed(on)
+    S.speedOn = on
+    if on then
+        applyMovement()
+    else
+        local h = getHum()
+        if h then restoreHum(h) end          -- pulihkan nilai asli
+        if S.jumpOn then applyMovement() end -- jump masih ON? terapkan ulang
+    end
+    styleToggle(rSpeed.toggle, on)
+end
+
+local function setJump(on)
+    S.jumpOn = on
+    if on then
+        applyMovement()
+    else
+        local h = getHum()
+        if h then restoreHum(h) end          -- pulihkan nilai asli
+        if S.speedOn then applyMovement() end
+    end
+    styleToggle(rJump.toggle, on)
+end
 
 local function setCrosshair(on)
     S.crosshairOn = on
@@ -291,9 +322,9 @@ local function setCrosshair(on)
     styleToggle(rCross.toggle, on)
 end
 
---═══════════════ INFO OTHER PLAYERS [C] - SELF HEALING ═══════════════
--- baris 1: DisplayName (@username)  -> putih, besar
--- baris 2: WS x | JP x | SS x       -> biru, besar, update 0.25s
+--═══════════════ INFO OTHER PLAYERS [C] - NILAI REAL ═══════════════
+-- WS = kecepatan gerak REAL dari velocity karakter (diam = 0)
+-- JP = JumpPower saat ini | SS = SwimSpeed saat ini
 local infoRefs = {}
 
 local function cleanupInfo(char)
@@ -309,40 +340,45 @@ local function cleanupHitbox(char)
     end
 end
 
+local function getRealStats(char)
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return 0, nil, nil end
+    local ws = 0
+    local root = char:FindFirstChild("HumanoidRootPart")
+    if root then
+        local v = root.AssemblyLinearVelocity
+        ws = math.floor(Vector3.new(v.X, 0, v.Z).Magnitude + 0.5)  -- real & bulat
+    end
+    local ss, jp
+    pcall(function() ss = hum.SwimSpeed end)
+    pcall(function() jp = (hum.UseJumpPower and hum.JumpPower) or hum.JumpHeight end)
+    return ws, ss, jp
+end
+
 local function attachInfo(plr, char)
     local head = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
     if not head then return nil end
     pcall(cleanupInfo, char)
-    -- Billboard ditaruh di CHARACTER (bukan Head) supaya tidak mudah dihapus game
     local bb = new("BillboardGui", {
         Name = "PH_Info", Adornee = head,
-        Size = UDim2.fromOffset(220, 52),           -- diperbesar
+        Size = UDim2.fromOffset(210, 46),
         StudsOffset = Vector3.new(0, 2.9, 0),
         AlwaysOnTop = true, MaxDistance = 500,
     }, char)
-    new("TextLabel", {   -- BARIS 1: display + usn (putih, bold, besar)
+    new("TextLabel", {   -- BARIS 1: display + usn (putih, bold, BESAR)
         Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1,
         Font = Enum.Font.GothamBold, TextScaled = true,
         TextColor3 = C.white, TextStrokeTransparency = 0.25,
         Text = plr.DisplayName .. " (@" .. plr.Name .. ")",
     }, bb)
-    local stat = new("TextLabel", {  -- BARIS 2: WS | JP | SS (biru terang, besar)
-        Position = UDim2.new(0, 0, 0, 27), Size = UDim2.new(1, 0, 0, 22),
-        BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextScaled = true,
-        TextColor3 = C.blueBrt, TextStrokeTransparency = 0.2,
-        Text = "WS ... | JP ... | SS ...",
+    local stat = new("TextLabel", {  -- BARIS 2: WS | JP | SS (biru, lebih KECIL)
+        Position = UDim2.new(0, 0, 0, 27), Size = UDim2.new(1, 0, 0, 17),
+        BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 10,
+        TextColor3 = C.blueBrt, TextStrokeTransparency = 0.3,
+        Text = "WS 0 | JP - | SS -",
+        TextTruncate = Enum.TextTruncate.AtEnd,
     }, bb)
     return {bb = bb, stat = stat, char = char}
-end
-
-local function getStats(char)
-    local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not hum then return nil, nil, nil end
-    local ws = hum.WalkSpeed
-    local ss, jp
-    pcall(function() ss = hum.SwimSpeed end)
-    pcall(function() jp = (hum.UseJumpPower and hum.JumpPower) or hum.JumpHeight end)
-    return ws, ss, jp
 end
 
 --═══════════════ HITBOX PLAYERS (VISUAL SAJA) ═══════════════
@@ -366,7 +402,7 @@ local function attachHitbox(plr, char)
     end)
 end
 
---═══════════════ SYNC DISPLAYS (self-healing, dipanggil tiap 0.25s) ═══════════════
+--═══════════════ SYNC DISPLAYS (self-healing tiap 0.25s) ═══════════════
 local function syncDisplays()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
@@ -375,7 +411,6 @@ local function syncDisplays()
                 ---- INFO OVERHEAD ----
                 if S.infoOn then
                     local ref = infoRefs[plr]
-                    -- perbaiki otomatis jika: belum ada / respawn / label dihapus game
                     if not ref or ref.char ~= char or not ref.bb.Parent or not ref.stat.Parent then
                         local newRef = attachInfo(plr, char)
                         if newRef then
@@ -386,8 +421,8 @@ local function syncDisplays()
                         end
                     end
                     if ref then
-                        local ws, ss, jp = getStats(char)
-                        ref.stat.Text = "WS " .. numStr(ws) .. " | JP " .. numStr(jp) .. " | SS " .. numStr(ss)
+                        local ws, ss, jp = getRealStats(char)
+                        ref.stat.Text = "WS " .. tostring(ws) .. " | JP " .. numStr(jp) .. " | SS " .. numStr(ss)
                     end
                 elseif infoRefs[plr] or char:FindFirstChild("PH_Info") then
                     infoRefs[plr] = nil
@@ -525,17 +560,17 @@ local function bumpClock(d)  -- ubah jam in-game (step 0.25 jam = 15 menit)
     clockChangedByUs = true
     pcall(function() Lighting.ClockTime = S.clockValue end)
     lastClock = Lighting.ClockTime
-    applyAutoBrightness()   -- brightness langsung menyesuaikan jam baru
+    applyAutoBrightness()
 end
 
 --═══════════════ RESET SCRIPT ═══════════════
 local function resetScript()
-    S.speedValue, S.jumpValue = DEFAULT_SPEED, DEFAULT_JUMP
-    setSpeed(false); setJump(false); setCrosshair(false)
+    setSpeed(false); setJump(false); setCrosshair(false)  -- -> nilai asli dipulihkan
     S.infoOn, S.hitboxOn = false, false
     syncDisplays()
     styleToggle(rInfo.toggle, false); styleToggle(rHit.toggle, false)
     setHidePlayers(false); setHideFx(false); setLowGfx(false)
+    S.speedValue, S.jumpValue = DEFAULT_SPEED, DEFAULT_JUMP
     S.clockValue = orig.clockTime
     clockChangedByUs = false
     pcall(function() Lighting.ClockTime = orig.clockTime end)
@@ -550,10 +585,12 @@ end
 
 --═══════════════ HAPUS SCRIPT / KELUAR ═══════════════
 local function unloadScript()
-    S.hidePlayersOn = false
-    setSpeed(false); setJump(false); setCrosshair(false)
+    S.speedOn, S.jumpOn = false, false
+    for h in pairs(savedHum) do restoreHum(h) end  -- pulihkan SEMUA nilai asli
     S.infoOn, S.hitboxOn = false, false
     syncDisplays()
+    setCrosshair(false)
+    S.hidePlayersOn = false
     setHideFx(false); setLowGfx(false)
     applyHide()
     if clockChangedByUs then pcall(function() Lighting.ClockTime = orig.clockTime end) end
@@ -569,7 +606,7 @@ rJump.toggle.MouseButton1Click:Connect(function() setJump(not S.jumpOn) end)
 rCross.toggle.MouseButton1Click:Connect(function() setCrosshair(not S.crosshairOn) end)
 rInfo.toggle.MouseButton1Click:Connect(function()
     S.infoOn = not S.infoOn
-    syncDisplays()   -- langsung muncul/hilang tanpa nunggu 0.25s
+    syncDisplays()
     styleToggle(rInfo.toggle, S.infoOn)
 end)
 rHit.toggle.MouseButton1Click:Connect(function()
@@ -639,7 +676,7 @@ addConn(UserInputService.InputEnded:Connect(function(input)
 end))
 
 --═══════════════ LOOP UTAMA ═══════════════
--- Tiap frame : penjaga nilai Speed/Swim & Jump Power
+-- Tiap frame : penjaga nilai Speed/Swim & Jump Power saat ON
 -- Tiap 0.25s : jam -> brightness + sync info/hitbox (self-healing)
 local acc = 0
 addConn(RunService.Heartbeat:Connect(function(dt)
@@ -663,7 +700,6 @@ addConn(RunService.Heartbeat:Connect(function(dt)
     acc += dt
     if acc < 0.25 then return end
     acc = 0
-    -- jam berubah -> brightness otomatis mengikuti
     local t = Lighting.ClockTime
     if math.abs(t - lastClock) > 0.003 then
         lastClock = t
@@ -671,7 +707,6 @@ addConn(RunService.Heartbeat:Connect(function(dt)
         rClock.val.Text = formatClock(t)
         applyAutoBrightness()
     end
-    -- info pemain lain + hitbox (self-healing setiap 0.25 detik)
     syncDisplays()
 end))
 
@@ -679,7 +714,7 @@ end))
 addConn(LocalPlayer.CharacterAdded:Connect(function(char)
     if char:WaitForChild("Humanoid", 10) then
         task.wait(0.15)
-        applyMovement()
+        applyMovement()  -- humanoid baru -> nilai asli di-capture lalu fitur ON diterapkan
     end
 end))
 
