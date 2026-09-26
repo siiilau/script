@@ -3,15 +3,13 @@
     =============================================================
     Movement      : Speed & Swim [Q] (17.25, step 0.25)
                     Jump Power (52.25, step 0.25)
-                    -> OFF = nilai asli DIPULIHKAN PENUH (sistem
-                       capture/restore per humanoid)
+                    -> OFF = nilai asli DIPULIHKAN PENUH
                     Scooshlock (Crosshair)
     Player Display: Info Other Players [C]  (SELF-HEALING)
-                      baris 1: DisplayName (@username) - putih BESAR
-                      baris 2: WS | JP | SS - biru, lebih KECIL
-                      WS = kecepatan gerak REAL (diam = 0),
-                      JP = jump power, SS = swim speed
-                      update tiap 0.25 detik
+                      baris 1: DisplayName (@username) - putih
+                      baris 2: WS | JP | SS            - biru
+                      UKURAN KEDUA BARIS SAMA, update REALTIME
+                      tiap 0.1 detik, WS = kecepatan gerak real
                     Hitbox Players (kotak hijau LED, visual saja)
     Visual        : Hide Other Players [R] | Hide All Effects
                     Low Graphic Mode (+ remove fog)
@@ -19,6 +17,8 @@
                     otomatis mengikuti jam in-game
     Bottom        : Reset Script | Hapus Script / Keluar
     Hotkeys       : F (buka/tutup GUI) | Q | C | R
+    Notifikasi    : Setiap fitur ON/OFF muncul notif kecil
+                    di tengah atas layar (auto hilang).
     Font          : Normal (Gotham) - terbaca di semua perangkat.
     ===============================================================]]
 
@@ -31,6 +31,7 @@ local STEP          = 0.25
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
 local Lighting         = game:GetService("Lighting")
 local LocalPlayer      = Players.LocalPlayer
 
@@ -63,7 +64,7 @@ local function new(class, props, parent)
     return inst
 end
 local function fmt(v) return string.format("%.2f", v) end
-local function numStr(v)  -- aman untuk nil -> "-", buang nol berlebih
+local function numStr(v)
     if type(v) ~= "number" or v ~= v then return "-" end
     local s = string.format("%.2f", v)
     s = s:gsub("(%.[0-9]-)0+$", "%1"):gsub("%.$", "")
@@ -71,7 +72,7 @@ local function numStr(v)  -- aman untuk nil -> "-", buang nol berlebih
 end
 
 --═══════════════ BRIGHTNESS <-> NILAI JAM ═══════════════
-local function brightnessFromTime(t)  -- malam 0.5 -> siang 3.0
+local function brightnessFromTime(t)
     local d = math.clamp(math.sin((t - 6) / 12 * math.pi), 0, 1)
     return 0.5 + d * 2.5
 end
@@ -128,6 +129,43 @@ local exitBtn = new("TextButton", {
 }, bottom)
 new("UICorner", {CornerRadius = UDim.new(0, 7)}, exitBtn)
 new("UIStroke", {Color = C.red, Thickness = 1, Transparency = 0.6}, exitBtn)
+
+--═══════════════ NOTIFIKASI ON/OFF ═══════════════
+-- Notif ditaruh di gui (bukan main) -> tetap muncul walau GUI disembunyikan
+local notifHolder = new("Frame", {
+    AnchorPoint = Vector2.new(0.5, 0),
+    Position = UDim2.new(0.5, 0, 0, 45),
+    Size = UDim2.fromOffset(260, 320),
+    BackgroundTransparency = 1, ZIndex = 60,
+}, gui)
+new("UIListLayout", {
+    Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder,
+    HorizontalAlignment = Enum.HorizontalAlignment.Center,
+}, notifHolder)
+
+local notifSeq, silent = 0, false
+local function notify(msg, state)  -- state=true ON, false OFF, nil = teks bebas
+    if silent then return end
+    notifSeq += 1
+    local bgColor = (state == true) and C.blue or (state == false) and C.purpleD or C.purple
+    local txt = (state == nil) and msg or (msg .. (state and " : ON" or " : OFF"))
+    local n = new("TextLabel", {
+        Size = UDim2.fromOffset(180, 24),
+        BackgroundColor3 = bgColor,
+        Font = FONT_BTN, TextSize = 11, TextColor3 = C.white,
+        Text = txt, LayoutOrder = notifSeq, ZIndex = 60,
+    }, notifHolder)
+    new("UICorner", {CornerRadius = UDim.new(0, 8)}, n)
+    new("UIStroke", {Color = C.purple, Thickness = 1, Transparency = 0.4}, n)
+    task.spawn(function()
+        n.BackgroundTransparency, n.TextTransparency = 1, 1
+        TweenService:Create(n, TweenInfo.new(0.18), {BackgroundTransparency = 0.1, TextTransparency = 0}):Play()
+        task.wait(1.3)
+        TweenService:Create(n, TweenInfo.new(0.3), {BackgroundTransparency = 1, TextTransparency = 1}):Play()
+        task.wait(0.32)
+        n:Destroy()
+    end)
+end
 
 --═══════════════ CROSSHAIR (SCOOSHLOCK) ═══════════════
 local crosshair = new("Frame", {
@@ -250,9 +288,6 @@ local function getHum()
 end
 
 --═══════════════ MOVEMENT + RESTORE BENAR-BENAR KE ASLINYA ═══════════════
--- Nilai asli TIAP humanoid disimpan saat fitur pertama kali ON.
--- Saat OFF -> nilai asli dipulihkan penuh (WalkSpeed, SwimSpeed,
--- JumpPower, JumpHeight, UseJumpPower), bukan diasumsikan.
 local savedHum = {}
 
 local function captureHum(h)
@@ -267,9 +302,9 @@ local function restoreHum(h)
     local rec = savedHum[h]
     if not rec then return end
     pcall(function()
-        h.WalkSpeed   = rec.ws
+        h.WalkSpeed    = rec.ws
         h.UseJumpPower = rec.ujp
-        h.JumpPower   = rec.jp
+        h.JumpPower    = rec.jp
         if rec.jh then h.JumpHeight = rec.jh end
         if rec.ss then h.SwimSpeed  = rec.ss end
     end)
@@ -298,10 +333,11 @@ local function setSpeed(on)
         applyMovement()
     else
         local h = getHum()
-        if h then restoreHum(h) end          -- pulihkan nilai asli
-        if S.jumpOn then applyMovement() end -- jump masih ON? terapkan ulang
+        if h then restoreHum(h) end
+        if S.jumpOn then applyMovement() end
     end
     styleToggle(rSpeed.toggle, on)
+    notify("Speed & Swim", on)
 end
 
 local function setJump(on)
@@ -310,21 +346,21 @@ local function setJump(on)
         applyMovement()
     else
         local h = getHum()
-        if h then restoreHum(h) end          -- pulihkan nilai asli
+        if h then restoreHum(h) end
         if S.speedOn then applyMovement() end
     end
     styleToggle(rJump.toggle, on)
+    notify("Jump Power", on)
 end
 
 local function setCrosshair(on)
     S.crosshairOn = on
     crosshair.Visible = on
     styleToggle(rCross.toggle, on)
+    notify("Scooshlock", on)
 end
 
---═══════════════ INFO OTHER PLAYERS [C] - NILAI REAL ═══════════════
--- WS = kecepatan gerak REAL dari velocity karakter (diam = 0)
--- JP = JumpPower saat ini | SS = SwimSpeed saat ini
+--═══════════════ INFO OTHER PLAYERS [C] - REALTIME 0.1s ═══════════════
 local infoRefs = {}
 
 local function cleanupInfo(char)
@@ -347,7 +383,7 @@ local function getRealStats(char)
     local root = char:FindFirstChild("HumanoidRootPart")
     if root then
         local v = root.AssemblyLinearVelocity
-        ws = math.floor(Vector3.new(v.X, 0, v.Z).Magnitude + 0.5)  -- real & bulat
+        ws = math.floor(Vector3.new(v.X, 0, v.Z).Magnitude + 0.5)  -- diam = 0
     end
     local ss, jp
     pcall(function() ss = hum.SwimSpeed end)
@@ -361,19 +397,21 @@ local function attachInfo(plr, char)
     pcall(cleanupInfo, char)
     local bb = new("BillboardGui", {
         Name = "PH_Info", Adornee = head,
-        Size = UDim2.fromOffset(210, 46),
+        Size = UDim2.fromOffset(220, 48),
         StudsOffset = Vector3.new(0, 2.9, 0),
         AlwaysOnTop = true, MaxDistance = 500,
     }, char)
-    new("TextLabel", {   -- BARIS 1: display + usn (putih, bold, BESAR)
-        Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1,
-        Font = Enum.Font.GothamBold, TextScaled = true,
+    -- BARIS 1 & 2: UKURAN SAMA (TextSize 14, GothamBold, tinggi 22)
+    local name = new("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold, TextSize = 14,
         TextColor3 = C.white, TextStrokeTransparency = 0.25,
         Text = plr.DisplayName .. " (@" .. plr.Name .. ")",
+        TextTruncate = Enum.TextTruncate.AtEnd,
     }, bb)
-    local stat = new("TextLabel", {  -- BARIS 2: WS | JP | SS (biru, lebih KECIL)
-        Position = UDim2.new(0, 0, 0, 27), Size = UDim2.new(1, 0, 0, 17),
-        BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 10,
+    local stat = new("TextLabel", {
+        Position = UDim2.new(0, 0, 0, 23), Size = UDim2.new(1, 0, 0, 22),
+        BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 14,
         TextColor3 = C.blueBrt, TextStrokeTransparency = 0.3,
         Text = "WS 0 | JP - | SS -",
         TextTruncate = Enum.TextTruncate.AtEnd,
@@ -384,16 +422,16 @@ end
 --═══════════════ HITBOX PLAYERS (VISUAL SAJA) ═══════════════
 local function attachHitbox(plr, char)
     pcall(cleanupHitbox, char)
-    for _, part in ipairs(char:GetChildren()) do  -- mengikuti ukuran/bentuk tiap karakter
+    for _, part in ipairs(char:GetChildren()) do
         if part:IsA("BasePart") then
             new("BoxHandleAdornment", {
                 Name = "PH_Box", Adornee = part, Parent = part,
-                Size = part.Size, Color3 = C.green, Transparency = 0.6,  -- hijau LED
+                Size = part.Size, Color3 = C.green, Transparency = 0.6,
                 AlwaysOnTop = true, ZIndex = 2,
             }, part)
         end
     end
-    pcall(function()  -- glow ringan (outline saja, tidak mengubah collision)
+    pcall(function()
         new("Highlight", {
             Name = "PH_Glow", Parent = char, FillTransparency = 1,
             OutlineColor = C.green, OutlineTransparency = 0.35,
@@ -402,7 +440,7 @@ local function attachHitbox(plr, char)
     end)
 end
 
---═══════════════ SYNC DISPLAYS (self-healing tiap 0.25s) ═══════════════
+--═══════════════ SYNC DISPLAYS (self-healing, dipanggil tiap 0.1s) ═══════════════
 local function syncDisplays()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
@@ -467,6 +505,7 @@ local function setHidePlayers(on)
         applyHide()
     end
     styleToggle(rHideP.toggle, on)
+    notify("Hide Other Players", on)
 end
 
 --═══════════════ HIDE ALL EFFECTS ═══════════════
@@ -500,6 +539,7 @@ local function setHideFx(on)
         savedFx = {}
     end
     styleToggle(rHideF.toggle, on)
+    notify("Hide All Effects", on)
 end
 
 --═══════════════ LOW GRAPHIC MODE (+ REMOVE FOG) ═══════════════
@@ -511,7 +551,7 @@ local function setLowGfx(on)
         pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
         savedGfx.shadows, savedGfx.fogStart, savedGfx.fogEnd = Lighting.GlobalShadows, Lighting.FogStart, Lighting.FogEnd
         Lighting.GlobalShadows = false
-        Lighting.FogStart, Lighting.FogEnd = 9e9, 9e9   -- remove fog (termasuk di mode ini)
+        Lighting.FogStart, Lighting.FogEnd = 9e9, 9e9
         pcall(function()
             savedGfx.deco = workspace.Terrain.Decoration
             workspace.Terrain.Decoration = false
@@ -543,17 +583,18 @@ local function setLowGfx(on)
         if gfxConn then gfxConn:Disconnect() gfxConn = nil end
     end
     styleToggle(rLowG.toggle, on)
+    notify("Low Graphic Mode", on)
 end
 
 --═══════════════ NILAI JAM -> BRIGHTNESS ═══════════════
 local lastClock = Lighting.ClockTime
 local clockChangedByUs = false
 
-local function applyAutoBrightness()  -- brightness selalu dihitung dari jam in-game
+local function applyAutoBrightness()
     pcall(function() Lighting.Brightness = brightnessFromTime(Lighting.ClockTime) end)
 end
 
-local function bumpClock(d)  -- ubah jam in-game (step 0.25 jam = 15 menit)
+local function bumpClock(d)
     S.clockValue = (S.clockValue + d) % 24
     if S.clockValue < 0 then S.clockValue += 24 end
     rClock.val.Text = formatClock(S.clockValue)
@@ -565,7 +606,8 @@ end
 
 --═══════════════ RESET SCRIPT ═══════════════
 local function resetScript()
-    setSpeed(false); setJump(false); setCrosshair(false)  -- -> nilai asli dipulihkan
+    silent = true   -- jangan spam notif saat reset mematikan semua fitur
+    setSpeed(false); setJump(false); setCrosshair(false)
     S.infoOn, S.hitboxOn = false, false
     syncDisplays()
     styleToggle(rInfo.toggle, false); styleToggle(rHit.toggle, false)
@@ -581,12 +623,15 @@ local function resetScript()
     main.Position = UDim2.new(0.5, -120, 0.5, -175)
     main.Visible = true
     scroll.CanvasPosition = Vector2.new(0, 0)
+    silent = false
+    notify("Script direset")   -- notif tunggal
 end
 
 --═══════════════ HAPUS SCRIPT / KELUAR ═══════════════
 local function unloadScript()
+    silent = true
     S.speedOn, S.jumpOn = false, false
-    for h in pairs(savedHum) do restoreHum(h) end  -- pulihkan SEMUA nilai asli
+    for h in pairs(savedHum) do restoreHum(h) end
     S.infoOn, S.hitboxOn = false, false
     syncDisplays()
     setCrosshair(false)
@@ -608,11 +653,13 @@ rInfo.toggle.MouseButton1Click:Connect(function()
     S.infoOn = not S.infoOn
     syncDisplays()
     styleToggle(rInfo.toggle, S.infoOn)
+    notify("Info Other Players", S.infoOn)
 end)
 rHit.toggle.MouseButton1Click:Connect(function()
     S.hitboxOn = not S.hitboxOn
     syncDisplays()
     styleToggle(rHit.toggle, S.hitboxOn)
+    notify("Hitbox Players", S.hitboxOn)
 end)
 rHideP.toggle.MouseButton1Click:Connect(function() setHidePlayers(not S.hidePlayersOn) end)
 rHideF.toggle.MouseButton1Click:Connect(function() setHideFx(not S.hideFxOn) end)
@@ -651,6 +698,7 @@ addConn(UserInputService.InputBegan:Connect(function(input, gp)
         S.infoOn = not S.infoOn
         syncDisplays()
         styleToggle(rInfo.toggle, S.infoOn)
+        notify("Info Other Players", S.infoOn)
     elseif k == Enum.KeyCode.R then
         setHidePlayers(not S.hidePlayersOn)
     end
@@ -677,8 +725,9 @@ end))
 
 --═══════════════ LOOP UTAMA ═══════════════
 -- Tiap frame : penjaga nilai Speed/Swim & Jump Power saat ON
--- Tiap 0.25s : jam -> brightness + sync info/hitbox (self-healing)
-local acc = 0
+-- Tiap 0.1s  : sync info player + hitbox (REALTIME, self-healing)
+-- Tiap 0.25s : jam -> brightness otomatis
+local accDisp, accClock = 0, 0
 addConn(RunService.Heartbeat:Connect(function(dt)
     if S.speedOn or S.jumpOn then
         local h = getHum()
@@ -697,24 +746,29 @@ addConn(RunService.Heartbeat:Connect(function(dt)
             end
         end
     end
-    acc += dt
-    if acc < 0.25 then return end
-    acc = 0
-    local t = Lighting.ClockTime
-    if math.abs(t - lastClock) > 0.003 then
-        lastClock = t
-        S.clockValue = t
-        rClock.val.Text = formatClock(t)
-        applyAutoBrightness()
+    accDisp += dt
+    if accDisp >= 0.1 then    -- REALTIME 0.1 detik
+        accDisp = 0
+        syncDisplays()
     end
-    syncDisplays()
+    accClock += dt
+    if accClock >= 0.25 then
+        accClock = 0
+        local t = Lighting.ClockTime
+        if math.abs(t - lastClock) > 0.003 then
+            lastClock = t
+            S.clockValue = t
+            rClock.val.Text = formatClock(t)
+            applyAutoBrightness()
+        end
+    end
 end))
 
 --═══════════════ REAPPLY SAAT RESPWN ═══════════════
 addConn(LocalPlayer.CharacterAdded:Connect(function(char)
     if char:WaitForChild("Humanoid", 10) then
         task.wait(0.15)
-        applyMovement()  -- humanoid baru -> nilai asli di-capture lalu fitur ON diterapkan
+        applyMovement()
     end
 end))
 
