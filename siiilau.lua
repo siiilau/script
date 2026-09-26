@@ -10,10 +10,8 @@
                       baris 2: WS 0,00 | JP 0,00 | SS 0,00 - biru
                       UKURAN SAMA, update REALTIME tiap 0.05 detik
                       - WS = kecepatan gerak real (diam = 0,00)
-                      - JP = hanya saat benar-benar melompat,
-                             selain itu 0,00
-                      - SS = hanya saat benar-benar berenang,
-                             selain itu 0,00
+                      - JP = hanya saat benar-benar melompat
+                      - SS = hanya saat benar-benar berenang
                       -> karakter DIAM = semuanya 0,00
                       HANYA MUNCUL jika jarak <= 30 langkah
                       (stud) dari avatar utama, lebih jauh auto hide
@@ -21,7 +19,12 @@
     Visual        : Hide Other Players [R] | Hide All Effects
                     Low Graphic Mode (+ remove fog)
     Environment   : Nilai Jam (step 15 menit) -> Brightness
-                    otomatis mengikuti jam in-game
+                    JAM TERKUNCI: nilai yang di-set TIDAK berubah
+                    meski waktu asli game berjalan. Brightness
+                    selalu mengikuti jam yang dipilih.
+                    LOCK_TIME = true  -> waktu game ikut dibekukan
+                    LOCK_TIME = false -> waktu game tetap jalan,
+                                         brightness tetap terkunci
     Bottom        : Reset Script | Hapus Script / Keluar
     Hotkeys       : F (buka/tutup GUI) | Q | C | R
     Notifikasi    : Setiap fitur ON/OFF muncul notif kecil.
@@ -32,8 +35,10 @@
 local DEFAULT_SPEED = 17.25
 local DEFAULT_JUMP  = 52.25
 local STEP          = 0.25
-local MAX_DIST      = 30    -- jarak maksimum (stud) info player terlihat; 1 langkah ≈ 1 stud
+local MAX_DIST      = 30    -- jarak maksimum (stud) info player terlihat
 local INFO_INTERVAL = 0.05  -- update realtime WS/JP/SS tiap 0.05 detik
+local LOCK_TIME     = true  -- true = waktu game dibekukan di jam pilihanmu
+                            -- false = waktu game tetap jalan, brightness tetap dari jam pilihanmu
 
 --═══════════════ LAYANAN & FONT ═══════════════
 local Players          = game:GetService("Players")
@@ -282,7 +287,7 @@ local S = {
     jumpOn = false,  jumpValue = DEFAULT_JUMP,
     crosshairOn = false, infoOn = false, hitboxOn = false,
     hidePlayersOn = false, hideFxOn = false, lowGfxOn = false,
-    clockValue = Lighting.ClockTime,
+    clockValue = Lighting.ClockTime,   -- jam pilihan USER (terkunci)
 }
 local orig = {brightness = Lighting.Brightness, clockTime = Lighting.ClockTime}
 
@@ -400,7 +405,6 @@ local function getRealStats(char)
         local v = root.AssemblyLinearVelocity
         ws = Vector3.new(v.X, 0, v.Z).Magnitude
         if ws < 0.05 then ws = 0 end          -- hapus jitter fisika saat diam
-        -- sedang melompat / naik ke atas?
         local jumping = false
         pcall(function()
             local st = hum:GetState()
@@ -411,7 +415,6 @@ local function getRealStats(char)
             pcall(function() jp = (hum.UseJumpPower and hum.JumpPower) or hum.JumpHeight end)
         end
     end
-    -- sedang berenang?
     local swimming = false
     pcall(function() swimming = (hum:GetState() == Enum.HumanoidStateType.Swimming) end)
     if swimming then
@@ -496,12 +499,11 @@ local function syncDisplays()
                             end
                         end
                         if ref then
-                            ref.bb.Enabled = true  -- dekat -> tampilkan
+                            ref.bb.Enabled = true
                             local ws, jp, ss = getRealStats(char)
                             ref.stat.Text = "WS " .. fmt2(ws) .. " | JP " .. fmt2(jp) .. " | SS " .. fmt2(ss)
                         end
                     else
-                        -- jauh -> sembunyikan (agar cepat muncul lagi saat mendekat)
                         local ref = infoRefs[plr]
                         if ref and ref.bb.Parent then
                             ref.bb.Enabled = false
@@ -631,22 +633,26 @@ local function setLowGfx(on)
     notify("Low Graphic Mode", on)
 end
 
---═══════════════ NILAI JAM -> BRIGHTNESS ═══════════════
-local lastClock = Lighting.ClockTime
+--═══════════════ NILAI JAM TERKUNCI -> BRIGHTNESS ═══════════════
+-- Jam TIDAK mengikuti waktu asli game. Yang kamu set = yang dipakai.
+-- Brightness selalu dihitung dari S.clockValue (jam pilihan user).
 local clockChangedByUs = false
 
-local function applyAutoBrightness()
-    pcall(function() Lighting.Brightness = brightnessFromTime(Lighting.ClockTime) end)
+local function applyLockedClock()
+    -- brightness selalu dari jam pilihan user
+    pcall(function() Lighting.Brightness = brightnessFromTime(S.clockValue) end)
+    -- jika LOCK_TIME aktif, bekukan juga waktu game di jam pilihan user
+    if LOCK_TIME then
+        pcall(function() Lighting.ClockTime = S.clockValue end)
+    end
 end
 
-local function bumpClock(d)
+local function bumpClock(d)  -- ubah jam pilihan (step 0.25 jam = 15 menit)
     S.clockValue = (S.clockValue + d) % 24
     if S.clockValue < 0 then S.clockValue += 24 end
     rClock.val.Text = formatClock(S.clockValue)
     clockChangedByUs = true
-    pcall(function() Lighting.ClockTime = S.clockValue end)
-    lastClock = Lighting.ClockTime
-    applyAutoBrightness()
+    applyLockedClock()   -- brightness (dan waktu game) langsung menyesuaikan
 end
 
 --═══════════════ RESET SCRIPT ═══════════════
@@ -658,12 +664,11 @@ local function resetScript()
     styleToggle(rInfo.toggle, false); styleToggle(rHit.toggle, false)
     setHidePlayers(false); setHideFx(false); setLowGfx(false)
     S.speedValue, S.jumpValue = DEFAULT_SPEED, DEFAULT_JUMP
-    S.clockValue = orig.clockTime
+    S.clockValue = orig.clockTime        -- kembali ke jam asli game
     clockChangedByUs = false
     pcall(function() Lighting.ClockTime = orig.clockTime end)
-    lastClock = Lighting.ClockTime
-    rClock.val.Text = formatClock(lastClock)
-    applyAutoBrightness()
+    pcall(function() Lighting.Brightness = orig.brightness end)
+    rClock.val.Text = formatClock(S.clockValue)
     rSpeed.val.Text, rJump.val.Text = fmt(S.speedValue), fmt(S.jumpValue)
     main.Position = UDim2.new(0.5, -120, 0.5, -175)
     main.Visible = true
@@ -683,7 +688,9 @@ local function unloadScript()
     S.hidePlayersOn = false
     setHideFx(false); setLowGfx(false)
     applyHide()
-    if clockChangedByUs then pcall(function() Lighting.ClockTime = orig.clockTime end) end
+    if clockChangedByUs then
+        pcall(function() Lighting.ClockTime = orig.clockTime end)
+    end
     pcall(function() Lighting.Brightness = orig.brightness end)
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     conns = {}
@@ -771,7 +778,9 @@ end))
 --═══════════════ LOOP UTAMA ═══════════════
 -- Tiap frame  : penjaga nilai Speed/Swim & Jump Power saat ON
 -- Tiap 0.05s  : sync info player (WS/JP/SS realtime + jarak) & hitbox
--- Tiap 0.25s  : jam -> brightness otomatis
+-- Tiap 0.25s  : penjaga jam terkunci -> brightness (dan waktu game,
+--               jika LOCK_TIME) selalu sesuai jam pilihan user,
+--               TIDAK TERPENGARUH perubahan waktu asli game
 local accDisp, accClock = 0, 0
 addConn(RunService.Heartbeat:Connect(function(dt)
     if S.speedOn or S.jumpOn then
@@ -799,12 +808,8 @@ addConn(RunService.Heartbeat:Connect(function(dt)
     accClock += dt
     if accClock >= 0.25 then
         accClock = 0
-        local t = Lighting.ClockTime
-        if math.abs(t - lastClock) > 0.003 then
-            lastClock = t
-            S.clockValue = t
-            rClock.val.Text = formatClock(t)
-            applyAutoBrightness()
+        if clockChangedByUs then        -- hanya jaga jika user pernah set jam
+            applyLockedClock()
         end
     end
 end))
