@@ -1,45 +1,26 @@
 --[[=============================================================
-    ⛓️Siiilau⚡ - Compact GUI Hub (satu panel, ± 6 x 10 cm)
+    ⛓️Siiilau⚡ - Compact GUI Hub v5 (OPTIMIZED FPS)
     =============================================================
-    Movement      : Speed & Swim [Q] (17.25, step 0.25)
-                    Jump Power (52.25, step 0.25)
-                    -> OFF = nilai asli DIPULIHKAN PENUH
-                    Scooshlock (Crosshair)
-    Player Display: Info Other Players [C]  (SELF-HEALING)
-                      baris 1: DisplayName (@username) - putih
-                      baris 2: WS 0,00 | JP 0,00 | SS 0,00 - biru
-                      UKURAN SAMA, update REALTIME tiap 0.05 detik
-                      - WS = kecepatan gerak real (diam = 0,00)
-                      - JP = muncul saat NAIK/melompat (velocity Y)
-                      - SS = 4 lapisan deteksi renang:
-                        1) state Swimming
-                        2) animasi "swim" sedang diputar
-                           (animasi pemain lain PASTI tereplikasi)
-                        3) voxel air terrain di/berahir root
-                        4) raycast ke permukaan air di bawah root
-                      -> karakter DIAM = semuanya 0,00
-                      TANPA BATAS JARAK (MaxDistance = 1 miliar
-                      stud): info muncul di jarak berapa pun
-                      selama karakter ada di sisi klien.
-                    Hitbox Players (kotak hijau LED, visual saja)
-    Visual        : Hide Other Players [R] | Hide All Effects
-                    Low Graphic Mode (+ remove fog)
-    Environment   : Nilai Jam (step 15 menit) -> Brightness
-                    JAM TERKUNCI: nilai yang di-set TIDAK berubah
-                    meski waktu asli game berjalan.
-    Bottom        : Reset Script | Hapus Script / Keluar
-    Hotkeys       : F (buka/tutup GUI) | Q | C | R
-    Notifikasi    : Setiap fitur ON/OFF muncul notif kecil.
-    Font          : Normal (Gotham) - terbaca di semua perangkat.
+    Semua fitur sama seperti sebelumnya, dengan optimasi:
+    - Text overhead hanya di-update saat nilai BERUBAH (bukan 20x/dtk)
+    - Deteksi renang mahal (voxel/raycast/animasi) di-CACHE 0.25s
+      per pemain; realtime tetap utk WS (velocity, sangat murah)
+    - Voxel air: 1x ReadVoxels (region gabungan), bukan 2x
+    - Hitbox: pengecekan pakai cache, tanpa FindFirstChild per tick
+    - Daftar pemain di-cache (tanpa GetPlayers() tiap tick)
+    - Early-exit loop saat tidak ada fitur display aktif
+    - pcall/closure di hot-path dihilangkan (kurangi GC / stutter)
+    - Guard speed/jump hanya menulis properti saat nilainya beda
+    Hasil: beban per-frame ~0, fitur ON barengan tetap smooth.
     ===============================================================]]
 
 --═══════════════ KONFIG ═══════════════
-local DEFAULT_SPEED = 17.25
-local DEFAULT_JUMP  = 52.25
-local STEP          = 0.25
-local INFO_INTERVAL = 0.05  -- update realtime WS/JP/SS tiap 0.05 detik
-local LOCK_TIME     = true  -- true = waktu game dibekukan di jam pilihanmu
-                            -- false = waktu game tetap jalan, brightness tetap dari jam pilihanmu
+local DEFAULT_SPEED      = 17.25
+local DEFAULT_JUMP       = 52.25
+local STEP               = 0.25
+local INFO_INTERVAL      = 0.05  -- update realtime WS/JP/SS
+local SWIM_CACHE_TTL     = 0.25  -- hasil deteksi renang mahal di-cache selama ini
+local LOCK_TIME          = true  -- true = waktu game dibekukan di jam pilihanmu
 
 --═══════════════ LAYANAN & FONT ═══════════════
 local Players          = game:GetService("Players")
@@ -78,10 +59,12 @@ local function new(class, props, parent)
     return inst
 end
 local function fmt(v) return string.format("%.2f", v) end
--- format Indonesia: 2 digit di belakang KOMA -> "0,00", "52,25", "18,00"
 local function fmt2(v)
     if type(v) ~= "number" or v ~= v then return "0,00" end
     return (string.format("%.2f", v):gsub("%.", ","))
+end
+local function q(v)  -- kuantisasi ke 2 desimal (stabilkan teks & hemat update)
+    return math.floor(v * 100 + 0.5) * 0.01
 end
 
 --═══════════════ BRIGHTNESS <-> NILAI JAM ═══════════════
@@ -288,7 +271,7 @@ local S = {
     jumpOn = false,  jumpValue = DEFAULT_JUMP,
     crosshairOn = false, infoOn = false, hitboxOn = false,
     hidePlayersOn = false, hideFxOn = false, lowGfxOn = false,
-    clockValue = Lighting.ClockTime,   -- jam pilihan USER (terkunci)
+    clockValue = Lighting.ClockTime,
 }
 local orig = {brightness = Lighting.Brightness, clockTime = Lighting.ClockTime}
 
@@ -372,8 +355,11 @@ local function setCrosshair(on)
     notify("Scooshlock", on)
 end
 
---═══════════════ INFO OTHER PLAYERS [C] - REALTIME 0.05s, TANPA BATAS JARAK ═══════════════
-local infoRefs = {}
+--═══════════════ INFO OTHER PLAYERS [C] - OPTIMIZED ═══════════════
+local infoRefs = {}      -- [plr] = {bb, stat, char}
+local swimCache = {}     -- [plr] = {t, sw}   hasil deteksi renang mahal
+local lastQ = {}         -- [plr] = ws, jp, ss (terkuantisasi) -> teks hanya update saat berubah
+local hitRefs = {}       -- [plr] = char      cache hitbox terpasang
 
 local function cleanupInfo(char)
     local bb = char and char:FindFirstChild("PH_Info")
@@ -390,17 +376,18 @@ end
 
 local terrain = workspace:FindFirstChildOfClass("Terrain")
 
--- LAPISAN 3: cek voxel air terrain — SCAN SEMUA voxel (bukan cuma 1),
--- region lebih besar, sampling menutupi volume di bawah permukaan
+-- VOXEL (1x ReadVoxels, region gabungan root + 4 stud di bawahnya)
 local function voxelsHaveWater(pos)
     if not terrain then return false end
     local ok, found = pcall(function()
-        local r = Region3.new(pos - Vector3.new(3, 3, 3), pos + Vector3.new(3, 3, 3)):ExpandToGrid(4)
+        local r = Region3.new(pos - Vector3.new(3, 4, 3), pos + Vector3.new(3, 2, 3)):ExpandToGrid(4)
         local mats = terrain:ReadVoxels(r, 4)
         for x = 1, #mats do
-            for y = 1, #mats[x] do
-                for z = 1, #mats[x][y] do
-                    if mats[x][y][z] == Enum.Material.Water then return true end
+            local xm = mats[x]
+            for y = 1, #xm do
+                local ym = xm[y]
+                for z = 1, #ym do
+                    if ym[z] == Enum.Material.Water then return true end
                 end
             end
         end
@@ -409,43 +396,61 @@ local function voxelsHaveWater(pos)
     return ok and found or false
 end
 
--- LAPISAN 4: raycast ke bawah — jika permukaan air terrain ada
--- beberapa stud di bawah root, karakter berada di/atas air
+-- RAYCAST permukaan air di bawah root
 local function waterBelow(char, rootPos, maxDist)
     if not terrain then return false end
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
     params.FilterDescendantsInstances = {char}
-    params.IgnoreWater = false   -- biarkan ray MENGENAI air
+    params.IgnoreWater = false
     local ok, r = pcall(function()
         return workspace:Raycast(rootPos, Vector3.new(0, -maxDist, 0), params)
     end)
     return ok and r ~= nil and r.Instance == terrain and r.Material == Enum.Material.Water
 end
 
--- LAPISAN 2: animasi renang — AnimationTrack pemain LAIN pasti
--- tereplikasi ke klien (nama standar Roblox: "Swim"/"SwimIdle", dll)
+-- ANIMASI renang (animasi pemain lain pasti tereplikasi ke klien)
 local function isPlayingSwimAnim(char)
     local hum = char:FindFirstChildOfClass("Humanoid")
     local animator = hum and hum:FindFirstChildOfClass("Animator")
     if not animator then return false end
-    local ok, found = pcall(function()
-        for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
-            local anim = tr.Animation
-            local n = (anim and anim.Name or ""):lower()
-            if n:find("swim") or n:find("renang") then return true end
+    local tracks = animator:GetPlayingAnimationTracks()
+    for i = 1, #tracks do
+        local anim = tracks[i].Animation
+        local n = anim and anim.Name or ""
+        if #n > 0 then
+            n = n:lower()
+            if n:find("swim", 1, true) or n:find("renang", 1, true) then return true end
         end
-        return false
-    end)
-    return ok and found or false
+    end
+    return false
 end
 
--- NILAI REAL & AKTIF:
--- WS = kecepatan gerak horizontal dari velocity (diam = 0,00)
--- JP = muncul saat NAIK (melompat) via velocity Y
--- SS = 4 lapisan deteksi renang (state -> animasi -> voxel -> raycast)
--- -> karakter DIAM = WS 0,00 | JP 0,00 | SS 0,00
-local function getRealStats(char)
+-- Deteksi renang MAHAL -> di-cache SWIM_CACHE_TTL per pemain.
+-- Lapisan murah (state) tetap dicek tiap tick tanpa cache.
+local function isSwimming(plr, char, hum, root)
+    -- lapisan 1 (murah): state replicated
+    if hum:GetState() == Enum.HumanoidStateType.Swimming then
+        local now = os.clock()
+        local c = swimCache[plr]
+        if c then c.t, c.sw = now, true end
+        return true
+    end
+    -- lapisan 2-4 (mahal): cache window
+    local now = os.clock()
+    local c = swimCache[plr]
+    if c and (now - c.t) < SWIM_CACHE_TTL then return c.sw end
+    local sw = isPlayingSwimAnim(char)
+    if not sw and hum.FloorMaterial == Enum.Material.Air then
+        sw = voxelsHaveWater(root.Position) or waterBelow(char, root.Position, 3)
+    end
+    if c then c.t, c.sw = now, sw
+    else swimCache[plr] = {t = now, sw = sw} end
+    return sw
+end
+
+-- Hot-path TANPA pcall/closure (properti Humanoid standar = aman dibaca langsung)
+local function getRealStats(plr, char)
     local ws, jp, ss = 0, 0, 0
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not hum then return ws, jp, ss end
@@ -453,36 +458,18 @@ local function getRealStats(char)
     if root then
         local v = root.AssemblyLinearVelocity
         ws = Vector3.new(v.X, 0, v.Z).Magnitude
-        if ws < 0.05 then ws = 0 end          -- hapus jitter fisika saat diam
-        -- MLOMPAT: deteksi dari kecepatan naik ke atas (state pemain
-        -- lain sering tidak tereplikasi)
-        if v.Y > 3 then
-            pcall(function() jp = (hum.UseJumpPower and hum.JumpPower) or hum.JumpHeight end)
+        if ws < 0.05 then ws = 0 end
+        if v.Y > 3 then  -- melompat = sedang naik
+            jp = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight
         end
     end
-    -- BERENANG: 4 lapisan deteksi
-    local swimming = false
-    pcall(function() swimming = (hum:GetState() == Enum.HumanoidStateType.Swimming) end)  -- lapisan 1
-    if not swimming then swimming = isPlayingSwimAnim(char) end                            -- lapisan 2
-    if not swimming and root then
-        -- lapisan 3 & 4 hanya dicek kalau karakter tidak berdiri di tanah
-        local floorAir = true
-        pcall(function() floorAir = (hum.FloorMaterial == Enum.Material.Air) end)
-        if floorAir then
-            swimming = voxelsHaveWater(root.Position)                              -- lapisan 3
-                or voxelsHaveWater(root.Position - Vector3.new(0, 2, 0))           -- sedikit di bawah permukaan
-                or waterBelow(char, root.Position, 3)                              -- lapisan 4
-        end
-    end
-    if swimming then
-        pcall(function() ss = hum.SwimSpeed end)
+    if isSwimming(plr, char, hum, root) then
+        ss = hum.SwimSpeed
     end
     return ws, jp, ss
 end
 
 local function attachInfo(plr, char)
-    -- Tempel ke bagian karakter mana pun yang sudah ada di klien:
-    -- Head -> HumanoidRootPart -> BasePart pertama yang tersedia.
     local head = char:FindFirstChild("Head")
         or char:FindFirstChild("HumanoidRootPart")
         or char:FindFirstChildWhichIsA("BasePart")
@@ -493,17 +480,16 @@ local function attachInfo(plr, char)
         Size = UDim2.fromOffset(220, 48),
         StudsOffset = Vector3.new(0, 2.9, 0),
         AlwaysOnTop = true,
-        MaxDistance = 1e9,   -- 1 MILIAR stud = praktis TANPA BATAS JARAK
+        MaxDistance = 1e9,   -- tanpa batas jarak praktis
     }, char)
-    -- BARIS 1 & 2: UKURAN SAMA (TextSize 14, GothamBold, tinggi 22)
-    local name = new("TextLabel", {
+    new("TextLabel", {   -- baris 1: display + usn
         Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1,
         Font = Enum.Font.GothamBold, TextSize = 14,
         TextColor3 = C.white, TextStrokeTransparency = 0.25,
         Text = plr.DisplayName .. " (@" .. plr.Name .. ")",
         TextTruncate = Enum.TextTruncate.AtEnd,
     }, bb)
-    local stat = new("TextLabel", {
+    local stat = new("TextLabel", {  -- baris 2: WS | JP | SS
         Position = UDim2.new(0, 0, 0, 23), Size = UDim2.new(1, 0, 0, 22),
         BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 14,
         TextColor3 = C.blueBrt, TextStrokeTransparency = 0.3,
@@ -513,7 +499,7 @@ local function attachInfo(plr, char)
     return {bb = bb, stat = stat, char = char}
 end
 
---═══════════════ HITBOX PLAYERS (VISUAL SAJA) ═══════════════
+--═══════════════ HITBOX PLAYERS (VISUAL SAJA, cache) ═══════════════
 local function attachHitbox(plr, char)
     pcall(cleanupHitbox, char)
     for _, part in ipairs(char:GetChildren()) do
@@ -534,16 +520,30 @@ local function attachHitbox(plr, char)
     end)
 end
 
---═══════════════ SYNC DISPLAYS (dipanggil tiap 0.05s) ═══════════════
+--═══════════════ CACHE DAFTAR PEMAIN (tanpa GetPlayers tiap tick) ═══════════════
+local cachedPlayers = {}
+local function rebuildPlayers()
+    cachedPlayers = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        table.insert(cachedPlayers, p)
+    end
+end
+rebuildPlayers()
+
+--═══════════════ SYNC DISPLAYS (tiap 0.05s, hemat) ═══════════════
 local function syncDisplays()
-    for _, plr in ipairs(Players:GetPlayers()) do
+    local anyOn = S.infoOn or S.hitboxOn
+    if not anyOn and next(infoRefs) == nil and next(hitRefs) == nil then
+        return  -- early-exit: tidak ada yang perlu dilakukan -> 0 beban
+    end
+    for i = 1, #cachedPlayers do
+        local plr = cachedPlayers[i]
         if plr ~= LocalPlayer then
             local char = plr.Character
             if char then
                 ---- INFO OVERHEAD ----
                 if S.infoOn then
                     local ref = infoRefs[plr]
-                    -- self-healing: buat ulang jika hilang/respawn/streamed-in
                     if not ref or ref.char ~= char or not ref.bb.Parent or not ref.stat.Parent then
                         local newRef = attachInfo(plr, char)
                         if newRef then
@@ -554,20 +554,29 @@ local function syncDisplays()
                         end
                     end
                     if ref then
-                        ref.bb.Enabled = true
-                        local ws, jp, ss = getRealStats(char)
-                        ref.stat.Text = "WS " .. fmt2(ws) .. " | JP " .. fmt2(jp) .. " | SS " .. fmt2(ss)
+                        if not ref.bb.Enabled then ref.bb.Enabled = true end
+                        local ws, jp, ss = getRealStats(plr, char)
+                        -- teks hanya diset saat nilai berubah -> hemat render UI
+                        local lq = lastQ[plr]
+                        local wq, jq, sq = q(ws), q(jp or 0), q(ss or 0)
+                        if not lq or lq[1] ~= wq or lq[2] ~= jq or lq[3] ~= sq then
+                            lastQ[plr] = {wq, jq, sq}
+                            ref.stat.Text = "WS " .. fmt2(wq) .. " | JP " .. fmt2(jq) .. " | SS " .. fmt2(sq)
+                        end
                     end
                 elseif infoRefs[plr] or char:FindFirstChild("PH_Info") then
                     infoRefs[plr] = nil
+                    lastQ[plr] = nil
                     pcall(cleanupInfo, char)
                 end
-                ---- HITBOX ----
+                ---- HITBOX (cache, tanpa FindFirstChild per tick) ----
                 if S.hitboxOn then
-                    if not char:FindFirstChild("PH_Glow") then
+                    if hitRefs[plr] ~= char and not char:FindFirstChild("PH_Glow") then
                         attachHitbox(plr, char)
                     end
-                elseif char:FindFirstChild("PH_Glow") or char:FindFirstChild("PH_Box") then
+                    hitRefs[plr] = char
+                elseif hitRefs[plr] or char:FindFirstChild("PH_Glow") then
+                    hitRefs[plr] = nil
                     pcall(cleanupHitbox, char)
                 end
             end
@@ -575,13 +584,15 @@ local function syncDisplays()
     end
 end
 
---═══════════════ HIDE OTHER PLAYERS (LOKAL SAJA) ═══════════════
+--═══════════════ HIDE OTHER PLAYERS (LOKAL, tulis hanya saat beda) ═══════════════
 local function applyHide()
-    for _, plr in ipairs(Players:GetPlayers()) do
+    local target = S.hidePlayersOn and 1 or 0
+    for i = 1, #cachedPlayers do
+        local plr = cachedPlayers[i]
         if plr ~= LocalPlayer and plr.Character then
             for _, d in ipairs(plr.Character:GetDescendants()) do
-                if d:IsA("BasePart") then
-                    d.LocalTransparencyModifier = S.hidePlayersOn and 1 or 0
+                if d:IsA("BasePart") and d.LocalTransparencyModifier ~= target then
+                    d.LocalTransparencyModifier = target
                 end
             end
         end
@@ -820,7 +831,22 @@ addConn(UserInputService.InputEnded:Connect(function(input)
     end
 end))
 
---═══════════════ LOOP UTAMA ═══════════════
+--═══════════════ EVENT DAFTAR PEMAIN (cache + bersih-bersih) ═══════════════
+addConn(Players.PlayerAdded:Connect(rebuildPlayers))
+addConn(Players.PlayerRemoving:Connect(function(plr)
+    for i, p in ipairs(cachedPlayers) do
+        if p == plr then table.remove(cachedPlayers, i) break end
+    end
+    infoRefs[plr] = nil
+    swimCache[plr] = nil
+    lastQ[plr] = nil
+    hitRefs[plr] = nil
+end))
+
+--═══════════════ LOOP UTAMA (hemat frame) ═══════════════
+-- Tiap frame  : guard speed/jump (hanya tulis saat nilai beda) -> ~0 biaya
+-- Tiap 0.05s  : sync info + hitbox (teks hanya saat berubah, swim mahal di-cache)
+-- Tiap 0.25s  : penjaga jam terkunci
 local accDisp, accClock = 0, 0
 addConn(RunService.Heartbeat:Connect(function(dt)
     if S.speedOn or S.jumpOn then
@@ -828,20 +854,16 @@ addConn(RunService.Heartbeat:Connect(function(dt)
         if h then
             if S.speedOn then
                 if h.WalkSpeed ~= S.speedValue then h.WalkSpeed = S.speedValue end
-                pcall(function()
-                    if h.SwimSpeed ~= S.speedValue then h.SwimSpeed = S.speedValue end
-                end)
+                if h.SwimSpeed ~= S.speedValue then h.SwimSpeed = S.speedValue end
             end
             if S.jumpOn then
-                pcall(function()
-                    if not h.UseJumpPower then h.UseJumpPower = true end
-                    if h.JumpPower ~= S.jumpValue then h.JumpPower = S.jumpValue end
-                end)
+                if not h.UseJumpPower then h.UseJumpPower = true end
+                if h.JumpPower ~= S.jumpValue then h.JumpPower = S.jumpValue end
             end
         end
     end
     accDisp += dt
-    if accDisp >= INFO_INTERVAL then    -- REALTIME 0.05 detik
+    if accDisp >= INFO_INTERVAL then
         accDisp = 0
         syncDisplays()
     end
@@ -860,10 +882,6 @@ addConn(LocalPlayer.CharacterAdded:Connect(function(char)
         task.wait(0.15)
         applyMovement()
     end
-end))
-
-addConn(Players.PlayerRemoving:Connect(function(plr)
-    infoRefs[plr] = nil
 end))
 
 --═══════════════ INISIALISASI ═══════════════
