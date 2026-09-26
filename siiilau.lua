@@ -7,9 +7,11 @@
                     Scooshlock (Crosshair)
     Player Display: Info Other Players [C]  (SELF-HEALING)
                       baris 1: DisplayName (@username) - putih
-                      baris 2: WS | JP | SS            - biru
-                      UKURAN KEDUA BARIS SAMA, update REALTIME
-                      tiap 0.1 detik, WS = kecepatan gerak real
+                      baris 2: WS 0,00 | JP 52,25 | SS 18,00 - biru
+                      UKURAN SAMA, update REALTIME tiap 0.05 detik,
+                      WS = kecepatan gerak real (diam = 0,00),
+                      HANYA MUNCUL jika jarak <= 15 langkah
+                      (stud) dari avatar utama, lebih jauh auto hide
                     Hitbox Players (kotak hijau LED, visual saja)
     Visual        : Hide Other Players [R] | Hide All Effects
                     Low Graphic Mode (+ remove fog)
@@ -17,8 +19,7 @@
                     otomatis mengikuti jam in-game
     Bottom        : Reset Script | Hapus Script / Keluar
     Hotkeys       : F (buka/tutup GUI) | Q | C | R
-    Notifikasi    : Setiap fitur ON/OFF muncul notif kecil
-                    di tengah atas layar (auto hilang).
+    Notifikasi    : Setiap fitur ON/OFF muncul notif kecil.
     Font          : Normal (Gotham) - terbaca di semua perangkat.
     ===============================================================]]
 
@@ -26,6 +27,8 @@
 local DEFAULT_SPEED = 17.25
 local DEFAULT_JUMP  = 52.25
 local STEP          = 0.25
+local MAX_DIST      = 15    -- jarak maksimum (stud) info player terlihat; 1 langkah ≈ 1 stud
+local INFO_INTERVAL = 0.05  -- update realtime WS/JP/SS tiap 0.05 detik
 
 --═══════════════ LAYANAN & FONT ═══════════════
 local Players          = game:GetService("Players")
@@ -64,11 +67,10 @@ local function new(class, props, parent)
     return inst
 end
 local function fmt(v) return string.format("%.2f", v) end
-local function numStr(v)
+-- format Indonesia: 2 digit di belakang KOMA -> "0,00", "52,25", "18,00"
+local function fmt2(v)
     if type(v) ~= "number" or v ~= v then return "-" end
-    local s = string.format("%.2f", v)
-    s = s:gsub("(%.[0-9]-)0+$", "%1"):gsub("%.$", "")
-    return s
+    return (string.format("%.2f", v):gsub("%.", ","))
 end
 
 --═══════════════ BRIGHTNESS <-> NILAI JAM ═══════════════
@@ -131,7 +133,6 @@ new("UICorner", {CornerRadius = UDim.new(0, 7)}, exitBtn)
 new("UIStroke", {Color = C.red, Thickness = 1, Transparency = 0.6}, exitBtn)
 
 --═══════════════ NOTIFIKASI ON/OFF ═══════════════
--- Notif ditaruh di gui (bukan main) -> tetap muncul walau GUI disembunyikan
 local notifHolder = new("Frame", {
     AnchorPoint = Vector2.new(0.5, 0),
     Position = UDim2.new(0.5, 0, 0, 45),
@@ -144,7 +145,7 @@ new("UIListLayout", {
 }, notifHolder)
 
 local notifSeq, silent = 0, false
-local function notify(msg, state)  -- state=true ON, false OFF, nil = teks bebas
+local function notify(msg, state)
     if silent then return end
     notifSeq += 1
     local bgColor = (state == true) and C.blue or (state == false) and C.purpleD or C.purple
@@ -286,6 +287,10 @@ local function getHum()
     local c = LocalPlayer.Character
     return c and c:FindFirstChildOfClass("Humanoid")
 end
+local function getRoot()
+    local c = LocalPlayer.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
 
 --═══════════════ MOVEMENT + RESTORE BENAR-BENAR KE ASLINYA ═══════════════
 local savedHum = {}
@@ -360,7 +365,7 @@ local function setCrosshair(on)
     notify("Scooshlock", on)
 end
 
---═══════════════ INFO OTHER PLAYERS [C] - REALTIME 0.1s ═══════════════
+--═══════════════ INFO OTHER PLAYERS [C] - REALTIME 0.05s ═══════════════
 local infoRefs = {}
 
 local function cleanupInfo(char)
@@ -376,6 +381,7 @@ local function cleanupHitbox(char)
     end
 end
 
+-- WS = kecepatan gerak REAL dari velocity (diam = 0,00) | JP = jump power | SS = swim speed
 local function getRealStats(char)
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not hum then return 0, nil, nil end
@@ -383,7 +389,7 @@ local function getRealStats(char)
     local root = char:FindFirstChild("HumanoidRootPart")
     if root then
         local v = root.AssemblyLinearVelocity
-        ws = math.floor(Vector3.new(v.X, 0, v.Z).Magnitude + 0.5)  -- diam = 0
+        ws = Vector3.new(v.X, 0, v.Z).Magnitude  -- real, tanpa pembulatan kasar
     end
     local ss, jp
     pcall(function() ss = hum.SwimSpeed end)
@@ -413,7 +419,7 @@ local function attachInfo(plr, char)
         Position = UDim2.new(0, 0, 0, 23), Size = UDim2.new(1, 0, 0, 22),
         BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 14,
         TextColor3 = C.blueBrt, TextStrokeTransparency = 0.3,
-        Text = "WS 0 | JP - | SS -",
+        Text = "WS 0,00 | JP - | SS -",
         TextTruncate = Enum.TextTruncate.AtEnd,
     }, bb)
     return {bb = bb, stat = stat, char = char}
@@ -440,27 +446,43 @@ local function attachHitbox(plr, char)
     end)
 end
 
---═══════════════ SYNC DISPLAYS (self-healing, dipanggil tiap 0.1s) ═══════════════
+--═══════════════ SYNC DISPLAYS (dipanggil tiap 0.05s) ═══════════════
 local function syncDisplays()
+    local myRoot = getRoot()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
             local char = plr.Character
             if char then
-                ---- INFO OVERHEAD ----
+                ---- INFO OVERHEAD (hanya jika jarak <= MAX_DIST) ----
                 if S.infoOn then
-                    local ref = infoRefs[plr]
-                    if not ref or ref.char ~= char or not ref.bb.Parent or not ref.stat.Parent then
-                        local newRef = attachInfo(plr, char)
-                        if newRef then
-                            infoRefs[plr] = newRef
-                            ref = newRef
-                        else
-                            ref = nil
-                        end
+                    local root = char:FindFirstChild("HumanoidRootPart")
+                    local dist = math.huge
+                    if myRoot and root then
+                        dist = (root.Position - myRoot.Position).Magnitude
                     end
-                    if ref then
-                        local ws, ss, jp = getRealStats(char)
-                        ref.stat.Text = "WS " .. tostring(ws) .. " | JP " .. numStr(jp) .. " | SS " .. numStr(ss)
+                    if dist <= MAX_DIST then
+                        local ref = infoRefs[plr]
+                        -- self-healing: buat ulang jika hilang/respawn
+                        if not ref or ref.char ~= char or not ref.bb.Parent or not ref.stat.Parent then
+                            local newRef = attachInfo(plr, char)
+                            if newRef then
+                                infoRefs[plr] = newRef
+                                ref = newRef
+                            else
+                                ref = nil
+                            end
+                        end
+                        if ref then
+                            ref.bb.Enabled = true  -- dekat -> tampilkan
+                            local ws, ss, jp = getRealStats(char)
+                            ref.stat.Text = "WS " .. fmt2(ws) .. " | JP " .. fmt2(jp) .. " | SS " .. fmt2(ss)
+                        end
+                    else
+                        -- jauh -> sembunyikan (tidak dihancurkan, agar cepat muncul lagi saat mendekat)
+                        local ref = infoRefs[plr]
+                        if ref and ref.bb.Parent then
+                            ref.bb.Enabled = false
+                        end
                     end
                 elseif infoRefs[plr] or char:FindFirstChild("PH_Info") then
                     infoRefs[plr] = nil
@@ -606,7 +628,7 @@ end
 
 --═══════════════ RESET SCRIPT ═══════════════
 local function resetScript()
-    silent = true   -- jangan spam notif saat reset mematikan semua fitur
+    silent = true
     setSpeed(false); setJump(false); setCrosshair(false)
     S.infoOn, S.hitboxOn = false, false
     syncDisplays()
@@ -624,7 +646,7 @@ local function resetScript()
     main.Visible = true
     scroll.CanvasPosition = Vector2.new(0, 0)
     silent = false
-    notify("Script direset")   -- notif tunggal
+    notify("Script direset")
 end
 
 --═══════════════ HAPUS SCRIPT / KELUAR ═══════════════
@@ -724,9 +746,9 @@ addConn(UserInputService.InputEnded:Connect(function(input)
 end))
 
 --═══════════════ LOOP UTAMA ═══════════════
--- Tiap frame : penjaga nilai Speed/Swim & Jump Power saat ON
--- Tiap 0.1s  : sync info player + hitbox (REALTIME, self-healing)
--- Tiap 0.25s : jam -> brightness otomatis
+-- Tiap frame  : penjaga nilai Speed/Swim & Jump Power saat ON
+-- Tiap 0.05s  : sync info player (WS/JP/SS realtime + jarak) & hitbox
+-- Tiap 0.25s  : jam -> brightness otomatis
 local accDisp, accClock = 0, 0
 addConn(RunService.Heartbeat:Connect(function(dt)
     if S.speedOn or S.jumpOn then
@@ -747,7 +769,7 @@ addConn(RunService.Heartbeat:Connect(function(dt)
         end
     end
     accDisp += dt
-    if accDisp >= 0.1 then    -- REALTIME 0.1 detik
+    if accDisp >= INFO_INTERVAL then    -- REALTIME 0.05 detik
         accDisp = 0
         syncDisplays()
     end
