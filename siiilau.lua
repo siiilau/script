@@ -11,8 +11,12 @@
                       UKURAN SAMA, update REALTIME tiap 0.05 detik
                       - WS = kecepatan gerak real (diam = 0,00)
                       - JP = muncul saat NAIK/melompat (velocity Y)
-                      - SS = muncul saat berenang (state Swimming
-                        ATAU posisi di dalam air terrain/voxel)
+                      - SS = 4 lapisan deteksi renang:
+                        1) state Swimming
+                        2) animasi "swim" sedang diputar
+                           (animasi pemain lain PASTI tereplikasi)
+                        3) voxel air terrain di/berahir root
+                        4) raycast ke permukaan air di bawah root
                       -> karakter DIAM = semuanya 0,00
                       TANPA BATAS JARAK (MaxDistance = 1 miliar
                       stud): info muncul di jarak berapa pun
@@ -384,25 +388,63 @@ local function cleanupHitbox(char)
     end
 end
 
--- NILAI REAL & AKTIF (versi anti-nol-palsu):
--- WS  = kecepatan gerak horizontal dari velocity (diam = 0,00)
--- JP  = muncul saat karakter sedang NAIK (melompat) via velocity Y
--- SS  = muncul saat state Swimming ATAU posisi ada di DALAM AIR
---       terrain (cek voxel) -> pasti terdeteksi untuk pemain lain,
---       karena state humanoid pemain lain sering TIDAK tereplikasi
 local terrain = workspace:FindFirstChildOfClass("Terrain")
 
--- cek apakah posisi ada di dalam air terrain (baca voxel 4x4x4)
-local function isInWater(pos)
+-- LAPISAN 3: cek voxel air terrain — SCAN SEMUA voxel (bukan cuma 1),
+-- region lebih besar, sampling menutupi volume di bawah permukaan
+local function voxelsHaveWater(pos)
     if not terrain then return false end
-    local ok, mat = pcall(function()
-        local r = Region3.new(pos - Vector3.new(2, 2, 2), pos + Vector3.new(2, 2, 2)):ExpandToGrid(4)
+    local ok, found = pcall(function()
+        local r = Region3.new(pos - Vector3.new(3, 3, 3), pos + Vector3.new(3, 3, 3)):ExpandToGrid(4)
         local mats = terrain:ReadVoxels(r, 4)
-        return mats[1][1][1]
+        for x = 1, #mats do
+            for y = 1, #mats[x] do
+                for z = 1, #mats[x][y] do
+                    if mats[x][y][z] == Enum.Material.Water then return true end
+                end
+            end
+        end
+        return false
     end)
-    return ok and mat == Enum.Material.Water
+    return ok and found or false
 end
 
+-- LAPISAN 4: raycast ke bawah — jika permukaan air terrain ada
+-- beberapa stud di bawah root, karakter berada di/atas air
+local function waterBelow(char, rootPos, maxDist)
+    if not terrain then return false end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {char}
+    params.IgnoreWater = false   -- biarkan ray MENGENAI air
+    local ok, r = pcall(function()
+        return workspace:Raycast(rootPos, Vector3.new(0, -maxDist, 0), params)
+    end)
+    return ok and r ~= nil and r.Instance == terrain and r.Material == Enum.Material.Water
+end
+
+-- LAPISAN 2: animasi renang — AnimationTrack pemain LAIN pasti
+-- tereplikasi ke klien (nama standar Roblox: "Swim"/"SwimIdle", dll)
+local function isPlayingSwimAnim(char)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local animator = hum and hum:FindFirstChildOfClass("Animator")
+    if not animator then return false end
+    local ok, found = pcall(function()
+        for _, tr in ipairs(animator:GetPlayingAnimationTracks()) do
+            local anim = tr.Animation
+            local n = (anim and anim.Name or ""):lower()
+            if n:find("swim") or n:find("renang") then return true end
+        end
+        return false
+    end)
+    return ok and found or false
+end
+
+-- NILAI REAL & AKTIF:
+-- WS = kecepatan gerak horizontal dari velocity (diam = 0,00)
+-- JP = muncul saat NAIK (melompat) via velocity Y
+-- SS = 4 lapisan deteksi renang (state -> animasi -> voxel -> raycast)
+-- -> karakter DIAM = WS 0,00 | JP 0,00 | SS 0,00
 local function getRealStats(char)
     local ws, jp, ss = 0, 0, 0
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -412,21 +454,25 @@ local function getRealStats(char)
         local v = root.AssemblyLinearVelocity
         ws = Vector3.new(v.X, 0, v.Z).Magnitude
         if ws < 0.05 then ws = 0 end          -- hapus jitter fisika saat diam
-        -- MLOMPAT: state pemain lain sering tidak tereplikasi,
-        -- jadi deteksi dari kecepatan naik ke atas
+        -- MLOMPAT: deteksi dari kecepatan naik ke atas (state pemain
+        -- lain sering tidak tereplikasi)
         if v.Y > 3 then
             pcall(function() jp = (hum.UseJumpPower and hum.JumpPower) or hum.JumpHeight end)
         end
     end
-    -- BERENANG: coba state dulu, lalu fallback cek voxel air terrain
+    -- BERENANG: 4 lapisan deteksi
     local swimming = false
-    pcall(function()
-        swimming = (hum:GetState() == Enum.HumanoidStateType.Swimming)
-    end)
+    pcall(function() swimming = (hum:GetState() == Enum.HumanoidStateType.Swimming) end)  -- lapisan 1
+    if not swimming then swimming = isPlayingSwimAnim(char) end                            -- lapisan 2
     if not swimming and root then
-        local head = char:FindFirstChild("Head")
-        swimming = isInWater(root.Position)
-            or (head and isInWater(head.Position)) or false
+        -- lapisan 3 & 4 hanya dicek kalau karakter tidak berdiri di tanah
+        local floorAir = true
+        pcall(function() floorAir = (hum.FloorMaterial == Enum.Material.Air) end)
+        if floorAir then
+            swimming = voxelsHaveWater(root.Position)                              -- lapisan 3
+                or voxelsHaveWater(root.Position - Vector3.new(0, 2, 0))           -- sedikit di bawah permukaan
+                or waterBelow(char, root.Position, 3)                              -- lapisan 4
+        end
     end
     if swimming then
         pcall(function() ss = hum.SwimSpeed end)
@@ -489,8 +535,6 @@ local function attachHitbox(plr, char)
 end
 
 --═══════════════ SYNC DISPLAYS (dipanggil tiap 0.05s) ═══════════════
--- TANPA BATAS JARAK: info muncul di jarak berapa pun selama karakter
--- ada di sisi klien. Self-healing menangani streaming/respawn.
 local function syncDisplays()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
@@ -639,7 +683,6 @@ local function setLowGfx(on)
 end
 
 --═══════════════ NILAI JAM TERKUNCI -> BRIGHTNESS ═══════════════
--- Jam TIDAK mengikuti waktu asli game. Yang kamu set = yang dipakai.
 local clockChangedByUs = false
 
 local function applyLockedClock()
@@ -649,7 +692,7 @@ local function applyLockedClock()
     end
 end
 
-local function bumpClock(d)  -- ubah jam pilihan (step 0.25 jam = 15 menit)
+local function bumpClock(d)
     S.clockValue = (S.clockValue + d) % 24
     if S.clockValue < 0 then S.clockValue += 24 end
     rClock.val.Text = formatClock(S.clockValue)
@@ -778,9 +821,6 @@ addConn(UserInputService.InputEnded:Connect(function(input)
 end))
 
 --═══════════════ LOOP UTAMA ═══════════════
--- Tiap frame  : penjaga nilai Speed/Swim & Jump Power saat ON
--- Tiap 0.05s  : sync info player (WS/JP/SS realtime) & hitbox
--- Tiap 0.25s  : penjaga jam terkunci -> brightness sesuai jam pilihan
 local accDisp, accClock = 0, 0
 addConn(RunService.Heartbeat:Connect(function(dt)
     if S.speedOn or S.jumpOn then
