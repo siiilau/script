@@ -10,8 +10,9 @@
                       baris 2: WS 0,00 | JP 0,00 | SS 0,00 - biru
                       UKURAN SAMA, update REALTIME tiap 0.05 detik
                       - WS = kecepatan gerak real (diam = 0,00)
-                      - JP = hanya saat benar-benar melompat
-                      - SS = hanya saat benar-benar berenang
+                      - JP = muncul saat NAIK/melompat (velocity Y)
+                      - SS = muncul saat berenang (state Swimming
+                        ATAU posisi di dalam air terrain/voxel)
                       -> karakter DIAM = semuanya 0,00
                       TANPA BATAS JARAK (MaxDistance = 1 miliar
                       stud): info muncul di jarak berapa pun
@@ -383,11 +384,25 @@ local function cleanupHitbox(char)
     end
 end
 
--- NILAI REAL & AKTIF:
--- WS = kecepatan gerak horizontal dari velocity (diam = 0,00)
--- JP = HANYA saat benar-benar melompat/naik, selain itu 0
--- SS = HANYA saat benar-benar berenang, selain itu 0
--- -> karakter DIAM = WS 0,00 | JP 0,00 | SS 0,00
+-- NILAI REAL & AKTIF (versi anti-nol-palsu):
+-- WS  = kecepatan gerak horizontal dari velocity (diam = 0,00)
+-- JP  = muncul saat karakter sedang NAIK (melompat) via velocity Y
+-- SS  = muncul saat state Swimming ATAU posisi ada di DALAM AIR
+--       terrain (cek voxel) -> pasti terdeteksi untuk pemain lain,
+--       karena state humanoid pemain lain sering TIDAK tereplikasi
+local terrain = workspace:FindFirstChildOfClass("Terrain")
+
+-- cek apakah posisi ada di dalam air terrain (baca voxel 4x4x4)
+local function isInWater(pos)
+    if not terrain then return false end
+    local ok, mat = pcall(function()
+        local r = Region3.new(pos - Vector3.new(2, 2, 2), pos + Vector3.new(2, 2, 2)):ExpandToGrid(4)
+        local mats = terrain:ReadVoxels(r, 4)
+        return mats[1][1][1]
+    end)
+    return ok and mat == Enum.Material.Water
+end
+
 local function getRealStats(char)
     local ws, jp, ss = 0, 0, 0
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -397,18 +412,22 @@ local function getRealStats(char)
         local v = root.AssemblyLinearVelocity
         ws = Vector3.new(v.X, 0, v.Z).Magnitude
         if ws < 0.05 then ws = 0 end          -- hapus jitter fisika saat diam
-        local jumping = false
-        pcall(function()
-            local st = hum:GetState()
-            jumping = (st == Enum.HumanoidStateType.Jumping)
-                or (st == Enum.HumanoidStateType.Freefall and v.Y > 0.5)
-        end)
-        if jumping then
+        -- MLOMPAT: state pemain lain sering tidak tereplikasi,
+        -- jadi deteksi dari kecepatan naik ke atas
+        if v.Y > 3 then
             pcall(function() jp = (hum.UseJumpPower and hum.JumpPower) or hum.JumpHeight end)
         end
     end
+    -- BERENANG: coba state dulu, lalu fallback cek voxel air terrain
     local swimming = false
-    pcall(function() swimming = (hum:GetState() == Enum.HumanoidStateType.Swimming) end)
+    pcall(function()
+        swimming = (hum:GetState() == Enum.HumanoidStateType.Swimming)
+    end)
+    if not swimming and root then
+        local head = char:FindFirstChild("Head")
+        swimming = isInWater(root.Position)
+            or (head and isInWater(head.Position)) or false
+    end
     if swimming then
         pcall(function() ss = hum.SwimSpeed end)
     end
