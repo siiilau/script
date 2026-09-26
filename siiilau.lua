@@ -8,14 +8,15 @@
     Player Display: Info Other Players [C]  (SELF-HEALING)
                       baris 1: DisplayName (@username) - putih
                       baris 2: WS 0,00 | JP 0,00 - biru
-                      UKURAN SAMA, update REALTIME tiap 0.05 detik
+                      UKURAN SAMA, update tiap 0.1 detik (RINGAN)
                       - WS = kecepatan gerak real (diam = 0,00)
                       - JP = muncul saat NAIK/melompat (velocity Y)
                       -> karakter DIAM = semuanya 0,00
-                      TANPA BATAS JARAK (MaxDistance = 1 miliar
-                      stud): info muncul di jarak berapa pun
-                      selama karakter ada di sisi klien.
-                    Hitbox Players (kotak hijau LED, visual saja)
+                      BATAS JARAK: maksimal 100 stud dari karakter
+                      utama (di luar itu info otomatis hilang dan
+                      TIDAK dihitung = hemat performa).
+                    Hitbox Players (kotak hijau LED, visual saja,
+                    TANPA batas jarak - normal seperti biasa)
     Visual        : Hide Other Players [R] | Hide All Effects
                     Low Graphic Mode (+ remove fog)
     Environment   : Nilai Jam (step 15 menit) -> Brightness
@@ -25,13 +26,18 @@
     Hotkeys       : F (buka/tutup GUI) | Q | C | R
     Notifikasi    : Setiap fitur ON/OFF muncul notif kecil.
     Font          : Normal (Gotham) - terbaca di semua perangkat.
+    OPTIMASI      : - interval info 0.1 detik
+                    - tanpa scan voxel / raycast (anti lag)
+                    - culling jarak 100 stud (skip hitung stat)
+                    - Text label hanya di-set saat nilainya berubah
     ===============================================================]]
 
 --═══════════════ KONFIG ═══════════════
 local DEFAULT_SPEED = 17.25
 local DEFAULT_JUMP  = 52.25
 local STEP          = 0.25
-local INFO_INTERVAL = 0.05  -- update realtime WS/JP tiap 0.05 detik
+local INFO_INTERVAL = 0.1   -- update WS/JP tiap 0.1 detik (ringan, tetap terasa realtime)
+local INFO_MAX_DIST = 100   -- info pemain lain muncul maks 100 stud (~100 langkah) dari karakter utama
 local LOCK_TIME     = true  -- true = waktu game dibekukan di jam pilihanmu
                             -- false = waktu game tetap jalan, brightness tetap dari jam pilihanmu
 
@@ -366,7 +372,7 @@ local function setCrosshair(on)
     notify("Scooshlock", on)
 end
 
---═══════════════ INFO OTHER PLAYERS [C] - REALTIME 0.05s, TANPA BATAS JARAK ═══════════════
+--═══════════════ INFO OTHER PLAYERS [C] - RINGAN, MAKS 100 STUD ═══════════════
 local infoRefs = {}
 
 local function cleanupInfo(char)
@@ -382,15 +388,14 @@ local function cleanupHitbox(char)
     end
 end
 
--- NILAI REAL & AKTIF:
+-- NILAI REAL & AKTIF (SANGAT RINGAN - tidak ada voxel/raycast):
 -- WS = kecepatan gerak horizontal dari velocity (diam = 0,00)
 -- JP = muncul saat NAIK (melompat) via velocity Y
 -- -> karakter DIAM = WS 0,00 | JP 0,00
-local function getRealStats(char)
+local function getRealStats(char, root)
     local ws, jp = 0, 0
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not hum then return ws, jp end
-    local root = char:FindFirstChild("HumanoidRootPart")
     if root then
         local v = root.AssemblyLinearVelocity
         ws = Vector3.new(v.X, 0, v.Z).Magnitude
@@ -417,7 +422,7 @@ local function attachInfo(plr, char)
         Size = UDim2.fromOffset(220, 48),
         StudsOffset = Vector3.new(0, 2.9, 0),
         AlwaysOnTop = true,
-        MaxDistance = 1e9,   -- 1 MILIAR stud = praktis TANPA BATAS JARAK
+        MaxDistance = INFO_MAX_DIST,   -- cadangan: billboard auto-hilang di luar jarak
     }, char)
     -- BARIS 1 & 2: UKURAN SAMA (TextSize 14, GothamBold, tinggi 22)
     local name = new("TextLabel", {
@@ -434,10 +439,10 @@ local function attachInfo(plr, char)
         Text = "WS 0,00 | JP 0,00",
         TextTruncate = Enum.TextTruncate.AtEnd,
     }, bb)
-    return {bb = bb, stat = stat, char = char}
+    return {bb = bb, stat = stat, char = char, last = ""}
 end
 
---═══════════════ HITBOX PLAYERS (VISUAL SAJA) ═══════════════
+--═══════════════ HITBOX PLAYERS (VISUAL SAJA, NORMAL) ═══════════════
 local function attachHitbox(plr, char)
     pcall(cleanupHitbox, char)
     for _, part in ipairs(char:GetChildren()) do
@@ -458,35 +463,59 @@ local function attachHitbox(plr, char)
     end)
 end
 
---═══════════════ SYNC DISPLAYS (dipanggil tiap 0.05s) ═══════════════
+--═══════════════ SYNC DISPLAYS (dipanggil tiap 0.1s, OPTIMIZED) ═══════════════
 local function syncDisplays()
+    -- posisi karakter utama diambil SEKALI per siklus (hemat)
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local myPos = myRoot and myRoot.Position
+
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
             local char = plr.Character
             if char then
                 ---- INFO OVERHEAD ----
                 if S.infoOn then
-                    local ref = infoRefs[plr]
-                    -- self-healing: buat ulang jika hilang/respawn/streamed-in
-                    if not ref or ref.char ~= char or not ref.bb.Parent or not ref.stat.Parent then
-                        local newRef = attachInfo(plr, char)
-                        if newRef then
-                            infoRefs[plr] = newRef
-                            ref = newRef
-                        else
-                            ref = nil
+                    local root = char:FindFirstChild("HumanoidRootPart")
+                        or char:FindFirstChildWhichIsA("BasePart")
+                    -- CULLING JARAK: di luar 100 stud -> billboard OFF dan
+                    -- WS/JP TIDAK dihitung sama sekali (hemat performa)
+                    if myPos and root
+                        and (root.Position - myPos).Magnitude > INFO_MAX_DIST then
+                        local ref = infoRefs[plr]
+                        if ref then
+                            if ref.bb.Enabled then ref.bb.Enabled = false end
+                        elseif char:FindFirstChild("PH_Info") then
+                            pcall(cleanupInfo, char)
                         end
-                    end
-                    if ref then
-                        ref.bb.Enabled = true
-                        local ws, jp = getRealStats(char)
-                        ref.stat.Text = "WS " .. fmt2(ws) .. " | JP " .. fmt2(jp)
+                    else
+                        local ref = infoRefs[plr]
+                        -- self-healing: buat ulang jika hilang/respawn/streamed-in
+                        if not ref or ref.char ~= char or not ref.bb.Parent or not ref.stat.Parent then
+                            local newRef = attachInfo(plr, char)
+                            if newRef then
+                                infoRefs[plr] = newRef
+                                ref = newRef
+                            else
+                                ref = nil
+                            end
+                        end
+                        if ref then
+                            if not ref.bb.Enabled then ref.bb.Enabled = true end
+                            local ws, jp = getRealStats(char, root)
+                            local txt = "WS " .. fmt2(ws) .. " | JP " .. fmt2(jp)
+                            -- Text hanya di-set jika nilainya berubah (anti re-render)
+                            if txt ~= ref.last then
+                                ref.stat.Text = txt
+                                ref.last = txt
+                            end
+                        end
                     end
                 elseif infoRefs[plr] or char:FindFirstChild("PH_Info") then
                     infoRefs[plr] = nil
                     pcall(cleanupInfo, char)
                 end
-                ---- HITBOX ----
+                ---- HITBOX (normal, tanpa batas jarak) ----
                 if S.hitboxOn then
                     if not char:FindFirstChild("PH_Glow") then
                         attachHitbox(plr, char)
@@ -765,7 +794,7 @@ addConn(RunService.Heartbeat:Connect(function(dt)
         end
     end
     accDisp += dt
-    if accDisp >= INFO_INTERVAL then    -- REALTIME 0.05 detik
+    if accDisp >= INFO_INTERVAL then    -- update tiap 0.1 detik (ringan)
         accDisp = 0
         syncDisplays()
     end
