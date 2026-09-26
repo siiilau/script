@@ -13,18 +13,15 @@
                       - JP = hanya saat benar-benar melompat
                       - SS = hanya saat benar-benar berenang
                       -> karakter DIAM = semuanya 0,00
-                      HANYA MUNCUL jika jarak <= 30 langkah
-                      (stud) dari avatar utama, lebih jauh auto hide
+                      TANPA BATAS JARAK: muncul otomatis saat
+                      karakter masuk area render, hilang saat
+                      keluar render (mengikuti kamera).
                     Hitbox Players (kotak hijau LED, visual saja)
     Visual        : Hide Other Players [R] | Hide All Effects
                     Low Graphic Mode (+ remove fog)
     Environment   : Nilai Jam (step 15 menit) -> Brightness
                     JAM TERKUNCI: nilai yang di-set TIDAK berubah
-                    meski waktu asli game berjalan. Brightness
-                    selalu mengikuti jam yang dipilih.
-                    LOCK_TIME = true  -> waktu game ikut dibekukan
-                    LOCK_TIME = false -> waktu game tetap jalan,
-                                         brightness tetap terkunci
+                    meski waktu asli game berjalan.
     Bottom        : Reset Script | Hapus Script / Keluar
     Hotkeys       : F (buka/tutup GUI) | Q | C | R
     Notifikasi    : Setiap fitur ON/OFF muncul notif kecil.
@@ -35,7 +32,6 @@
 local DEFAULT_SPEED = 17.25
 local DEFAULT_JUMP  = 52.25
 local STEP          = 0.25
-local MAX_DIST      = 30    -- jarak maksimum (stud) info player terlihat
 local INFO_INTERVAL = 0.05  -- update realtime WS/JP/SS tiap 0.05 detik
 local LOCK_TIME     = true  -- true = waktu game dibekukan di jam pilihanmu
                             -- false = waktu game tetap jalan, brightness tetap dari jam pilihanmu
@@ -297,10 +293,6 @@ local function getHum()
     local c = LocalPlayer.Character
     return c and c:FindFirstChildOfClass("Humanoid")
 end
-local function getRoot()
-    local c = LocalPlayer.Character
-    return c and c:FindFirstChild("HumanoidRootPart")
-end
 
 --═══════════════ MOVEMENT + RESTORE BENAR-BENAR KE ASLINYA ═══════════════
 local savedHum = {}
@@ -431,7 +423,7 @@ local function attachInfo(plr, char)
         Name = "PH_Info", Adornee = head,
         Size = UDim2.fromOffset(220, 48),
         StudsOffset = Vector3.new(0, 2.9, 0),
-        AlwaysOnTop = true, MaxDistance = 500,
+        AlwaysOnTop = true, MaxDistance = math.huge,  -- ikut render kamera, tanpa batas jarak sendiri
     }, char)
     -- BARIS 1 & 2: UKURAN SAMA (TextSize 14, GothamBold, tinggi 22)
     local name = new("TextLabel", {
@@ -473,41 +465,31 @@ local function attachHitbox(plr, char)
 end
 
 --═══════════════ SYNC DISPLAYS (dipanggil tiap 0.05s) ═══════════════
+-- TANPA BATAS JARAK: info muncul begitu karakter dirender di layar
+-- (billboard hanya merender saat adornee terlihat kamera) dan hilang
+-- otomatis saat karakter keluar render.
 local function syncDisplays()
-    local myRoot = getRoot()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
             local char = plr.Character
             if char then
-                ---- INFO OVERHEAD (hanya jika jarak <= MAX_DIST) ----
+                ---- INFO OVERHEAD ----
                 if S.infoOn then
-                    local root = char:FindFirstChild("HumanoidRootPart")
-                    local dist = math.huge
-                    if myRoot and root then
-                        dist = (root.Position - myRoot.Position).Magnitude
+                    local ref = infoRefs[plr]
+                    -- self-healing: buat ulang jika hilang/respawn/streamed-in
+                    if not ref or ref.char ~= char or not ref.bb.Parent or not ref.stat.Parent then
+                        local newRef = attachInfo(plr, char)
+                        if newRef then
+                            infoRefs[plr] = newRef
+                            ref = newRef
+                        else
+                            ref = nil
+                        end
                     end
-                    if dist <= MAX_DIST then
-                        local ref = infoRefs[plr]
-                        -- self-healing: buat ulang jika hilang/respawn
-                        if not ref or ref.char ~= char or not ref.bb.Parent or not ref.stat.Parent then
-                            local newRef = attachInfo(plr, char)
-                            if newRef then
-                                infoRefs[plr] = newRef
-                                ref = newRef
-                            else
-                                ref = nil
-                            end
-                        end
-                        if ref then
-                            ref.bb.Enabled = true
-                            local ws, jp, ss = getRealStats(char)
-                            ref.stat.Text = "WS " .. fmt2(ws) .. " | JP " .. fmt2(jp) .. " | SS " .. fmt2(ss)
-                        end
-                    else
-                        local ref = infoRefs[plr]
-                        if ref and ref.bb.Parent then
-                            ref.bb.Enabled = false
-                        end
+                    if ref then
+                        ref.bb.Enabled = true
+                        local ws, jp, ss = getRealStats(char)
+                        ref.stat.Text = "WS " .. fmt2(ws) .. " | JP " .. fmt2(jp) .. " | SS " .. fmt2(ss)
                     end
                 elseif infoRefs[plr] or char:FindFirstChild("PH_Info") then
                     infoRefs[plr] = nil
@@ -635,13 +617,10 @@ end
 
 --═══════════════ NILAI JAM TERKUNCI -> BRIGHTNESS ═══════════════
 -- Jam TIDAK mengikuti waktu asli game. Yang kamu set = yang dipakai.
--- Brightness selalu dihitung dari S.clockValue (jam pilihan user).
 local clockChangedByUs = false
 
 local function applyLockedClock()
-    -- brightness selalu dari jam pilihan user
     pcall(function() Lighting.Brightness = brightnessFromTime(S.clockValue) end)
-    -- jika LOCK_TIME aktif, bekukan juga waktu game di jam pilihan user
     if LOCK_TIME then
         pcall(function() Lighting.ClockTime = S.clockValue end)
     end
@@ -652,7 +631,7 @@ local function bumpClock(d)  -- ubah jam pilihan (step 0.25 jam = 15 menit)
     if S.clockValue < 0 then S.clockValue += 24 end
     rClock.val.Text = formatClock(S.clockValue)
     clockChangedByUs = true
-    applyLockedClock()   -- brightness (dan waktu game) langsung menyesuaikan
+    applyLockedClock()
 end
 
 --═══════════════ RESET SCRIPT ═══════════════
@@ -664,7 +643,7 @@ local function resetScript()
     styleToggle(rInfo.toggle, false); styleToggle(rHit.toggle, false)
     setHidePlayers(false); setHideFx(false); setLowGfx(false)
     S.speedValue, S.jumpValue = DEFAULT_SPEED, DEFAULT_JUMP
-    S.clockValue = orig.clockTime        -- kembali ke jam asli game
+    S.clockValue = orig.clockTime
     clockChangedByUs = false
     pcall(function() Lighting.ClockTime = orig.clockTime end)
     pcall(function() Lighting.Brightness = orig.brightness end)
@@ -777,10 +756,8 @@ end))
 
 --═══════════════ LOOP UTAMA ═══════════════
 -- Tiap frame  : penjaga nilai Speed/Swim & Jump Power saat ON
--- Tiap 0.05s  : sync info player (WS/JP/SS realtime + jarak) & hitbox
--- Tiap 0.25s  : penjaga jam terkunci -> brightness (dan waktu game,
---               jika LOCK_TIME) selalu sesuai jam pilihan user,
---               TIDAK TERPENGARUH perubahan waktu asli game
+-- Tiap 0.05s  : sync info player (WS/JP/SS realtime) & hitbox
+-- Tiap 0.25s  : penjaga jam terkunci -> brightness sesuai jam pilihan
 local accDisp, accClock = 0, 0
 addConn(RunService.Heartbeat:Connect(function(dt)
     if S.speedOn or S.jumpOn then
@@ -808,7 +785,7 @@ addConn(RunService.Heartbeat:Connect(function(dt)
     accClock += dt
     if accClock >= 0.25 then
         accClock = 0
-        if clockChangedByUs then        -- hanya jaga jika user pernah set jam
+        if clockChangedByUs then
             applyLockedClock()
         end
     end
