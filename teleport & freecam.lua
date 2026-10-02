@@ -1,10 +1,10 @@
 --==============================================================================
---  FREE CAM + AUTO PAGI + EFEK MATI + TELEPORT  •  LocalScript  (V 1.00.00)
+--  FREE CAM + AUTO PAGI + EFEK MATI + TELEPORT  •  LocalScript  (V 1.00.01)
 --  Tempatkan di : StarterPlayer ▸ StarterPlayerScripts
 --
 --  KONTROL :
 --   [F]       Buka / tutup menu
---   [R]       Freecam ON / OFF
+--   [X]       Freecam ON / OFF
 --   [T]       Auto Pagi ON / OFF
 --   [G]       Kamera menuju karakter (manual, opsional)
 --   [C]       Teleport karakter ke posisi kamera
@@ -670,7 +670,7 @@ petunjuk.Font                   = Enum.Font.Gotham
 petunjuk.TextSize               = 11
 petunjuk.TextColor3             = Color3.fromRGB(160, 160, 180)
 petunjuk.TextWrapped            = true
-petunjuk.Text                   = "F: Menu • R: Freecam • T: Pagi • G: Ke Karakter • C: TP Kamera\nWASD: Gerak • QE: Naik/Turun • Space: Cepat"
+petunjuk.Text                   = "F: Menu • X: Freecam • T: Pagi • G: Ke Karakter • C: TP Kamera\nWASD: Gerak • QE: Naik/Turun • Space: Cepat"
 petunjuk.Parent                 = halamanKontrol
 
 --------------------------- HALAMAN : LOKASI ---------------------------
@@ -988,7 +988,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.KeyCode == Enum.KeyCode.F then
         menuTerbuka = not menuTerbuka
         screenGui.Enabled = menuTerbuka
-    elseif input.KeyCode == Enum.KeyCode.R then
+    elseif input.KeyCode == Enum.KeyCode.X then
         setFreecam(not freecamAktif)
     elseif input.KeyCode == Enum.KeyCode.T then
         setAutoPagi(not autoPagiAktif)
