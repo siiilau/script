@@ -1,36 +1,43 @@
 --==============================================================================
---  FREE CAM + AUTO PAGI + EFEK MATI  •  LocalScript  (REVISI 4)
+--  FREE CAM + AUTO PAGI + EFEK MATI + TELEPORT  •  LocalScript  (V 1.00.00)
 --  Tempatkan di : StarterPlayer ▸ StarterPlayerScripts
 --
 --  KONTROL :
 --   [F]       Buka / tutup menu
 --   [R]       Freecam ON / OFF
 --   [T]       Auto Pagi ON / OFF
---   [G]       Kamera menuju karakter (manual saja, opsional)
+--   [G]       Kamera menuju karakter (manual, opsional)
+--   [C]       Teleport karakter ke posisi kamera
+--             (syarat: tab KAM TP = ON dan Freecam aktif)
 --   [W A S D] Gerakkan kamera (karakter jalan di tempat)
 --   [Q] / [E] Turun / naik
 --   [Space]   Tahan untuk mempercepat kamera
 --   Mouse     Mengarahkan kamera
 --   Drag judul menu untuk memindahkan panel
 --
---  LOGIKA REVISI :
+--  TAB MENU :
+--   • KONTROL : freecam, auto pagi, kamera ke karakter
+--   • LOKASI  : simpan / teleport / hapus lokasi
+--               -> PERMANEN lewat DataStore (butuh server script
+--                  "FreecamLokasiServer" di ServerScriptService)
+--   • KAM TP  : toggle ON/OFF teleport-ke-kamera + keybind [C]
+--
+--  LOGIKA :
 --   • Karakter jalan di tempat saat freecam aktif (tidak dibekukan).
---   • TELEPORT SECEPAT CAHAYA :
---       - karakter langsung pindah di frame yang sama (tanpa jeda/luncur)
---       - kalau tujuan TP di udara, karakter MELAYANG di situ dan tetap
---         jalan di tempat (tidak jatuh, tidak ada animasi jatuh)
---       - kamera freecam TIDAK ikut bergerak (tetap kendali pemain)
---   • Mati    -> layar berubah hitam putih.
---   • Respawn -> semua efek & fitur kembali normal (kecuali Auto Pagi).
+--   • TELEPORT DARI GAME : instan, di udara = melayang, kamera tak disentuh.
+--   • TELEPORT MANUAL (LOKASI / [C]) : karakter langsung pindah & melayang
+--     di titik tujuan; kamera freecam TIDAK ikut bergerak.
+--   • Mati -> layar hitam putih. Respawn -> normal kembali (kecuali Auto Pagi).
 --==============================================================================
 
 --================================ SERVIS ======================================
-local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService     = game:GetService("TweenService")
-local Lighting         = game:GetService("Lighting")
-local Workspace        = game:GetService("Workspace")
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+local UserInputService   = game:GetService("UserInputService")
+local TweenService       = game:GetService("TweenService")
+local Lighting           = game:GetService("Lighting")
+local Workspace          = game:GetService("Workspace")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 
 --============================== PEMAIN ========================================
 local player    = Players.LocalPlayer
@@ -39,37 +46,36 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 --============================ KONFIGURASI =====================================
 local CONFIG = {
-    KECEPATAN_NORMAL   = 30,     -- kecepatan kamera biasa (studs/detik)
-    KECEPATAN_CEPAT    = 85,     -- kecepatan saat menahan Space
-    SENSITIVITAS_MOUSE = 0.25,   -- kepekaan rotasi mouse
-    BATAS_PITCH        = 85,     -- batas pandangan atas/bawah (derajat)
-    KEHALUSAN          = 10,     -- makin besar = makin responsif (smoothing)
-    JAM_PAGI           = 7,      -- jam dunia saat Auto Pagi aktif
-    INTERVAL_STREAM    = 1,      -- jeda permintaan streaming (detik)
-    DURASI_EFEK_MATI   = 0.6,    -- durasi transisi hitam putih (detik)
+    KECEPATAN_NORMAL   = 30,
+    KECEPATAN_CEPAT    = 85,
+    SENSITIVITAS_MOUSE = 0.25,
+    BATAS_PITCH        = 85,
+    KEHALUSAN          = 10,
+    JAM_PAGI           = 7,
+    INTERVAL_STREAM    = 1,
+    DURASI_EFEK_MATI   = 0.6,
 
-    -- [TELEPORT SECEPAT CAHAYA]
-    TP_INSTAN     = true,        -- true  : langsung pindah di frame itu juga
-                                 -- false : luncur super cepat (nyaris tak terlihat)
-    JARAK_TP_MIN  = 6,           -- lompatan horizontal (studs) = dianggap TP
-    TINGGI_TP_MIN = 8,           -- lompatan vertikal  (studs) = dianggap TP
+    TP_INSTAN     = true,
+    JARAK_TP_MIN  = 6,
+    TINGGI_TP_MIN = 8,
 
-    -- (hanya dipakai jika TP_INSTAN = false)
-    MELUNCUR_KECEPATAN = 600,    -- studs/detik (super cepat)
-    MELUNCUR_MAX       = 0.08,   -- batas durasi luncur (detik) -> nyaris instan
+    MELUNCUR_KECEPATAN = 600,
+    MELUNCUR_MAX       = 0.08,
 
-    -- [G] posisi kamera saat tombol manual dipakai
     JARAK_BELAKANG = 10,
     TINGGI_KAMERA  = 4,
     SUDUT_TP       = -15,
+
+    MAKS_LOKASI        = 50,   -- batas jumlah lokasi tersimpan
 }
 
 local NAMA_BIND = "FreecamUpdate"
 
 --============================= STATUS =========================================
-local menuTerbuka   = true        -- menu tampil saat script dimulai
+local menuTerbuka   = true
 local freecamAktif  = false
 local autoPagiAktif = false
+local tpKameraAktif = false          -- [TAB KAM TP] toggle teleport-ke-kamera
 
 local adaPosisiTersimpan = false
 local fcTarget           = Vector3.zero
@@ -83,11 +89,11 @@ local threadStream = nil
 
 -- jalan di tempat + teleport
 local koneksiJalanDiTempat = nil
-local posisiKunci          = nil   -- titik kunci (X/Z selalu ; XYZ saat melayang)
-local rotasiKunci          = nil   -- rotasi kunci (CFrame rotasi murni)
-local kunciY               = false -- true = melayang (kunci tinggi juga)
-local cfVisual             = nil   -- CFrame visual terakhir karakter
-local meluncur             = false -- fallback luncur super cepat
+local posisiKunci          = nil
+local rotasiKunci          = nil
+local kunciY               = false
+local cfVisual             = nil
+local meluncur             = false
 local cfAsal, cfTujuan     = nil, nil
 local waktuMulai           = 0
 local durasiMeluncur       = 0
@@ -96,6 +102,12 @@ local durasiMeluncur       = 0
 local efekKoreksi     = nil
 local tweenEfek       = nil
 local hitamPutihAktif = false
+
+-- lokasi tersimpan + sinkronisasi server
+local daftarLokasi   = {}
+local remoteLokasi   = nil
+local perbaruiDaftar -- didefinisikan di bagian GUI
+local simpanKeServer -- didefinisikan di bagian GUI
 
 local perbaruiTombol -- didefinisikan di bagian GUI
 
@@ -110,7 +122,6 @@ local function dapatkanHumanoid()
     return karakter and karakter:FindFirstChildOfClass("Humanoid")
 end
 
--- CFrame dengan posisi + rotasi tegak (yaw saja) — dipakai untuk tujuan TP
 local function cfTegak(cf)
     local look = cf.LookVector
     local flat = Vector3.new(look.X, 0, look.Z)
@@ -120,7 +131,6 @@ local function cfTegak(cf)
     return CFrame.lookAt(cf.Position, cf.Position + flat.Unit)
 end
 
--- netralkan gravitasi & cegah animasi jatuh (dipakai saat melayang / TP)
 local function netralkanFisika(root, humanoid)
     root.AssemblyLinearVelocity  = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
@@ -157,20 +167,9 @@ local function kameraKeKarakter()
 end
 
 --================== JALAN DI TEMPAT + TELEPORT SECEPAT CAHAYA =================
--- Karakter TIDAK di-anchor. Posisi horizontal & rotasinya dikembalikan ke
--- titik awal setiap langkah fisika (jalan di tempat).
---
--- SAAT TELEPORT (oleh game/script lain) :
---   [1] SECEPAT CAHAYA : karakter langsung pindah di frame yang sama,
---       tanpa jeda, tanpa luncuran
---   [2] tujuan di udara -> karakter MELAYANG tepat di titik itu :
---       tinggi ikut dikunci, gravitasi dinetralkan, animasi tetap normal
---   [3] kamera freecam TIDAK disentuh sama sekali
-
 local function mulaiJalanDiTempat()
     if koneksiJalanDiTempat then return end
 
-    -- catat titik kunci dari posisi karakter saat ini (jika sudah ada)
     local root = dapatkanRoot()
     if root then
         posisiKunci = root.Position
@@ -180,7 +179,6 @@ local function mulaiJalanDiTempat()
     kunciY   = false
     meluncur = false
 
-    -- cegah lompatan agar karakter "hanya berjalan" di tempat
     local humanoid = dapatkanHumanoid()
     if humanoid then
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
@@ -192,7 +190,7 @@ local function mulaiJalanDiTempat()
         if not r then return end
         local humanoid = dapatkanHumanoid()
 
-        -- [A] sedang duduk (kursi / TP pad) -> ikuti saja, jangan dikunci
+        -- [A] sedang duduk -> ikuti saja
         if humanoid and humanoid.SeatPart then
             posisiKunci = r.Position
             rotasiKunci = r.CFrame - r.CFrame.Position
@@ -200,10 +198,10 @@ local function mulaiJalanDiTempat()
             return
         end
 
-        -- [B] FALLBACK : luncur super cepat (hanya jika TP_INSTAN = false)
+        -- [B] FALLBACK luncur super cepat (TP_INSTAN = false)
         if meluncur then
             local t  = math.clamp((os.clock() - waktuMulai) / durasiMeluncur, 0, 1)
-            local e  = t * t * (3 - 2 * t)          -- smoothstep
+            local e  = t * t * (3 - 2 * t)
             local cf = cfAsal:Lerp(cfTujuan, e)
 
             r.CFrame = cf
@@ -219,7 +217,6 @@ local function mulaiJalanDiTempat()
             return
         end
 
-        -- karakter baru muncul saat freecam aktif -> kunci posisinya sekarang
         if not posisiKunci then
             posisiKunci = r.Position
             rotasiKunci = r.CFrame - r.CFrame.Position
@@ -227,7 +224,7 @@ local function mulaiJalanDiTempat()
             kunciY      = false
         end
 
-        -- [C] DETEKSI TELEPORT (lompatan posisi sekali jalan)
+        -- [C] DETEKSI TELEPORT dari game/script lain
         local dx = r.Position.X - posisiKunci.X
         local dz = r.Position.Z - posisiKunci.Z
         local teleport =
@@ -238,22 +235,13 @@ local function mulaiJalanDiTempat()
             local tujuan = cfTegak(r.CFrame)
 
             if CONFIG.TP_INSTAN then
-                ------------------------------------------------------------
-                -- SECEPAT CAHAYA : langsung pindah di frame ini juga.
-                -- Tidak ada jeda, tidak ada peralihan, tidak ada efek.
-                ------------------------------------------------------------
                 r.CFrame = tujuan
                 netralkanFisika(r, humanoid)
-
-                -- kunci penuh di titik TP (kalaupun di udara -> melayang)
                 kunciY      = true
                 posisiKunci = tujuan.Position
                 rotasiKunci = tujuan - tujuan.Position
                 cfVisual    = tujuan
             else
-                ------------------------------------------------------------
-                -- OPSIONAL : luncur super cepat (nyaris tak terlihat)
-                ------------------------------------------------------------
                 cfAsal   = cfVisual or cfTegak(r.CFrame)
                 cfTujuan = tujuan
 
@@ -271,11 +259,9 @@ local function mulaiJalanDiTempat()
         -- [D] NORMAL : kunci posisi & rotasi (jalan di tempat)
         local cfBaru
         if kunciY then
-            -- melayang : kunci tinggi juga -> tetap di udara, tidak jatuh
             cfBaru = CFrame.new(posisiKunci) * rotasiKunci
             netralkanFisika(r, humanoid)
         else
-            -- di tanah : Y mengikuti fisika agar tetap berdiri dengan benar
             cfBaru = CFrame.new(posisiKunci.X, r.Position.Y, posisiKunci.Z) * rotasiKunci
             posisiKunci = Vector3.new(posisiKunci.X, r.Position.Y, posisiKunci.Z)
         end
@@ -298,12 +284,68 @@ local function hentikanJalanDiTempat()
     cfAsal      = nil
     cfTujuan    = nil
 
-    -- aktifkan kembali lompatan & jatuh (karakter berjalan normal lagi)
     local humanoid = dapatkanHumanoid()
     if humanoid then
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
     end
+end
+
+--=========== TELEPORT MANUAL (LOKASI TERSIMPAN & KAMERA [C]) ==================
+-- Karakter langsung dipindah, melayang di titik tujuan,
+-- kamera freecam tidak disentuh.
+local function teleportKarakter(cf)
+    local root = dapatkanRoot()
+    if not root then return false end
+
+    local humanoid = dapatkanHumanoid()
+    if humanoid and humanoid.SeatPart then
+        humanoid.Sit = false
+    end
+
+    root.CFrame = cf
+    netralkanFisika(root, humanoid)
+
+    if freecamAktif then
+        kunciY      = true                       -- melayang di titik tujuan
+        posisiKunci = cf.Position
+        rotasiKunci = cf - cf.Position
+        cfVisual    = cf
+        meluncur    = false
+    end
+
+    if Workspace.StreamingEnabled then
+        task.spawn(function()
+            pcall(function()
+                player:RequestStreamAroundAsync(cf.Position)
+            end)
+        end)
+    end
+    return true
+end
+
+-- [C] teleport ke posisi kamera freecam
+local function teleportKeKamera()
+    if not (tpKameraAktif and freecamAktif) then return end
+    teleportKarakter(cfTegak(camera.CFrame))
+end
+
+-- teleport ke lokasi tersimpan
+local function teleportKeLokasi(index)
+    local data = daftarLokasi[index]
+    if not data then return end
+
+    local rotasi
+    local root = dapatkanRoot()
+    if root then
+        local tegak = cfTegak(root.CFrame)
+        rotasi = tegak - tegak.Position
+    else
+        rotasi = CFrame.new()
+    end
+
+    local cf = CFrame.new(Vector3.new(data.x, data.y, data.z)) * rotasi
+    teleportKarakter(cf)
 end
 
 --====================== EFEK HITAM PUTIH (SAAT MATI) ==========================
@@ -470,6 +512,12 @@ local function setAutoPagi(aktif)
     perbaruiTombol()
 end
 
+--=========================== TOGGLE TP KE KAMERA ==============================
+local function setTpKamera(aktif)
+    tpKameraAktif = aktif
+    perbaruiTombol()
+end
+
 --============================== MENU (GUI) ====================================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name           = "FreecamMenuGui"
@@ -480,7 +528,7 @@ screenGui.Parent         = playerGui
 
 local panel = Instance.new("Frame")
 panel.Name             = "Panel"
-panel.Size             = UDim2.fromOffset(230, 210)
+panel.Size             = UDim2.fromOffset(260, 360)
 panel.Position         = UDim2.fromOffset(20, 20)
 panel.BackgroundColor3 = Color3.fromRGB(24, 24, 34)
 panel.BorderSizePixel  = 0
@@ -496,6 +544,7 @@ panelGaris.Color     = Color3.fromRGB(90, 90, 130)
 panelGaris.Thickness = 1.5
 panelGaris.Parent    = panel
 
+--Judul (drag)
 local judul = Instance.new("TextButton")
 judul.Name             = "Judul"
 judul.Size             = UDim2.new(1, 0, 0, 34)
@@ -512,16 +561,89 @@ local judulSudut = Instance.new("UICorner")
 judulSudut.CornerRadius = UDim.new(0, 10)
 judulSudut.Parent = judul
 
+--------------------------- TAB BAR ---------------------------
+local tabBar = Instance.new("Frame")
+tabBar.Name                   = "TabBar"
+tabBar.Position               = UDim2.new(0, 10, 0, 38)
+tabBar.Size                   = UDim2.new(1, -20, 0, 26)
+tabBar.BackgroundTransparency = 1
+tabBar.Parent                 = panel
+
+local tabLayout = Instance.new("UIListLayout")
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.Padding       = UDim.new(0, 4)
+tabLayout.Parent        = tabBar
+
+local WARNA_TAB_AKTIF    = Color3.fromRGB(70, 110, 170)
+local WARNA_TAB_NONAKTIF = Color3.fromRGB(40, 40, 60)
+
+local function buatTab(nama, teks)
+    local b = Instance.new("TextButton")
+    b.Name             = nama
+    b.Size             = UDim2.new(1 / 3, -3, 1, 0)
+    b.BackgroundColor3 = WARNA_TAB_NONAKTIF
+    b.BorderSizePixel  = 0
+    b.Font             = Enum.Font.GothamBold
+    b.TextSize         = 11
+    b.TextColor3       = Color3.fromRGB(180, 180, 200)
+    b.Text             = teks
+    b.AutoButtonColor  = false
+    b.Parent           = tabBar
+
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, 6)
+    c.Parent = b
+    return b
+end
+
+local tabKontrol = buatTab("TabKontrol", "KONTROL")
+local tabLokasi  = buatTab("TabLokasi",  "LOKASI")
+local tabKam     = buatTab("TabKam",     "KAM TP")
+
+--------------------------- HALAMAN ---------------------------
+local function buatHalaman(nama)
+    local f = Instance.new("Frame")
+    f.Name                   = nama
+    f.Position               = UDim2.new(0, 10, 0, 72)
+    f.Size                   = UDim2.new(1, -20, 1, -80)
+    f.BackgroundTransparency = 1
+    f.Parent                 = panel
+    return f
+end
+
+local halamanKontrol = buatHalaman("HalamanKontrol")
+local halamanLokasi  = buatHalaman("HalamanLokasi")
+local halamanKam     = buatHalaman("HalamanKam")
+
+local function pilihTab(nama)
+    halamanKontrol.Visible = (nama == "KONTROL")
+    halamanLokasi.Visible  = (nama == "LOKASI")
+    halamanKam.Visible     = (nama == "KAMTP")
+
+    tabKontrol.BackgroundColor3 = (nama == "KONTROL") and WARNA_TAB_AKTIF or WARNA_TAB_NONAKTIF
+    tabLokasi.BackgroundColor3  = (nama == "LOKASI")  and WARNA_TAB_AKTIF or WARNA_TAB_NONAKTIF
+    tabKam.BackgroundColor3     = (nama == "KAMTP")   and WARNA_TAB_AKTIF or WARNA_TAB_NONAKTIF
+
+    tabKontrol.TextColor3 = (nama == "KONTROL") and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,180,200)
+    tabLokasi.TextColor3  = (nama == "LOKASI")  and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,180,200)
+    tabKam.TextColor3     = (nama == "KAMTP")   and Color3.fromRGB(255,255,255) or Color3.fromRGB(180,180,200)
+end
+
+tabKontrol.MouseButton1Click:Connect(function() pilihTab("KONTROL") end)
+tabLokasi.MouseButton1Click:Connect(function()  pilihTab("LOKASI")  end)
+tabKam.MouseButton1Click:Connect(function()     pilihTab("KAMTP")   end)
+
+--------------------------- HALAMAN : KONTROL ---------------------------
 local tombolFreecam = Instance.new("TextButton")
 tombolFreecam.Name             = "TombolFreecam"
-tombolFreecam.Size             = UDim2.new(1, -20, 0, 36)
-tombolFreecam.Position         = UDim2.new(0, 10, 0, 44)
+tombolFreecam.Size             = UDim2.new(1, 0, 0, 36)
+tombolFreecam.Position         = UDim2.new(0, 0, 0, 0)
 tombolFreecam.BackgroundColor3 = Color3.fromRGB(150, 70, 70)
 tombolFreecam.BorderSizePixel  = 0
 tombolFreecam.Font             = Enum.Font.GothamBold
 tombolFreecam.TextSize         = 14
 tombolFreecam.TextColor3       = Color3.fromRGB(255, 255, 255)
-tombolFreecam.Parent           = panel
+tombolFreecam.Parent           = halamanKontrol
 
 local freecamSudut = Instance.new("UICorner")
 freecamSudut.CornerRadius = UDim.new(0, 8)
@@ -529,28 +651,272 @@ freecamSudut.Parent = tombolFreecam
 
 local tombolPagi = tombolFreecam:Clone()
 tombolPagi.Name     = "TombolPagi"
-tombolPagi.Position = UDim2.new(0, 10, 0, 88)
-tombolPagi.Parent   = panel
+tombolPagi.Position = UDim2.new(0, 0, 0, 42)
+tombolPagi.Parent   = halamanKontrol
 
 local tombolKeKarakter = tombolFreecam:Clone()
 tombolKeKarakter.Name             = "TombolKeKarakter"
-tombolKeKarakter.Position         = UDim2.new(0, 10, 0, 132)
+tombolKeKarakter.Position         = UDim2.new(0, 0, 0, 84)
 tombolKeKarakter.Text             = "KAMERA ➜ KARAKTER  [G]"
 tombolKeKarakter.BackgroundColor3 = Color3.fromRGB(70, 110, 170)
-tombolKeKarakter.Parent           = panel
+tombolKeKarakter.Parent           = halamanKontrol
 
 local petunjuk = Instance.new("TextLabel")
 petunjuk.Name                   = "Petunjuk"
-petunjuk.Size                   = UDim2.new(1, -20, 0, 30)
-petunjuk.Position               = UDim2.new(0, 10, 1, -34)
+petunjuk.Size                   = UDim2.new(1, 0, 0, 60)
+petunjuk.Position               = UDim2.new(0, 0, 0, 128)
 petunjuk.BackgroundTransparency = 1
 petunjuk.Font                   = Enum.Font.Gotham
 petunjuk.TextSize               = 11
 petunjuk.TextColor3             = Color3.fromRGB(160, 160, 180)
 petunjuk.TextWrapped            = true
-petunjuk.Text                   = "F: Menu • R: Freecam • T: Pagi • G: Ke Karakter"
-petunjuk.Parent                 = panel
+petunjuk.Text                   = "F: Menu • R: Freecam • T: Pagi • G: Ke Karakter • C: TP Kamera\nWASD: Gerak • QE: Naik/Turun • Space: Cepat"
+petunjuk.Parent                 = halamanKontrol
 
+--------------------------- HALAMAN : LOKASI ---------------------------
+local kotakNama = Instance.new("TextBox")
+kotakNama.Name              = "KotakNama"
+kotakNama.Size              = UDim2.new(1, 0, 0, 30)
+kotakNama.BackgroundColor3  = Color3.fromRGB(36, 36, 52)
+kotakNama.BorderSizePixel   = 0
+kotakNama.PlaceholderText   = "Nama lokasi..."
+kotakNama.PlaceholderColor3 = Color3.fromRGB(120, 120, 140)
+kotakNama.Text              = ""
+kotakNama.TextColor3        = Color3.fromRGB(235, 235, 245)
+kotakNama.Font              = Enum.Font.Gotham
+kotakNama.TextSize          = 13
+kotakNama.ClearTextOnFocus  = false
+kotakNama.Parent            = halamanLokasi
+
+local kotakSudut = Instance.new("UICorner")
+kotakSudut.CornerRadius = UDim.new(0, 8)
+kotakSudut.Parent = kotakNama
+
+local tombolSimpanLokasi = Instance.new("TextButton")
+tombolSimpanLokasi.Name             = "TombolSimpanLokasi"
+tombolSimpanLokasi.Size             = UDim2.new(1, 0, 0, 30)
+tombolSimpanLokasi.Position         = UDim2.new(0, 0, 0, 36)
+tombolSimpanLokasi.BackgroundColor3 = Color3.fromRGB(46, 155, 90)
+tombolSimpanLokasi.BorderSizePixel  = 0
+tombolSimpanLokasi.Font             = Enum.Font.GothamBold
+tombolSimpanLokasi.TextSize         = 13
+tombolSimpanLokasi.TextColor3       = Color3.fromRGB(255, 255, 255)
+tombolSimpanLokasi.Text             = "💾 SIMPAN LOKASI"
+tombolSimpanLokasi.Parent           = halamanLokasi
+
+local simpanSudut = Instance.new("UICorner")
+simpanSudut.CornerRadius = UDim.new(0, 8)
+simpanSudut.Parent = tombolSimpanLokasi
+
+local statusSinkron = Instance.new("TextLabel")
+statusSinkron.Name                   = "StatusSinkron"
+statusSinkron.Size                   = UDim2.new(1, 0, 0, 14)
+statusSinkron.Position               = UDim2.new(0, 0, 0, 70)
+statusSinkron.BackgroundTransparency = 1
+statusSinkron.Font                   = Enum.Font.Gotham
+statusSinkron.TextSize               = 10
+statusSinkron.TextColor3             = Color3.fromRGB(160, 160, 180)
+statusSinkron.TextXAlignment         = Enum.TextXAlignment.Left
+statusSinkron.Text                   = "Memeriksa penyimpanan..."
+statusSinkron.Parent                 = halamanLokasi
+
+local daftarScroll = Instance.new("ScrollingFrame")
+daftarScroll.Name                   = "DaftarLokasi"
+daftarScroll.Position               = UDim2.new(0, 0, 0, 88)
+daftarScroll.Size                   = UDim2.new(1, 0, 1, -88)
+daftarScroll.BackgroundColor3       = Color3.fromRGB(28, 28, 40)
+daftarScroll.BorderSizePixel        = 0
+daftarScroll.ScrollBarThickness     = 4
+daftarScroll.ScrollingDirection     = Enum.ScrollingDirection.Y
+daftarScroll.AutomaticCanvasSize    = Enum.AutomaticSize.Y
+daftarScroll.CanvasSize             = UDim2.new(0, 0, 0, 0)
+daftarScroll.ClipsDescendants       = true
+daftarScroll.Parent                 = halamanLokasi
+
+local daftarSudut = Instance.new("UICorner")
+daftarSudut.CornerRadius = UDim.new(0, 8)
+daftarSudut.Parent = daftarScroll
+
+local daftarLayout = Instance.new("UIListLayout")
+daftarLayout.Padding    = UDim.new(0, 4)
+daftarLayout.SortOrder  = Enum.SortOrder.LayoutOrder
+daftarLayout.Parent     = daftarScroll
+
+local daftarPadding = Instance.new("UIPadding")
+daftarPadding.PaddingTop    = UDim.new(0, 4)
+daftarPadding.PaddingBottom = UDim.new(0, 4)
+daftarPadding.PaddingLeft   = UDim.new(0, 2)
+daftarPadding.PaddingRight  = UDim.new(0, 2)
+daftarPadding.Parent        = daftarScroll
+
+local function setStatus(teks)
+    statusSinkron.Text = teks
+end
+
+local function buatBarisLokasi(index, data)
+    local baris = Instance.new("Frame")
+    baris.Size             = UDim2.new(1, -4, 0, 28)
+    baris.BackgroundColor3 = Color3.fromRGB(44, 44, 62)
+    baris.BorderSizePixel  = 0
+    baris.LayoutOrder      = index
+    baris.Parent           = daftarScroll
+
+    local barisSudut = Instance.new("UICorner")
+    barisSudut.CornerRadius = UDim.new(0, 6)
+    barisSudut.Parent = baris
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size             = UDim2.new(1, -84, 1, 0)
+    lbl.Position         = UDim2.new(0, 8, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Font             = Enum.Font.Gotham
+    lbl.TextSize         = 12
+    lbl.TextColor3       = Color3.fromRGB(220, 220, 235)
+    lbl.TextXAlignment   = Enum.TextXAlignment.Left
+    lbl.TextTruncate     = Enum.TextTruncate.AtEnd
+    lbl.Text             = data.n
+    lbl.Parent           = baris
+
+    local bTp = Instance.new("TextButton")
+    bTp.Size             = UDim2.new(0, 40, 1, -8)
+    bTp.Position         = UDim2.new(1, -76, 0, 4)
+    bTp.BackgroundColor3 = Color3.fromRGB(46, 155, 90)
+    bTp.BorderSizePixel  = 0
+    bTp.Font             = Enum.Font.GothamBold
+    bTp.TextSize         = 11
+    bTp.TextColor3       = Color3.fromRGB(255, 255, 255)
+    bTp.Text             = "TP"
+    bTp.Parent           = baris
+
+    local bTpSudut = Instance.new("UICorner")
+    bTpSudut.CornerRadius = UDim.new(0, 5)
+    bTpSudut.Parent = bTp
+
+    bTp.MouseButton1Click:Connect(function()
+        teleportKeLokasi(index)
+    end)
+
+    local bHapus = Instance.new("TextButton")
+    bHapus.Size             = UDim2.new(0, 24, 1, -8)
+    bHapus.Position         = UDim2.new(1, -28, 0, 4)
+    bHapus.BackgroundColor3 = Color3.fromRGB(160, 60, 60)
+    bHapus.BorderSizePixel  = 0
+    bHapus.Font             = Enum.Font.GothamBold
+    bHapus.TextSize         = 11
+    bHapus.TextColor3       = Color3.fromRGB(255, 255, 255)
+    bHapus.Text             = "✕"
+    bHapus.Parent           = baris
+
+    local bHapusSudut = Instance.new("UICorner")
+    bHapusSudut.CornerRadius = UDim.new(0, 5)
+    bHapusSudut.Parent = bHapus
+
+    bHapus.MouseButton1Click:Connect(function()
+        table.remove(daftarLokasi, index)
+        perbaruiDaftar()
+        simpanKeServer()
+    end)
+end
+
+perbaruiDaftar = function()
+    for _, anak in ipairs(daftarScroll:GetChildren()) do
+        if anak:IsA("Frame") then
+            anak:Destroy()
+        end
+    end
+    for i, data in ipairs(daftarLokasi) do
+        buatBarisLokasi(i, data)
+    end
+end
+
+simpanKeServer = function()
+    if not remoteLokasi then
+        setStatus("⚠ Server script belum terpasang — hanya sesi ini")
+        return
+    end
+    setStatus("Menyimpan...")
+
+    local salinan = {}
+    for i, v in ipairs(daftarLokasi) do
+        salinan[i] = { n = v.n, x = v.x, y = v.y, z = v.z }
+    end
+
+    task.spawn(function()
+        local ok, hasil = pcall(function()
+            return remoteLokasi:InvokeServer("simpan", salinan)
+        end)
+        if ok and hasil == true then
+            setStatus("✓ Tersimpan permanen")
+        else
+            setStatus("✗ Gagal menyimpan ke server")
+        end
+    end)
+end
+
+tombolSimpanLokasi.MouseButton1Click:Connect(function()
+    local pos
+    if freecamAktif then
+        pos = posNow                                  -- simpan posisi kamera
+    else
+        local root = dapatkanRoot()
+        if not root then
+            setStatus("✗ Karakter tidak ditemukan")
+            return
+        end
+        pos = root.Position                           -- simpan posisi karakter
+    end
+
+    if #daftarLokasi >= CONFIG.MAKS_LOKASI then
+        setStatus("✗ Maksimal " .. CONFIG.MAKS_LOKASI .. " lokasi")
+        return
+    end
+
+    local nama = kotakNama.Text
+    if nama == "" then
+        nama = "Lokasi " .. tostring(#daftarLokasi + 1)
+    end
+
+    table.insert(daftarLokasi, { n = nama, x = pos.X, y = pos.Y, z = pos.Z })
+    kotakNama.Text = ""
+    perbaruiDaftar()
+    simpanKeServer()
+end)
+
+--------------------------- HALAMAN : KAM TP ---------------------------
+local tombolTpKamera = Instance.new("TextButton")
+tombolTpKamera.Name             = "TombolTpKamera"
+tombolTpKamera.Size             = UDim2.new(1, 0, 0, 36)
+tombolTpKamera.Position         = UDim2.new(0, 0, 0, 0)
+tombolTpKamera.BackgroundColor3 = Color3.fromRGB(150, 70, 70)
+tombolTpKamera.BorderSizePixel  = 0
+tombolTpKamera.Font             = Enum.Font.GothamBold
+tombolTpKamera.TextSize         = 14
+tombolTpKamera.TextColor3       = Color3.fromRGB(255, 255, 255)
+tombolTpKamera.Parent           = halamanKam
+
+local tpSudut = Instance.new("UICorner")
+tpSudut.CornerRadius = UDim.new(0, 8)
+tpSudut.Parent = tombolTpKamera
+
+local penjelasanKam = Instance.new("TextLabel")
+penjelasanKam.Name                   = "Penjelasan"
+penjelasanKam.Size                   = UDim2.new(1, 0, 0, 80)
+penjelasanKam.Position               = UDim2.new(0, 0, 0, 44)
+penjelasanKam.BackgroundTransparency = 1
+penjelasanKam.Font                   = Enum.Font.Gotham
+penjelasanKam.TextSize               = 11
+penjelasanKam.TextColor3             = Color3.fromRGB(160, 160, 180)
+penjelasanKam.TextWrapped            = true
+penjelasanKam.TextXAlignment         = Enum.TextXAlignment.Left
+penjelasanKam.TextYAlignment         = Enum.TextYAlignment.Top
+penjelasanKam.Text                   = "ON + Freecam aktif → tekan [C] untuk memindahkan karakter ke posisi kamera.\n\nJika titik berada di udara, karakter akan melayang di situ. Kamera tidak ikut bergerak."
+penjelasanKam.Parent                 = halamanKam
+
+tombolTpKamera.MouseButton1Click:Connect(function()
+    setTpKamera(not tpKameraAktif)
+end)
+
+--=========================== STATUS TOMBOL ====================================
 function perbaruiTombol()
     if freecamAktif then
         tombolFreecam.Text             = "FREE CAM : ON"
@@ -566,6 +932,14 @@ function perbaruiTombol()
     else
         tombolPagi.Text             = "AUTO PAGI : OFF"
         tombolPagi.BackgroundColor3 = Color3.fromRGB(150, 70, 70)
+    end
+
+    if tpKameraAktif then
+        tombolTpKamera.Text             = "TP KE KAMERA [C] : ON"
+        tombolTpKamera.BackgroundColor3 = Color3.fromRGB(46, 155, 90)
+    else
+        tombolTpKamera.Text             = "TP KE KAMERA [C] : OFF"
+        tombolTpKamera.BackgroundColor3 = Color3.fromRGB(150, 70, 70)
     end
 end
 
@@ -604,7 +978,10 @@ end)
 --========================= MEMBACA INPUT ======================================
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-    tombolTekan[input.KeyCode] = true
+
+    if not gameProcessed then
+        tombolTekan[input.KeyCode] = true
+    end
 
     if gameProcessed then return end
 
@@ -617,6 +994,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         setAutoPagi(not autoPagiAktif)
     elseif input.KeyCode == Enum.KeyCode.G then
         kameraKeKarakter()
+    elseif input.KeyCode == Enum.KeyCode.C then
+        teleportKeKamera()
     end
 end)
 
@@ -681,5 +1060,27 @@ Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
 end)
 
 --=========================== INISIALISASI =====================================
+pilihTab("KONTROL")
+perbaruiDaftar()
 screenGui.Enabled = menuTerbuka
 perbaruiTombol()
+
+-- muat lokasi tersimpan dari server (DataStore)
+task.spawn(function()
+    remoteLokasi = ReplicatedStorage:WaitForChild("FreecamLokasiRemote", 10)
+
+    if remoteLokasi then
+        local ok, data = pcall(function()
+            return remoteLokasi:InvokeServer("muat")
+        end)
+        if ok and type(data) == "table" then
+            daftarLokasi = data
+            setStatus("✓ " .. #daftarLokasi .. " lokasi dimuat")
+        else
+            setStatus("✗ Gagal memuat lokasi")
+        end
+    else
+        setStatus("⚠ Tanpa server script — simpan hanya sesi ini")
+    end
+    perbaruiDaftar()
+end)
