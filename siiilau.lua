@@ -9,23 +9,19 @@
                       baris 1: DisplayName (@username) - putih
                       baris 2: WS 0,00 | JP 0,00 - biru
                       UKURAN SAMA, update tiap 0.1 detik (RINGAN)
-                      - WS = kecepatan gerak real (diam = 0,00)
-                      - JP = muncul saat NAIK/melompat (velocity Y)
-                      -> karakter DIAM = semuanya 0,00
-                      BATAS JARAK: maksimal 100 stud dari karakter
-                      utama (di luar itu info otomatis hilang dan
-                      TIDAK dihitung = hemat performa).
-                    Hitbox Players (kotak hijau LED, visual saja,
-                    TANPA batas jarak - normal seperti biasa)
+                      BATAS JARAK: maksimal 100 stud
+                    Hitbox Players (kotak hijau LED, visual saja)
     Visual        : Hide Other Players [R] | Hide All Effects
                     Low Graphic Mode (+ remove fog)
-    Environment   : Nilai Jam (step 15 menit) -> Brightness
-                    JAM TERKUNCI: nilai yang di-set TIDAK berubah
-                    meski waktu asli game berjalan.
+    Environment   : Jam (Brightness) [ON/OFF], step 15 menit
+                    ON  = jam terkunci + brightness ikut jam
+                    OFF = jam & brightness kembali PERSIS seperti
+                          kondisi sebelum dinyalakan (snapshot)
     Bottom        : Reset Script | Hapus Script / Keluar
     Hotkeys       : F (buka/tutup GUI) | Q | C | R
     Notifikasi    : Setiap fitur ON/OFF muncul notif kecil.
-    Font          : Normal (Gotham) - terbaca di semua perangkat.
+    ATURAN        : SEMUA toggle OFF = kondisi asli dikembalikan
+                    100% (tidak ada sisa efek yang tertinggal)
     OPTIMASI      : - interval info 0.1 detik
                     - tanpa scan voxel / raycast (anti lag)
                     - culling jarak 100 stud (skip hitung stat)
@@ -36,8 +32,8 @@
 local DEFAULT_SPEED = 17.25
 local DEFAULT_JUMP  = 52.25
 local STEP          = 0.25
-local INFO_INTERVAL = 0.1   -- update WS/JP tiap 0.1 detik (ringan, tetap terasa realtime)
-local INFO_MAX_DIST = 100   -- info pemain lain muncul maks 100 stud (~100 langkah) dari karakter utama
+local INFO_INTERVAL = 0.1
+local INFO_MAX_DIST = 100
 local LOCK_TIME     = true  -- true = waktu game dibekukan di jam pilihanmu
                             -- false = waktu game tetap jalan, brightness tetap dari jam pilihanmu
 
@@ -78,7 +74,6 @@ local function new(class, props, parent)
     return inst
 end
 local function fmt(v) return string.format("%.2f", v) end
--- format Indonesia: 2 digit di belakang KOMA -> "0,00", "52,25", "18,00"
 local function fmt2(v)
     if type(v) ~= "number" or v ~= v then return "0,00" end
     return (string.format("%.2f", v):gsub("%.", ","))
@@ -280,7 +275,7 @@ local rHideF = addRow("Hide All Effects",       {toggle = true})
 local rLowG  = addRow("Low Graphic + No Fog",   {toggle = true})
 
 addSection("Environment")
-local rClock = addRow("Nilai Jam (Brightness)", {value = true})
+local rClock = addRow("Jam (Brightness)", {value = true, toggle = true})  -- REVISI: ada ON/OFF
 
 --═══════════════ STATE ═══════════════
 local S = {
@@ -288,7 +283,8 @@ local S = {
     jumpOn = false,  jumpValue = DEFAULT_JUMP,
     crosshairOn = false, infoOn = false, hitboxOn = false,
     hidePlayersOn = false, hideFxOn = false, lowGfxOn = false,
-    clockValue = Lighting.ClockTime,   -- jam pilihan USER (terkunci)
+    clockOn = false, clockTouched = false,           -- REVISI: state ON/OFF jam
+    clockValue = Lighting.ClockTime,
 }
 local orig = {brightness = Lighting.Brightness, clockTime = Lighting.ClockTime}
 
@@ -388,10 +384,6 @@ local function cleanupHitbox(char)
     end
 end
 
--- NILAI REAL & AKTIF (SANGAT RINGAN - tidak ada voxel/raycast):
--- WS = kecepatan gerak horizontal dari velocity (diam = 0,00)
--- JP = muncul saat NAIK (melompat) via velocity Y
--- -> karakter DIAM = WS 0,00 | JP 0,00
 local function getRealStats(char, root)
     local ws, jp = 0, 0
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -399,9 +391,7 @@ local function getRealStats(char, root)
     if root then
         local v = root.AssemblyLinearVelocity
         ws = Vector3.new(v.X, 0, v.Z).Magnitude
-        if ws < 0.05 then ws = 0 end          -- hapus jitter fisika saat diam
-        -- MELOMPAT: deteksi dari kecepatan naik ke atas (state pemain
-        -- lain sering tidak tereplikasi)
+        if ws < 0.05 then ws = 0 end
         if v.Y > 3 then
             pcall(function() jp = (hum.UseJumpPower and hum.JumpPower) or hum.JumpHeight end)
         end
@@ -410,8 +400,6 @@ local function getRealStats(char, root)
 end
 
 local function attachInfo(plr, char)
-    -- Tempel ke bagian karakter mana pun yang sudah ada di klien:
-    -- Head -> HumanoidRootPart -> BasePart pertama yang tersedia.
     local head = char:FindFirstChild("Head")
         or char:FindFirstChild("HumanoidRootPart")
         or char:FindFirstChildWhichIsA("BasePart")
@@ -422,9 +410,8 @@ local function attachInfo(plr, char)
         Size = UDim2.fromOffset(220, 48),
         StudsOffset = Vector3.new(0, 2.9, 0),
         AlwaysOnTop = true,
-        MaxDistance = INFO_MAX_DIST,   -- cadangan: billboard auto-hilang di luar jarak
+        MaxDistance = INFO_MAX_DIST,
     }, char)
-    -- BARIS 1 & 2: UKURAN SAMA (TextSize 14, GothamBold, tinggi 22)
     local name = new("TextLabel", {
         Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1,
         Font = Enum.Font.GothamBold, TextSize = 14,
@@ -465,7 +452,6 @@ end
 
 --═══════════════ SYNC DISPLAYS (dipanggil tiap 0.1s, OPTIMIZED) ═══════════════
 local function syncDisplays()
-    -- posisi karakter utama diambil SEKALI per siklus (hemat)
     local myChar = LocalPlayer.Character
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local myPos = myRoot and myRoot.Position
@@ -478,8 +464,6 @@ local function syncDisplays()
                 if S.infoOn then
                     local root = char:FindFirstChild("HumanoidRootPart")
                         or char:FindFirstChildWhichIsA("BasePart")
-                    -- CULLING JARAK: di luar 100 stud -> billboard OFF dan
-                    -- WS/JP TIDAK dihitung sama sekali (hemat performa)
                     if myPos and root
                         and (root.Position - myPos).Magnitude > INFO_MAX_DIST then
                         local ref = infoRefs[plr]
@@ -490,7 +474,6 @@ local function syncDisplays()
                         end
                     else
                         local ref = infoRefs[plr]
-                        -- self-healing: buat ulang jika hilang/respawn/streamed-in
                         if not ref or ref.char ~= char or not ref.bb.Parent or not ref.stat.Parent then
                             local newRef = attachInfo(plr, char)
                             if newRef then
@@ -504,7 +487,6 @@ local function syncDisplays()
                             if not ref.bb.Enabled then ref.bb.Enabled = true end
                             local ws, jp = getRealStats(char, root)
                             local txt = "WS " .. fmt2(ws) .. " | JP " .. fmt2(jp)
-                            -- Text hanya di-set jika nilainya berubah (anti re-render)
                             if txt ~= ref.last then
                                 ref.stat.Text = txt
                                 ref.last = txt
@@ -515,7 +497,7 @@ local function syncDisplays()
                     infoRefs[plr] = nil
                     pcall(cleanupInfo, char)
                 end
-                ---- HITBOX (normal, tanpa batas jarak) ----
+                ---- HITBOX ----
                 if S.hitboxOn then
                     if not char:FindFirstChild("PH_Glow") then
                         attachHitbox(plr, char)
@@ -529,6 +511,8 @@ local function syncDisplays()
 end
 
 --═══════════════ HIDE OTHER PLAYERS (LOKAL SAJA) ═══════════════
+local hideLoopId = 0  -- REVISI: anti duplikat loop
+
 local function applyHide()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then
@@ -543,16 +527,17 @@ end
 
 local function setHidePlayers(on)
     S.hidePlayersOn = on
+    hideLoopId += 1                      -- REVISI: bunuh loop lama
+    local myId = hideLoopId
     if on then
         task.spawn(function()
-            while S.hidePlayersOn do
+            while S.hidePlayersOn and myId == hideLoopId do
                 applyHide()
                 task.wait(0.2)
             end
         end)
-    else
-        applyHide()
     end
+    applyHide()                          -- REVISI: OFF = langsung kembali terlihat
     styleToggle(rHideP.toggle, on)
     notify("Hide Other Players", on)
 end
@@ -593,12 +578,17 @@ end
 
 --═══════════════ LOW GRAPHIC MODE (+ REMOVE FOG) ═══════════════
 local savedGfx, gfxConn = {}, nil
+local savedQuality, gfxApplied = nil, false  -- REVISI: simpan quality asli
 
 local function setLowGfx(on)
     S.lowGfxOn = on
     if on then
+        gfxApplied = true
+        savedQuality = nil
+        pcall(function() savedQuality = settings().Rendering.QualityLevel end)  -- REVISI: simpan asli
         pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
-        savedGfx.shadows, savedGfx.fogStart, savedGfx.fogEnd = Lighting.GlobalShadows, Lighting.FogStart, Lighting.FogEnd
+        savedGfx.shadows = Lighting.GlobalShadows
+        savedGfx.fogStart, savedGfx.fogEnd = Lighting.FogStart, Lighting.FogEnd
         Lighting.GlobalShadows = false
         Lighting.FogStart, Lighting.FogEnd = 9e9, 9e9
         pcall(function()
@@ -615,8 +605,14 @@ local function setLowGfx(on)
         gfxConn = Lighting.ChildAdded:Connect(function(d)
             if S.lowGfxOn and d:IsA("PostEffect") then savedGfx[d] = d.Enabled; d.Enabled = false end
         end)
-    else
-        pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic end)
+    elseif gfxApplied then  -- REVISI: hanya restore kalau memang pernah ON
+        pcall(function()
+            if savedQuality ~= nil then
+                settings().Rendering.QualityLevel = savedQuality  -- kembali ke level asli
+            else
+                settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
+            end
+        end)
         if savedGfx.shadows  ~= nil then Lighting.GlobalShadows = savedGfx.shadows end
         if savedGfx.fogStart ~= nil then Lighting.FogStart = savedGfx.fogStart end
         if savedGfx.fogEnd   ~= nil then Lighting.FogEnd = savedGfx.fogEnd end
@@ -630,13 +626,14 @@ local function setLowGfx(on)
         end
         savedGfx = {}
         if gfxConn then gfxConn:Disconnect() gfxConn = nil end
+        gfxApplied = false
     end
     styleToggle(rLowG.toggle, on)
     notify("Low Graphic Mode", on)
 end
 
---═══════════════ NILAI JAM TERKUNCI -> BRIGHTNESS ═══════════════
-local clockChangedByUs = false
+--═══════════════ JAM TERKUNCI [ON/OFF] -> BRIGHTNESS ═══════════════
+local clockSnap = nil  -- REVISI: snapshot lighting saat fitur dinyalakan
 
 local function applyLockedClock()
     pcall(function() Lighting.Brightness = brightnessFromTime(S.clockValue) end)
@@ -645,12 +642,37 @@ local function applyLockedClock()
     end
 end
 
+local function setClock(on)
+    if on then
+        if not S.clockOn then
+            -- SNAPSHOT: simpan jam & brightness SAAT INI supaya OFF
+            -- bisa mengembalikan 100% seperti semula
+            clockSnap = {ct = Lighting.ClockTime, br = Lighting.Brightness}
+            S.clockTouched = true
+        end
+        S.clockOn = true
+        applyLockedClock()
+    else
+        S.clockOn = false
+        if clockSnap then
+            pcall(function() Lighting.ClockTime = clockSnap.ct end)
+            pcall(function() Lighting.Brightness = clockSnap.br end)
+            clockSnap = nil
+        end
+    end
+    styleToggle(rClock.toggle, S.clockOn)
+    notify("Jam / Brightness", S.clockOn)
+end
+
 local function bumpClock(d)
     S.clockValue = (S.clockValue + d) % 24
     if S.clockValue < 0 then S.clockValue += 24 end
     rClock.val.Text = formatClock(S.clockValue)
-    clockChangedByUs = true
-    applyLockedClock()
+    if not S.clockOn then
+        setClock(true)   -- REVISI: ubah jam saat OFF -> otomatis ON (lock aktif)
+    else
+        applyLockedClock()
+    end
 end
 
 --═══════════════ RESET SCRIPT ═══════════════
@@ -661,11 +683,14 @@ local function resetScript()
     syncDisplays()
     styleToggle(rInfo.toggle, false); styleToggle(rHit.toggle, false)
     setHidePlayers(false); setHideFx(false); setLowGfx(false)
+    setClock(false)   -- REVISI: lewat toggle (snapshot dikembalikan dulu)
     S.speedValue, S.jumpValue = DEFAULT_SPEED, DEFAULT_JUMP
     S.clockValue = orig.clockTime
-    clockChangedByUs = false
-    pcall(function() Lighting.ClockTime = orig.clockTime end)
-    pcall(function() Lighting.Brightness = orig.brightness end)
+    if S.clockTouched then
+        pcall(function() Lighting.ClockTime = orig.clockTime end)
+        pcall(function() Lighting.Brightness = orig.brightness end)
+        S.clockTouched = false
+    end
     rClock.val.Text = formatClock(S.clockValue)
     rSpeed.val.Text, rJump.val.Text = fmt(S.speedValue), fmt(S.jumpValue)
     main.Position = UDim2.new(0.5, -120, 0.5, -175)
@@ -683,13 +708,13 @@ local function unloadScript()
     S.infoOn, S.hitboxOn = false, false
     syncDisplays()
     setCrosshair(false)
-    S.hidePlayersOn = false
+    setHidePlayers(false)          -- REVISI: lewat fungsi (LTM dikembalikan)
     setHideFx(false); setLowGfx(false)
-    applyHide()
-    if clockChangedByUs then
+    setClock(false)
+    if S.clockTouched then
         pcall(function() Lighting.ClockTime = orig.clockTime end)
+        pcall(function() Lighting.Brightness = orig.brightness end)
     end
-    pcall(function() Lighting.Brightness = orig.brightness end)
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     conns = {}
     gui:Destroy()
@@ -714,6 +739,7 @@ end)
 rHideP.toggle.MouseButton1Click:Connect(function() setHidePlayers(not S.hidePlayersOn) end)
 rHideF.toggle.MouseButton1Click:Connect(function() setHideFx(not S.hideFxOn) end)
 rLowG.toggle.MouseButton1Click:Connect(function() setLowGfx(not S.lowGfxOn) end)
+rClock.toggle.MouseButton1Click:Connect(function() setClock(not S.clockOn) end)
 
 local function bumpSpeed(d)
     S.speedValue = math.clamp(S.speedValue + d, 0, 500)
@@ -794,14 +820,14 @@ addConn(RunService.Heartbeat:Connect(function(dt)
         end
     end
     accDisp += dt
-    if accDisp >= INFO_INTERVAL then    -- update tiap 0.1 detik (ringan)
+    if accDisp >= INFO_INTERVAL then
         accDisp = 0
         syncDisplays()
     end
     accClock += dt
     if accClock >= 0.25 then
         accClock = 0
-        if clockChangedByUs then
+        if S.clockOn then        -- REVISI: hanya paksa saat ON; OFF = game jalan normal lagi
             applyLockedClock()
         end
     end
@@ -809,6 +835,10 @@ end))
 
 --═══════════════ REAPPLY SAAT RESPWN ═══════════════
 addConn(LocalPlayer.CharacterAdded:Connect(function(char)
+    -- REVISI: buang capture humanoid lama agar restore selalu akurat
+    for h in pairs(savedHum) do
+        if h.Parent ~= char then restoreHum(h) end
+    end
     if char:WaitForChild("Humanoid", 10) then
         task.wait(0.15)
         applyMovement()
