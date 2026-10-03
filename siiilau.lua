@@ -1,6 +1,11 @@
 --[[=============================================================
-    ⛓️Siiilau⚡ - ALL-IN-ONE HUB (MERGED v1.0)
+    ⛓️Siiilau⚡ - ALL-IN-ONE HUB (MERGED v1.1)
     =============================================================
+    PERUBAHAN v1.1 :
+      - FIX: Speed OFF tidak lagi membuat karakter tidak
+        bisa jalan (dulu cuma bisa lompat)
+      - "Auto Pagi" DIHAPUS -> digabung ke "Auto Brightness [T]"
+        (T = ON/OFF kunci Jam + Brightness)
     PERUBAHAN v2.3 :
       - Frame & tampilan fitur 2x LEBIH BESAR
       - Fitur LOKASI (simpan / TP / hapus) DIHAPUS
@@ -13,15 +18,16 @@
     CAMERA        : FREE CAM [CAPS LOCK]
                     WASD = gerak | Q/E = turun/naik
                     Space = cepat | Mouse = arah (saat GUI tertutup)
-                    Auto Pagi [T] | Kamera->Karakter [G]
+                    Auto Brightness [T] | Kamera->Karakter [G]
                     TP Karakter->Kamera [C] (toggle dulu)
                     TP Jarak Mundur : BISA DIATUR (+/-)
                     -> 0 = tepat di kamera, makin besar = makin
                        jauh di BELAKANG kamera (karakter tak menutupi view)
     VISUAL        : Hide Other Players [R] | Hide All Effects
                     Low Graphic + No Fog
-    ENVIRONMENT   : Jam (Brightness) step 15 menit, ON/OFF snapshot
-    HOTKEYS       : F=GUI | CAPSLOCK=Freecam | T=Pagi | G=KeKarakter
+    ENVIRONMENT   : Auto Brightness (Jam) step 15 menit, ON/OFF snapshot
+    HOTKEYS       : F=GUI | CAPSLOCK=Freecam | T=AutoBrightness
+                    G=KeKarakter
                     C=TP Kamera (atau Info Players saat freecam OFF)
                     Q=Speed (saat freecam OFF) | R=Hide Players
     ===============================================================]]
@@ -40,7 +46,6 @@ local CONFIG = {
     SENSITIVITAS_MOUSE = 0.25,
     BATAS_PITCH        = 85,
     KEHALUSAN          = 10,
-    JAM_PAGI           = 7,
     INTERVAL_STREAM    = 1,
     DURASI_EFEK_MATI   = 0.6,
     TP_INSTAN          = true,
@@ -124,7 +129,7 @@ pcall(function() gui.Parent = (type(gethui) == "function" and gethui()) or game:
 if not gui.Parent then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 local main = new("Frame", {
-    Size = UDim2.fromOffset(480, 800),              -- 2x (dari 240x400)
+    Size = UDim2.fromOffset(480, 800),
     Position = UDim2.new(0.5, -240, 0.5, -400),
     BackgroundColor3 = C.bg, BorderSizePixel = 0, Active = true,
 }, gui)
@@ -314,7 +319,6 @@ local rHit  = addRow("Hitbox Players",          {toggle = true})
 
 addSection("Camera / Freecam")
 local rFree    = addRow("Free Cam [CAPS LOCK]",    {toggle = true})
-local rPagi    = addRow("Auto Pagi [T]",           {toggle = true})
 local rTpKam   = addRow("TP Karakter->Kamera [C]", {toggle = true})
 local rTpJarak = addRow("TP Jarak Mundur",         {value = true})
 local rKeKar   = addRow("Kamera -> Karakter [G]",  {action = "GO"})
@@ -328,7 +332,7 @@ local rHideF = addRow("Hide All Effects",       {toggle = true})
 local rLowG  = addRow("Low Graphic + No Fog",   {toggle = true})
 
 addSection("Environment")
-local rClock = addRow("Jam (Brightness)", {value = true, toggle = true})
+local rClock = addRow("Auto Brightness [T]", {value = true, toggle = true})
 
 --═══════════════ STATE ═══════════════
 local S = {
@@ -350,7 +354,7 @@ local function getHum()
 end
 
 -- freecam state
-local freecamAktif, autoPagiAktif, tpKameraAktif = false, false, false
+local freecamAktif, tpKameraAktif = false, false
 local adaPosisiTersimpan = false
 local fcTarget = Vector3.zero
 local yaw, pitch = 0, 0
@@ -370,12 +374,27 @@ local waktuMulai, durasiMeluncur = 0, 0
 local efekKoreksi, tweenEfek = nil, nil
 local hitamPutihAktif = false
 
---═══════════════ MOVEMENT ═══════════════
+--═══════════════ MOVEMENT (FIX v1.1) ═══════════════
 local savedHum = {}
+local FALLBACK_WS  = 16   -- kecepatan aman kalau nilai asli tidak valid (0)
+local lastWsNormal = 16   -- WalkSpeed normal terakhir yang tercatat
 
 local function captureHum(h)
     if savedHum[h] then return end
-    local rec = {ws = h.WalkSpeed, ujp = h.UseJumpPower, jp = h.JumpPower, ss = nil, jh = nil}
+
+    local ws0 = h.WalkSpeed
+    if ws0 == nil or ws0 < 1 then
+        -- JANGAN simpan 0 sebagai "kecepatan asli"
+        -- (ini penyebab karakter tak bisa jalan setelah Speed OFF)
+        ws0 = (lastWsNormal >= 1) and lastWsNormal or FALLBACK_WS
+    elseif not S.speedOn then
+        lastWsNormal = ws0
+    end
+
+    local jp0 = h.JumpPower
+    if jp0 == nil or jp0 < 1 then jp0 = 50 end
+
+    local rec = {ws = ws0, ujp = h.UseJumpPower, jp = jp0, ss = nil, jh = nil}
     pcall(function() rec.ss = h.SwimSpeed end)
     pcall(function() rec.jh = h.JumpHeight end)
     savedHum[h] = rec
@@ -384,14 +403,41 @@ end
 local function restoreHum(h)
     local rec = savedHum[h]
     if not rec then return end
-    pcall(function()
-        h.WalkSpeed    = rec.ws
-        h.UseJumpPower = rec.ujp
-        h.JumpPower    = rec.jp
-        if rec.jh then h.JumpHeight = rec.jh end
-        if rec.ss then h.SwimSpeed  = rec.ss end
-    end)
+    pcall(function() h.WalkSpeed    = rec.ws  end)
+    pcall(function() h.UseJumpPower = rec.ujp end)
+    pcall(function() h.JumpPower    = rec.jp  end)
+    if rec.jh then pcall(function() h.JumpHeight = rec.jh end) end
+    if rec.ss then pcall(function() h.SwimSpeed  = rec.ss end) end
     savedHum[h] = nil
+
+    -- PENGAMAN 1: kalau hasil restore masih 0, paksa nilai aman
+    if h.WalkSpeed < 1 then
+        pcall(function()
+            h.WalkSpeed = (rec.ws and rec.ws >= 1) and rec.ws or FALLBACK_WS
+        end)
+    end
+end
+
+-- PENGAMAN 2: selama 3 detik setelah dimatikan, kalau WalkSpeed
+-- dibuat 0 lagi (oleh game / anti-cheat), langsung dikembalikan
+local jagaId = 0
+local function jagaGerak(durasi)
+    jagaId += 1
+    local myId = jagaId
+    task.spawn(function()
+        local t0 = os.clock()
+        while os.clock() - t0 < (durasi or 3) and myId == jagaId do
+            if not gui.Parent then return end
+            if S.speedOn then return end
+            local h = getHum()
+            if h and h.Health > 0 and not h.SeatPart and h.WalkSpeed < 1 then
+                pcall(function()
+                    h.WalkSpeed = (lastWsNormal >= 1) and lastWsNormal or FALLBACK_WS
+                end)
+            end
+            task.wait(0.25)
+        end
+    end)
 end
 
 local function applyMovement()
@@ -418,6 +464,7 @@ local function setSpeed(on)
         local h = getHum()
         if h then restoreHum(h) end
         if S.jumpOn then applyMovement() end
+        jagaGerak(3) -- << pengaman anti WalkSpeed 0
     end
     styleToggle(rSpeed.toggle, on)
     notify("Speed & Swim", on)
@@ -431,6 +478,7 @@ local function setJump(on)
         local h = getHum()
         if h then restoreHum(h) end
         if S.speedOn then applyMovement() end
+        jagaGerak(3)
     end
     styleToggle(rJump.toggle, on)
     notify("Jump Power", on)
@@ -708,7 +756,7 @@ local function setLowGfx(on)
     notify("Low Graphic Mode", on)
 end
 
---═══════════════ JAM TERKUNCI [ON/OFF] ═══════════════
+--═══════════════ AUTO BRIGHTNESS [ON/OFF] ═══════════════
 local clockSnap = nil
 
 local function applyLockedClock()
@@ -735,17 +783,13 @@ local function setClock(on)
         end
     end
     styleToggle(rClock.toggle, S.clockOn)
-    notify("Jam / Brightness", S.clockOn)
+    notify("Auto Brightness", S.clockOn)
 end
 
 local function bumpClock(d)
     S.clockValue = (S.clockValue + d) % 24
     if S.clockValue < 0 then S.clockValue += 24 end
     rClock.val.Text = formatClock(S.clockValue)
-    if autoPagiAktif then
-        autoPagiAktif = false
-        styleToggle(rPagi.toggle, false)
-    end
     if not S.clockOn then
         setClock(true)
     else
@@ -1100,7 +1144,7 @@ end
 
 local function perbaruiTombol()
     styleToggle(rFree.toggle,  freecamAktif)
-    styleToggle(rPagi.toggle,  autoPagiAktif)
+    styleToggle(rClock.toggle, S.clockOn)
     styleToggle(rTpKam.toggle, tpKameraAktif)
 end
 
@@ -1117,29 +1161,13 @@ local function setTpKamera(aktif)
     notify("TP Karakter -> Kamera", aktif)
 end
 
-local function setAutoPagi(aktif)
-    autoPagiAktif = aktif
-    local wasSilent = silent
-    silent = true
-    if aktif then
-        S.clockValue = CONFIG.JAM_PAGI
-        rClock.val.Text = formatClock(S.clockValue)
-        setClock(true)
-    else
-        setClock(false)
-    end
-    silent = wasSilent
-    styleToggle(rPagi.toggle, aktif)
-    notify("Auto Pagi", aktif)
-end
-
 --═══════════════ RESET SCRIPT ═══════════════
 local function resetScript()
     silent = true
     setSpeed(false); setJump(false); setCrosshair(false)
     setFreecam(false)
     setTpKamera(false)
-    setAutoPagi(false)
+    if S.clockOn then setClock(false) end
     S.infoOn, S.hitboxOn = false, false
     syncDisplays()
     styleToggle(rInfo.toggle, false); styleToggle(rHit.toggle, false)
@@ -1148,11 +1176,9 @@ local function resetScript()
     S.tpJarakMundur = CONFIG.TP_JARAK_MUNDUR
     rTpJarak.val.Text = fmt(S.tpJarakMundur)
     S.clockValue = orig.clockTime
-    if S.clockTouched then
-        pcall(function() Lighting.ClockTime = orig.clockTime end)
-        pcall(function() Lighting.Brightness = orig.brightness end)
-        S.clockTouched = false
-    end
+    pcall(function() Lighting.ClockTime = orig.clockTime end)
+    pcall(function() Lighting.Brightness = orig.brightness end)
+    S.clockTouched = false
     rClock.val.Text = formatClock(S.clockValue)
     rSpeed.val.Text, rJump.val.Text = fmt(S.speedValue), fmt(S.jumpValue)
     main.Position = UDim2.new(0.5, -240, 0.5, -400)
@@ -1174,7 +1200,6 @@ local function unloadScript()
     setHidePlayers(false)
     setHideFx(false)
     setLowGfx(false)
-    autoPagiAktif = false
     setClock(false)
     if S.clockTouched then
         pcall(function() Lighting.ClockTime = orig.clockTime end)
@@ -1205,7 +1230,6 @@ rHit.toggle.MouseButton1Click:Connect(function()
     notify("Hitbox Players", S.hitboxOn)
 end)
 rFree.toggle.MouseButton1Click:Connect(function() setFreecam(not freecamAktif) end)
-rPagi.toggle.MouseButton1Click:Connect(function() setAutoPagi(not autoPagiAktif) end)
 rTpKam.toggle.MouseButton1Click:Connect(function() setTpKamera(not tpKameraAktif) end)
 rHideP.toggle.MouseButton1Click:Connect(function() setHidePlayers(not S.hidePlayersOn) end)
 rHideF.toggle.MouseButton1Click:Connect(function() setHideFx(not S.hideFxOn) end)
@@ -1265,7 +1289,7 @@ addConn(UserInputService.InputBegan:Connect(function(input, processed)
     elseif kc == Enum.KeyCode.CapsLock then
         setFreecam(not freecamAktif)
     elseif kc == Enum.KeyCode.T then
-        setAutoPagi(not autoPagiAktif)
+        setClock(not S.clockOn)  -- T = Auto Brightness ON/OFF
     elseif kc == Enum.KeyCode.G then
         if kameraKeKarakter() then
             notify("Kamera -> Karakter")
@@ -1385,4 +1409,4 @@ rJump.val.Text    = fmt(S.jumpValue)
 rTpJarak.val.Text = fmt(S.tpJarakMundur)
 rClock.val.Text   = formatClock(S.clockValue)
 
-notify("⛓️Siiilau⚡ v1.0 siap")
+notify("⛓️Siiilau⚡ v1.1 siap")
