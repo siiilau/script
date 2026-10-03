@@ -1,5 +1,9 @@
 --[[=============================================================
-    ⛓️Siiilau⚡ - ALL-IN-ONE HUB (MERGED v2.2)
+    ⛓️Siiilau⚡ - ALL-IN-ONE HUB (MERGED v1.0)
+    =============================================================
+    PERUBAHAN v2.3 :
+      - Frame & tampilan fitur 2x LEBIH BESAR
+      - Fitur LOKASI (simpan / TP / hapus) DIHAPUS
     =============================================================
     MOVEMENT      : Speed & Swim [Q] (17.25, step 0.25)
                     Jump Power (52.25, step 0.25)
@@ -14,8 +18,6 @@
                     TP Jarak Mundur : BISA DIATUR (+/-)
                     -> 0 = tepat di kamera, makin besar = makin
                        jauh di BELAKANG kamera (karakter tak menutupi view)
-    LOKASI        : simpan / TP / hapus (DataStore opsional,
-                    butuh server script "FreecamLokasiServer")
     VISUAL        : Hide Other Players [R] | Hide All Effects
                     Low Graphic + No Fog
     ENVIRONMENT   : Jam (Brightness) step 15 menit, ON/OFF snapshot
@@ -49,26 +51,24 @@ local CONFIG = {
     JARAK_BELAKANG     = 10,
     TINGGI_KAMERA      = 4,
     SUDUT_TP           = -15,
-    MAKS_LOKASI        = 50,
 
-    -- BARU v2.2 : TP karakter ke kamera
-    TP_JARAK_MUNDUR    = 3,     -- default jarak di belakang kamera (stud)
-    TP_JARAK_STEP      = 0.5,   -- perubahan per klik +/-
-    TP_JARAK_MIN       = 0,     -- 0 = tepat di posisi kamera
+    -- TP karakter ke kamera
+    TP_JARAK_MUNDUR    = 3,
+    TP_JARAK_STEP      = 0.5,
+    TP_JARAK_MIN       = 0,
     TP_JARAK_MAKS      = 100,
 }
 local NAMA_BIND = "SiiilauFreecamRender"
 
 --═══════════════ LAYANAN & FONT ═══════════════
-local Players           = game:GetService("Players")
-local RunService        = game:GetService("RunService")
-local UserInputService  = game:GetService("UserInputService")
-local TweenService      = game:GetService("TweenService")
-local Lighting          = game:GetService("Lighting")
-local Workspace         = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local LocalPlayer       = Players.LocalPlayer
-local camera            = Workspace.CurrentCamera
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local Lighting         = game:GetService("Lighting")
+local Workspace        = game:GetService("Workspace")
+local LocalPlayer      = Players.LocalPlayer
+local camera           = Workspace.CurrentCamera
 
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_MAIN  = Enum.Font.Gotham
@@ -118,60 +118,60 @@ local function formatClock(t)
     return string.format("%02d:%02d", h, m)
 end
 
---═══════════════ GUI DASAR ═══════════════
+--═══════════════ GUI DASAR (2x LEBIH BESAR) ═══════════════
 local gui = new("ScreenGui", {Name = "SiiilauHub", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling})
 pcall(function() gui.Parent = (type(gethui) == "function" and gethui()) or game:GetService("CoreGui") end)
 if not gui.Parent then gui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 
 local main = new("Frame", {
-    Size = UDim2.fromOffset(240, 400),
-    Position = UDim2.new(0.5, -120, 0.5, -200),
+    Size = UDim2.fromOffset(480, 800),              -- 2x (dari 240x400)
+    Position = UDim2.new(0.5, -240, 0.5, -400),
     BackgroundColor3 = C.bg, BorderSizePixel = 0, Active = true,
 }, gui)
-new("UICorner", {CornerRadius = UDim.new(0, 10)}, main)
-new("UIStroke", {Color = C.purple, Thickness = 1, Transparency = 0.25}, main)
+new("UICorner", {CornerRadius = UDim.new(0, 20)}, main)
+new("UIStroke", {Color = C.purple, Thickness = 2, Transparency = 0.25}, main)
 
-local title = new("Frame", {Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = C.purpleD, BorderSizePixel = 0}, main)
-new("UICorner", {CornerRadius = UDim.new(0, 10)}, title)
-new("Frame", {Size = UDim2.new(1, 0, 0, 10), Position = UDim2.new(0, 0, 1, -10), BackgroundColor3 = C.purpleD, BorderSizePixel = 0}, title)
+local title = new("Frame", {Size = UDim2.new(1, 0, 0, 52), BackgroundColor3 = C.purpleD, BorderSizePixel = 0}, main)
+new("UICorner", {CornerRadius = UDim.new(0, 20)}, title)
+new("Frame", {Size = UDim2.new(1, 0, 0, 20), Position = UDim2.new(0, 0, 1, -20), BackgroundColor3 = C.purpleD, BorderSizePixel = 0}, title)
 new("TextLabel", {
     Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
-    Text = "⛓️Siiilau⚡", Font = FONT_TITLE, TextSize = 13, TextColor3 = C.white,
+    Text = "⛓️Siiilau⚡", Font = FONT_TITLE, TextSize = 26, TextColor3 = C.white,
 }, title)
 
 local scroll = new("ScrollingFrame", {
-    Position = UDim2.new(0, 5, 0, 29), Size = UDim2.new(1, -10, 1, -64),
+    Position = UDim2.new(0, 10, 0, 58), Size = UDim2.new(1, -20, 1, -128),
     BackgroundTransparency = 1, BorderSizePixel = 0,
-    ScrollBarThickness = 3, ScrollBarImageColor3 = C.purple,
+    ScrollBarThickness = 6, ScrollBarImageColor3 = C.purple,
     CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
 }, main)
-new("UIListLayout", {Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder}, scroll)
+new("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, scroll)
 
-local bottom = new("Frame", {Position = UDim2.new(0, 0, 1, -30), Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = C.panelD, BorderSizePixel = 0}, main)
-new("UICorner", {CornerRadius = UDim.new(0, 10)}, bottom)
+local bottom = new("Frame", {Position = UDim2.new(0, 0, 1, -60), Size = UDim2.new(1, 0, 0, 60), BackgroundColor3 = C.panelD, BorderSizePixel = 0}, main)
+new("UICorner", {CornerRadius = UDim.new(0, 20)}, bottom)
 local resetBtn = new("TextButton", {
-    Size = UDim2.new(0.5, -7, 1, -10), Position = UDim2.new(0, 4, 0, 5),
-    BackgroundColor3 = C.blue, BorderSizePixel = 0, Font = FONT_BTN, TextSize = 10,
+    Size = UDim2.new(0.5, -14, 1, -20), Position = UDim2.new(0, 8, 0, 10),
+    BackgroundColor3 = C.blue, BorderSizePixel = 0, Font = FONT_BTN, TextSize = 20,
     Text = "Reset Script", TextColor3 = C.white,
 }, bottom)
-new("UICorner", {CornerRadius = UDim.new(0, 7)}, resetBtn)
+new("UICorner", {CornerRadius = UDim.new(0, 14)}, resetBtn)
 local exitBtn = new("TextButton", {
-    Size = UDim2.new(0.5, -7, 1, -10), Position = UDim2.new(0.5, 3, 0, 5),
-    BackgroundColor3 = C.black, BorderSizePixel = 0, Font = FONT_BTN, TextSize = 10,
+    Size = UDim2.new(0.5, -14, 1, -20), Position = UDim2.new(0.5, 6, 0, 10),
+    BackgroundColor3 = C.black, BorderSizePixel = 0, Font = FONT_BTN, TextSize = 20,
     Text = "Hapus / Keluar", TextColor3 = C.red,
 }, bottom)
-new("UICorner", {CornerRadius = UDim.new(0, 7)}, exitBtn)
-new("UIStroke", {Color = C.red, Thickness = 1, Transparency = 0.6}, exitBtn)
+new("UICorner", {CornerRadius = UDim.new(0, 14)}, exitBtn)
+new("UIStroke", {Color = C.red, Thickness = 2, Transparency = 0.6}, exitBtn)
 
---═══════════════ NOTIFIKASI ═══════════════
+--═══════════════ NOTIFIKASI (2x) ═══════════════
 local notifHolder = new("Frame", {
     AnchorPoint = Vector2.new(0.5, 0),
-    Position = UDim2.new(0.5, 0, 0, 45),
-    Size = UDim2.fromOffset(260, 320),
+    Position = UDim2.new(0.5, 0, 0, 90),
+    Size = UDim2.fromOffset(520, 640),
     BackgroundTransparency = 1, ZIndex = 60,
 }, gui)
 new("UIListLayout", {
-    Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder,
+    Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder,
     HorizontalAlignment = Enum.HorizontalAlignment.Center,
 }, notifHolder)
 
@@ -182,12 +182,12 @@ local function notify(msg, state)
     local bgColor = (state == true) and C.blue or (state == false) and C.purpleD or C.purple
     local txt = (state == nil) and msg or (msg .. (state and " : ON" or " : OFF"))
     local n = new("TextLabel", {
-        Size = UDim2.fromOffset(180, 24), BackgroundColor3 = bgColor,
-        Font = FONT_BTN, TextSize = 11, TextColor3 = C.white,
+        Size = UDim2.fromOffset(360, 48), BackgroundColor3 = bgColor,
+        Font = FONT_BTN, TextSize = 22, TextColor3 = C.white,
         Text = txt, LayoutOrder = notifSeq, ZIndex = 60,
     }, notifHolder)
-    new("UICorner", {CornerRadius = UDim.new(0, 8)}, n)
-    new("UIStroke", {Color = C.purple, Thickness = 1, Transparency = 0.4}, n)
+    new("UICorner", {CornerRadius = UDim.new(0, 16)}, n)
+    new("UIStroke", {Color = C.purple, Thickness = 2, Transparency = 0.4}, n)
     task.spawn(function()
         n.BackgroundTransparency, n.TextTransparency = 1, 1
         TweenService:Create(n, TweenInfo.new(0.18), {BackgroundTransparency = 0.1, TextTransparency = 0}):Play()
@@ -214,13 +214,13 @@ crossLine(-16, -1, 12, 2)
 crossLine(  4, -1, 12, 2)
 crossLine(-1,  -1, 2, 2)
 
---═══════════════ PEMBANGUN UI ═══════════════
+--═══════════════ PEMBANGUN UI (2x) ═══════════════
 local order = 0
 local function addSection(text)
     order += 1
     new("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
-        Text = "• " .. text, Font = FONT_TITLE, TextSize = 11,
+        Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1,
+        Text = "• " .. text, Font = FONT_TITLE, TextSize = 22,
         TextColor3 = C.purple, TextXAlignment = Enum.TextXAlignment.Left,
         LayoutOrder = order,
     }, scroll)
@@ -228,8 +228,8 @@ end
 local function addHint(text)
     order += 1
     new("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 12), BackgroundTransparency = 1,
-        Text = text, Font = FONT_MAIN, TextSize = 8, TextColor3 = C.dim,
+        Size = UDim2.new(1, 0, 0, 24), BackgroundTransparency = 1,
+        Text = text, Font = FONT_MAIN, TextSize = 16, TextColor3 = C.dim,
         TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
         LayoutOrder = order,
     }, scroll)
@@ -239,59 +239,59 @@ local function addRow(labelText, opts)
     opts = opts or {}
     order += 1
     local row = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 22), BackgroundColor3 = C.panel,
+        Size = UDim2.new(1, 0, 0, 44), BackgroundColor3 = C.panel,
         BorderSizePixel = 0, LayoutOrder = order,
     }, scroll)
-    new("UICorner", {CornerRadius = UDim.new(0, 6)}, row)
+    new("UICorner", {CornerRadius = UDim.new(0, 12)}, row)
 
     local ref = {row = row}
-    local vshift = opts.toggle and 0 or 44
-    local lw = -46
-    if opts.value then lw = opts.toggle and -150 or -106 end
+    local vshift = opts.toggle and 0 or 88
+    local lw = -92
+    if opts.value then lw = opts.toggle and -300 or -212 end
     ref.label = new("TextLabel", {
-        Size = UDim2.new(1, lw, 1, 0), Position = UDim2.new(0, 6, 0, 0),
+        Size = UDim2.new(1, lw, 1, 0), Position = UDim2.new(0, 12, 0, 0),
         BackgroundTransparency = 1, Text = labelText,
-        Font = FONT_MAIN, TextSize = 9, TextColor3 = C.text,
+        Font = FONT_MAIN, TextSize = 18, TextColor3 = C.text,
         TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
     }, row)
 
     if opts.value then
         ref.minus = new("TextButton", {
-            Size = UDim2.new(0, 14, 1, -8), Position = UDim2.new(1, -142 + vshift, 0, 4),
+            Size = UDim2.new(0, 28, 1, -16), Position = UDim2.new(1, -284 + vshift, 0, 8),
             BackgroundColor3 = C.purpleD, BorderSizePixel = 0,
-            Text = "-", Font = FONT_BTN, TextSize = 11, TextColor3 = C.white,
+            Text = "-", Font = FONT_BTN, TextSize = 22, TextColor3 = C.white,
         }, row)
-        new("UICorner", {CornerRadius = UDim.new(0, 5)}, ref.minus)
+        new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.minus)
         ref.val = new("TextLabel", {
-            Size = UDim2.new(0, 40, 1, -8), Position = UDim2.new(1, -126 + vshift, 0, 4),
+            Size = UDim2.new(0, 80, 1, -16), Position = UDim2.new(1, -252 + vshift, 0, 8),
             BackgroundColor3 = C.black, BorderSizePixel = 0,
-            Text = "--", Font = FONT_MAIN, TextSize = 9, TextColor3 = C.white,
+            Text = "--", Font = FONT_MAIN, TextSize = 18, TextColor3 = C.white,
         }, row)
-        new("UICorner", {CornerRadius = UDim.new(0, 5)}, ref.val)
+        new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.val)
         ref.plus = new("TextButton", {
-            Size = UDim2.new(0, 14, 1, -8), Position = UDim2.new(1, -84 + vshift, 0, 4),
+            Size = UDim2.new(0, 28, 1, -16), Position = UDim2.new(1, -168 + vshift, 0, 8),
             BackgroundColor3 = C.purpleD, BorderSizePixel = 0,
-            Text = "+", Font = FONT_BTN, TextSize = 11, TextColor3 = C.white,
+            Text = "+", Font = FONT_BTN, TextSize = 22, TextColor3 = C.white,
         }, row)
-        new("UICorner", {CornerRadius = UDim.new(0, 5)}, ref.plus)
+        new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.plus)
     end
 
     if opts.action then
         ref.action = new("TextButton", {
-            Size = UDim2.new(0, 34, 1, -8), Position = UDim2.new(1, -38, 0, 4),
+            Size = UDim2.new(0, 68, 1, -16), Position = UDim2.new(1, -76, 0, 8),
             BackgroundColor3 = C.blue, BorderSizePixel = 0,
-            Text = opts.action, Font = FONT_BTN, TextSize = 9, TextColor3 = C.white,
+            Text = opts.action, Font = FONT_BTN, TextSize = 18, TextColor3 = C.white,
         }, row)
-        new("UICorner", {CornerRadius = UDim.new(0, 5)}, ref.action)
+        new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.action)
     end
 
     if opts.toggle then
         ref.toggle = new("TextButton", {
-            Size = UDim2.new(0, 34, 1, -8), Position = UDim2.new(1, -38, 0, 4),
+            Size = UDim2.new(0, 68, 1, -16), Position = UDim2.new(1, -76, 0, 8),
             BackgroundColor3 = C.offBg, BorderSizePixel = 0,
-            Text = "OFF", Font = FONT_BTN, TextSize = 9, TextColor3 = C.dim,
+            Text = "OFF", Font = FONT_BTN, TextSize = 18, TextColor3 = C.dim,
         }, row)
-        new("UICorner", {CornerRadius = UDim.new(0, 5)}, ref.toggle)
+        new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.toggle)
     end
     return ref
 end
@@ -316,38 +316,11 @@ addSection("Camera / Freecam")
 local rFree    = addRow("Free Cam [CAPS LOCK]",    {toggle = true})
 local rPagi    = addRow("Auto Pagi [T]",           {toggle = true})
 local rTpKam   = addRow("TP Karakter->Kamera [C]", {toggle = true})
-local rTpJarak = addRow("TP Jarak Mundur",         {value = true})   -- BARU v2.2
+local rTpJarak = addRow("TP Jarak Mundur",         {value = true})
 local rKeKar   = addRow("Kamera -> Karakter [G]",  {action = "GO"})
 local rKeKam   = addRow("Karakter -> Kamera",      {action = "TP"})
 addHint("WASD gerak • QE turun/naik • Space cepat")
 addHint("Jarak mundur: 0 = tepat di kamera")
-
-addSection("Lokasi (Freecam)")
-order += 1
-local rowLok = new("Frame", {Size = UDim2.new(1, 0, 0, 22), BackgroundColor3 = C.panel, BorderSizePixel = 0, LayoutOrder = order}, scroll)
-new("UICorner", {CornerRadius = UDim.new(0, 6)}, rowLok)
-local kotakNama = new("TextBox", {
-    Size = UDim2.new(1, -58, 1, -8), Position = UDim2.new(0, 6, 0, 4),
-    BackgroundColor3 = C.black, BorderSizePixel = 0, Text = "",
-    PlaceholderText = "Nama lokasi...", PlaceholderColor3 = C.dim,
-    TextColor3 = C.white, Font = FONT_MAIN, TextSize = 9,
-    ClearTextOnFocus = false, TextXAlignment = Enum.TextXAlignment.Left,
-}, rowLok)
-new("UICorner", {CornerRadius = UDim.new(0, 5)}, kotakNama)
-local btnSimpanLok = new("TextButton", {
-    Size = UDim2.new(0, 48, 1, -8), Position = UDim2.new(1, -52, 0, 4),
-    BackgroundColor3 = C.green, BorderSizePixel = 0,
-    Font = FONT_BTN, TextSize = 9, TextColor3 = C.black, Text = "SIMPAN",
-}, rowLok)
-new("UICorner", {CornerRadius = UDim.new(0, 5)}, btnSimpanLok)
-
-order += 1
-local statusLok = new("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 12), BackgroundTransparency = 1,
-    Font = FONT_MAIN, TextSize = 8, TextColor3 = C.dim,
-    Text = "Memeriksa penyimpanan...", TextXAlignment = Enum.TextXAlignment.Left,
-    LayoutOrder = order,
-}, scroll)
 
 addSection("Visual")
 local rHideP = addRow("Hide Other Players [R]", {toggle = true})
@@ -365,7 +338,7 @@ local S = {
     hidePlayersOn = false, hideFxOn = false, lowGfxOn = false,
     clockOn = false, clockTouched = false,
     clockValue = Lighting.ClockTime,
-    tpJarakMundur = CONFIG.TP_JARAK_MUNDUR,   -- BARU v2.2
+    tpJarakMundur = CONFIG.TP_JARAK_MUNDUR,
 }
 local orig = {brightness = Lighting.Brightness, clockTime = Lighting.ClockTime}
 
@@ -396,9 +369,6 @@ local waktuMulai, durasiMeluncur = 0, 0
 
 local efekKoreksi, tweenEfek = nil, nil
 local hitamPutihAktif = false
-
-local daftarLokasi = {}
-local remoteLokasi = nil
 
 --═══════════════ MOVEMENT ═══════════════
 local savedHum = {}
@@ -984,8 +954,6 @@ local function teleportKarakter(cf)
 end
 
 -- [C] TP ke kamera + JARAK MUNDUR BISA DIATUR
--- Karakter diletakkan di belakang kamera sejauh S.tpJarakMundur stud,
--- menghadap ke arah yang sama dengan kamera.
 local function teleportKeKamera(manual)
     if not freecamAktif then return false end
     if not manual and not tpKameraAktif then return false end
@@ -993,29 +961,10 @@ local function teleportKeKamera(manual)
     local cfKamera = camera.CFrame
     local look     = cfKamera.LookVector
 
-    -- hitung posisi MUNDUR dari kamera (berlawanan arah pandang)
     local posisi = cfKamera.Position - look * S.tpJarakMundur
-
-    -- karakter tegak, menghadap arah pandang kamera (didatar)
     local tujuan = cfTegak(CFrame.lookAt(posisi, posisi + look))
 
     return teleportKarakter(tujuan)
-end
-
-local function teleportKeLokasi(index)
-    local data = daftarLokasi[index]
-    if not data then return false end
-
-    local rotasi
-    local root = dapatkanRoot()
-    if root then
-        local tegak = cfTegak(root.CFrame)
-        rotasi = tegak - tegak.Position
-    else
-        rotasi = CFrame.new()
-    end
-
-    return teleportKarakter(CFrame.new(Vector3.new(data.x, data.y, data.z)) * rotasi)
 end
 
 --═══════════════ EFEK HITAM PUTIH (MATI) ═══════════════
@@ -1184,120 +1133,6 @@ local function setAutoPagi(aktif)
     notify("Auto Pagi", aktif)
 end
 
---═══════════════ LOKASI TERSIMPAN ═══════════════
-local perbaruiDaftar
-local simpanKeServer
-
-local function setStatusLok(t)
-    statusLok.Text = t
-end
-
-local function buatBarisLokasi(i, data)
-    order += 1
-    local baris = new("Frame", {
-        Name = "LokRow", Size = UDim2.new(1, 0, 0, 20),
-        BackgroundColor3 = C.panelD, BorderSizePixel = 0, LayoutOrder = order,
-    }, scroll)
-    new("UICorner", {CornerRadius = UDim.new(0, 6)}, baris)
-
-    new("TextLabel", {
-        Size = UDim2.new(1, -70, 1, 0), Position = UDim2.new(0, 6, 0, 0),
-        BackgroundTransparency = 1, Font = FONT_MAIN, TextSize = 9,
-        TextColor3 = C.text, TextXAlignment = Enum.TextXAlignment.Left,
-        TextTruncate = Enum.TextTruncate.AtEnd, Text = data.n,
-    }, baris)
-
-    local bTp = new("TextButton", {
-        Size = UDim2.new(0, 30, 1, -6), Position = UDim2.new(1, -40, 0, 3),
-        BackgroundColor3 = C.blue, BorderSizePixel = 0,
-        Font = FONT_BTN, TextSize = 9, TextColor3 = C.white, Text = "TP",
-    }, baris)
-    new("UICorner", {CornerRadius = UDim.new(0, 5)}, bTp)
-
-    local bHapus = new("TextButton", {
-        Size = UDim2.new(0, 18, 1, -6), Position = UDim2.new(1, -19, 0, 3),
-        BackgroundColor3 = C.red, BorderSizePixel = 0,
-        Font = FONT_BTN, TextSize = 9, TextColor3 = C.white, Text = "✕",
-    }, baris)
-    new("UICorner", {CornerRadius = UDim.new(0, 5)}, bHapus)
-
-    bTp.MouseButton1Click:Connect(function()
-        if teleportKeLokasi(i) then
-            notify("TP: " .. data.n)
-        else
-            notify("Karakter tidak ada", false)
-        end
-    end)
-
-    bHapus.MouseButton1Click:Connect(function()
-        table.remove(daftarLokasi, i)
-        perbaruiDaftar()
-        simpanKeServer()
-    end)
-end
-
-perbaruiDaftar = function()
-    for _, anak in ipairs(scroll:GetChildren()) do
-        if anak:IsA("Frame") and anak.Name == "LokRow" then
-            anak:Destroy()
-        end
-    end
-    for i, data in ipairs(daftarLokasi) do
-        buatBarisLokasi(i, data)
-    end
-end
-
-simpanKeServer = function()
-    if not remoteLokasi then
-        setStatusLok("⚠ Tanpa server script — hanya sesi ini")
-        return
-    end
-    setStatusLok("Menyimpan...")
-    local salinan = {}
-    for i, v in ipairs(daftarLokasi) do
-        salinan[i] = { n = v.n, x = v.x, y = v.y, z = v.z }
-    end
-    task.spawn(function()
-        local ok, hasil = pcall(function()
-            return remoteLokasi:InvokeServer("simpan", salinan)
-        end)
-        if ok and hasil == true then
-            setStatusLok("✓ Tersimpan permanen")
-        else
-            setStatusLok("✗ Gagal menyimpan ke server")
-        end
-    end)
-end
-
-btnSimpanLok.MouseButton1Click:Connect(function()
-    local pos
-    if freecamAktif then
-        pos = posNow
-    else
-        local root = dapatkanRoot()
-        if not root then
-            notify("Karakter tidak ditemukan", false)
-            return
-        end
-        pos = root.Position
-    end
-
-    if #daftarLokasi >= CONFIG.MAKS_LOKASI then
-        setStatusLok("✗ Maksimal " .. CONFIG.MAKS_LOKASI .. " lokasi")
-        return
-    end
-
-    local nama = kotakNama.Text
-    if nama == "" then
-        nama = "Lokasi " .. tostring(#daftarLokasi + 1)
-    end
-
-    table.insert(daftarLokasi, { n = nama, x = pos.X, y = pos.Y, z = pos.Z })
-    kotakNama.Text = ""
-    perbaruiDaftar()
-    simpanKeServer()
-end)
-
 --═══════════════ RESET SCRIPT ═══════════════
 local function resetScript()
     silent = true
@@ -1320,7 +1155,7 @@ local function resetScript()
     end
     rClock.val.Text = formatClock(S.clockValue)
     rSpeed.val.Text, rJump.val.Text = fmt(S.speedValue), fmt(S.jumpValue)
-    main.Position = UDim2.new(0.5, -120, 0.5, -200)
+    main.Position = UDim2.new(0.5, -240, 0.5, -400)
     main.Visible = true
     scroll.CanvasPosition = Vector2.new(0, 0)
     silent = false
@@ -1356,7 +1191,7 @@ local function unloadScript()
 end
 
 --═══════════════ DRAG STATE ═══════════════
-local dragging, dragStart, startPos = false, nil, nil
+local dragging, dragStart, startPos, dragInput = false, nil, nil, nil
 
 --═══════════════ WIRING TOMBOL ═══════════════
 rSpeed.toggle.MouseButton1Click:Connect(function() setSpeed(not S.speedOn) end)
@@ -1402,7 +1237,6 @@ local function bumpJump(d)
     rJump.val.Text = fmt(S.jumpValue)
     if S.jumpOn then applyMovement() end
 end
--- BARU v2.2 : atur jarak mundur TP ke kamera
 local function bumpTpJarak(d)
     S.tpJarakMundur = math.clamp(S.tpJarakMundur + d, CONFIG.TP_JARAK_MIN, CONFIG.TP_JARAK_MAKS)
     rTpJarak.val.Text = fmt(S.tpJarakMundur)
@@ -1414,183 +1248,141 @@ rJump.minus.MouseButton1Click:Connect(function() bumpJump(-STEP) end)
 rJump.plus.MouseButton1Click:Connect(function() bumpJump(STEP) end)
 rTpJarak.minus.MouseButton1Click:Connect(function() bumpTpJarak(-CONFIG.TP_JARAK_STEP) end)
 rTpJarak.plus.MouseButton1Click:Connect(function() bumpTpJarak(CONFIG.TP_JARAK_STEP) end)
-rClock.minus.MouseButton1Click:Connect(function() bumpClock(-STEP) end)
-rClock.plus.MouseButton1Click:Connect(function() bumpClock(STEP) end)
+rClock.minus.MouseButton1Click:Connect(function() bumpClock(-0.25) end)  -- -15 menit
+rClock.plus.MouseButton1Click:Connect(function() bumpClock(0.25) end)   -- +15 menit
 
 resetBtn.MouseButton1Click:Connect(resetScript)
 exitBtn.MouseButton1Click:Connect(unloadScript)
 
---═══════════════ HOTKEY ═══════════════
-addConn(UserInputService.InputBegan:Connect(function(input, gp)
-    if input.UserInputType == Enum.UserInputType.Keyboard and not gp then
-        tombolTekan[input.KeyCode] = true
-    end
-    if gp then return end
+--═══════════════ HOTKEYS ═══════════════
+addConn(UserInputService.InputBegan:Connect(function(input, processed)
+    local kc = input.KeyCode
+    tombolTekan[kc] = true
+    if processed then return end
 
-    local k = input.KeyCode
-    if k == Enum.KeyCode.F then
+    if kc == Enum.KeyCode.F then
         main.Visible = not main.Visible
-    elseif k == Enum.KeyCode.CapsLock then
+    elseif kc == Enum.KeyCode.CapsLock then
         setFreecam(not freecamAktif)
-    elseif k == Enum.KeyCode.T then
+    elseif kc == Enum.KeyCode.T then
         setAutoPagi(not autoPagiAktif)
-    elseif k == Enum.KeyCode.G then
-        if not kameraKeKarakter() then
+    elseif kc == Enum.KeyCode.G then
+        if kameraKeKarakter() then
+            notify("Kamera -> Karakter")
+        else
             notify("Nyalakan Free Cam dulu", false)
         end
-    elseif k == Enum.KeyCode.C then
+    elseif kc == Enum.KeyCode.C then
         if freecamAktif then
             if tpKameraAktif then
-                teleportKeKamera()
+                if teleportKeKamera(false) then
+                    notify("Karakter -> Kamera")
+                else
+                    notify("Karakter tidak ada", false)
+                end
             else
-                notify("TP ke Kamera OFF (aktifkan dulu)", false)
+                notify("Nyalakan toggle TP Karakter->Kamera dulu", false)
             end
         else
             toggleInfoPlayers()
         end
-    elseif k == Enum.KeyCode.Q and not freecamAktif then
-        setSpeed(not S.speedOn)
-    elseif k == Enum.KeyCode.R then
+    elseif kc == Enum.KeyCode.Q then
+        if not freecamAktif then
+            setSpeed(not S.speedOn)
+        end
+    elseif kc == Enum.KeyCode.R then
         setHidePlayers(not S.hidePlayersOn)
     end
 end))
 
 addConn(UserInputService.InputEnded:Connect(function(input)
     tombolTekan[input.KeyCode] = nil
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-    or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = false
-    end
 end))
 
-addConn(UserInputService.WindowFocusReleased:Connect(function()
-    table.clear(tombolTekan)
-end))
-
---═══════════════ DRAG GUI + MOUSE LOOK ═══════════════
-title.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging, dragStart, startPos = true, input.Position, main.Position
-    end
-end)
 addConn(UserInputService.InputChanged:Connect(function(input)
-    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-        local delta = input.Position - dragStart
-        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
     if input.UserInputType == Enum.UserInputType.MouseMovement
-    and freecamAktif and not main.Visible then
-        local delta = input.Delta
-        yaw   = yaw   - delta.X * CONFIG.SENSITIVITAS_MOUSE
-        pitch = math.clamp(pitch - delta.Y * CONFIG.SENSITIVITAS_MOUSE, -CONFIG.BATAS_PITCH, CONFIG.BATAS_PITCH)
+        and freecamAktif and not main.Visible then
+        yaw   = yaw - input.Delta.X * CONFIG.SENSITIVITAS_MOUSE
+        pitch = math.clamp(pitch - input.Delta.Y * CONFIG.SENSITIVITAS_MOUSE,
+                -CONFIG.BATAS_PITCH, CONFIG.BATAS_PITCH)
     end
 end))
 
---═══════════════ LOOP UTAMA ═══════════════
-local accDisp, accClock = 0, 0
-addConn(RunService.Heartbeat:Connect(function(dt)
-    if S.speedOn or S.jumpOn then
-        local h = getHum()
-        if h then
-            if S.speedOn then
-                if h.WalkSpeed ~= S.speedValue then h.WalkSpeed = S.speedValue end
-                pcall(function()
-                    if h.SwimSpeed ~= S.speedValue then h.SwimSpeed = S.speedValue end
-                end)
-            end
-            if S.jumpOn then
-                pcall(function()
-                    if not h.UseJumpPower then h.UseJumpPower = true end
-                    if h.JumpPower ~= S.jumpValue then h.JumpPower = S.jumpValue end
-                end)
-            end
-        end
-    end
-    accDisp += dt
-    if accDisp >= INFO_INTERVAL then
-        accDisp = 0
-        syncDisplays()
-    end
-    accClock += dt
-    if accClock >= 0.25 then
-        accClock = 0
-        if S.clockOn then
-            applyLockedClock()
-        end
-    end
-end))
-
---═══════════════ MATI / RESPAWN ═══════════════
-local function pantauKarakter(karakter)
-    task.spawn(function()
-        local humanoid = karakter:WaitForChild("Humanoid", 10)
-        if humanoid then
-            humanoid.Died:Connect(function()
-                setFreecam(false)
-                setHitamPutih(true)
-            end)
-        end
-    end)
-end
-
+--═══════════════ EVENT KARAKTER ═══════════════
 addConn(LocalPlayer.CharacterAdded:Connect(function(char)
-    setFreecam(false)
     setHitamPutih(false)
-    for h in pairs(savedHum) do
-        if h.Parent ~= char then restoreHum(h) end
-    end
-    pantauKarakter(char)
-    task.spawn(function()
-        local hum = char:WaitForChild("Humanoid", 10)
-        if hum and not freecamAktif then
-            pcall(function() camera.CameraSubject = hum end)
-        end
-        task.wait(0.15)
-        if S.speedOn or S.jumpOn then applyMovement() end
+    local hum = char:WaitForChild("Humanoid", 10)
+    if not hum then return end
+    hum.Died:Connect(function()
+        if freecamAktif then setHitamPutih(true) end
     end)
+    task.wait(0.2)
+    if S.speedOn or S.jumpOn then applyMovement() end
+    if freecamAktif then
+        hentikanJalanDiTempat()
+        mulaiJalanDiTempat()
+    end
 end))
 
-if LocalPlayer.Character then
-    pantauKarakter(LocalPlayer.Character)
-end
+addConn(LocalPlayer.CharacterRemoving:Connect(function(char)
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then savedHum[hum] = nil end
+end))
 
 addConn(Players.PlayerRemoving:Connect(function(plr)
     infoRefs[plr] = nil
+    if plr.Character then
+        pcall(cleanupInfo, plr.Character)
+        pcall(cleanupHitbox, plr.Character)
+    end
 end))
 
---═══════════════ JAGA REFERENSI KAMERA ═══════════════
-addConn(Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    if Workspace.CurrentCamera then
-        camera = Workspace.CurrentCamera
-        if freecamAktif then
-            pcall(function() camera.CameraType = Enum.CameraType.Scriptable end)
+--═══════════════ LOOP SYNC INFO/HITBOX ═══════════════
+task.spawn(function()
+    while gui.Parent do
+        if S.infoOn or S.hitboxOn then
+            syncDisplays()
         end
+        task.wait(INFO_INTERVAL)
+    end
+end)
+
+--═══════════════ DRAG (title bar) ═══════════════
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging  = true
+        dragStart = input.Position
+        startPos  = main.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+title.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+addConn(UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
     end
 end))
 
 --═══════════════ INISIALISASI ═══════════════
-rSpeed.val.Text    = fmt(S.speedValue)
-rJump.val.Text     = fmt(S.jumpValue)
-rTpJarak.val.Text  = fmt(S.tpJarakMundur)
-rClock.val.Text    = formatClock(S.clockValue)
-perbaruiTombol()
-main.Visible = true
+rSpeed.val.Text   = fmt(S.speedValue)
+rJump.val.Text    = fmt(S.jumpValue)
+rTpJarak.val.Text = fmt(S.tpJarakMundur)
+rClock.val.Text   = formatClock(S.clockValue)
 
--- muat lokasi tersimpan dari server (DataStore, opsional)
-task.spawn(function()
-    remoteLokasi = ReplicatedStorage:WaitForChild("FreecamLokasiRemote", 10)
-    if remoteLokasi then
-        local ok, data = pcall(function()
-            return remoteLokasi:InvokeServer("muat")
-        end)
-        if ok and type(data) == "table" then
-            daftarLokasi = data
-            setStatusLok("✓ " .. #daftarLokasi .. " lokasi dimuat")
-        else
-            setStatusLok("✗ Gagal memuat lokasi")
-        end
-    else
-        setStatusLok("⚠ Tanpa server script — simpan hanya sesi ini")
-    end
-    perbaruiDaftar()
-end)
+notify("⛓️Siiilau⚡ v1.0 siap")
