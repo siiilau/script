@@ -1,14 +1,15 @@
 --[[=============================================================
-    ⛓️Siiilau⚡ - ALL-IN-ONE HUB (MERGED v1.1)
+    ⛓️Siiilau⚡ - ALL-IN-ONE HUB (MERGED v1.2)
     =============================================================
+    PERUBAHAN v1.2 :
+      - FREECAM: karakter sekarang DIAM NATURAL
+        (tidak di-lock CFrame -> tidak kaku/beku,
+         gravitasi & animasi tetap normal,
+         WASD hanya menggerakkan kamera)
     PERUBAHAN v1.1 :
-      - FIX: Speed OFF tidak lagi membuat karakter tidak
-        bisa jalan (dulu cuma bisa lompat)
+      - FIX: Speed OFF tidak lagi membuat karakter
+        tidak bisa jalan (dulu cuma bisa lompat)
       - "Auto Pagi" DIHAPUS -> digabung ke "Auto Brightness [T]"
-        (T = ON/OFF kunci Jam + Brightness)
-    PERUBAHAN v2.3 :
-      - Frame & tampilan fitur 2x LEBIH BESAR
-      - Fitur LOKASI (simpan / TP / hapus) DIHAPUS
     =============================================================
     MOVEMENT      : Speed & Swim [Q] (17.25, step 0.25)
                     Jump Power (52.25, step 0.25)
@@ -21,11 +22,9 @@
                     Auto Brightness [T] | Kamera->Karakter [G]
                     TP Karakter->Kamera [C] (toggle dulu)
                     TP Jarak Mundur : BISA DIATUR (+/-)
-                    -> 0 = tepat di kamera, makin besar = makin
-                       jauh di BELAKANG kamera (karakter tak menutupi view)
     VISUAL        : Hide Other Players [R] | Hide All Effects
                     Low Graphic + No Fog
-    ENVIRONMENT   : Auto Brightness (Jam) step 15 menit, ON/OFF snapshot
+    ENVIRONMENT   : Auto Brightness (Jam) step 15 menit, ON/OFF
     HOTKEYS       : F=GUI | CAPSLOCK=Freecam | T=AutoBrightness
                     G=KeKarakter
                     C=TP Kamera (atau Info Players saat freecam OFF)
@@ -48,11 +47,6 @@ local CONFIG = {
     KEHALUSAN          = 10,
     INTERVAL_STREAM    = 1,
     DURASI_EFEK_MATI   = 0.6,
-    TP_INSTAN          = true,
-    JARAK_TP_MIN       = 6,
-    TINGGI_TP_MIN      = 8,
-    MELUNCUR_KECEPATAN = 600,
-    MELUNCUR_MAX       = 0.08,
     JARAK_BELAKANG     = 10,
     TINGGI_KAMERA      = 4,
     SUDUT_TP           = -15,
@@ -363,29 +357,19 @@ local yawNow, pitchNow = 0, 0
 local tombolTekan = {}
 local threadStream = nil
 
-local koneksiJalanDiTempat = nil
-local posisiKunci, rotasiKunci = nil, nil
-local kunciY = false
-local cfVisual = nil
-local meluncur = false
-local cfAsal, cfTujuan = nil, nil
-local waktuMulai, durasiMeluncur = 0, 0
-
 local efekKoreksi, tweenEfek = nil, nil
 local hitamPutihAktif = false
 
 --═══════════════ MOVEMENT (FIX v1.1) ═══════════════
 local savedHum = {}
-local FALLBACK_WS  = 16   -- kecepatan aman kalau nilai asli tidak valid (0)
-local lastWsNormal = 16   -- WalkSpeed normal terakhir yang tercatat
+local FALLBACK_WS  = 16
+local lastWsNormal = 16
 
 local function captureHum(h)
     if savedHum[h] then return end
 
     local ws0 = h.WalkSpeed
     if ws0 == nil or ws0 < 1 then
-        -- JANGAN simpan 0 sebagai "kecepatan asli"
-        -- (ini penyebab karakter tak bisa jalan setelah Speed OFF)
         ws0 = (lastWsNormal >= 1) and lastWsNormal or FALLBACK_WS
     elseif not S.speedOn then
         lastWsNormal = ws0
@@ -410,7 +394,6 @@ local function restoreHum(h)
     if rec.ss then pcall(function() h.SwimSpeed  = rec.ss end) end
     savedHum[h] = nil
 
-    -- PENGAMAN 1: kalau hasil restore masih 0, paksa nilai aman
     if h.WalkSpeed < 1 then
         pcall(function()
             h.WalkSpeed = (rec.ws and rec.ws >= 1) and rec.ws or FALLBACK_WS
@@ -418,8 +401,6 @@ local function restoreHum(h)
     end
 end
 
--- PENGAMAN 2: selama 3 detik setelah dimatikan, kalau WalkSpeed
--- dibuat 0 lagi (oleh game / anti-cheat), langsung dikembalikan
 local jagaId = 0
 local function jagaGerak(durasi)
     jagaId += 1
@@ -464,7 +445,7 @@ local function setSpeed(on)
         local h = getHum()
         if h then restoreHum(h) end
         if S.jumpOn then applyMovement() end
-        jagaGerak(3) -- << pengaman anti WalkSpeed 0
+        jagaGerak(3)
     end
     styleToggle(rSpeed.toggle, on)
     notify("Speed & Swim", on)
@@ -812,18 +793,10 @@ local function cfTegak(cf)
     return CFrame.lookAt(cf.Position, cf.Position + flat.Unit)
 end
 
-local function netralkanFisika(root, humanoid)
+local function netralkanFisika(root)
     if not root then return end
     root.AssemblyLinearVelocity  = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
-    if humanoid then
-        pcall(function()
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)
-            if humanoid:GetState() == Enum.HumanoidStateType.Freefall then
-                humanoid:ChangeState(Enum.HumanoidStateType.Running)
-            end
-        end)
-    end
 end
 
 local function requestStream(pos)
@@ -832,6 +805,20 @@ local function requestStream(pos)
             pcall(function() LocalPlayer:RequestStreamAroundAsync(pos) end)
         end)
     end
+end
+
+--═══════════════ FREECAM: KARAKTER DIAM NATURAL (v1.2) ═══════════════
+-- Karakter TIDAK di-lock CFrame (tidak kaku/beku):
+--   - gravitasi & animasi tetap normal (idle jalan, bisa jatuh)
+--   - bisa didorong player lain (fisika hidup)
+--   - WASD/Space hanya menggerakkan kamera, bukan karakter
+local function tahanKarakter()
+    local hum = getHum()
+    if not hum then return end
+    pcall(function()
+        hum:Move(Vector3.zero, false) -- batalkan input jalan
+        hum.Jump = false              -- batalkan input lompat
+    end)
 end
 
 --═══════════════ KAMERA -> KARAKTER [G] ═══════════════
@@ -853,125 +840,6 @@ local function kameraKeKarakter()
     return true
 end
 
---═══════════════ JALAN DI TEMPAT ═══════════════
-local function mulaiJalanDiTempat()
-    if koneksiJalanDiTempat then return end
-
-    local root = dapatkanRoot()
-    if root then
-        posisiKunci = root.Position
-        rotasiKunci = root.CFrame - root.CFrame.Position
-        cfVisual    = root.CFrame
-    end
-    kunciY   = false
-    meluncur = false
-
-    local humanoid = getHum()
-    if humanoid then
-        pcall(function()
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-            humanoid.Jump = false
-        end)
-    end
-
-    koneksiJalanDiTempat = RunService.Stepped:Connect(function()
-        local r = dapatkanRoot()
-        if not r then return end
-        local hum = getHum()
-
-        if hum and hum.SeatPart then
-            posisiKunci = r.Position
-            rotasiKunci = r.CFrame - r.CFrame.Position
-            cfVisual    = r.CFrame
-            return
-        end
-
-        if meluncur then
-            local t  = math.clamp((os.clock() - waktuMulai) / durasiMeluncur, 0, 1)
-            local e  = t * t * (3 - 2 * t)
-            local cf = cfAsal:Lerp(cfTujuan, e)
-            r.CFrame = cf
-            netralkanFisika(r, hum)
-            cfVisual = cf
-            if t >= 1 then
-                meluncur    = false
-                kunciY      = true
-                posisiKunci = cfTujuan.Position
-                rotasiKunci = cfTujuan - cfTujuan.Position
-            end
-            return
-        end
-
-        if not posisiKunci then
-            posisiKunci = r.Position
-            rotasiKunci = r.CFrame - r.CFrame.Position
-            cfVisual    = r.CFrame
-            kunciY      = false
-        end
-
-        local dx = r.Position.X - posisiKunci.X
-        local dz = r.Position.Z - posisiKunci.Z
-        local teleport =
-            (dx * dx + dz * dz) >= (CONFIG.JARAK_TP_MIN * CONFIG.JARAK_TP_MIN)
-            or math.abs(r.Position.Y - posisiKunci.Y) >= CONFIG.TINGGI_TP_MIN
-
-        if teleport then
-            local tujuan = cfTegak(r.CFrame)
-            if CONFIG.TP_INSTAN then
-                r.CFrame = tujuan
-                netralkanFisika(r, hum)
-                kunciY      = true
-                posisiKunci = tujuan.Position
-                rotasiKunci = tujuan - tujuan.Position
-                cfVisual    = tujuan
-            else
-                cfAsal   = cfVisual or cfTegak(r.CFrame)
-                cfTujuan = tujuan
-                local jarak = (cfTujuan.Position - cfAsal.Position).Magnitude
-                durasiMeluncur = math.min(jarak / CONFIG.MELUNCUR_KECEPATAN, CONFIG.MELUNCUR_MAX)
-                waktuMulai = os.clock()
-                meluncur   = true
-                r.CFrame = cfAsal
-                netralkanFisika(r, hum)
-            end
-            return
-        end
-
-        local cfBaru
-        if kunciY then
-            cfBaru = CFrame.new(posisiKunci) * rotasiKunci
-            netralkanFisika(r, hum)
-        else
-            cfBaru = CFrame.new(posisiKunci.X, r.Position.Y, posisiKunci.Z) * rotasiKunci
-            posisiKunci = Vector3.new(posisiKunci.X, r.Position.Y, posisiKunci.Z)
-        end
-        r.CFrame = cfBaru
-        cfVisual = cfBaru
-    end)
-end
-
-local function hentikanJalanDiTempat()
-    if koneksiJalanDiTempat then
-        koneksiJalanDiTempat:Disconnect()
-        koneksiJalanDiTempat = nil
-    end
-    posisiKunci = nil
-    rotasiKunci = nil
-    cfVisual    = nil
-    kunciY      = false
-    meluncur    = false
-    cfAsal      = nil
-    cfTujuan    = nil
-
-    local humanoid = getHum()
-    if humanoid then
-        pcall(function()
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
-        end)
-    end
-end
-
 --═══════════════ TELEPORT KARAKTER ═══════════════
 local function teleportKarakter(cf)
     local root = dapatkanRoot()
@@ -983,15 +851,7 @@ local function teleportKarakter(cf)
     end
 
     root.CFrame = cf
-    netralkanFisika(root, humanoid)
-
-    if freecamAktif then
-        kunciY      = true
-        posisiKunci = cf.Position
-        rotasiKunci = cf - cf.Position
-        cfVisual    = cf
-        meluncur    = false
-    end
+    netralkanFisika(root)
 
     requestStream(cf.Position)
     return true
@@ -1051,6 +911,8 @@ end
 
 --═══════════════ UPDATE KAMERA (TIAP FRAME) ═══════════════
 local function updateFreecam(dt)
+    tahanKarakter() -- karakter diam NATURAL (bukan beku)
+
     camera.CameraType = Enum.CameraType.Scriptable
     if main.Visible then
         UserInputService.MouseBehavior    = Enum.MouseBehavior.Default
@@ -1104,8 +966,6 @@ local function mulaiFreecam()
 
     camera.CameraType = Enum.CameraType.Scriptable
 
-    mulaiJalanDiTempat()
-
     pcall(function() RunService:UnbindFromRenderStep(NAMA_BIND) end)
     pcall(function()
         RunService:BindToRenderStep(NAMA_BIND, Enum.RenderPriority.Camera.Value + 1, updateFreecam)
@@ -1129,8 +989,6 @@ local function hentikanFreecam()
         pcall(task.cancel, threadStream)
         threadStream = nil
     end
-
-    hentikanJalanDiTempat()
 
     camera.CameraType = Enum.CameraType.Custom
     local humanoid = getHum()
@@ -1342,10 +1200,6 @@ addConn(LocalPlayer.CharacterAdded:Connect(function(char)
     end)
     task.wait(0.2)
     if S.speedOn or S.jumpOn then applyMovement() end
-    if freecamAktif then
-        hentikanJalanDiTempat()
-        mulaiJalanDiTempat()
-    end
 end))
 
 addConn(LocalPlayer.CharacterRemoving:Connect(function(char)
@@ -1409,4 +1263,4 @@ rJump.val.Text    = fmt(S.jumpValue)
 rTpJarak.val.Text = fmt(S.tpJarakMundur)
 rClock.val.Text   = formatClock(S.clockValue)
 
-notify("⛓️Siiilau⚡ v1.1 siap")
+notify("⛓️Siiilau⚡ v1.2 siap")
