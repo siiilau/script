@@ -1,14 +1,13 @@
 --========================================================
---  TELEPORT GUI v5.1 — "SILAU NEON" MAX (loader aman)
---  • Executor : paste semua kode, klik Execute SAAT SUDAH DI DALAM GAME
---  • Studio   : taruh sebagai LocalScript di StarterGui, lalu Play
+--  TELEPORT GUI v5.2 — "SILAU NEON" + LOKASI PERMANEN
+--  Lokasi tersimpan di file executor, dipisah per game.
 --  Keybind: F = buka/tutup
 --========================================================
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
 if not RunService:IsClient() then
-    warn("[TeleportGui] GAGAL: ini harus jalan di CLIENT (LocalScript / executor), bukan server!")
+    warn("[TeleportGui] GAGAL: harus jalan di CLIENT (executor / LocalScript), bukan server!")
     return
 end
 
@@ -19,11 +18,9 @@ end
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService     = game:GetService("TweenService")
+local HttpService      = game:GetService("HttpService")
 
-local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then
-    LocalPlayer = Players:WaitForChild("LocalPlayer", 15)
-end
+local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
 if not LocalPlayer then
     warn("[TeleportGui] GAGAL: LocalPlayer belum ada. Masuk dulu ke dalam game, lalu execute ulang.")
     return
@@ -36,7 +33,7 @@ local TELEPORT_OFFSET = 3.5
 local LED_TEXT        = "⚡ S I L A U ⚡"
 local SOUND_ON        = true
 local FX_LEVEL        = 1
-local FORCE_PARENT    = nil -- opsional: paksa parent tertentu
+local NAMA_FILE       = "TeleportGui_Silau.json" -- file penyimpanan lokasi
 
 local Warna = {
     Ungu      = Color3.fromRGB(124, 58, 237),
@@ -57,7 +54,7 @@ local Warna = {
     Merah     = Color3.fromRGB(239, 68, 68),
 }
 
--- [3] FONT KOMPATIBEL (tidak akan error di executor lama) -----------
+-- [3] FONT KOMPATIBEL -----------------------------------------------
 local FONT_OK = pcall(function()
     return Font.new("rbxasset://fonts/families/Bangers.json", Enum.FontWeight.Regular)
 end)
@@ -83,7 +80,6 @@ local function fnt(k)
         }
         v = Font.new(fam[k], wts[k])
     else
-        -- mode cadangan: font lama yang didukung semua executor
         local legacy = {
             judul = Enum.Font.Bangers,
             bold  = Enum.Font.GothamBold,
@@ -106,7 +102,7 @@ local function buat(class, props, parent)
     local obj = Instance.new(class)
     for k, v in pairs(props) do
         if k == "FontFace" and TEKS_CLASS[class] and not FONT_OK then
-            obj.Font = v -- mode cadangan
+            obj.Font = v
         else
             obj[k] = v
         end
@@ -125,7 +121,7 @@ local SND_PING   = "rbxasset://sounds/electronicpingshort.wav"
 local SND_SNAP   = "rbxasset://sounds/snap.mp3"
 local SND_WHOOSH = "rbxasset://sounds/unsheath.wav"
 
--- [5] SCREENGUI + PASANG KE TEMPAT YANG AMAN ------------------------
+-- [5] SCREENGUI -----------------------------------------------------
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "TeleportGui"
 screenGui.ResetOnSpawn = false
@@ -134,12 +130,10 @@ screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 pcall(function() screenGui.OnTopOfCoreBlur = true end)
 
 local kandidatParent = {}
-if FORCE_PARENT then table.insert(kandidatParent, FORCE_PARENT) end
 pcall(function() if gethui then table.insert(kandidatParent, gethui()) end end)
 pcall(function() table.insert(kandidatParent, game:GetService("CoreGui")) end)
 pcall(function() table.insert(kandidatParent, LocalPlayer:WaitForChild("PlayerGui")) end)
 
--- bersihkan sisa GUI lama biar tidak dobel
 for _, t in ipairs(kandidatParent) do
     pcall(function()
         local lama = t:FindFirstChild("TeleportGui")
@@ -156,7 +150,7 @@ for _, t in ipairs(kandidatParent) do
     end
 end
 if not terpasang then
-    warn("[TeleportGui] GAGAL: tidak bisa memasang GUI ke mana pun.")
+    warn("[TeleportGui] GAGAL: tidak bisa memasang GUI.")
     return
 end
 
@@ -534,7 +528,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(280, 0),
     Size = UDim2.fromOffset(700, 13),
     FontFace = fnt("med"),
-    Text = "⌨ tekan F = buka/tutup   ✦   klik nama = ubah   ✦   geser judul = pindah   ✦   🔍 cari lokasi   ✦   💾 simpan posisi   ✦   🚀 teleport cepat",
+    Text = "⌨ tekan F = buka/tutup   ✦   klik nama = ubah   ✦   geser judul = pindah   ✦   🔍 cari lokasi   ✦   💾 lokasi permanen (auto-save)   ✦   🚀 teleport cepat",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -597,7 +591,7 @@ task.spawn(function()
     end
 end)
 
--- [9] PARTIKEL AMBIENT (bug versi lama sudah diperbaiki) ------------
+-- [9] PARTIKEL AMBIENT ----------------------------------------------
 local emojiAmbient = {"✨", "⚡", "💜", "💙", "⭐", "💫", "🔹", "🌟"}
 task.spawn(function()
     while partBox.Parent do
@@ -817,7 +811,7 @@ local function toast(teks, aksen)
     end)
 end
 
--- [13] FADE PER-ELEMEN ---------------------------------------------
+-- [13] FADE PER-ELEMEN ----------------------------------------------
 local elemenFade = {}
 local fadeVal = Instance.new("NumberValue")
 
@@ -849,10 +843,87 @@ end
 
 fadeVal.Changed:Connect(setFade)
 
--- [14] LOGIKA TELEPORT ----------------------------------------------
+-- [14] PERSISTENSI LOKASI (BARU) — simpan ke file executor ----------
 local lokasiTersimpan = {}
 local counterNama = 0
 
+local fileOk = (type(writefile) == "function" and type(readfile) == "function")
+
+local function idBaru()
+    return tostring(os.time()) .. "-" .. tostring(rnd(100000, 999999))
+end
+
+local function muatLokasi()
+    if not fileOk then return end
+    local isi
+    pcall(function() isi = readfile(NAMA_FILE) end)
+    if type(isi) ~= "string" or #isi == 0 then return end
+
+    local data
+    pcall(function() data = HttpService:JSONDecode(isi) end)
+    if type(data) ~= "table" or type(data.games) ~= "table" then return end
+
+    local entri = data.games[tostring(game.PlaceId)]
+    if type(entri) ~= "table" then return end
+
+    for _, e in ipairs(entri) do
+        if type(e) == "table" and type(e.nama) == "string"
+        and type(e.cf) == "table" and #e.cf >= 12 then
+            local ok, cf = pcall(CFrame.new, table.unpack(e.cf, 1, 12))
+            if ok and cf then
+                table.insert(lokasiTersimpan, {
+                    id     = tostring(e.id or e.nama),
+                    nama   = e.nama,
+                    cframe = cf,
+                })
+            end
+        end
+    end
+end
+
+local function simpanKeFile()
+    if not fileOk then return end
+
+    -- baca data lama dulu, supaya lokasi game LAIN tidak tertimpa
+    local data = { games = {} }
+    local isi
+    pcall(function() isi = readfile(NAMA_FILE) end)
+    if type(isi) == "string" and #isi > 0 then
+        local lama
+        pcall(function() lama = HttpService:JSONDecode(isi) end)
+        if type(lama) == "table" and type(lama.games) == "table" then
+            data.games = lama.games
+        end
+    end
+
+    local daftar = {}
+    for _, l in ipairs(lokasiTersimpan) do
+        table.insert(daftar, {
+            id   = l.id,
+            nama = l.nama,
+            cf   = { l.cframe:GetComponents() },
+        })
+    end
+    data.games[tostring(game.PlaceId)] = daftar
+
+    local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
+    if ok and type(json) == "string" then
+        local okTulis = pcall(function() writefile(NAMA_FILE, json) end)
+        if not okTulis then
+            warn("[TeleportGui] Gagal menulis file penyimpanan: " .. NAMA_FILE)
+        end
+    end
+end
+
+muatLokasi()
+
+-- lanjutkan penomoran otomatis dari lokasi yang dimuat
+for _, l in ipairs(lokasiTersimpan) do
+    local n = tonumber(l.nama:match("^Lokasi (%d+)$"))
+    if n and n > counterNama then counterNama = n end
+end
+
+-- [15] LOGIKA TELEPORT ----------------------------------------------
 local function getKarakter()
     local char = LocalPlayer.Character
     if not char then return nil end
@@ -1027,7 +1098,12 @@ local function refreshList(animasi)
         nameEdit.FocusLost:Connect(function()
             nameEdit.BackgroundTransparency = 1
             local baru = nameEdit.Text:gsub("^%s+", ""):gsub("%s+$", "")
-            if baru ~= "" then lok.nama = baru else nameEdit.Text = lok.nama end
+            if baru ~= "" and baru ~= lok.nama then
+                lok.nama = baru
+                simpanKeFile() -- rename ikut tersimpan permanen
+            elseif baru == "" then
+                nameEdit.Text = lok.nama
+            end
         end)
 
         local tpBtn = buat("TextButton", {
@@ -1078,6 +1154,7 @@ local function refreshList(animasi)
                         break
                     end
                 end
+                simpanKeFile() -- hapus ikut tersimpan permanen
                 toast("🗑️ Dihapus: " .. lok.nama, Warna.Merah)
                 refreshList(true)
             end)
@@ -1100,7 +1177,13 @@ local function simpanLokasi()
         nama = "Lokasi " .. counterNama
     end
 
-    table.insert(lokasiTersimpan, { nama = nama, cframe = hrp.CFrame })
+    table.insert(lokasiTersimpan, {
+        id     = idBaru(),
+        nama   = nama,
+        cframe = hrp.CFrame,
+    })
+    simpanKeFile() -- <<< langsung ditulis ke file, anti hilang
+
     nameBox.Text = ""
     nameBox:ReleaseFocus()
     refreshList(true)
@@ -1109,11 +1192,11 @@ local function simpanLokasi()
     bunyi(SND_SNAP, 0.4)
     konfeti(root, pusatDiRoot(saveBtn), 16)
     emojiBurst(root, pusatDiRoot(saveBtn), {"🎉", "✨", "💾"}, 6)
-    toast("💾 Tersimpan: " .. nama, Warna.Ungu)
+    toast(fileOk and ("💾 Tersimpan permanen: " .. nama) or ("💾 Tersimpan: " .. nama), Warna.Ungu)
     pulseIkon()
 end
 
--- [15] BUKA / TUTUP -------------------------------------------------
+-- [16] BUKA / TUTUP -------------------------------------------------
 local sesiAnim = 0
 
 local function minimizeGui()
@@ -1160,7 +1243,7 @@ local function bukaGui()
     emojiBurst(root, UDim2.new(0.5, 0, 0.5, 0), {"✨", "⚡", "💜", "💙"}, 6)
 end
 
--- [16] KONEKSI ------------------------------------------------------
+-- [17] KONEKSI ------------------------------------------------------
 minBtn.MouseButton1Click:Connect(function()
     ripple(minBtn, Warna.Ungu2)
     minimizeGui()
@@ -1192,8 +1275,17 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- [17] MULAI --------------------------------------------------------
+-- [18] MULAI --------------------------------------------------------
 refreshList(true)
 task.delay(0.15, bukaGui)
 
-print("[TeleportGui] SIAP ✔ — tekan F untuk buka/tutup. GUI terpasang di: " .. tostring(screenGui.Parent))
+task.delay(1.2, function()
+    if #lokasiTersimpan > 0 then
+        toast("📂 " .. #lokasiTersimpan .. " lokasi dimuat dari sesi sebelumnya", Warna.Biru)
+    elseif not fileOk then
+        toast("⚠️ Penyimpanan file tidak tersedia — lokasi hanya untuk sesi ini", Warna.Merah)
+    end
+end)
+
+print("[TeleportGui] SIAP ✔ — tekan F untuk buka/tutup")
+print("[TeleportGui] Penyimpanan: " .. (fileOk and ("file '" .. NAMA_FILE .. "' (per game: " .. game.PlaceId .. ")") or "TIDAK TERSEDIA (bukan executor / tanpa file API)"))
