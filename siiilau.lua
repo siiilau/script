@@ -1,20 +1,16 @@
 --[[=============================================================
-    ⛓️Siiilau⚡ - ALL-IN-ONE HUB (MERGED v1.1 — ☄️ METEOR NEON)
+    ⛓️Siiilau⚡ - ALL-IN-ONE HUB (MERGED v1.8 — ⚡ PERFORMANCE FIX)
     =============================================================
-    PERUBAHAN v1.7 (METEOR) :
-      - FIX BOCOR: saat fase bola, seluruh isi panel disembunyikan
-        TOTAL (panel.Visible=false) -> tidak ada teks/fitur yang
-        keluar dari bola. ClipsDescendants dipasang di semua layer.
-      - EFEK METEOR: bola menyala api (oranye/kuning, inti ☄️),
-        ekor api menyembur ke belakang saat menggelinding,
-        IMPACT cincin api saat tiba di tengah, lalu mekar neon.
-      - Tutup: frame -> bola -> meteor mengecil + memudar
-        (terbakar habis) -> KANAN BAWAH -> hilang total.
-      - Notif tetap mungil & subtle di pojok kanan atas.
-    PERUBAHAN v1.6 : bola 0.1%->3%, morph smooth, notif kecil
-    PERUBAHAN v1.3 : tema SILAU NEON (LED, konfeti, suara, font)
-    PERUBAHAN v1.2 : FREECAM karakter DIAM NATURAL
-    PERUBAHAN v1.1 : FIX Speed OFF tidak bisa jalan
+    PERUBAHAN v1.8 (PERFORMANCE) :
+      - BUKA/TUTUP INSTAN: F -> langsung muncul/hilang. TANPA animasi.
+      - HAPUS semua sumber lag: breathing UIScale, loop cycleColor,
+        partikel ambient, sparkle, kedip bracket, pulse glow,
+        sistem bola/meteor
+      - Sisa animasi hanya TweenService murni (murah, C++ side):
+        LED sweep, border berputar, marquee
+      - Freecam dioptimalkan (MouseBehavior tidak di-set tiap frame)
+      - SEMUA FITUR UTUH & NORMAL: speed/jump/crosshair/info/hitbox/
+        freecam/TP/hide/lowgfx/brightness/hotkeys/reset/keluar
     =============================================================
     MOVEMENT      : Speed & Swim [Q] | Jump Power | Scooshlock
     PLAYER DISPLAY: Info Other Players [C] | Hitbox Players
@@ -53,17 +49,10 @@ local CONFIG = {
     TP_JARAK_MAKS      = 100,
 }
 local NAMA_BIND = "SiiilauFreecamRender"
-local SOUND_ON  = true   -- ⚡ set false kalau mau tanpa suara
-
--- 🎬 ANIMASI & UKURAN (v1.7)
-local UKURAN_GUI = 0.8     -- ukuran frame = 80%
-local BOLA_MIN   = 0.001   -- 0,1% (titik)
-local BOLA_MAX   = 0.03    -- 3%
-local POS_TENGAH = UDim2.new(0.5, 0, 0.5, 0)    -- posisi normal
-local POS_MASUK  = UDim2.new(0, 70, 0, 70)      -- KIRI ATAS
-local POS_KELUAR = UDim2.new(1, -70, 1, -70)    -- KANAN BAWAH
-
-local layarRedup = false -- flag: ambient berhenti saat transisi
+local SOUND_ON  = true    -- ⚡ set false = tanpa suara
+local FX_LED    = true    -- ⚡ set false = matikan LED sweep (hemat lagi)
+local FX_PUTAR  = true    -- ⚡ set false = matikan border berputar
+local UKURAN_GUI = 0.8    -- ukuran GUI 80%
 
 --═══════════════ LAYANAN ═══════════════
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -155,7 +144,7 @@ local function fnt(k)
 end
 local TEKS_CLASS = {TextLabel = true, TextButton = true, TextBox = true}
 
---═══════════════ TEMA WARNA "SILAU NEON" + API ═══════════════
+--═══════════════ TEMA WARNA "SILAU NEON" ═══════════════
 local C = {
     Hitam     = Color3.fromRGB(12, 10, 20),
     Hitam2    = Color3.fromRGB(22, 18, 38),
@@ -175,17 +164,8 @@ local C = {
     Abuk      = Color3.fromRGB(160, 155, 185),
     AbuTeks   = Color3.fromRGB(130, 125, 155),
 }
--- 🔥 palet api meteor
-local FIRE = {
-    Kuning = Color3.fromRGB(255, 200, 60),
-    Oranye = Color3.fromRGB(255, 120, 30),
-    MerahA = Color3.fromRGB(255, 60, 20),
-    Gelap  = Color3.fromRGB(46, 16, 8),
-}
 
 --═══════════════ HELPER ═══════════════
-local rnd = math.random
-
 local function new(class, props, parent)
     local inst = Instance.new(class)
     if props then
@@ -226,8 +206,9 @@ local function bunyi(id, vol, pitch)
     task.delay(3, function() s:Destroy() end)
 end
 
--- 💡 LED SWEEP
+-- 💡 LED SWEEP (TweenService murni — murah, tidak bikin stutter)
 local function ledSweep(inst, base, bandA, bandB, dur)
+    if not FX_LED then return nil end
     local g = new("UIGradient", {
         Color = ColorSequence.new({
             ColorSequenceKeypoint.new(0.00, base),
@@ -242,18 +223,6 @@ local function ledSweep(inst, base, bandA, bandB, dur)
     tween(g, TweenInfo.new(dur or 2.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
         {Offset = Vector2.new(1, 0)})
     return g
-end
-
-local function cycleColor(obj, prop, colors, interval)
-    task.spawn(function()
-        local i = 1
-        while obj.Parent do
-            tween(obj, TweenInfo.new(interval * 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {[prop] = colors[i]})
-            task.wait(interval)
-            if not obj.Parent then break end
-            i = i % #colors + 1
-        end
-    end)
 end
 
 -- 🌊 RIPPLE
@@ -275,7 +244,7 @@ local function ripple(btn, warna)
     task.delay(0.5, function() c:Destroy() end)
 end
 
--- 🔍 EFEK TOMBOL (hover pop)
+-- 🔍 EFEK TOMBOL (hover pop — hanya saat hover, tidak jalan terus)
 local function efekTombol(btn, skalaHover)
     local s = new("UIScale", {Scale = 1}, btn)
     local target = skalaHover or 1.06
@@ -293,34 +262,7 @@ local function efekTombol(btn, skalaHover)
     end)
 end
 
---═══════════════ KONFETI & EMOJI BURST (ter-clip di parent) ═══════════════
-local paletKonfeti = {C.Ungu, C.Ungu2, C.Biru, C.Biru2, C.Putih}
-
-local function konfeti(parent, pos, n)
-    for _ = 1, n do
-        local c = new("Frame", {
-            Name = "NoFade",
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = pos,
-            Size = UDim2.fromOffset(rnd(5, 9), rnd(5, 9)),
-            BackgroundColor3 = paletKonfeti[rnd(1, #paletKonfeti)],
-            BorderSizePixel = 0,
-            Rotation = rnd(0, 360),
-            ZIndex = 800,
-        }, parent)
-        local sudut = rnd(1, 360) * math.pi / 180
-        local jarak = rnd(60, 150)
-        local dur = rnd(55, 85) / 100
-        tween(c, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Position = UDim2.new(pos.X.Scale, pos.X.Offset + math.cos(sudut) * jarak,
-                pos.Y.Scale, pos.Y.Offset + math.sin(sudut) * jarak + 30),
-            Rotation = c.Rotation + rnd(180, 540),
-            BackgroundTransparency = 1,
-        })
-        task.delay(dur + 0.05, function() c:Destroy() end)
-    end
-end
-
+-- ✨ EMOJI BURST (hanya dipanggil saat TP — sesaat, bukan loop)
 local function emojiBurst(parent, pos, daftar, n)
     for _ = 1, n do
         local l = new("TextLabel", {
@@ -330,18 +272,18 @@ local function emojiBurst(parent, pos, daftar, n)
             Size = UDim2.fromOffset(24, 24),
             BackgroundTransparency = 1,
             Font = Enum.Font.SourceSans,
-            Text = daftar[rnd(1, #daftar)],
-            TextSize = rnd(14, 22),
-            Rotation = rnd(-20, 20),
+            Text = daftar[math.random(1, #daftar)],
+            TextSize = math.random(14, 22),
+            Rotation = math.random(-20, 20),
             ZIndex = 801,
         }, parent)
-        local sudut = rnd(1, 360) * math.pi / 180
-        local jarak = rnd(70, 160)
-        local dur = rnd(60, 90) / 100
+        local sudut = math.random(1, 360) * math.pi / 180
+        local jarak = math.random(70, 160)
+        local dur = math.random(60, 90) / 100
         tween(l, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Position = UDim2.new(pos.X.Scale, pos.X.Offset + math.cos(sudut) * jarak,
                 pos.Y.Scale, pos.Y.Offset + math.sin(sudut) * jarak - 40),
-            Rotation = l.Rotation + rnd(-180, 180),
+            Rotation = l.Rotation + math.random(-180, 180),
             TextTransparency = 1,
         })
         task.delay(dur + 0.05, function() l:Destroy() end)
@@ -352,12 +294,6 @@ end
 local screenFx = new("Frame", {
     Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
     BorderSizePixel = 0, ZIndex = 900,
-}, gui)
-
--- layer ekor meteor (di bawah main) ☄️
-local trailLayer = new("Frame", {
-    Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
-    BorderSizePixel = 0, ZIndex = 1,
 }, gui)
 
 --═══════════════ BRIGHTNESS <-> JAM ═══════════════
@@ -374,104 +310,74 @@ local function formatClock(t)
     return string.format("%02d:%02d", h, m)
 end
 
---═══════════════ GUI UTAMA (80% — fase BOLA <-> FRAME) ═══════════════
+--═══════════════ GUI UTAMA (SILAU NEON — 80%, RINGAN) ═══════════════
 local main = new("Frame", {
-    Size = UDim2.fromOffset(800, 800),           -- square saat fase bola
-    Position = POS_MASUK,
+    Size = UDim2.fromOffset(480, 800),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
     AnchorPoint = Vector2.new(0.5, 0.5),
     BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
-    Visible = false, ZIndex = 2,
+    Visible = false,
 }, gui)
-local panelScale = new("UIScale", {Scale = BOLA_MIN}, main)
+local panelScale = new("UIScale", {Scale = UKURAN_GUI}, main)
 
 local outer = new("Frame", {
     Size = UDim2.new(1, 0, 1, 0),
     BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
-    ClipsDescendants = true,   -- 🔒 layer 1
+    ClipsDescendants = true,   -- 🔒 semua isi ter-kunci di dalam frame
 }, main)
-local outerCorner = new("UICorner", {CornerRadius = UDim.new(1, 0)}, outer)
+new("UICorner", {CornerRadius = UDim.new(0, 18)}, outer)
 
--- band berputar -> ilusi bola menggelinding 🎳
-local bolaGrad = new("UIGradient", {
-    Name = "NoFade",
-    Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0.00, C.Hitam),
-        ColorSequenceKeypoint.new(0.32, C.Hitam),
-        ColorSequenceKeypoint.new(0.50, Color3.fromRGB(52, 44, 88)),
-        ColorSequenceKeypoint.new(0.68, C.Hitam),
-        ColorSequenceKeypoint.new(1.00, C.Hitam),
-    }),
-}, outer)
+-- border gradient berputar ⚡ (TweenService — murah)
+local borderStroke = new("UIStroke", {Name = "NoFade", Color = C.Ungu, Thickness = 3}, outer)
+if FX_PUTAR then
+    local borderGrad = new("UIGradient", {
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0.00, C.Ungu),
+            ColorSequenceKeypoint.new(0.25, C.Biru),
+            ColorSequenceKeypoint.new(0.50, C.Ungu2),
+            ColorSequenceKeypoint.new(0.75, C.Biru2),
+            ColorSequenceKeypoint.new(1.00, C.Ungu),
+        }),
+    }, borderStroke)
+    tween(borderGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = 360})
+end
 
--- inti bola (⚡ atau ☄️ saat meteor)
-local bolaCore = new("TextLabel", {
-    Name = "NoFade", AnchorPoint = Vector2.new(0.5, 0.5),
-    Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.fromOffset(280, 280),
-    BackgroundTransparency = 1, Font = Enum.Font.SourceSans,
-    Text = "⚡", TextSize = 280, TextColor3 = C.Putih,
-    TextTransparency = 1, ZIndex = 1,
-}, outer)
-
--- border gradient berputar ⚡
-local borderStroke = new("UIStroke", {Name = "NoFade", Color = C.Ungu, Thickness = 8, Transparency = 1}, outer)
-local borderGrad = new("UIGradient", {
-    Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0.00, C.Ungu),
-        ColorSequenceKeypoint.new(0.25, C.Biru),
-        ColorSequenceKeypoint.new(0.50, C.Ungu2),
-        ColorSequenceKeypoint.new(0.75, C.Biru2),
-        ColorSequenceKeypoint.new(1.00, C.Ungu),
-    }),
-}, borderStroke)
-tween(borderGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = 360})
-
--- ring putih kedua ✦
-local ring2 = new("UIStroke", {Name = "NoFade", Color = C.Putih, Thickness = 3, Transparency = 1}, outer)
-local ring2Grad = new("UIGradient", {Color = ColorSequence.new(C.Ungu2, C.Biru2)}, ring2)
-tween(ring2Grad, TweenInfo.new(3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = -360})
+-- ring putih kedua ✦ (statis — tidak berputar, hemat)
+local ring2 = new("UIStroke", {Name = "NoFade", Color = C.Putih, Thickness = 1, Transparency = 0.45}, outer)
+if FX_PUTAR then
+    local ring2Grad = new("UIGradient", {Color = ColorSequence.new(C.Ungu2, C.Biru2)}, ring2)
+    tween(ring2Grad, TweenInfo.new(3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = -360})
+end
 
 local panel = new("Frame", {
     Size = UDim2.new(1, -10, 1, -10), Position = UDim2.new(0, 5, 0, 5),
     BackgroundColor3 = C.Hitam2, BorderSizePixel = 0,
-    ClipsDescendants = true,   -- 🔒 layer 2 (ANTI BOCOR)
-    Visible = false,           -- 🔒 isi tersembunyi saat fase bola
-    ZIndex = 2,
+    ClipsDescendants = true,   -- 🔒 anti bocor
 }, outer)
 new("UICorner", {CornerRadius = UDim.new(0, 13)}, panel)
 new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.55}, panel)
 ledSweep(panel, C.Hitam2, C.Ungu, C.Biru, 5)
 
--- panel "bernapas" 💫
-local breath = new("UIScale", {Scale = 1}, outer)
-tween(breath, TweenInfo.new(1.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Scale = 1.008})
-
--- wadah partikel ambient ✨
+-- wadah garis diagonal statis (TANPA animasi — hemat)
 local partBox = new("Frame", {
     Name = "PartBox", Position = UDim2.new(0, 4, 0, 52),
     Size = UDim2.new(1, -8, 1, -110), BackgroundTransparency = 1,
     BorderSizePixel = 0, ClipsDescendants = true,
-    ZIndex = 2,
 }, panel)
-
--- garis-garis diagonal (ikut fade)
 for i = 1, 3 do
-    local stripe = new("Frame", {
+    new("Frame", {
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.new(0.3 * i, 0, 0.5, 0), Size = UDim2.fromOffset(26, 500),
         Rotation = 24, BackgroundColor3 = i % 2 == 0 and C.BiruMuda or C.UnguMuda,
-        BackgroundTransparency = 0.88, BorderSizePixel = 0,
-        ZIndex = 1,
+        BackgroundTransparency = 0.9, BorderSizePixel = 0,
     }, partBox)
-    tween(stripe, TweenInfo.new(6 + i * 2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true),
-        {Position = UDim2.new(0.3 * i + 0.25, 0, 0.5, 0)})
 end
 
 -- HEADER / TITLE BAR
 local title = new("Frame", {
     Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = C.Hitam,
     BorderSizePixel = 0, Active = true,
-    ClipsDescendants = true,   -- 🔒 layer 3
-    ZIndex = 2,
+    ClipsDescendants = true,
 }, panel)
 new("UICorner", {CornerRadius = UDim.new(0, 13)}, title)
 new("Frame", {
@@ -486,25 +392,8 @@ local judulLabel = new("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
 }, title)
 ledSweep(judulLabel, C.Putih, C.Ungu2, C.Biru2, 2.2)
-
-local judulGlow = new("UIStroke", {Color = C.Ungu2, Thickness = 1, Transparency = 0.35}, judulLabel)
-task.spawn(function()
-    while judulLabel.Parent do
-        if layarRedup or not main.Visible then
-            task.wait(0.2)
-        else
-            tween(judulGlow, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.75})
-            task.wait(0.8)
-            if not judulLabel.Parent then break end
-            tween(judulGlow, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.35})
-            task.wait(0.8)
-        end
-        if not judulLabel.Parent then break end
-    end
-end)
-
-local judulScale = new("UIScale", {Scale = 1}, judulLabel)
-tween(judulScale, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Scale = 1.05})
+-- glow statis (tanpa pulse loop)
+new("UIStroke", {Name = "NoFade", Color = C.Ungu2, Thickness = 1, Transparency = 0.35}, judulLabel)
 
 local minBtn = new("TextButton", {
     Size = UDim2.fromOffset(28, 28), Position = UDim2.new(1, -40, 0.5, -14),
@@ -531,7 +420,7 @@ local scroll = new("ScrollingFrame", {
 }, panel)
 new("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, scroll)
 
--- MARQUEE teks berjalan 📜
+-- MARQUEE teks berjalan 📜 (1 tween saja — murah)
 local marqueeStrip = new("Frame", {
     Position = UDim2.new(0, 10, 1, -88), Size = UDim2.new(1, -20, 0, 20),
     BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
@@ -545,18 +434,17 @@ local marqueeClip = new("Frame", {
 local marquee = new("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.fromOffset(320, 0),
     Size = UDim2.fromOffset(1200, 14), FontFace = fnt("med"),
-    Text = "⌨ F = GUI ✦ CAPSLOCK = freecam ✦ T = auto brightness ✦ G = kamera→karakter ✦ C = TP kamera / info players ✦ Q = speed ✦ R = hide players ✦ WASD + QE + SPACE = gerak freecam ✦ ☄️ M E T E O R  N E O N ☄️",
+    Text = "⌨ F = GUI ✦ CAPSLOCK = freecam ✦ T = auto brightness ✦ G = kamera→karakter ✦ C = TP kamera / info players ✦ Q = speed ✦ R = hide players ✦ WASD + QE + SPACE = gerak freecam ✦ ⚡ S I L A U  N E O N ⚡",
     TextColor3 = C.Abuk, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
 }, marqueeClip)
 tween(marquee, TweenInfo.new(16, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
     {Position = UDim2.fromOffset(-1200, 0)})
-cycleColor(marquee, "TextColor3", {C.Putih, C.Ungu2, C.Biru2}, 0.8)
 
 -- BAR BAWAH (reset & keluar)
 local bottom = new("Frame", {
     Position = UDim2.new(0, 0, 1, -56), Size = UDim2.new(1, 0, 0, 56),
     BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
-    ClipsDescendants = true,   -- 🔒
+    ClipsDescendants = true,
 }, panel)
 new("UICorner", {CornerRadius = UDim.new(0, 13)}, bottom)
 new("Frame", {
@@ -579,139 +467,25 @@ local exitBtn = new("TextButton", {
     FontFace = fnt("bold"), TextSize = 18, Text = "🗑️ Hapus / Keluar", TextColor3 = C.Merah,
 }, bottom)
 new("UICorner", {CornerRadius = UDim.new(0, 12)}, exitBtn)
-local exitStroke = new("UIStroke", {Color = C.Merah, Thickness = 2, Transparency = 0.6}, exitBtn)
-task.spawn(function()
-    while exitBtn.Parent do
-        if layarRedup or not main.Visible then
-            task.wait(0.2)
-        else
-            tween(exitStroke, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.15})
-            task.wait(0.8)
-            if not exitBtn.Parent then break end
-            tween(exitStroke, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.6})
-            task.wait(0.8)
-        end
-        if not exitBtn.Parent then break end
-    end
-end)
+-- stroke statis (tanpa pulse loop)
+new("UIStroke", {Color = C.Merah, Thickness = 2, Transparency = 0.6}, exitBtn)
 efekTombol(exitBtn)
 
--- DOT LED + BRACKET HUD (dekorasi frame)
-local dekor = {}
-local posisiTitik = {
-    UDim2.new(0.5, 0, 0, 5), UDim2.new(0.5, 0, 1, -5),
-    UDim2.new(0, 5, 0.5, 0), UDim2.new(1, -5, 0.5, 0),
-}
-for i, p in ipairs(posisiTitik) do
-    local d = new("Frame", {
-        Name = "NoFade", AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = p, Size = UDim2.fromOffset(6, 6),
-        BackgroundColor3 = C.Ungu2, BorderSizePixel = 0, ZIndex = 3,
-        Visible = false,
-    }, outer)
-    new("UICorner", {CornerRadius = UDim.new(1, 0)}, d)
-    cycleColor(d, "BackgroundColor3", {C.Putih, C.Ungu2, C.Biru2, C.Ungu}, 0.6 * i + 0.3)
-    table.insert(dekor, d)
-end
-
+-- BRACKET HUD di sudut (STATIS — tanpa loop kedip)
 local function bracket(ax, ay, px, py, warna)
-    local bar1 = new("Frame", {Name = "NoFade", AnchorPoint = Vector2.new(ax, ay),
+    new("Frame", {Name = "NoFade", AnchorPoint = Vector2.new(ax, ay),
         Position = UDim2.new(px, ax == 1 and -8 or 8, py, ay == 1 and -8 or 8),
-        Size = UDim2.fromOffset(14, 3), BackgroundColor3 = warna, BorderSizePixel = 0, ZIndex = 3,
-        Visible = false}, outer)
-    local bar2 = new("Frame", {Name = "NoFade", AnchorPoint = Vector2.new(ax, ay),
+        Size = UDim2.fromOffset(14, 3), BackgroundColor3 = warna,
+        BackgroundTransparency = 0.3, BorderSizePixel = 0, ZIndex = 3}, outer)
+    new("Frame", {Name = "NoFade", AnchorPoint = Vector2.new(ax, ay),
         Position = UDim2.new(px, ax == 1 and -3 or 3, py, ay == 1 and -3 or 3),
-        Size = UDim2.fromOffset(3, 14), BackgroundColor3 = warna, BorderSizePixel = 0, ZIndex = 3,
-        Visible = false}, outer)
-    return {bar1, bar2}
+        Size = UDim2.fromOffset(3, 14), BackgroundColor3 = warna,
+        BackgroundTransparency = 0.3, BorderSizePixel = 0, ZIndex = 3}, outer)
 end
-local semuaBracket = {
-    bracket(0, 0, 0, 0, C.Ungu2),
-    bracket(1, 0, 1, 0, C.Biru2),
-    bracket(0, 1, 0, 1, C.Biru2),
-    bracket(1, 1, 1, 1, C.Ungu2),
-}
-for _, pasang in ipairs(semuaBracket) do
-    for _, b in ipairs(pasang) do
-        table.insert(dekor, b)
-    end
-end
-
-task.spawn(function()
-    while outer.Parent do
-        for i, pasang in ipairs(semuaBracket) do
-            for _, b in ipairs(pasang) do
-                tween(b, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                    {BackgroundTransparency = (i % 2 == 0) and 0.7 or 0.1})
-            end
-        end
-        task.wait(0.62)
-        if not outer.Parent then break end
-        for i, pasang in ipairs(semuaBracket) do
-            for _, b in ipairs(pasang) do
-                tween(b, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                    {BackgroundTransparency = (i % 2 == 0) and 0.1 or 0.7})
-            end
-        end
-        task.wait(0.62)
-    end
-end)
-
-local function setDekor(vis)
-    for _, d in ipairs(dekor) do d.Visible = vis end
-end
-
---═══════════════ PARTIKEL AMBIENT ✨ ═══════════════
-local emojiAmbient = {"✨", "⚡", "💜", "💙", "⭐", "💫", "🔹", "🌟"}
-task.spawn(function()
-    while partBox.Parent do
-        if panel.Visible and not layarRedup then
-            local x0 = rnd(6, 94) / 100
-            local l = new("TextLabel", {
-                Name = "NoFade", AnchorPoint = Vector2.new(0.5, 0.5),
-                Position = UDim2.new(x0, 0, 1.05, 0), Size = UDim2.fromOffset(20, 20),
-                BackgroundTransparency = 1, Font = Enum.Font.SourceSans,
-                Text = emojiAmbient[rnd(1, #emojiAmbient)], TextSize = rnd(11, 16),
-                TextColor3 = C.Putih, TextTransparency = 1, Rotation = rnd(-15, 15),
-            }, partBox)
-            local dur = rnd(28, 46) / 10
-            tween(l, TweenInfo.new(0.35), {TextTransparency = 0.5})
-            tween(l, TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                {Position = UDim2.new(x0 + rnd(-6, 6) / 100, 0, -0.08, 0)})
-            tween(l, TweenInfo.new(1.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-                {Rotation = l.Rotation + rnd(16, 30) * (rnd(0, 1) == 0 and 1 or -1)})
-            task.delay(dur - 0.4, function()
-                if l.Parent then tween(l, TweenInfo.new(0.4), {TextTransparency = 1}) end
-            end)
-            task.delay(dur + 0.1, function() l:Destroy() end)
-            task.wait(rnd(4, 8) / 10)
-        else
-            task.wait(0.8)
-        end
-    end
-end)
-
--- sparkle kecil di header ✦
-task.spawn(function()
-    while title.Parent do
-        task.wait(rnd(6, 14) / 10)
-        if not title.Parent then break end
-        if panel.Visible and not layarRedup then
-            local s = new("TextLabel", {
-                Name = "NoFade", AnchorPoint = Vector2.new(0.5, 0.5),
-                Position = UDim2.new(rnd(5, 80) / 100, 0, rnd(20, 80) / 100, 0),
-                Size = UDim2.fromOffset(14, 14), BackgroundTransparency = 1,
-                Font = Enum.Font.SourceSans, Text = rnd(0, 1) == 0 and "✦" or "✨",
-                TextSize = rnd(9, 13), TextColor3 = C.Putih, TextTransparency = 1, ZIndex = 2,
-            }, title)
-            tween(s, TweenInfo.new(0.2), {TextTransparency = 0.1})
-            task.delay(0.35, function()
-                if s.Parent then tween(s, TweenInfo.new(0.35), {TextTransparency = 1}) end
-            end)
-            task.delay(0.75, function() s:Destroy() end)
-        end
-    end
-end)
+bracket(0, 0, 0, 0, C.Ungu2)
+bracket(1, 0, 1, 0, C.Biru2)
+bracket(0, 1, 0, 1, C.Biru2)
+bracket(1, 1, 1, 1, C.Ungu2)
 
 --═══════════════ NOTIFIKASI MUNGIL (POJOK KANAN ATAS — SUBTLE) ═══════════════
 local notifHolder = new("Frame", {
@@ -789,25 +563,6 @@ crossLine(-16, -1, 12, 2)
 crossLine(  4, -1, 12, 2)
 crossLine(-1,  -1, 2, 2)
 
-task.spawn(function()
-    local garis = {}
-    for _, d in ipairs(crosshair:GetChildren()) do table.insert(garis, d) end
-    while crosshair.Parent do
-        if crosshair.Visible then
-            for _, l in ipairs(garis) do
-                tween(l, TweenInfo.new(0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {BackgroundTransparency = 0.25})
-            end
-            task.wait(0.4)
-            for _, l in ipairs(garis) do
-                tween(l, TweenInfo.new(0.35, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {BackgroundTransparency = 0})
-            end
-            task.wait(0.4)
-        else
-            task.wait(0.5)
-        end
-    end
-end)
-
 --═══════════════ PEMBANGUN UI ═══════════════
 local order = 0
 local function addSection(text)
@@ -845,17 +600,16 @@ local function addRow(labelText, opts)
     local row = new("Frame", {
         Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = C.Baris,
         BorderSizePixel = 0, LayoutOrder = order,
-        ClipsDescendants = true,   -- 🔒
+        ClipsDescendants = true,
     }, scroll)
     new("UICorner", {CornerRadius = UDim.new(0, 12)}, row)
     local rowStroke = new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.78}, row)
 
-    local notch = new("Frame", {
+    -- notch LED statis (tanpa cycleColor loop — hemat)
+    new("Frame", {
         Size = UDim2.new(0, 3, 1, -18), Position = UDim2.new(0, 6, 0, 9),
         BackgroundColor3 = C.Ungu2, BorderSizePixel = 0,
     }, row)
-    new("UICorner", {CornerRadius = UDim.new(1, 0)}, notch)
-    cycleColor(notch, "BackgroundColor3", {C.Putih, C.Ungu2, C.Biru2}, 0.5 + (order % 5) * 0.12)
 
     row.MouseEnter:Connect(function()
         tween(row, TweenInfo.new(0.12), {BackgroundColor3 = C.BarisHov})
@@ -884,7 +638,6 @@ local function addRow(labelText, opts)
             Text = "-", FontFace = fnt("bold"), TextSize = 22, TextColor3 = C.Putih,
         }, row)
         new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.minus)
-        ledSweep(ref.minus, C.UnguD, C.Putih, C.Ungu2, 2.6)
         efekTombol(ref.minus, 1.12)
 
         ref.val = new("TextLabel", {
@@ -901,7 +654,6 @@ local function addRow(labelText, opts)
             Text = "+", FontFace = fnt("bold"), TextSize = 22, TextColor3 = C.Putih,
         }, row)
         new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.plus)
-        ledSweep(ref.plus, C.UnguD, C.Putih, C.Biru2, 2.6)
         efekTombol(ref.plus, 1.12)
     end
 
@@ -912,7 +664,6 @@ local function addRow(labelText, opts)
             Text = opts.action, FontFace = fnt("bold"), TextSize = 17, TextColor3 = C.Putih,
         }, row)
         new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.action)
-        ledSweep(ref.action, C.Biru, C.Putih, C.Ungu2, 2.4)
         efekTombol(ref.action)
     end
 
@@ -940,7 +691,8 @@ local function styleToggle(btn, on)
     end
     local g = btn:FindFirstChild("LedGrad")
     if on and not g then
-        ledSweep(btn, C.Biru, C.Putih, C.Biru2, 2.2).Name = "LedGrad"
+        local gg = ledSweep(btn, C.Biru, C.Putih, C.Biru2, 2.2)
+        if gg then gg.Name = "LedGrad" end
     elseif not on and g then
         g:Destroy()
     end
@@ -1468,7 +1220,7 @@ local function tahanKarakter()
     end)
 end
 
---═══════════════ EFEK FLASH TELEPORT 🚀 ═══════════════
+--═══════════════ EFEK FLASH TELEPORT 🚀 (sesaat saat TP saja) ═══════════════
 local function fxTeleport()
     bunyi(SND_WHOOSH, 0.4, 1.1)
 
@@ -1494,7 +1246,7 @@ local function fxTeleport()
     tween(rs, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 1})
     task.delay(0.55, function() r:Destroy() end)
 
-    emojiBurst(screenFx, UDim2.new(0.5, 0, 0.5, 0), {"🚀", "✨", "⚡", "💫", "🌟"}, 10)
+    emojiBurst(screenFx, UDim2.new(0.5, 0, 0.5, 0), {"🚀", "✨", "⚡", "💫", "🌟"}, 8)
 
     tween(panelScale, TweenInfo.new(0.09, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = UKURAN_GUI * 0.96})
     task.delay(0.1, function()
@@ -1590,17 +1342,25 @@ local function setHitamPutih(aktif)
     end
 end
 
---═══════════════ UPDATE KAMERA (TIAP FRAME) ═══════════════
+--═══════════════ UPDATE KAMERA (TIAP FRAME — DIOPTIMALKAN) ═══════════════
+local lastMouseState = nil
+
 local function updateFreecam(dt)
     tahanKarakter()
 
     camera.CameraType = Enum.CameraType.Scriptable
-    if main.Visible then
-        UserInputService.MouseBehavior    = Enum.MouseBehavior.Default
-        UserInputService.MouseIconEnabled = true
-    else
-        UserInputService.MouseBehavior    = Enum.MouseBehavior.LockCenter
-        UserInputService.MouseIconEnabled = false
+
+    -- MouseBehavior hanya di-set saat berubah (hemat tiap frame)
+    local state = main.Visible
+    if state ~= lastMouseState then
+        lastMouseState = state
+        if state then
+            UserInputService.MouseBehavior    = Enum.MouseBehavior.Default
+            UserInputService.MouseIconEnabled = true
+        else
+            UserInputService.MouseBehavior    = Enum.MouseBehavior.LockCenter
+            UserInputService.MouseIconEnabled = false
+        end
     end
 
     local maju    = (tombolTekan[Enum.KeyCode.W] and 1 or 0) - (tombolTekan[Enum.KeyCode.S] and 1 or 0)
@@ -1680,6 +1440,7 @@ local function hentikanFreecam()
 
     UserInputService.MouseBehavior    = Enum.MouseBehavior.Default
     UserInputService.MouseIconEnabled = true
+    lastMouseState = nil
 end
 
 local function perbaruiTombol()
@@ -1699,366 +1460,6 @@ local function setTpKamera(aktif)
     tpKameraAktif = aktif
     perbaruiTombol()
     notify("TP Karakter -> Kamera", aktif)
-end
-
---═══════════════ FADE PER-ELEMEN (isi panel) ═══════════════
-local elemenFade = {}
-local fadeVal = Instance.new("NumberValue")
-fadeVal.Value = 1
-fadeVal.Parent = gui
-
-local function kumpulkanFade()
-    table.clear(elemenFade)
-    local daftar = panel:GetDescendants()
-    for _, obj in ipairs(daftar) do
-        if obj.Name ~= "NoFade" then
-            if obj:IsA("Frame") or obj:IsA("TextLabel") or obj:IsA("TextBox") then
-                if obj.BackgroundTransparency < 1 then
-                    table.insert(elemenFade, {obj, "BackgroundTransparency", obj.BackgroundTransparency})
-                end
-                if (obj:IsA("TextLabel") or obj:IsA("TextBox")) and obj.TextTransparency < 1 then
-                    table.insert(elemenFade, {obj, "TextTransparency", obj.TextTransparency})
-                end
-            elseif obj:IsA("UIStroke") and obj.Transparency < 1 then
-                table.insert(elemenFade, {obj, "Transparency", obj.Transparency})
-            end
-        end
-    end
-end
-
-local function setFade(t)
-    for _, e in ipairs(elemenFade) do
-        e[1][e[2]] = e[3] + (1 - e[3]) * t
-    end
-end
-
-fadeVal.Changed:Connect(setFade)
-
---═══════════════ ☄️ SISTEM METEOR (v1.7) ═══════════════
--- Ekor api menyembur ke belakang bola yang menggelinding.
--- Partikel ada di trailLayer (layer terpisah, di bawah main) —
--- ini EFEK SENGAJA mengikuti meteor, bukan bocoran UI.
-local trailAktif = false
-
-local function mulaiMeteorTrail(durasi)
-    trailAktif = true
-    task.spawn(function()
-        local t0 = os.clock()
-        local lastPos = nil
-        while trailAktif and (os.clock() - t0) < durasi and gui.Parent do
-            local sz  = main.AbsoluteSize
-            local pos = main.AbsolutePosition + sz / 2
-
-            local dir = Vector2.zero
-            if lastPos then dir = pos - lastPos end
-            lastPos = pos
-
-            if dir.Magnitude > 0.5 then
-                local u = dir.Unit
-                -- bara api di belakang bola
-                for i = 1, 2 do
-                    local off = Vector2.new(rnd(-7, 7), rnd(-7, 7)) - u * rnd(4, 16)
-                    local uk  = rnd(5, 13)
-                    local p = new("Frame", {
-                        AnchorPoint = Vector2.new(0.5, 0.5),
-                        Position = UDim2.fromOffset(pos.X + off.X, pos.Y + off.Y),
-                        Size = UDim2.fromOffset(uk, uk),
-                        BackgroundColor3 = (rnd(0, 1) == 0) and FIRE.Oranye or FIRE.Kuning,
-                        BorderSizePixel = 0, ZIndex = 1,
-                    }, trailLayer)
-                    new("UICorner", {CornerRadius = UDim.new(1, 0)}, p)
-                    local dr = rnd(25, 45) / 100
-                    tween(p, TweenInfo.new(dr, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        Position = UDim2.fromOffset(
-                            pos.X + off.X - u.X * rnd(25, 60),
-                            pos.Y + off.Y - u.Y * rnd(25, 60)),
-                        Size = UDim2.fromOffset(1, 1),
-                        BackgroundColor3 = FIRE.MerahA,
-                        BackgroundTransparency = 1,
-                    })
-                    task.delay(dr + 0.05, function() p:Destroy() end)
-                end
-                -- emoji api sesekali 🔥
-                if rnd(1, 3) == 1 then
-                    local e = new("TextLabel", {
-                        AnchorPoint = Vector2.new(0.5, 0.5),
-                        Position = UDim2.fromOffset(pos.X + rnd(-9, 9), pos.Y + rnd(-9, 9)),
-                        Size = UDim2.fromOffset(18, 18), BackgroundTransparency = 1,
-                        Font = Enum.Font.SourceSans,
-                        Text = (rnd(0, 1) == 0) and "🔥" or "✨",
-                        TextSize = rnd(11, 17), TextColor3 = FIRE.Oranye, ZIndex = 1,
-                    }, trailLayer)
-                    local dr = rnd(30, 50) / 100
-                    tween(e, TweenInfo.new(dr, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-                        Position = UDim2.fromOffset(
-                            pos.X - u.X * rnd(35, 70), pos.Y - u.Y * rnd(35, 70)),
-                        TextTransparency = 1,
-                        Rotation = rnd(-90, 90),
-                    })
-                    task.delay(dr + 0.05, function() e:Destroy() end)
-                end
-            end
-            task.wait(0.03)
-        end
-        trailAktif = false
-    end)
-end
-
--- bola <-> mode meteor (warna api menyala)
-local function bolaApi(on)
-    local ti = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    if on then
-        tween(outer,        ti, {BackgroundColor3 = FIRE.Gelap})
-        tween(borderStroke, ti, {Color = FIRE.Oranye})
-        tween(ring2,        ti, {Color = FIRE.Kuning})
-        tween(bolaCore,     ti, {TextColor3 = FIRE.Kuning})
-        bolaCore.Text = "☄️"
-    else
-        tween(outer,        ti, {BackgroundColor3 = C.Hitam})
-        tween(borderStroke, ti, {Color = C.Ungu})
-        tween(ring2,        ti, {Color = C.Putih})
-        tween(bolaCore,     ti, {TextColor3 = C.Putih})
-        bolaCore.Text = "⚡"
-    end
-end
-
--- 💥 impact: cincin api + ledakan bara saat meteor tiba
-local function meteorImpact()
-    bunyi(SND_SNAP, 0.35, 0.9)
-
-    local c = UDim2.new(0.5, 0, 0.5, 0)
-    local r = new("Frame", {
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = c, Size = UDim2.fromOffset(24, 24),
-        BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 1,
-    }, trailLayer)
-    new("UICorner", {CornerRadius = UDim.new(1, 0)}, r)
-    local rs = new("UIStroke", {Color = FIRE.Kuning, Thickness = 5, Transparency = 0.05}, r)
-    tween(r,  TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(280, 280)})
-    tween(rs, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Transparency = 1})
-    task.delay(0.5, function() r:Destroy() end)
-
-    for i = 1, 14 do
-        local sudut = (i / 14) * math.pi * 2
-        local p = new("Frame", {
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = c, Size = UDim2.fromOffset(rnd(4, 9), rnd(4, 9)),
-            BackgroundColor3 = FIRE[rnd(1, 3)], BorderSizePixel = 0, ZIndex = 1,
-        }, trailLayer)
-        new("UICorner", {CornerRadius = UDim.new(1, 0)}, p)
-        local jarak = rnd(40, 95)
-        local dur = rnd(30, 55) / 100
-        tween(p, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Position = UDim2.new(0.5, math.cos(sudut) * jarak, 0.5, math.sin(sudut) * jarak),
-            Size = UDim2.fromOffset(1, 1),
-            BackgroundTransparency = 1,
-        })
-        task.delay(dur + 0.05, function() p:Destroy() end)
-    end
-
-    local e = new("TextLabel", {
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 0, 0.5, -20),
-        Size = UDim2.fromOffset(26, 26), BackgroundTransparency = 1,
-        Font = Enum.Font.SourceSans, Text = "💥",
-        TextSize = 22, ZIndex = 1,
-    }, trailLayer)
-    tween(e, TweenInfo.new(0.4), {TextTransparency = 1, TextSize = 30})
-    task.delay(0.45, function() e:Destroy() end)
-end
-
--- 💨 fizzle: bara kecil saat meteor terbakar habis
-local function meteorFizzle()
-    local pos = (main.Position == POS_KELUAR) and POS_KELUAR or POS_TENGAH
-    for i = 1, 8 do
-        local sudut = rnd(1, 360) * math.pi / 180
-        local p = new("Frame", {
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = pos, Size = UDim2.fromOffset(rnd(3, 6), rnd(3, 6)),
-            BackgroundColor3 = FIRE[rnd(1, 3)], BorderSizePixel = 0, ZIndex = 1,
-        }, trailLayer)
-        new("UICorner", {CornerRadius = UDim.new(1, 0)}, p)
-        local dur = rnd(20, 40) / 100
-        tween(p, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Position = UDim2.new(pos.X.Scale, pos.X.Offset + math.cos(sudut) * rnd(15, 35),
-                pos.Y.Scale, pos.Y.Offset + math.sin(sudut) * rnd(15, 35)),
-            Size = UDim2.fromOffset(1, 1),
-            BackgroundTransparency = 1,
-        })
-        task.delay(dur + 0.05, function() p:Destroy() end)
-    end
-end
-
--- target 0 = terlihat | 1 = transparan (visual bola)
-local function fadeBola(target, durasi)
-    local ti = TweenInfo.new(durasi, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    tween(outer,        ti, {BackgroundTransparency = target})
-    tween(borderStroke, ti, {Transparency = target})
-    tween(ring2,        ti, {Transparency = 0.45 + (1 - 0.45) * target})
-    tween(bolaCore,     ti, {TextTransparency = math.max(target, 0.1) * 0.9})
-end
-
---═══════════════ BUKA / TUTUP (v1.7 — ☄️ METEOR) ═══════════════
-local sesiAnim = 0
-local sedangAnim = false
-
--- 🌸 efek MEKAR (kelopak + cincin + konfeti — di dalam outer, ter-clip)
-local function mekar()
-    for i = 1, 10 do
-        local sudut = (i / 10) * math.pi * 2
-        local p = new("Frame", {
-            Name = "NoFade", AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.fromOffset(6, 6),
-            BackgroundColor3 = (i % 2 == 0) and C.Ungu2 or C.Biru2,
-            BorderSizePixel = 0, ZIndex = 802,
-        }, outer)
-        new("UICorner", {CornerRadius = UDim.new(1, 0)}, p)
-        local jarak = rnd(80, 130)
-        tween(p, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-            Size = UDim2.fromOffset(rnd(10, 18), rnd(10, 18)),
-            Position = UDim2.new(0.5, math.cos(sudut) * jarak, 0.5, math.sin(sudut) * jarak),
-            BackgroundTransparency = 1,
-        })
-        task.delay(0.6, function() p:Destroy() end)
-    end
-    local r = new("Frame", {
-        Name = "NoFade", AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.fromOffset(20, 20),
-        BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 801,
-    }, outer)
-    new("UICorner", {CornerRadius = UDim.new(1, 0)}, r)
-    local rs = new("UIStroke", {Color = C.Ungu2, Thickness = 3, Transparency = 0.1}, r)
-    tween(r,  TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(700, 700)})
-    tween(rs, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Transparency = 1})
-    task.delay(0.55, function() r:Destroy() end)
-
-    konfeti(outer, UDim2.new(0.5, 0, 0.5, 0), 14)
-    emojiBurst(outer, UDim2.new(0.5, 0, 0.5, 0), {"✨", "⚡", "💜", "💙", "🌟"}, 6)
-end
-
-local function bukaHub()
-    if main.Visible or sedangAnim then return end
-    sesiAnim += 1
-    local id = sesiAnim
-    sedangAnim = true
-    layarRedup = true
-    bunyi(SND_PING, 0.25, 1.15)
-
-    -- [1] siapkan bola TITIK (0,1%) transparan di KIRI ATAS
-    setDekor(false)
-    panel.Visible = false          -- 🔒 isi disembunyikan TOTAL saat fase bola
-    main.Visible = true
-    main.Position = POS_MASUK
-    main.Size = UDim2.fromOffset(800, 800)
-    main.Rotation = 0
-    outerCorner.CornerRadius = UDim.new(1, 0)
-    panelScale.Scale = BOLA_MIN
-    borderStroke.Thickness = 8
-    ring2.Thickness = 3
-    fadeVal.Value = 1
-    setFade(1)
-    bolaGrad.Rotation = 0
-    bolaCore.Rotation = 0
-    bolaApi(false)
-    fadeBola(1, 0)                 -- mulai transparan total
-
-    task.wait(0.05)
-    if sesiAnim ~= id then sedangAnim = false return end
-
-    -- [2] ☄️ METEOR: menyala + ekor api, menggelinding ke tengah sambil
-    --     tumbuh 0,1% -> 3% + fade-in
-    bunyi(SND_WHOOSH, 0.35, 0.85)
-    bolaApi(true)
-    mulaiMeteorTrail(0.72)
-    tween(main,       TweenInfo.new(0.7, Enum.EasingStyle.Quint, Enum.EasingDirection.InOut), {Position = POS_TENGAH})
-    tween(panelScale, TweenInfo.new(0.7, Enum.EasingStyle.Quint, Enum.EasingDirection.InOut), {Scale = BOLA_MAX})
-    tween(bolaGrad,   TweenInfo.new(0.7, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {Rotation = 900})
-    tween(bolaCore,   TweenInfo.new(0.7, Enum.EasingStyle.Linear, Enum.EasingDirection.Out), {Rotation = 540})
-    fadeBola(0, 0.45)
-    task.wait(0.72)
-    if sesiAnim ~= id then sedangAnim = false return end
-
-    -- [3] 💥 IMPACT: cincin api + bara, api padam -> neon
-    meteorImpact()
-    bolaApi(false)
-
-    -- [4] MORPH SMOOTH: bulat -> frame penuh 🌸
-    bunyi(SND_PING, 0.35, 1.4)
-    tween(main,        TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Size = UDim2.fromOffset(480, 800)})
-    tween(outerCorner, TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {CornerRadius = UDim.new(0, 18)})
-    tween(panelScale,  TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Scale = UKURAN_GUI})
-    tween(borderStroke, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Thickness = 3})
-    tween(ring2,        TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Thickness = 1})
-    mekar()
-
-    -- isi muncul HALUS di ujung morph (masih ter-clip di dalam frame)
-    task.delay(0.20, function()
-        if sesiAnim ~= id then return end
-        panel.Visible = true       -- 🔒 isi baru tampil saat frame hampir penuh
-        setFade(1)
-        tween(fadeVal, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Value = 0})
-    end)
-
-    task.delay(0.45, function()
-        if sesiAnim == id then setDekor(true) end
-    end)
-    task.delay(0.35, segarkanToggle)
-    task.delay(0.60, function()
-        if sesiAnim == id then
-            layarRedup = false
-            sedangAnim = false
-        end
-    end)
-end
-
-local function minimizeHub()
-    if not main.Visible or sedangAnim then return end
-    sesiAnim += 1
-    local id = sesiAnim
-    sedangAnim = true
-    layarRedup = true
-    bunyi(SND_PING, 0.25, 0.75)
-
-    -- [1] isi panel memudar dulu
-    tween(fadeVal, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Value = 1})
-    task.wait(0.20)
-    if sesiAnim ~= id then sedangAnim = false return end
-    setDekor(false)
-    panel.Visible = false          -- 🔒 isi hilang TOTAL sebelum jadi bola
-
-    -- [2] MORPH SMOOTH: frame -> bulat (bola 3%, neon) 🌑
-    bunyi(SND_SNAP, 0.25, 0.8)
-    tween(main,        TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Size = UDim2.fromOffset(800, 800)})
-    tween(outerCorner, TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {CornerRadius = UDim.new(1, 0)})
-    tween(panelScale,  TweenInfo.new(0.45, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {Scale = BOLA_MAX})
-    tween(borderStroke, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Thickness = 8})
-    tween(ring2,        TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Thickness = 3})
-    tween(bolaCore,     TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextTransparency = 0.1})
-    task.wait(0.47)
-    if sesiAnim ~= id then sedangAnim = false return end
-
-    -- [3] ☄️ METEOR TERBAKAR HABIS: bola menyala api, mengecil (3% -> 0,1%)
-    --     + memudar, ekor api menyembur -> ke KANAN BAWAH
-    bunyi(SND_WHOOSH, 0.35, 0.9)
-    bolaApi(true)
-    mulaiMeteorTrail(0.62)
-    tween(main,       TweenInfo.new(0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.InOut), {Position = POS_KELUAR})
-    tween(panelScale, TweenInfo.new(0.6, Enum.EasingStyle.Quint, Enum.EasingDirection.In),    {Scale = BOLA_MIN})
-    tween(bolaGrad,   TweenInfo.new(0.6, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),  {Rotation = bolaGrad.Rotation + 900})
-    tween(bolaCore,   TweenInfo.new(0.6, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),  {Rotation = bolaCore.Rotation - 540})
-    task.delay(0.15, function()
-        fadeBola(1, 0.4) -- memudar di tengah perjalanan (terbakar habis)
-    end)
-    task.wait(0.62)
-    if sesiAnim ~= id then sedangAnim = false return end
-
-    -- [4] fizzle bara terakhir lalu HILANG TOTAL 🚫
-    meteorFizzle()
-    main.Visible = false
-    main.Rotation = 0
-    bolaApi(false)
-    layarRedup = false
-    sedangAnim = false
 end
 
 --═══════════════ RESET SCRIPT ═══════════════
@@ -2081,8 +1482,8 @@ local function resetScript()
     S.clockTouched = false
     rClock.val.Text = formatClock(S.clockValue)
     rSpeed.val.Text, rJump.val.Text = fmt(S.speedValue), fmt(S.jumpValue)
-    main.Position = POS_TENGAH
-    if not main.Visible then bukaHub() end
+    main.Position = UDim2.new(0.5, 0, 0.5, 0)
+    main.Visible = true
     scroll.CanvasPosition = Vector2.new(0, 0)
     silent = false
     notify("Script direset")
@@ -2091,7 +1492,6 @@ end
 --═══════════════ HAPUS SCRIPT / KELUAR ═══════════════
 local function unloadScript()
     silent = true
-    trailAktif = false
     S.speedOn, S.jumpOn = false, false
     for h in pairs(savedHum) do restoreHum(h) end
     S.infoOn, S.hitboxOn = false, false
@@ -2227,7 +1627,7 @@ end)
 
 minBtn.MouseButton1Click:Connect(function()
     ripple(minBtn, C.Ungu2)
-    minimizeHub()
+    main.Visible = false   -- ⚡ INSTAN
 end)
 resetBtn.MouseButton1Click:Connect(function()
     ripple(resetBtn, C.Putih)
@@ -2247,7 +1647,7 @@ addConn(UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
 
     if kc == Enum.KeyCode.F then
-        if main.Visible then minimizeHub() else bukaHub() end
+        main.Visible = not main.Visible   -- ⚡ INSTAN — tanpa animasi
     elseif kc == Enum.KeyCode.CapsLock then
         setFreecam(not freecamAktif)
     elseif kc == Enum.KeyCode.T then
@@ -2367,13 +1767,10 @@ rJump.val.Text    = fmt(S.jumpValue)
 rTpJarak.val.Text = fmt(S.tpJarakMundur)
 rClock.val.Text   = formatClock(S.clockValue)
 
-kumpulkanFade()
-fadeVal.Value = 1
+segarkanToggle()
 
-task.delay(0.15, bukaHub) -- ☄️ titik -> meteor menyala -> impact -> mekar!
-
-task.delay(2.4, function()
-    notify("Siiilau v1.1 siap ✨")
+task.delay(0.3, function()
+    notify("Siiilau v1.8 siap ⚡")
 end)
 
-print("[SiiilauHub] SIAP ✔ — F = buka/tutup (v1.7: METEOR ☄️ + anti-bocor total)")
+print("[SiiilauHub] SIAP ✔ — F = buka/tutup INSTAN (v1.8 PERFORMANCE FIX ⚡)")
