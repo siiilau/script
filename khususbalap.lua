@@ -1,22 +1,16 @@
 --[[=============================================================
-    ⛓️Siiilau⚡ - ALL-IN-ONE HUB (MERGED v1.9 — 🏁 RACE EDITION)
+    ⛓️Siiilau⚡ - ALL-IN-ONE HUB (v2.0 — 🏁 RACE EDITION LITE)
     =============================================================
-    PERUBAHAN v1.9 (RACE / MAX-LIGHT):
-      - DEFAULT: SOUND_ON=false, FX_LED=false, FX_PUTAR=false
-        → GUI 100% STATIS, 0 tween infinite, 0 loop kosmetik
-      - HAPUS: marquee, garis diagonal, bracket, ring2, accent bar,
-        hover pop, ripple, emoji burst, flash TP, crosshair
-      - HAPUS FITUR: Info Players, Hitbox, Scooshlock
-      - HIDE PEMAIN  : sekali klik scan → selesai (tanpa loop)
-      - HIDE KENDARAAN SENTUH (BARU):
-          mobil lawan menempel (< RADIUS_SENTUH) → HILANG
-          menjauh → MUNCUL LAGI otomatis
-          mobil yang AKU kendarai / tumpangi → TIDAK PERNAH di-hide
-      - UTUH: Speed&Swim[Q] | Jump | FreeCam[CAPS] | TP(+/-) |
-        Kamera↔Karakter[G] | Brightness[T] | HideFX | LowGfx |
-        Reset | Exit | Drag | Minimize | Hotkeys
-    HOTKEYS: F=GUI | CAPSLOCK=Freecam | T=AutoBrightness
-             G=Kamera→Karakter | C=TP Karakter→Kamera | Q=Speed | R=Hide
+    PERUBAHAN v2.0:
+      - HAPUS TOTAL: Free Cam, TP Karakter→Kamera, TP Jarak Mundur,
+        Kamera→Karakter, semua kode freecam (render/bind/mouse lock)
+      - HAPUS TOTAL: TweenService, suara, ledSweep, efek kosmetik
+        → 0 tween, 0 suara, 0 loop kosmetik seumur hidup script
+      - UTUH: Speed&Swim[Q] | Jump Power | Hide Pemain+Kendaraan[R] |
+        Hide All Effects | Low Graphic+No Fog | Auto Brightness[T] |
+        Reset | Exit | Minimize | Drag
+    HOTKEYS: F = GUI | Q = Speed | R = Hide Pemain+Kendaraan
+             T = Auto Brightness
     ===============================================================]]
 
 --═══════════════ KONFIG ═══════════════
@@ -26,50 +20,24 @@ local STEP          = 0.25
 local CLOCK_STEP    = 0.5
 local LOCK_TIME     = true
 
-local CONFIG = {
-    KECEPATAN_NORMAL   = 30,
-    KECEPATAN_CEPAT    = 85,
-    SENSITIVITAS_MOUSE = 0.25,
-    BATAS_PITCH        = 85,
-    KEHALUSAN          = 10,
-    INTERVAL_STREAM    = 1,
-    JARAK_BELAKANG     = 10,
-    TINGGI_KAMERA      = 4,
-    SUDUT_TP           = -15,
-
-    TP_JARAK_MUNDUR    = 3,
-    TP_JARAK_STEP      = 0.5,
-    TP_JARAK_MIN       = 0,
-    TP_JARAK_MAKS      = 100,
-}
-local NAMA_BIND = "SiiilauFreecamRender"
-
--- ⚡ FLAG PERFORMANCE (true = fitur estetik balik, tapi boros)
-local SOUND_ON  = false   -- suara
-local FX_LED    = false   -- LED sweep di panel/judul/tombol
-local FX_PUTAR  = false   -- border gradient berputar
-local UKURAN_GUI = 0.8
-
 -- 🏁 HIDE KENDARAAN SENTUH
 local RADIUS_SENTUH = 20   -- jarak antar mobil dianggap "menyentuh" (studs)
-local CEK_INTERVAL  = 0.4  -- jeda cek (detik) — cuma baca properti, nyaris gratis
+local CEK_INTERVAL  = 0.4  -- jeda cek (detik)
+
+local UKURAN_GUI = 0.8
 
 --═══════════════ LAYANAN ═══════════════
 if not game:IsLoaded() then game.Loaded:Wait() end
 
 local Players          = game:GetService("Players")
-local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local TweenService     = game:GetService("TweenService")
 local Lighting         = game:GetService("Lighting")
-local Workspace        = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
 if not LocalPlayer then
     warn("[SiiilauHub] GAGAL: LocalPlayer belum ada. Masuk game dulu, lalu execute ulang.")
     return
 end
-local camera = Workspace.CurrentCamera
 
 --═══════════════ TRACKING KONEKSI ═══════════════
 local conns = {}
@@ -158,7 +126,6 @@ local C = {
     Biru      = Color3.fromRGB(37, 99, 235),
     Biru2     = Color3.fromRGB(59, 130, 246),
     Putih     = Color3.fromRGB(255, 255, 255),
-    Hijau     = Color3.fromRGB(0, 255, 90),
     Merah     = Color3.fromRGB(239, 68, 68),
     Abuk      = Color3.fromRGB(160, 155, 185),
     AbuTeks   = Color3.fromRGB(130, 125, 155),
@@ -180,50 +147,6 @@ local function new(class, props, parent)
     return inst
 end
 local function fmt(v) return string.format("%.2f", v) end
-local function tween(obj, info, props)
-    local t = TweenService:Create(obj, info, props)
-    t:Play()
-    return t
-end
-
--- 🔊 SUARA (gated — SOUND_ON=false = 0 biaya)
-local SND_PING   = "rbxasset://sounds/electronicpingshort.wav"
-local SND_SNAP   = "rbxasset://sounds/snap.mp3"
-local SND_WHOOSH = "rbxasset://sounds/unsheath.wav"
-local function bunyi(id, vol, pitch)
-    if not SOUND_ON then return end
-    local s = Instance.new("Sound")
-    s.SoundId = id
-    s.Volume = vol or 0.3
-    s.PlaybackSpeed = pitch or 1
-    s.Parent = gui
-    s:Play()
-    task.delay(3, function() s:Destroy() end)
-end
-
--- 💡 LED SWEEP (gated — FX_LED=false = tidak dibuat sama sekali)
-local function ledSweep(inst, base, bandA, bandB, dur)
-    if not FX_LED then return nil end
-    local g = new("UIGradient", {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0.00, base),
-            ColorSequenceKeypoint.new(0.40, base),
-            ColorSequenceKeypoint.new(0.47, bandA),
-            ColorSequenceKeypoint.new(0.54, bandB),
-            ColorSequenceKeypoint.new(0.61, base),
-            ColorSequenceKeypoint.new(1.00, base),
-        }),
-        Offset = Vector2.new(-1, 0),
-    }, inst)
-    tween(g, TweenInfo.new(dur or 2.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-        {Offset = Vector2.new(1, 0)})
-    return g
-end
-
--- 🔍 EFEK TOMBOL (⚡ RACE: hover pop dimatikan — hemat koneksi + UIScale)
-local function efekTombol(_btn, _skala)
-    -- kosong sengaja: kalau mau hover balik, isi di sini
-end
 
 --═══════════════ BRIGHTNESS <-> JAM ═══════════════
 local function brightnessFromTime(t)
@@ -241,7 +164,7 @@ end
 
 --═══════════════ GUI UTAMA (STATIS) ═══════════════
 local main = new("Frame", {
-    Size = UDim2.fromOffset(480, 800),
+    Size = UDim2.fromOffset(480, 620),
     Position = UDim2.new(0.5, 0, 0.5, 0),
     AnchorPoint = Vector2.new(0.5, 0.5),
     BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
@@ -255,21 +178,7 @@ local outer = new("Frame", {
     ClipsDescendants = true,
 }, main)
 new("UICorner", {CornerRadius = UDim.new(0, 18)}, outer)
-
--- border (gradient berputar hanya jika FX_PUTAR=true)
-local borderStroke = new("UIStroke", {Color = C.Ungu, Thickness = 3}, outer)
-if FX_PUTAR then
-    local borderGrad = new("UIGradient", {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0.00, C.Ungu),
-            ColorSequenceKeypoint.new(0.25, C.Biru),
-            ColorSequenceKeypoint.new(0.50, C.Ungu2),
-            ColorSequenceKeypoint.new(0.75, C.Biru2),
-            ColorSequenceKeypoint.new(1.00, C.Ungu),
-        }),
-    }, borderStroke)
-    tween(borderGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = 360})
-end
+new("UIStroke", {Color = C.Ungu, Thickness = 3}, outer)
 
 local panel = new("Frame", {
     Size = UDim2.new(1, -10, 1, -10), Position = UDim2.new(0, 5, 0, 5),
@@ -278,7 +187,6 @@ local panel = new("Frame", {
 }, outer)
 new("UICorner", {CornerRadius = UDim.new(0, 13)}, panel)
 new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.55}, panel)
-ledSweep(panel, C.Hitam2, C.Ungu, C.Biru, 5)
 
 -- HEADER
 local title = new("Frame", {
@@ -291,14 +199,12 @@ new("Frame", {
     BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
 }, panel)
 
-local judulLabel = new("TextLabel", {
+new("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0), FontFace = fnt("judul"),
     Text = "⛓️ S I I L A U ⚡ 🏁", TextColor3 = C.Putih, TextSize = 24,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, title)
-ledSweep(judulLabel, C.Putih, C.Ungu2, C.Biru2, 2.2)
-new("UIStroke", {Color = C.Ungu2, Thickness = 1, Transparency = 0.35}, judulLabel)
 
 local minBtn = new("TextButton", {
     Size = UDim2.fromOffset(28, 28), Position = UDim2.new(1, -40, 0.5, -14),
@@ -335,7 +241,6 @@ local resetBtn = new("TextButton", {
     FontFace = fnt("bold"), TextSize = 18, Text = "🔄 Reset Script", TextColor3 = C.Putih,
 }, bottom)
 new("UICorner", {CornerRadius = UDim.new(0, 12)}, resetBtn)
-ledSweep(resetBtn, C.Biru, C.Putih, C.Ungu2, 2.4)
 
 local exitBtn = new("TextButton", {
     Size = UDim2.new(0.5, -12, 1, -16), Position = UDim2.new(0.5, 4, 0, 8),
@@ -345,7 +250,7 @@ local exitBtn = new("TextButton", {
 new("UICorner", {CornerRadius = UDim.new(0, 12)}, exitBtn)
 new("UIStroke", {Color = C.Merah, Thickness = 2, Transparency = 0.6}, exitBtn)
 
---═══════════════ NOTIFIKASI (INSTAN — TANPA ANIMASI) ═══════════════
+--═══════════════ NOTIFIKASI (INSTAN) ═══════════════
 local notifHolder = new("Frame", {
     AnchorPoint = Vector2.new(1, 0),
     Position = UDim2.new(1, -10, 0, 10),
@@ -465,15 +370,6 @@ local function addRow(labelText, opts)
         new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.plus)
     end
 
-    if opts.action then
-        ref.action = new("TextButton", {
-            Size = UDim2.new(0, 68, 1, -16), Position = UDim2.new(1, -76, 0, 8),
-            BackgroundColor3 = C.Biru, BorderSizePixel = 0, AutoButtonColor = false,
-            Text = opts.action, FontFace = fnt("bold"), TextSize = 17, TextColor3 = C.Putih,
-        }, row)
-        new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.action)
-    end
-
     if opts.toggle then
         ref.toggle = new("TextButton", {
             Size = UDim2.new(0, 68, 1, -16), Position = UDim2.new(1, -76, 0, 8),
@@ -502,15 +398,6 @@ addSection("MOVEMENT")
 local rSpeed = addRow("🏃 Speed & Swim [Q]", {value = true, toggle = true})
 local rJump  = addRow("🦘 Jump Power",       {value = true, toggle = true})
 
-addSection("CAMERA / FREECAM")
-local rFree    = addRow("🎥 Free Cam [CAPS LOCK]",   {toggle = true})
-local rTpKam   = addRow("🌀 TP Karakter→Kamera [C]", {toggle = true})
-local rTpJarak = addRow("↩️ TP Jarak Mundur",        {value = true})
-local rKeKar   = addRow("🧲 Kamera → Karakter [G]",  {action = "GO"})
-local rKeKam   = addRow("🚀 Karakter → Kamera",      {action = "TP"})
-addHint("WASD gerak • QE turun/naik • Space cepat")
-addHint("Jarak mundur: 0 = tepat di kamera")
-
 addSection("VISUAL")
 local rHideP = addRow("🙈 Hide Pemain + Kendaraan [R]", {toggle = true})
 local rHideF = addRow("✨ Hide All Effects",             {toggle = true})
@@ -527,7 +414,6 @@ local S = {
     hidePlayersOn = false, hideFxOn = false, lowGfxOn = false,
     clockOn = false,
     clockValue = Lighting.ClockTime,
-    tpJarakMundur = CONFIG.TP_JARAK_MUNDUR,
 }
 
 local function getHum()
@@ -535,23 +421,13 @@ local function getHum()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
-local freecamAktif, tpKameraAktif = false, false
-local fcTarget = Vector3.zero
-local yaw, pitch = 0, 0
-local posNow = Vector3.zero
-local yawNow, pitchNow = 0, 0
-local tombolTekan = {}
-
-rSpeed.val.Text  = fmt(S.speedValue)
-rJump.val.Text   = fmt(S.jumpValue)
-rTpJarak.val.Text = fmt(S.tpJarakMundur)
-rClock.val.Text  = formatClock(S.clockValue)
+rSpeed.val.Text = fmt(S.speedValue)
+rJump.val.Text  = fmt(S.jumpValue)
+rClock.val.Text = formatClock(S.clockValue)
 
 local function segarkanToggle()
     styleToggle(rSpeed.toggle, S.speedOn)
     styleToggle(rJump.toggle, S.jumpOn)
-    styleToggle(rFree.toggle, freecamAktif)
-    styleToggle(rTpKam.toggle, tpKameraAktif)
     styleToggle(rHideP.toggle, S.hidePlayersOn)
     styleToggle(rHideF.toggle, S.hideFxOn)
     styleToggle(rLowG.toggle, S.lowGfxOn)
@@ -750,7 +626,6 @@ local function cekKendaraan()
 
             -- jaring pengaman (cuma BACA 1 properti / pemain):
             -- pemain respawn / baru join langsung ketutup lagi.
-            -- (mau murni one-shot? hapus 4 baris di bawah ini)
             local root = char and char:FindFirstChild("HumanoidRootPart")
             if root and root.LocalTransparencyModifier ~= 1 then
                 setCharHidden(char, 1)
@@ -771,7 +646,7 @@ local function setHidePlayers(on)
                 setCharHidden(plr.Character, 1)
             end
         end
-        -- loop cek kendaraan (hanya baca posisi; scan part HANYA saat ada perubahan)
+        -- loop cek kendaraan (baca posisi saja; scan part HANYA saat ada perubahan)
         task.spawn(function()
             while S.hidePlayersOn and myId == hideLoopId and gui.Parent do
                 pcall(cekKendaraan)
@@ -933,218 +808,8 @@ local function bumpClock(d)
     end
 end
 
---═══════════════ FREECAM - HELPER ═══════════════
-local function dapatkanRoot()
-    local karakter = LocalPlayer.Character
-    return karakter and karakter:FindFirstChild("HumanoidRootPart")
-end
-
-local function netralkanFisika(root)
-    if not root then return end
-    root.AssemblyLinearVelocity  = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-end
-
-local function requestStream(pos)
-    if Workspace.StreamingEnabled then
-        task.spawn(function()
-            pcall(function() LocalPlayer:RequestStreamAroundAsync(pos) end)
-        end)
-    end
-end
-
-local function tahanKarakter()
-    local hum = getHum()
-    if not hum then return end
-    pcall(function()
-        hum:Move(Vector3.zero, false)
-        hum.Jump = false
-    end)
-end
-
---═══════════════ KAMERA -> KARAKTER [G] ═══════════════
-local function kameraKeKarakter()
-    if not freecamAktif then return false end
-    local root = dapatkanRoot()
-    if not root then return false end
-
-    local look = root.CFrame.LookVector
-    fcTarget = root.Position
-        + Vector3.new(0, CONFIG.TINGGI_KAMERA, 0)
-        - look * CONFIG.JARAK_BELAKANG
-
-    yaw   = math.deg(math.atan2(-look.X, -look.Z))
-    pitch = math.clamp(CONFIG.SUDUT_TP, -CONFIG.BATAS_PITCH, CONFIG.BATAS_PITCH)
-    yawNow, pitchNow = yaw, pitch
-
-    requestStream(fcTarget)
-    bunyi(SND_WHOOSH, 0.25, 1.2)
-    return true
-end
-
---═══════════════ TELEPORT KARAKTER ═══════════════
-local function teleportKarakter(cf)
-    local root = dapatkanRoot()
-    if not root then return false end
-
-    local humanoid = getHum()
-    if humanoid and humanoid.SeatPart then
-        pcall(function() humanoid.Sit = false end)
-    end
-
-    root.CFrame = cf
-    netralkanFisika(root)
-    requestStream(cf.Position)
-    return true
-end
-
---═══════════════ FREECAM - CORE ═══════════════
-local camTypeSimpan = nil
-local fcConn = nil
-
-local function renderFreecam(dt)
-    if not camera then return end
-
-    -- gerak WASD + QE (Space = cepat)
-    local rad = math.rad(yaw)
-    local sy, cy = math.sin(rad), math.cos(rad)
-    local fwd = Vector3.new(-sy, 0, -cy)
-    local rgt = Vector3.new(cy, 0, -sy)
-    local mv = Vector3.zero
-    if tombolTekan[Enum.KeyCode.W] then mv += fwd end
-    if tombolTekan[Enum.KeyCode.S] then mv -= fwd end
-    if tombolTekan[Enum.KeyCode.D] then mv += rgt end
-    if tombolTekan[Enum.KeyCode.A] then mv -= rgt end
-    if tombolTekan[Enum.KeyCode.E] then mv += Vector3.yAxis end
-    if tombolTekan[Enum.KeyCode.Q] then mv -= Vector3.yAxis end
-    if mv.Magnitude > 0 then
-        local sp = tombolTekan[Enum.KeyCode.Space] and CONFIG.KECEPATAN_CEPAT or CONFIG.KECEPATAN_NORMAL
-        fcTarget += mv.Unit * sp * dt
-    end
-
-    -- smoothing frame-rate independent
-    local a = 1 - math.exp(-CONFIG.KEHALUSAN * dt)
-    posNow = posNow:Lerp(fcTarget, a)
-    yawNow   += (yaw - yawNow) * a
-    pitchNow += (pitch - pitchNow) * a
-    camera.CFrame = CFrame.fromEulerAnglesYXZ(math.rad(pitchNow), math.rad(yawNow), 0) + posNow
-
-    local root = dapatkanRoot()
-    if root then
-        if not root.Anchored then root.Anchored = true end -- cover respawn
-        if tpKameraAktif then
-            -- karakter nempel di belakang kamera (jarak bisa diatur, 0 = tepat di kamera)
-            local flat = CFrame.fromEulerAnglesYXZ(0, math.rad(yawNow), 0)
-            root.CFrame = CFrame.new(posNow - flat.LookVector * S.tpJarakMundur) * flat.Rotation
-            netralkanFisika(root)
-        end
-    end
-end
-
-local function setFreecam(on)
-    if freecamAktif == on then return end
-    freecamAktif = on
-    if on then
-        camTypeSimpan = camera.CameraType
-        camera.CameraType = Enum.CameraType.Scriptable
-
-        local cf = camera.CFrame
-        posNow = cf.Position
-        fcTarget = posNow
-        local lv = cf.LookVector
-        yaw = math.deg(math.atan2(-lv.X, -lv.Z))
-        pitch = math.clamp(math.deg(math.asin(math.clamp(lv.Y, -1, 1))),
-            -CONFIG.BATAS_PITCH, CONFIG.BATAS_PITCH)
-        yawNow, pitchNow = yaw, pitch
-
-        local root = dapatkanRoot()
-        if root then
-            root.Anchored = true
-            netralkanFisika(root)
-        end
-        tahanKarakter()
-
-        -- MouseBehavior diset SEKALI (bukan tiap frame)
-        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-        UserInputService.MouseIconEnabled = false
-
-        RunService:BindToRenderStep(NAMA_BIND, Enum.RenderPriority.Camera.Value + 1, renderFreecam)
-
-        fcConn = LocalPlayer.CharacterAdded:Connect(function(char)
-            local r = char:WaitForChild("HumanoidRootPart", 5)
-            if r and freecamAktif then
-                r.Anchored = true
-                netralkanFisika(r)
-            end
-        end)
-
-        -- streaming ikut kamera (biar dunia ke-load)
-        task.spawn(function()
-            while freecamAktif and gui.Parent do
-                pcall(function()
-                    if Workspace.StreamingEnabled then
-                        LocalPlayer:RequestStreamAroundAsync(posNow)
-                    end
-                end)
-                task.wait(CONFIG.INTERVAL_STREAM)
-            end
-        end)
-    else
-        pcall(function() RunService:UnbindFromRenderStep(NAMA_BIND) end)
-        if fcConn then fcConn:Disconnect() fcConn = nil end
-        tpKameraAktif = false
-        styleToggle(rTpKam.toggle, false)
-        camera.CameraType = camTypeSimpan or Enum.CameraType.Custom
-        pcall(function()
-            local hum = getHum()
-            if hum then camera.CameraSubject = hum end
-        end)
-        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-        UserInputService.MouseIconEnabled = true
-        local root = dapatkanRoot()
-        if root then root.Anchored = false end
-    end
-    styleToggle(rFree.toggle, on)
-    notify("Free Cam", on)
-end
-
-local function setTpKamera(on)
-    if on and not freecamAktif then
-        notify("Aktifkan Free Cam dulu [CAPS LOCK]", false)
-        return
-    end
-    tpKameraAktif = on
-    styleToggle(rTpKam.toggle, on)
-    notify("TP Karakter→Kamera", on)
-end
-
-local function tpKarakterKeKamera()
-    local root = dapatkanRoot()
-    if not root then
-        notify("Karakter tidak ditemukan", false)
-        return
-    end
-    local look = camera.CFrame.LookVector
-    local flat = Vector3.new(look.X, 0, look.Z)
-    flat = (flat.Magnitude < 0.001) and Vector3.new(0, 0, -1) or flat.Unit
-    local pos = camera.CFrame.Position - flat * S.tpJarakMundur
-    if teleportKarakter(CFrame.lookAt(pos, pos + flat)) then
-        bunyi(SND_WHOOSH, 0.3, 1.1)
-        notify("TP Karakter → Kamera ✓", true)
-    end
-end
-
-local function goKameraKeKarakter()
-    if kameraKeKarakter() then
-        notify("Kamera → Karakter ✓", true)
-    else
-        notify("Free Cam belum aktif", false)
-    end
-end
-
 --═══════════════ RESET & KELUAR ═══════════════
 local function matikanSemua()
-    pcall(function() if freecamAktif then setFreecam(false) end end)
     pcall(function() if S.hidePlayersOn then setHidePlayers(false) end end)
     pcall(function() if S.hideFxOn then setHideFx(false) end end)
     pcall(function() if S.lowGfxOn then setLowGfx(false) end end)
@@ -1167,12 +832,10 @@ local function resetSemua()
     matikanSemua()
     silent = false
     S.speedValue, S.jumpValue = DEFAULT_SPEED, DEFAULT_JUMP
-    S.tpJarakMundur = CONFIG.TP_JARAK_MUNDUR
     S.clockValue = Lighting.ClockTime
-    rSpeed.val.Text  = fmt(S.speedValue)
-    rJump.val.Text   = fmt(S.jumpValue)
-    rTpJarak.val.Text = fmt(S.tpJarakMundur)
-    rClock.val.Text  = formatClock(S.clockValue)
+    rSpeed.val.Text = fmt(S.speedValue)
+    rJump.val.Text  = fmt(S.jumpValue)
+    rClock.val.Text = formatClock(S.clockValue)
     notify("Reset ke default ✓", true)
 end
 
@@ -1201,23 +864,6 @@ rJump.plus.MouseButton1Click:Connect(function()
 end)
 rJump.toggle.MouseButton1Click:Connect(function() setJump(not S.jumpOn) end)
 
-rFree.toggle.MouseButton1Click:Connect(function() setFreecam(not freecamAktif) end)
-rTpKam.toggle.MouseButton1Click:Connect(function() setTpKamera(not tpKameraAktif) end)
-
-rTpJarak.minus.MouseButton1Click:Connect(function()
-    S.tpJarakMundur = math.clamp(S.tpJarakMundur - CONFIG.TP_JARAK_STEP,
-        CONFIG.TP_JARAK_MIN, CONFIG.TP_JARAK_MAKS)
-    rTpJarak.val.Text = fmt(S.tpJarakMundur)
-end)
-rTpJarak.plus.MouseButton1Click:Connect(function()
-    S.tpJarakMundur = math.clamp(S.tpJarakMundur + CONFIG.TP_JARAK_STEP,
-        CONFIG.TP_JARAK_MIN, CONFIG.TP_JARAK_MAKS)
-    rTpJarak.val.Text = fmt(S.tpJarakMundur)
-end)
-
-rKeKar.action.MouseButton1Click:Connect(goKameraKeKarakter)
-rKeKam.action.MouseButton1Click:Connect(tpKarakterKeKamera)
-
 rHideP.toggle.MouseButton1Click:Connect(function() setHidePlayers(not S.hidePlayersOn) end)
 rHideF.toggle.MouseButton1Click:Connect(function() setHideFx(not S.hideFxOn) end)
 rLowG.toggle.MouseButton1Click:Connect(function() setLowGfx(not S.lowGfxOn) end)
@@ -1230,14 +876,14 @@ rClock.toggle.MouseButton1Click:Connect(function() setClock(not S.clockOn) end)
 local function setMinimize(k)
     scroll.Visible = not k
     bottom.Visible = not k
-    main.Size = k and UDim2.fromOffset(480, 58) or UDim2.fromOffset(480, 800)
+    main.Size = k and UDim2.fromOffset(480, 58) or UDim2.fromOffset(480, 620)
 end
 minBtn.MouseButton1Click:Connect(function() setMinimize(scroll.Visible) end)
 
 resetBtn.MouseButton1Click:Connect(resetSemua)
 exitBtn.MouseButton1Click:Connect(destroyAll)
 
---═══════════════ DRAG GUI (kompensasi UIScale) ═══════════════
+--═══════════════ DRAG GUI ═══════════════
 do
     local dragging, dragStart, startPos = false, nil, nil
     title.InputBegan:Connect(function(input)
@@ -1268,52 +914,20 @@ end
 
 --═══════════════ HOTKEYS ═══════════════
 addConn(UserInputService.InputBegan:Connect(function(input, gp)
-    local kc = input.KeyCode
-    if kc ~= Enum.KeyCode.Unknown then
-        tombolTekan[kc] = true -- WASD/QE/Space untuk freecam (Space = gp, jadi dilacak di sini)
-    end
     if gp then return end
-
+    local kc = input.KeyCode
     if kc == Enum.KeyCode.F then
         main.Visible = not main.Visible
-    elseif kc == Enum.KeyCode.CapsLock then
-        setFreecam(not freecamAktif)
     elseif kc == Enum.KeyCode.T then
         setClock(not S.clockOn)
-    elseif kc == Enum.KeyCode.G then
-        goKameraKeKarakter()
-    elseif kc == Enum.KeyCode.C then
-        setTpKamera(not tpKameraAktif)
     elseif kc == Enum.KeyCode.R then
         setHidePlayers(not S.hidePlayersOn)
-    elseif kc == Enum.KeyCode.Q and not freecamAktif then
-        setSpeed(not S.speedOn) -- saat freecam ON, Q = turun (bukan toggle speed)
+    elseif kc == Enum.KeyCode.Q then
+        setSpeed(not S.speedOn)
     end
 end))
-addConn(UserInputService.InputEnded:Connect(function(input)
-    tombolTekan[input.KeyCode] = nil
-end))
-
--- kunci ulang mouse kalau window fokus balik (tanpa set tiap frame)
-addConn(UserInputService.WindowFocusReleased:Connect(function()
-    if freecamAktif then
-        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-    end
-end))
-
--- kamera bisa ter-ganti saat respawn → refresh referensi
-addConn(Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    if Workspace.CurrentCamera then camera = Workspace.CurrentCamera end
-end))
-
--- pengaman kalau GUI dihancurkan dari luar
-gui.Destroying:Connect(function()
-    pcall(function() RunService:UnbindFromRenderStep(NAMA_BIND) end)
-    pcall(function() UserInputService.MouseBehavior = Enum.MouseBehavior.Default end)
-    pcall(function() UserInputService.MouseIconEnabled = true end)
-end)
 
 --═══════════════ FINALIZE ═══════════════
 segarkanToggle()
 main.Visible = true
-notify("Siiilau ⚡ RACE EDITION siap — F = buka/tutup", true)
+notify("Siiilau ⚡ RACE LITE siap — F = buka/tutup", true)
