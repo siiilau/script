@@ -1,17 +1,10 @@
---[[=============================================================
-    ⛓️Siiilau⚡ - ALL-IN-ONE HUB (v2.0 — 🏁 RACE EDITION LITE)
-    =============================================================
-    PERUBAHAN v2.0:
-      - HAPUS TOTAL: Free Cam, TP Karakter→Kamera, TP Jarak Mundur,
-        Kamera→Karakter, semua kode freecam (render/bind/mouse lock)
-      - HAPUS TOTAL: TweenService, suara, ledSweep, efek kosmetik
-        → 0 tween, 0 suara, 0 loop kosmetik seumur hidup script
-      - UTUH: Speed&Swim[Q] | Jump Power | Hide Pemain+Kendaraan[R] |
-        Hide All Effects | Low Graphic+No Fog | Auto Brightness[T] |
-        Reset | Exit | Minimize | Drag
-    HOTKEYS: F = GUI | Q = Speed | R = Hide Pemain+Kendaraan
-             T = Auto Brightness
-    ===============================================================]]
+--[[═════════════════════════════════════════
+    ⛓️ Siiilau⚡ — RACE LITE v3.3 (🎥 TAB RUTE)
+    Rekam diri / pemain lain → STOP → ISI NAMA → SIMPAN
+    Multi-file • TP ke END • gabung file • permanen
+    HOTKEYS: F=GUI Q=Speed R=Hide T=Bright
+             K=Rekam Diri L=Rekam Player
+    ═════════════════════════════════════════]]
 
 --═══════════════ KONFIG ═══════════════
 local DEFAULT_SPEED = 17.25
@@ -20,11 +13,16 @@ local STEP          = 0.25
 local CLOCK_STEP    = 0.5
 local LOCK_TIME     = true
 
--- 🏁 HIDE KENDARAAN SENTUH
-local RADIUS_SENTUH = 20   -- jarak antar mobil dianggap "menyentuh" (studs)
-local CEK_INTERVAL  = 0.4  -- jeda cek (detik)
+local RADIUS_SENTUH = 20
+local CEK_INTERVAL  = 0.4
+local UKURAN_GUI    = 0.8
 
-local UKURAN_GUI = 0.8
+local REC_MIN_JARAK    = 5
+local REC_INTERVAL     = 0.08
+local LINE_TEBAL       = 0.8
+local MAX_TITIK        = 1500
+local JARAK_LOMPAT     = 60
+local GABUNG_MIN_JARAK = 5
 
 --═══════════════ LAYANAN ═══════════════
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -32,14 +30,64 @@ if not game:IsLoaded() then game.Loaded:Wait() end
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local Lighting         = game:GetService("Lighting")
+local HttpService      = game:GetService("HttpService")
 
 local LocalPlayer = Players.LocalPlayer
 if not LocalPlayer then
-    warn("[SiiilauHub] GAGAL: LocalPlayer belum ada. Masuk game dulu, lalu execute ulang.")
+    warn("[SiiilauHub] GAGAL: LocalPlayer belum ada.")
     return
 end
 
---═══════════════ TRACKING KONEKSI ═══════════════
+-- ---- FILE SYSTEM (hardened) ----
+local genv = {}
+pcall(function() genv = getgenv() or {} end)
+if type(genv) ~= "table" then genv = {} end
+
+local function ambilFungsi(nama)
+    local ok, v = pcall(function() return _G[nama] end)
+    if ok and type(v) == "function" then return v end
+    v = genv[nama]
+    if type(v) == "function" then return v end
+    local ok2, f2 = pcall(function() return getfenv()[nama] end)
+    if ok2 and type(f2) == "function" then return f2 end
+    local ok3, s = pcall(function() return syn end)
+    if ok3 and type(s) == "table" and type(s[nama]) == "function" then return s[nama] end
+    return nil
+end
+
+local wf   = ambilFungsi("writefile")
+local rf   = ambilFungsi("readfile")
+local isf  = ambilFungsi("isfile")
+local lf   = ambilFungsi("listfiles")
+local mf   = ambilFungsi("makefolder")
+local delf = ambilFungsi("delfile")
+local isfo = ambilFungsi("isfolder")
+
+local FOLDER     = "SiiilauHub_Rute"
+local DRAFT_PATH = FOLDER .. "/_draft.json"
+
+local function pastikanFolder()
+    if not wf then return end
+    local ada = false
+    if isfo then
+        local ok, hasil = pcall(isfo, FOLDER)
+        ada = (ok and hasil == true)
+    end
+    if not ada and mf then pcall(mf, FOLDER) end
+end
+
+local FS_OK = false
+do
+    if wf and rf then
+        pastikanFolder()
+        local pathTes = FOLDER .. "/_tes.txt"
+        local okw = pcall(wf, pathTes, "ok")
+        local okr, isi = pcall(rf, pathTes)
+        if okw and okr and isi == "ok" then FS_OK = true end
+        if delf then pcall(delf, pathTes) end
+    end
+end
+
 local conns = {}
 local function addConn(c) table.insert(conns, c) return c end
 
@@ -66,17 +114,14 @@ end
 local terpasang = false
 for _, t in ipairs(kandidatParent) do
     local ok = pcall(function() gui.Parent = t end)
-    if ok and gui.Parent == t then
-        terpasang = true
-        break
-    end
+    if ok and gui.Parent == t then terpasang = true break end
 end
 if not terpasang then
     warn("[SiiilauHub] GAGAL: tidak bisa memasang GUI.")
     return
 end
 
---═══════════════ FONT KOMPATIBEL ═══════════════
+--═══════════════ FONT ═══════════════
 local FONT_OK = pcall(function()
     return Font.new("rbxasset://fonts/families/Bangers.json", Enum.FontWeight.Regular)
 end)
@@ -112,7 +157,7 @@ local function fnt(k)
 end
 local TEKS_CLASS = {TextLabel = true, TextButton = true, TextBox = true}
 
---═══════════════ TEMA WARNA ═══════════════
+--═══════════════ TEMA ═══════════════
 local C = {
     Hitam     = Color3.fromRGB(12, 10, 20),
     Hitam2    = Color3.fromRGB(22, 18, 38),
@@ -127,6 +172,8 @@ local C = {
     Biru2     = Color3.fromRGB(59, 130, 246),
     Putih     = Color3.fromRGB(255, 255, 255),
     Merah     = Color3.fromRGB(239, 68, 68),
+    Hijau     = Color3.fromRGB(74, 222, 128),
+    Cyan      = Color3.fromRGB(34, 211, 238),
     Abuk      = Color3.fromRGB(160, 155, 185),
     AbuTeks   = Color3.fromRGB(130, 125, 155),
 }
@@ -148,7 +195,6 @@ local function new(class, props, parent)
 end
 local function fmt(v) return string.format("%.2f", v) end
 
---═══════════════ BRIGHTNESS <-> JAM ═══════════════
 local function brightnessFromTime(t)
     local d = math.clamp(math.sin((t - 6) / 12 * math.pi), 0, 1)
     return 0.5 + d * 2.5
@@ -162,7 +208,7 @@ local function formatClock(t)
     return string.format("%02d:%02d", h, m)
 end
 
---═══════════════ GUI UTAMA (STATIS) ═══════════════
+--═══════════════ GUI UTAMA ═══════════════
 local main = new("Frame", {
     Size = UDim2.fromOffset(480, 620),
     Position = UDim2.new(0.5, 0, 0.5, 0),
@@ -188,7 +234,6 @@ local panel = new("Frame", {
 new("UICorner", {CornerRadius = UDim.new(0, 13)}, panel)
 new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.55}, panel)
 
--- HEADER
 local title = new("Frame", {
     Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = C.Hitam,
     BorderSizePixel = 0, Active = true, ClipsDescendants = true,
@@ -214,16 +259,42 @@ local minBtn = new("TextButton", {
 new("UICorner", {CornerRadius = UDim.new(0, 9)}, minBtn)
 new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.3}, minBtn)
 
--- AREA SCROLL
-local scroll = new("ScrollingFrame", {
-    Position = UDim2.new(0, 10, 0, 56), Size = UDim2.new(1, -20, 1, -118),
+-- TAB BAR
+local tabBar = new("Frame", {
+    Position = UDim2.new(0, 10, 0, 50), Size = UDim2.new(1, -20, 0, 32),
+    BackgroundTransparency = 1, BorderSizePixel = 0,
+}, panel)
+new("UIListLayout", {Padding = UDim.new(0, 6), FillDirection = Enum.FillDirection.Horizontal}, tabBar)
+
+local function buatTabBtn(teks)
+    local b = new("TextButton", {
+        Size = UDim2.new(0.5, -3, 1, 0), BackgroundColor3 = C.Hitam2,
+        BorderSizePixel = 0, AutoButtonColor = false,
+        Text = teks, FontFace = fnt("bold"), TextSize = 15, TextColor3 = C.Abuk,
+    }, tabBar)
+    new("UICorner", {CornerRadius = UDim.new(0, 10)}, b)
+    new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.6}, b)
+    return b
+end
+local tabMenuBtn = buatTabBtn("⚙️ MENU")
+local tabRuteBtn = buatTabBtn("🎥 RUTE")
+
+local scrollMain = new("ScrollingFrame", {
+    Position = UDim2.new(0, 10, 0, 86), Size = UDim2.new(1, -20, 1, -146),
     BackgroundTransparency = 1, BorderSizePixel = 0,
     ScrollBarThickness = 5, ScrollBarImageColor3 = C.Ungu2,
     CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
 }, panel)
-new("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, scroll)
+new("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, scrollMain)
 
--- BAR BAWAH
+local scrollRute = new("ScrollingFrame", {
+    Position = UDim2.new(0, 10, 0, 86), Size = UDim2.new(1, -20, 1, -146),
+    BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
+    ScrollBarThickness = 5, ScrollBarImageColor3 = C.Ungu2,
+    CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, panel)
+new("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, scrollRute)
+
 local bottom = new("Frame", {
     Position = UDim2.new(0, 0, 1, -56), Size = UDim2.new(1, 0, 0, 56),
     BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
@@ -250,7 +321,7 @@ local exitBtn = new("TextButton", {
 new("UICorner", {CornerRadius = UDim.new(0, 12)}, exitBtn)
 new("UIStroke", {Color = C.Merah, Thickness = 2, Transparency = 0.6}, exitBtn)
 
---═══════════════ NOTIFIKASI (INSTAN) ═══════════════
+--═══════════════ NOTIFIKASI ═══════════════
 local notifHolder = new("Frame", {
     AnchorPoint = Vector2.new(1, 0),
     Position = UDim2.new(1, -10, 0, 10),
@@ -278,18 +349,18 @@ local function notify(msg, state)
     }, notifHolder)
     new("UICorner", {CornerRadius = UDim.new(0, 7)}, n)
     new("UIStroke", {Color = aksen, Thickness = 1, Transparency = 0.55}, n)
-    task.delay(1.5, function() n:Destroy() end)
+    task.delay(1.8, function() n:Destroy() end)
 end
 
 --═══════════════ PEMBANGUN UI ═══════════════
 local order = 0
-local function addSection(text)
+local function addSection(parent, text)
     order += 1
     local holder = new("Frame", {
         Size = UDim2.new(1, 0, 0, 34), BackgroundTransparency = 1,
         LayoutOrder = order,
-    }, scroll)
-    new("TextLabel", {
+    }, parent)
+    local lbl = new("TextLabel", {
         Size = UDim2.new(1, -10, 0, 26), Position = UDim2.new(0, 4, 0, 0),
         BackgroundTransparency = 1, Text = "▎ " .. text,
         FontFace = fnt("judul"), TextSize = 21, TextColor3 = C.Ungu2,
@@ -299,25 +370,26 @@ local function addSection(text)
         Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 4, 1, -4),
         BackgroundColor3 = C.Ungu, BorderSizePixel = 0,
     }, holder)
+    return lbl
 end
-local function addHint(text)
+local function addHint(parent, text)
     order += 1
     new("TextLabel", {
         Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1,
         Text = "💡 " .. text, FontFace = fnt("med"), TextSize = 14, TextColor3 = C.AbuTeks,
         TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
         LayoutOrder = order,
-    }, scroll)
+    }, parent)
 end
 
-local function addRow(labelText, opts)
+local function addRow(parent, labelText, opts)
     opts = opts or {}
     order += 1
     local row = new("Frame", {
         Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = C.Baris,
         BorderSizePixel = 0, LayoutOrder = order,
         ClipsDescendants = true,
-    }, scroll)
+    }, parent)
     new("UICorner", {CornerRadius = UDim.new(0, 12)}, row)
     local rowStroke = new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.78}, row)
 
@@ -382,6 +454,19 @@ local function addRow(labelText, opts)
     return ref
 end
 
+local function addBtnRow(parent, text)
+    order += 1
+    local btn = new("TextButton", {
+        Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = C.Baris,
+        BorderSizePixel = 0, LayoutOrder = order, AutoButtonColor = false,
+        Text = text, FontFace = fnt("semi"), TextSize = 16, TextColor3 = C.UnguMuda,
+    }, parent)
+    new("UICorner", {CornerRadius = UDim.new(0, 12)}, btn)
+    btn.MouseEnter:Connect(function() btn.BackgroundColor3 = C.BarisHov end)
+    btn.MouseLeave:Connect(function() btn.BackgroundColor3 = C.Baris end)
+    return btn
+end
+
 local function styleToggle(btn, on)
     btn.Text = on and "ON" or "OFF"
     btn.BackgroundColor3 = on and C.Biru or C.offBg
@@ -393,19 +478,106 @@ local function styleToggle(btn, on)
     end
 end
 
---═══════════════ ISI PANEL ═══════════════
-addSection("MOVEMENT")
-local rSpeed = addRow("🏃 Speed & Swim [Q]", {value = true, toggle = true})
-local rJump  = addRow("🦘 Jump Power",       {value = true, toggle = true})
+--═══════════════ ISI TAB MENU ═══════════════
+addSection(scrollMain, "MOVEMENT")
+local rSpeed = addRow(scrollMain, "🏃 Speed & Swim [Q]", {value = true, toggle = true})
+local rJump  = addRow(scrollMain, "🦘 Jump Power",       {value = true, toggle = true})
 
-addSection("VISUAL")
-local rHideP = addRow("🙈 Hide Pemain + Kendaraan [R]", {toggle = true})
-local rHideF = addRow("✨ Hide All Effects",             {toggle = true})
-local rLowG  = addRow("🌫️ Low Graphic + No Fog",        {toggle = true})
-addHint("Mobil lawan menempel ≤ " .. RADIUS_SENTUH .. "m → hilang, menjauh → muncul")
+addSection(scrollMain, "VISUAL")
+local rHideP = addRow(scrollMain, "🙈 Hide Pemain + Kendaraan [R]", {toggle = true})
+local rHideF = addRow(scrollMain, "✨ Hide All Effects",             {toggle = true})
+local rLowG  = addRow(scrollMain, "🌫️ Low Graphic + No Fog",        {toggle = true})
+addHint(scrollMain, "Mobil lawan menempel ≤ " .. RADIUS_SENTUH .. "m → hilang, menjauh → muncul")
 
-addSection("ENVIRONMENT")
-local rClock = addRow("🕒 Auto Brightness [T]", {value = true, toggle = true})
+addSection(scrollMain, "ENVIRONMENT")
+local rClock = addRow(scrollMain, "🕒 Auto Brightness [T]", {value = true, toggle = true})
+
+--═══════════════ ISI TAB RUTE ═══════════════
+addSection(scrollRute, "🎥 REKAM DIRI")
+local rRekam  = addRow(scrollRute, "🔴 Rekam Rute [K]", {value = true, toggle = true})
+local rVisAll = addRow(scrollRute, "👁️ Tampil Semua Garis", {toggle = true})
+addHint(scrollRute, "ON = mulai • OFF = isi nama file → Simpan 💾")
+
+addSection(scrollRute, "🎯 REKAM PEMAIN LAIN")
+order += 1
+local rowTarget = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = C.Baris,
+    BorderSizePixel = 0, LayoutOrder = order, ClipsDescendants = true,
+}, scrollRute)
+new("UICorner", {CornerRadius = UDim.new(0, 12)}, rowTarget)
+new("Frame", {
+    Size = UDim2.new(0, 3, 1, -18), Position = UDim2.new(0, 6, 0, 9),
+    BackgroundColor3 = C.Ungu2, BorderSizePixel = 0,
+}, rowTarget)
+
+new("TextLabel", {
+    Size = UDim2.new(0, 90, 1, 0), Position = UDim2.new(0, 14, 0, 0),
+    BackgroundTransparency = 1, Text = "🎯 Target:",
+    FontFace = fnt("semi"), TextSize = 16, TextColor3 = C.UnguMuda,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, rowTarget)
+
+local prevBtn = new("TextButton", {
+    Size = UDim2.fromOffset(30, 32), Position = UDim2.new(1, -216, 0, 7),
+    BackgroundColor3 = C.UnguD, BorderSizePixel = 0, AutoButtonColor = false,
+    Text = "◀", FontFace = fnt("bold"), TextSize = 14, TextColor3 = C.Putih,
+}, rowTarget)
+new("UICorner", {CornerRadius = UDim.new(0, 9)}, prevBtn)
+
+local namaTargetLbl = new("TextLabel", {
+    Size = UDim2.new(0, 140, 1, -14), Position = UDim2.new(1, -182, 0, 7),
+    BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
+    Text = "— pilih —", FontFace = fnt("bold"), TextSize = 14, TextColor3 = C.UnguMuda,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+}, rowTarget)
+new("UICorner", {CornerRadius = UDim.new(0, 9)}, namaTargetLbl)
+new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.5}, namaTargetLbl)
+
+local nextBtn = new("TextButton", {
+    Size = UDim2.fromOffset(30, 32), Position = UDim2.new(1, -38, 0, 7),
+    BackgroundColor3 = C.UnguD, BorderSizePixel = 0, AutoButtonColor = false,
+    Text = "▶", FontFace = fnt("bold"), TextSize = 14, TextColor3 = C.Putih,
+}, rowTarget)
+new("UICorner", {CornerRadius = UDim.new(0, 9)}, nextBtn)
+
+local rRekamP = addRow(scrollRute, "🔴 Rekam Player [L]", {value = true, toggle = true})
+local rSpec   = addRow(scrollRute, "📷 Spectate Kamera",   {toggle = true})
+addHint(scrollRute, "Pilih ◀▶ → dia nyetir → stop → isi nama → Simpan")
+
+addSection(scrollRute, "🔗 GABUNG FILE")
+order += 1
+local rowGabung = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = C.Baris,
+    BorderSizePixel = 0, LayoutOrder = order, ClipsDescendants = true,
+}, scrollRute)
+new("UICorner", {CornerRadius = UDim.new(0, 12)}, rowGabung)
+local namaBox = new("TextBox", {
+    Size = UDim2.new(1, -116, 1, -14), Position = UDim2.new(0, 8, 0, 7),
+    BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
+    Text = "Gabungan", PlaceholderText = "Nama file gabungan…",
+    PlaceholderColor3 = C.Abuk, ClearTextOnFocus = false,
+    FontFace = fnt("semi"), TextSize = 15, TextColor3 = C.UnguMuda,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, rowGabung)
+do
+    local pad = Instance.new("UIPadding")
+    pad.PaddingLeft = UDim.new(0, 8)
+    pad.Parent = namaBox
+end
+new("UICorner", {CornerRadius = UDim.new(0, 10)}, namaBox)
+new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.5}, namaBox)
+local gabungBtn = new("TextButton", {
+    Size = UDim2.new(0, 100, 1, -14), Position = UDim2.new(1, -108, 0, 7),
+    BackgroundColor3 = C.Biru, BorderSizePixel = 0, AutoButtonColor = false,
+    Text = "🔗 Gabung", FontFace = fnt("bold"), TextSize = 14, TextColor3 = C.Putih,
+}, rowGabung)
+new("UICorner", {CornerRadius = UDim.new(0, 10)}, gabungBtn)
+
+local tpPilihBtn = addBtnRow(scrollRute, "📌 TP ke Akhir File Terpilih")
+
+addSection(scrollRute, "📂 FILE RUTE")
+local secFileLabel = addSection(scrollRute, "(0)")
+addHint(scrollRute, "Klik nama = pilih urutan gabung ✅ • 👁 garis • 📌 TP END • 🗑 hapus")
 
 --═══════════════ STATE ═══════════════
 local S = {
@@ -414,16 +586,23 @@ local S = {
     hidePlayersOn = false, hideFxOn = false, lowGfxOn = false,
     clockOn = false,
     clockValue = Lighting.ClockTime,
+    rekamOn = false, rekamPOn = false, specOn = false, visAll = false,
 }
 
 local function getHum()
     local c = LocalPlayer.Character
     return c and c:FindFirstChildOfClass("Humanoid")
 end
+local function getRoot()
+    local c = LocalPlayer.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
 
 rSpeed.val.Text = fmt(S.speedValue)
 rJump.val.Text  = fmt(S.jumpValue)
 rClock.val.Text = formatClock(S.clockValue)
+rRekam.val.Text  = "0 pt"
+rRekamP.val.Text = "0 pt"
 
 local function segarkanToggle()
     styleToggle(rSpeed.toggle, S.speedOn)
@@ -432,6 +611,10 @@ local function segarkanToggle()
     styleToggle(rHideF.toggle, S.hideFxOn)
     styleToggle(rLowG.toggle, S.lowGfxOn)
     styleToggle(rClock.toggle, S.clockOn)
+    styleToggle(rRekam.toggle, S.rekamOn)
+    styleToggle(rRekamP.toggle, S.rekamPOn)
+    styleToggle(rSpec.toggle, S.specOn)
+    styleToggle(rVisAll.toggle, S.visAll)
 end
 
 --═══════════════ MOVEMENT ═══════════════
@@ -535,10 +718,10 @@ local function setJump(on)
     notify("Jump Power", on)
 end
 
---═══════════════ HIDE PEMAIN + KENDARAAN SENTUH (v4) ═══════════════
+--═══════════════ HIDE PEMAIN + KENDARAAN ═══════════════
 local hideLoopId = 0
-local vehHidden  = {}   -- [Player] = kendaraan yang sedang disembunyikan
-local savedDecal = {}   -- [Decal] = transparency asli
+local vehHidden  = {}
+local savedDecal = {}
 local R2 = RADIUS_SENTUH * RADIUS_SENTUH
 
 local function setCharHidden(char, target)
@@ -602,7 +785,6 @@ local function cekKendaraan()
             local seat = hum2 and hum2.SeatPart
 
             if seat and mySeat and seat.AssemblyRootPart == mySeat.AssemblyRootPart then
-                -- 🚗 mobil yang AKU tumpangi / kendarai → SELALU TAMPIL
                 if vehHidden[plr] then
                     pcall(scanKendaraan, vehHidden[plr], 0)
                     vehHidden[plr] = nil
@@ -614,9 +796,9 @@ local function cekKendaraan()
                 if sentuh and not vehHidden[plr] then
                     local v = kendaraanDariSeat(seat)
                     vehHidden[plr] = v
-                    pcall(scanKendaraan, v, 1)              -- menyentuh → hilang
+                    pcall(scanKendaraan, v, 1)
                 elseif not sentuh and vehHidden[plr] then
-                    pcall(scanKendaraan, vehHidden[plr], 0) -- menjauh → muncul
+                    pcall(scanKendaraan, vehHidden[plr], 0)
                     vehHidden[plr] = nil
                 end
             elseif vehHidden[plr] then
@@ -624,8 +806,6 @@ local function cekKendaraan()
                 vehHidden[plr] = nil
             end
 
-            -- jaring pengaman (cuma BACA 1 properti / pemain):
-            -- pemain respawn / baru join langsung ketutup lagi.
             local root = char and char:FindFirstChild("HumanoidRootPart")
             if root and root.LocalTransparencyModifier ~= 1 then
                 setCharHidden(char, 1)
@@ -640,13 +820,11 @@ local function setHidePlayers(on)
     local myId = hideLoopId
 
     if on then
-        -- karakter pemain: sekali jalan
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LocalPlayer and plr.Character then
                 setCharHidden(plr.Character, 1)
             end
         end
-        -- loop cek kendaraan (baca posisi saja; scan part HANYA saat ada perubahan)
         task.spawn(function()
             while S.hidePlayersOn and myId == hideLoopId and gui.Parent do
                 pcall(cekKendaraan)
@@ -705,7 +883,7 @@ local function setHideFx(on)
     notify("Hide All Effects", on)
 end
 
---═══════════════ LOW GRAPHIC MODE ═══════════════
+--═══════════════ LOW GRAPHIC ═══════════════
 local savedGfx, gfxConn = {}, nil
 local savedQuality, gfxApplied = nil, false
 
@@ -762,7 +940,7 @@ local function setLowGfx(on)
     notify("Low Graphic Mode", on)
 end
 
---═══════════════ AUTO BRIGHTNESS [ON/OFF] ═══════════════
+--═══════════════ AUTO BRIGHTNESS ═══════════════
 local clockSnap = nil
 
 local function applyLockedClock()
@@ -808,14 +986,780 @@ local function bumpClock(d)
     end
 end
 
+--═══════════════ 🎥 RUTE: PENYIMPANAN ═══════════════
+local daftarFile = {}
+local pilihan    = {}
+
+local function sanitize(n)
+    n = tostring(n or "")
+    n = n:gsub("[^%w%-_%. ]", "")
+    n = n:gsub("%s+", "_")
+    if n == "" then n = "rute" end
+    return n
+end
+
+local function pathDari(nama)
+    return FOLDER .. "/" .. sanitize(nama) .. ".json"
+end
+
+local function hitungPanjang(pts)
+    local L = 0
+    for i = 2, #pts do L += (pts[i] - pts[i-1]).Magnitude end
+    return L
+end
+
+local function namaUnik(base)
+    base = (base == "" and "Gabungan") or base
+    local n, i = base, 1
+    while true do
+        local bentrok = false
+        for _, f in ipairs(daftarFile) do
+            if f.nama == n then bentrok = true break end
+        end
+        if not bentrok and not (FS_OK and isf and isf(pathDari(n))) then return n end
+        i += 1
+        n = base .. " (" .. i .. ")"
+    end
+end
+
+local function titikKeArray(pts)
+    local arr = {}
+    for _, t in ipairs(pts) do
+        table.insert(arr, {
+            math.floor(t.X * 100 + 0.5) / 100,
+            math.floor(t.Y * 100 + 0.5) / 100,
+            math.floor(t.Z * 100 + 0.5) / 100,
+        })
+    end
+    return arr
+end
+
+local function simpanFile(f)
+    if not FS_OK then
+        notify("⚠️ Executor tak dukung file — data hilang saat keluar", false)
+        return
+    end
+    pastikanFolder()
+    local data = {
+        v = 1, nama = f.nama, tgl = f.tgl,
+        panjang = math.floor(f.panjang * 10 + 0.5) / 10,
+        gab = f.gabungan or nil,
+        n = #f.titik,
+        titik = titikKeArray(f.titik),
+    }
+    local ok = pcall(wf, f.path, HttpService:JSONEncode(data))
+    if not ok then
+        notify("⚠️ Gagal menulis file: " .. f.nama, false)
+    end
+end
+
+local function simpanDraft(pts)
+    if not FS_OK then return end
+    pastikanFolder()
+    local data = {nama = "_draft", titik = titikKeArray(pts)}
+    pcall(wf, DRAFT_PATH, HttpService:JSONEncode(data))
+end
+
+local function hapusDraft()
+    if FS_OK and delf and isf then
+        local o, ada = pcall(isf, DRAFT_PATH)
+        if o and ada then pcall(delf, DRAFT_PATH) end
+    end
+end
+
+local function tambahFile(nama, titik, gabungan)
+    local f = {
+        nama = nama, titik = titik,
+        panjang = hitungPanjang(titik),
+        tgl = os.date("%d/%m %H:%M"),
+        vis = false, gabungan = gabungan or false,
+        path = pathDari(nama),
+    }
+    table.insert(daftarFile, f)
+    simpanFile(f)
+    return f
+end
+
+local function muatFileTersimpan()
+    if not FS_OK then return 0 end
+    local jumlah = 0
+
+    local function muatSatu(path, namaFallback)
+        local okr, isi = pcall(rf, path)
+        if not (okr and type(isi) == "string") then return false end
+        local okd, data = pcall(function() return HttpService:JSONDecode(isi) end)
+        if not (okd and type(data) == "table" and type(data.titik) == "table") then return false end
+        local titik = {}
+        for _, t in ipairs(data.titik) do
+            if type(t) == "table" and t[1] and t[2] and t[3] then
+                table.insert(titik, Vector3.new(t[1], t[2], t[3]))
+            end
+        end
+        if #titik < 2 then return false end
+        local namaFile = path:match("[/\\]([^/\\]+)$") or namaFallback
+        namaFile = namaFile:gsub("%.json$", "")
+        tambahFile(data.nama or namaFile, titik, data.gab == true)
+        return true
+    end
+
+    if isf then
+        local ok, ada = pcall(isf, DRAFT_PATH)
+        if ok and ada then
+            if muatSatu(DRAFT_PATH, "Draft") then
+                jumlah += 1
+                notify("💾 Draft rekaman terselamatkan ✓", true)
+            end
+            if delf then pcall(delf, DRAFT_PATH) end
+        end
+    end
+
+    if type(lf) == "function" then
+        local ok, files = pcall(lf, FOLDER)
+        if ok and type(files) == "table" then
+            for _, path in ipairs(files) do
+                if type(path) == "string" and string.sub(path, -5) == ".json" and path ~= DRAFT_PATH then
+                    if isf then
+                        local o, ada = pcall(isf, path)
+                        if o and ada then
+                            if muatSatu(path, "rute") then jumlah += 1 end
+                        end
+                    else
+                        if muatSatu(path, "rute") then jumlah += 1 end
+                    end
+                end
+            end
+        end
+    end
+    return jumlah
+end
+
+--═══════════════ 🎥 RUTE: GARIS 3D ═══════════════
+local rekamFolder = Instance.new("Folder")
+rekamFolder.Name = "_SiiilauRekam"
+rekamFolder.Parent = workspace
+
+local rootFolderGaris = Instance.new("Folder")
+rootFolderGaris.Name = "_SiiilauRuteFiles"
+rootFolderGaris.Parent = workspace
+
+local function buatSegmen(parent, a, b, warna, tebal)
+    local jarak = (b - a).Magnitude
+    if jarak < 0.2 then return end
+    local p = Instance.new("Part")
+    p.Anchored = true
+    p.CanCollide = false
+    p.CanQuery = false
+    p.CanTouch = false
+    p.Material = Enum.Material.Neon
+    p.Color = warna
+    p.Transparency = 0.35
+    p.Size = Vector3.new(tebal or LINE_TEBAL, tebal or LINE_TEBAL, jarak)
+    p.CFrame = CFrame.lookAt((a + b) * 0.5, b)
+    p.Parent = parent
+end
+
+local function buatMarker(parent, pos, warna, teks)
+    local p = Instance.new("Part")
+    p.Anchored = true
+    p.CanCollide = false
+    p.CanQuery = false
+    p.CanTouch = false
+    p.Shape = Enum.PartType.Ball
+    p.Material = Enum.Material.Neon
+    p.Color = warna
+    p.Transparency = 0.2
+    p.Size = Vector3.new(3, 3, 3)
+    p.CFrame = CFrame.new(pos)
+    p.Parent = parent
+    local bb = Instance.new("BillboardGui")
+    bb.Size = UDim2.fromOffset(150, 24)
+    bb.StudsOffset = Vector3.new(0, 3, 0)
+    bb.AlwaysOnTop = true
+    bb.MaxDistance = 3000
+    bb.Parent = p
+    local t = Instance.new("TextLabel")
+    t.Size = UDim2.fromScale(1, 1)
+    t.BackgroundTransparency = 1
+    t.Font = Enum.Font.GothamBold
+    t.TextScaled = true
+    t.TextColor3 = warna
+    t.TextStrokeTransparency = 0.3
+    t.Text = teks
+    t.Parent = bb
+end
+
+local function proyeksiTanah(p, char)
+    char = char or LocalPlayer.Character
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local f = {rekamFolder, rootFolderGaris}
+    if char then table.insert(f, char) end
+    local h = char and char:FindFirstChildOfClass("Humanoid")
+    local seat = h and h.SeatPart
+    if seat then
+        local ok, v = pcall(kendaraanDariSeat, seat)
+        if ok and v then table.insert(f, v) end
+    end
+    params.FilterDescendantsInstances = f
+    local hit = workspace:Raycast(p + Vector3.new(0, 1, 0), Vector3.new(0, -14, 0), params)
+    if hit then
+        return Vector3.new(p.X, hit.Position.Y + LINE_TEBAL * 0.5 + 0.05, p.Z)
+    end
+    return p - Vector3.new(0, 2.5, 0)
+end
+
+local function setVisFile(f, vis)
+    f.vis = vis
+    if vis then
+        if not f.folder or not f.folder.Parent then
+            f.folder = Instance.new("Folder")
+            f.folder.Name = "_r_" .. sanitize(f.nama)
+            f.folder.Parent = rootFolderGaris
+            local pts = f.titik
+            local warna = f.gabungan and C.Cyan or C.Ungu2
+            for i = 2, #pts do
+                buatSegmen(f.folder, pts[i-1], pts[i], warna)
+            end
+            buatMarker(f.folder, pts[1], C.Biru2, "START")
+            buatMarker(f.folder, pts[#pts], f.gabungan and C.Cyan or C.Hijau, "END ▸ " .. f.nama)
+        end
+    else
+        if f.folder then f.folder:Destroy() f.folder = nil end
+    end
+end
+
+--═══════════════ 🎥 RUTE: DAFTAR FILE (UI) ═══════════════
+local renderDaftar -- forward
+
+local function togglePilih(f)
+    local pos = table.find(pilihan, f)
+    if pos then
+        table.remove(pilihan, pos)
+    else
+        table.insert(pilihan, f)
+    end
+    renderDaftar()
+end
+
+renderDaftar = function()
+    for _, c in ipairs(scrollRute:GetChildren()) do
+        if c:GetAttribute("itemFile") then c:Destroy() end
+    end
+    secFileLabel.Text = "▎ 📂 FILE (" .. #daftarFile .. ") • dipilih: " .. #pilihan
+
+    if #daftarFile == 0 then
+        order += 1
+        local kosong = new("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1,
+            Text = "belum ada file — rekam dulu 🔴",
+            FontFace = fnt("med"), TextSize = 14, TextColor3 = C.AbuTeks,
+            LayoutOrder = order,
+        }, scrollRute)
+        kosong:SetAttribute("itemFile", true)
+        return
+    end
+
+    for _, f in ipairs(daftarFile) do
+        order += 1
+        local posPilih = table.find(pilihan, f)
+        local item = new("TextButton", {
+            Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = C.Baris,
+            BorderSizePixel = 0, AutoButtonColor = false,
+            LayoutOrder = order, Text = "",
+        }, scrollRute)
+        item:SetAttribute("itemFile", true)
+        new("UICorner", {CornerRadius = UDim.new(0, 12)}, item)
+        new("UIStroke", {
+            Color = posPilih and C.Hijau or C.Ungu,
+            Thickness = posPilih and 2 or 1,
+            Transparency = posPilih and 0.1 or 0.78,
+        }, item)
+
+        item.MouseEnter:Connect(function() item.BackgroundColor3 = C.BarisHov end)
+        item.MouseLeave:Connect(function() item.BackgroundColor3 = C.Baris end)
+
+        local labelNama = posPilih and ("✅" .. posPilih .. " " .. f.nama) or f.nama
+        if f.gabungan then labelNama = "🔗 " .. labelNama end
+
+        new("TextLabel", {
+            Size = UDim2.new(1, -130, 0, 22), Position = UDim2.new(0, 12, 0, 4),
+            BackgroundTransparency = 1, Text = labelNama,
+            FontFace = fnt("semi"), TextSize = 15, TextColor3 = posPilih and C.Hijau or C.UnguMuda,
+            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        }, item)
+        new("TextLabel", {
+            Size = UDim2.new(1, -130, 0, 16), Position = UDim2.new(0, 12, 0, 26),
+            BackgroundTransparency = 1,
+            Text = #f.titik .. " titik • " .. math.floor(f.panjang + 0.5) .. "m • " .. f.tgl,
+            FontFace = fnt("med"), TextSize = 11, TextColor3 = C.AbuTeks,
+            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        }, item)
+
+        local visBtn = new("TextButton", {
+            Size = UDim2.fromOffset(30, 32), Position = UDim2.new(1, -112, 0, 8),
+            BackgroundColor3 = f.vis and C.Biru or C.UnguD,
+            BorderSizePixel = 0, AutoButtonColor = false,
+            Text = "👁", TextSize = 16, TextColor3 = C.Putih, FontFace = fnt("bold"),
+        }, item)
+        new("UICorner", {CornerRadius = UDim.new(0, 9)}, visBtn)
+
+        local tpBtn = new("TextButton", {
+            Size = UDim2.fromOffset(30, 32), Position = UDim2.new(1, -76, 0, 8),
+            BackgroundColor3 = C.UnguD, BorderSizePixel = 0, AutoButtonColor = false,
+            Text = "📌", TextSize = 16, TextColor3 = C.Putih, FontFace = fnt("bold"),
+        }, item)
+        new("UICorner", {CornerRadius = UDim.new(0, 9)}, tpBtn)
+
+        local delBtn = new("TextButton", {
+            Size = UDim2.fromOffset(30, 32), Position = UDim2.new(1, -40, 0, 8),
+            BackgroundColor3 = C.UnguD, BorderSizePixel = 0, AutoButtonColor = false,
+            Text = "🗑", TextSize = 16, TextColor3 = C.Merah, FontFace = fnt("bold"),
+        }, item)
+        new("UICorner", {CornerRadius = UDim.new(0, 9)}, delBtn)
+
+        item.MouseButton1Click:Connect(function() togglePilih(f) end)
+        visBtn.MouseButton1Click:Connect(function()
+            setVisFile(f, not f.vis)
+            renderDaftar()
+        end)
+        tpBtn.MouseButton1Click:Connect(function()
+            local root = getRoot()
+            if not root then notify("Karakter belum ada / respawn dulu", false) return end
+            local h = getHum()
+            if h then pcall(function() h.Sit = false end) end
+            local p = f.titik[#f.titik]
+            root.CFrame = CFrame.new(p + Vector3.new(0, 6, 0))
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+            notify("📌 TP ke END ▸ " .. f.nama, true)
+        end)
+        delBtn.MouseButton1Click:Connect(function()
+            local pos = table.find(pilihan, f)
+            if pos then table.remove(pilihan, pos) end
+            if f.folder then f.folder:Destroy() f.folder = nil end
+            if FS_OK and delf and isf then
+                local o, ada = pcall(isf, f.path)
+                if o and ada then pcall(delf, f.path) end
+            end
+            for i, x in ipairs(daftarFile) do
+                if x == f then table.remove(daftarFile, i) break end
+            end
+            renderDaftar()
+            notify("🗑 Hapus: " .. f.nama, false)
+        end)
+    end
+end
+
+--═══════════════ 💾 DIALOG ISI NAMA (STOP → NAMA → SIMPAN) ═══════════════
+local modalBg = new("TextButton", {
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = C.Hitam, BackgroundTransparency = 0.45,
+    BorderSizePixel = 0, Text = "", AutoButtonColor = false,
+    Visible = false, ZIndex = 100,
+}, gui)
+
+local kartu = new("Frame", {
+    Size = UDim2.fromOffset(360, 210),
+    Position = UDim2.new(0.5, 0, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundColor3 = C.Hitam2, BorderSizePixel = 0, Active = true, ZIndex = 101,
+}, modalBg)
+new("UICorner", {CornerRadius = UDim.new(0, 16)}, kartu)
+new("UIStroke", {Color = C.Ungu, Thickness = 2}, kartu)
+
+new("TextLabel", {
+    Size = UDim2.new(1, -20, 0, 34), Position = UDim2.new(0, 10, 0, 10),
+    BackgroundTransparency = 1, Text = "💾 SIMPAN REKAMAN",
+    FontFace = fnt("judul"), TextSize = 22, TextColor3 = C.Ungu2, ZIndex = 101,
+}, kartu)
+
+new("TextLabel", {
+    Size = UDim2.new(1, -20, 0, 18), Position = UDim2.new(0, 10, 0, 46),
+    BackgroundTransparency = 1, Text = "Tulis nama file biar gampang dicari saat gabung:",
+    FontFace = fnt("med"), TextSize = 13, TextColor3 = C.AbuTeks, ZIndex = 101,
+}, kartu)
+
+local namaSaveBox = new("TextBox", {
+    Size = UDim2.new(1, -40, 0, 44), Position = UDim2.new(0, 20, 0, 72),
+    BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
+    Text = "", PlaceholderText = "contoh: Tikungan Jembatan…",
+    PlaceholderColor3 = C.Abuk, ClearTextOnFocus = false,
+    FontFace = fnt("semi"), TextSize = 16, TextColor3 = C.UnguMuda,
+    TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 101,
+}, kartu)
+do
+    local pad = Instance.new("UIPadding")
+    pad.PaddingLeft = UDim.new(0, 10)
+    pad.Parent = namaSaveBox
+end
+new("UICorner", {CornerRadius = UDim.new(0, 10)}, namaSaveBox)
+new("UIStroke", {Color = C.Ungu, Thickness = 1.5}, namaSaveBox)
+
+local buangBtn = new("TextButton", {
+    Size = UDim2.new(0, 150, 0, 42), Position = UDim2.new(0, 20, 1, -56),
+    BackgroundColor3 = C.offBg, BorderSizePixel = 0, AutoButtonColor = false,
+    Text = "🗑️ Buang", FontFace = fnt("bold"), TextSize = 15, TextColor3 = C.Merah, ZIndex = 101,
+}, kartu)
+new("UICorner", {CornerRadius = UDim.new(0, 10)}, buangBtn)
+new("UIStroke", {Color = C.Merah, Thickness = 1.5, Transparency = 0.5}, buangBtn)
+
+local simpanBtn = new("TextButton", {
+    Size = UDim2.new(0, 150, 0, 42), Position = UDim2.new(1, -170, 1, -56),
+    BackgroundColor3 = C.Biru, BorderSizePixel = 0, AutoButtonColor = false,
+    Text = "✅ Simpan", FontFace = fnt("bold"), TextSize = 15, TextColor3 = C.Putih, ZIndex = 101,
+}, kartu)
+new("UICorner", {CornerRadius = UDim.new(0, 10)}, simpanBtn)
+
+local pendingSave = nil
+
+local function tutupDialog()
+    modalBg.Visible = false
+    pendingSave = nil
+end
+
+local function lakukanSimpan()
+    if not pendingSave then tutupDialog() return end
+    local nama = namaSaveBox.Text
+    nama = nama:gsub("^%s+", ""):gsub("%s+$", "")
+    if nama == "" then nama = pendingSave.default end
+    nama = namaUnik(nama)
+    local f = tambahFile(nama, pendingSave.titik, false)
+    setVisFile(f, true)
+    renderDaftar()
+    hapusDraft()
+    rekamFolder:ClearAllChildren()
+    notify("✅ Tersimpan: " .. nama .. " (" .. #f.titik .. " titik • " .. math.floor(f.panjang + 0.5) .. "m)", true)
+    tutupDialog()
+end
+
+local function lakukanBuang()
+    if pendingSave then
+        hapusDraft()
+        rekamFolder:ClearAllChildren()
+        notify("🗑️ Rekaman dibuang", false)
+    end
+    tutupDialog()
+end
+
+local function bukaDialogSimpan(defaultNama, titik)
+    pendingSave = {default = defaultNama, titik = titik}
+    namaSaveBox.Text = defaultNama
+    modalBg.Visible = true
+    notify("⏹ Stop! Isi nama lalu Simpan 💾", true)
+end
+
+simpanBtn.MouseButton1Click:Connect(lakukanSimpan)
+buangBtn.MouseButton1Click:Connect(lakukanBuang)
+namaSaveBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then lakukanSimpan() end
+end)
+
+--═══════════════ 🎥 RUTE: REKAM / TP / GABUNG ═══════════════
+local rekamId = 0
+local rekamPts, lastPt, lastGp = {}, nil, nil
+local rekamMati = false
+
+local setRekamP -- forward
+
+local function setRekam(on)
+    if on and modalBg.Visible then
+        notify("Selesaikan simpan rekaman dulu 💾", false)
+        return
+    end
+    if on and S.rekamPOn then setRekamP(false) end
+    S.rekamOn = on
+    rekamId += 1
+    local myId = rekamId
+
+    if on then
+        rekamFolder:ClearAllChildren()
+        rekamPts, lastPt, lastGp = {}, nil, nil
+        rekamMati = false
+        rRekam.val.Text = "0 pt"
+        notify("🔴 Merekam… nyetir jalurmu!", true)
+        task.spawn(function()
+            while S.rekamOn and myId == rekamId and gui.Parent do
+                local h = getHum()
+                if h and h.Health <= 0 then
+                    rekamMati = true
+                    task.defer(function()
+                        if S.rekamOn and myId == rekamId then setRekam(false) end
+                    end)
+                    break
+                end
+                local root = getRoot()
+                if root then
+                    local p = root.Position
+                    if not lastPt then
+                        lastPt = p
+                        lastGp = proyeksiTanah(p)
+                        table.insert(rekamPts, lastGp)
+                        buatMarker(rekamFolder, lastGp, C.Merah, "AWAL REKAM")
+                    else
+                        local jarak = (p - lastPt).Magnitude
+                        if jarak >= REC_MIN_JARAK then
+                            local gp = proyeksiTanah(p)
+                            if jarak < JARAK_LOMPAT then
+                                buatSegmen(rekamFolder, lastGp, gp, C.Merah)
+                            end
+                            table.insert(rekamPts, gp)
+                            lastPt, lastGp = p, gp
+                            rRekam.val.Text = #rekamPts .. " pt"
+                            if #rekamPts % 25 == 0 then simpanDraft(rekamPts) end
+                            if #rekamPts >= MAX_TITIK then
+                                task.defer(function()
+                                    if S.rekamOn and myId == rekamId then setRekam(false) end
+                                end)
+                                break
+                            end
+                        end
+                    end
+                end
+                task.wait(REC_INTERVAL)
+            end
+        end)
+    else
+        if #rekamPts >= 2 then
+            local titik = {}
+            for _, t in ipairs(rekamPts) do table.insert(titik, t) end
+            local saran = namaUnik("Mentah")
+            bukaDialogSimpan(saran, titik)
+            if rekamMati then
+                notify("💀 Mati — garis tetap ada, isi nama → Simpan", false)
+            end
+            -- folder & draft JANGAN dihapus — menunggu Simpan/Buang
+        else
+            notify("Rekam dibatalkan (titik terlalu sedikit)", false)
+            hapusDraft()
+            rekamFolder:ClearAllChildren()
+            rekamPts, lastPt, lastGp = {}, nil, nil
+        end
+    end
+
+    styleToggle(rRekam.toggle, on)
+end
+
+-- ---- TARGET PICKER ----
+local targetIdx = 1
+local targetPlr = nil
+
+local function daftarPemainLain()
+    local list = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then table.insert(list, plr) end
+    end
+    return list
+end
+
+local function updateTargetLabel()
+    local list = daftarPemainLain()
+    if #list == 0 then
+        targetPlr = nil
+        namaTargetLbl.Text = "tidak ada"
+        return
+    end
+    if targetIdx < 1 or targetIdx > #list then targetIdx = 1 end
+    targetPlr = list[targetIdx]
+    namaTargetLbl.Text = targetPlr.DisplayName
+end
+
+local function applySpectate()
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    if S.specOn and targetPlr and targetPlr.Character then
+        local hum2 = targetPlr.Character:FindFirstChildOfClass("Humanoid")
+        if hum2 and cam.CameraSubject ~= hum2 then
+            pcall(function() cam.CameraSubject = hum2 end)
+        end
+    end
+end
+
+local specId = 0
+local function setSpec(on)
+    S.specOn = on
+    specId += 1
+    local myId = specId
+    if on then
+        applySpectate()
+        notify("📷 Spectate: " .. (targetPlr and targetPlr.DisplayName or "?"), true)
+        task.spawn(function()
+            while S.specOn and myId == specId and gui.Parent do
+                applySpectate()
+                task.wait(0.5)
+            end
+        end)
+    else
+        local cam = workspace.CurrentCamera
+        local h = getHum()
+        if cam and h then pcall(function() cam.CameraSubject = h end) end
+        notify("📷 Spectate", false)
+    end
+    styleToggle(rSpec.toggle, on)
+end
+
+-- ---- REKAM PEMAIN LAIN ----
+local rekamPId = 0
+local rekamPPts, lastPPt, lastPGp = {}, nil, nil
+local rekamPTarget, rekamPNama = nil, "?"
+
+local function getRootDari(plr)
+    local c = plr and plr.Character
+    if not c then return nil, nil end
+    local hum2 = c:FindFirstChildOfClass("Humanoid")
+    if hum2 and hum2.Health <= 0 then return nil, hum2 end
+    local seat = hum2 and hum2.SeatPart
+    if seat then return seat, hum2 end
+    return c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart, hum2
+end
+
+setRekamP = function(on)
+    if on and modalBg.Visible then
+        notify("Selesaikan simpan rekaman dulu 💾", false)
+        return
+    end
+    if on then
+        if S.rekamOn then setRekam(false) end
+        if not targetPlr then
+            notify("Pilih target dulu (◀ ▶)", false)
+            return
+        end
+    end
+    S.rekamPOn = on
+    rekamPId += 1
+    local myId = rekamPId
+
+    if on then
+        rekamFolder:ClearAllChildren()
+        rekamPPts, lastPPt, lastPGp = {}, nil, nil
+        rekamPTarget = targetPlr
+        rekamPNama   = targetPlr.Name
+        rRekamP.val.Text = "0 pt"
+        notify("🔴 Rekam " .. targetPlr.DisplayName .. "…", true)
+        task.spawn(function()
+            while S.rekamPOn and myId == rekamPId and gui.Parent do
+                if not rekamPTarget or not rekamPTarget.Parent then
+                    task.defer(function()
+                        if S.rekamPOn and myId == rekamPId then setRekamP(false) end
+                    end)
+                    break
+                end
+                local root, hum2 = getRootDari(rekamPTarget)
+                if root and (not hum2 or hum2.Health > 0) then
+                    local p = root.Position
+                    if not lastPPt then
+                        lastPPt = p
+                        lastPGp = proyeksiTanah(p, rekamPTarget.Character)
+                        table.insert(rekamPPts, lastPGp)
+                        buatMarker(rekamFolder, lastPGp, C.Merah, "AWAL: " .. rekamPTarget.DisplayName)
+                    else
+                        local jarak = (p - lastPPt).Magnitude
+                        if jarak >= REC_MIN_JARAK then
+                            if jarak < JARAK_LOMPAT then
+                                local gp = proyeksiTanah(p, rekamPTarget.Character)
+                                buatSegmen(rekamFolder, lastPGp, gp, C.Merah)
+                                table.insert(rekamPPts, gp)
+                                lastPPt, lastPGp = p, gp
+                                rRekamP.val.Text = #rekamPPts .. " pt"
+                            else
+                                lastPPt = p
+                                lastPGp = proyeksiTanah(p, rekamPTarget.Character)
+                            end
+                            if #rekamPPts % 25 == 0 and #rekamPPts > 0 then simpanDraft(rekamPPts) end
+                            if #rekamPPts >= MAX_TITIK then
+                                task.defer(function()
+                                    if S.rekamPOn and myId == rekamPId then setRekamP(false) end
+                                end)
+                                break
+                            end
+                        end
+                    end
+                end
+                task.wait(REC_INTERVAL)
+            end
+        end)
+    else
+        if #rekamPPts >= 2 then
+            local titik = {}
+            for _, t in ipairs(rekamPPts) do table.insert(titik, t) end
+            local saran = namaUnik("P-" .. rekamPNama)
+            bukaDialogSimpan(saran, titik)
+        else
+            notify("Rekam player dibatalkan (titik kurang)", false)
+            hapusDraft()
+            rekamFolder:ClearAllChildren()
+            rekamPPts, lastPPt, lastPGp = {}, nil, nil
+        end
+    end
+
+    styleToggle(rRekamP.toggle, on)
+end
+
+local function tampilSemua(on)
+    for _, f in ipairs(daftarFile) do
+        setVisFile(f, on)
+    end
+    renderDaftar()
+    notify("Semua garis", on)
+end
+
+local function gabungTerpilih()
+    if #pilihan < 2 then
+        notify("Pilih minimal 2 file (klik nama file-nya)", false)
+        return
+    end
+    local nama = namaBox.Text
+    nama = nama:gsub("^%s+", ""):gsub("%s+$", "")
+    if nama == "" then nama = "Gabungan" end
+    nama = namaUnik(nama)
+
+    local titik, last = {}, nil
+    for _, f in ipairs(pilihan) do
+        for _, t in ipairs(f.titik) do
+            if not last or (t - last).Magnitude >= GABUNG_MIN_JARAK then
+                table.insert(titik, t)
+                last = t
+            end
+        end
+    end
+    if #titik < 2 then
+        notify("Gagal gabung: titik kurang", false)
+        return
+    end
+
+    local f = tambahFile(nama, titik, true)
+    setVisFile(f, true)
+    table.clear(pilihan)
+    renderDaftar()
+    notify("🔗 Jadi: " .. nama .. " (" .. #titik .. " titik • " .. math.floor(f.panjang + 0.5) .. "m)", true)
+end
+
+local function tpKeTerpilih()
+    if #pilihan == 0 then
+        notify("Pilih file dulu (klik nama file-nya)", false)
+        return
+    end
+    local f = pilihan[1]
+    local root = getRoot()
+    if not root then notify("Karakter belum ada / respawn dulu", false) return end
+    local h = getHum()
+    if h then pcall(function() h.Sit = false end) end
+    local p = f.titik[#f.titik]
+    root.CFrame = CFrame.new(p + Vector3.new(0, 6, 0))
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+    notify("📌 TP ke END ▸ " .. f.nama, true)
+end
+
 --═══════════════ RESET & KELUAR ═══════════════
 local function matikanSemua()
+    pcall(function() if S.rekamOn  then setRekam(false)  end end)
+    pcall(function() if S.rekamPOn then setRekamP(false) end end)
+    pcall(function() if S.specOn   then setSpec(false)   end end)
     pcall(function() if S.hidePlayersOn then setHidePlayers(false) end end)
     pcall(function() if S.hideFxOn then setHideFx(false) end end)
     pcall(function() if S.lowGfxOn then setLowGfx(false) end end)
-    pcall(function() if S.clockOn then setClock(false) end end)
-    pcall(function() if S.speedOn then setSpeed(false) end end)
-    pcall(function() if S.jumpOn then setJump(false) end end)
+    pcall(function() if S.clockOn  then setClock(false)  end end)
+    pcall(function() if S.speedOn  then setSpeed(false)  end end)
+    pcall(function() if S.jumpOn   then setJump(false)   end end)
 end
 
 local function destroyAll()
@@ -824,6 +1768,8 @@ local function destroyAll()
     silent = false
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     table.clear(conns)
+    pcall(function() rekamFolder:Destroy() end)
+    pcall(function() rootFolderGaris:Destroy() end)
     gui:Destroy()
 end
 
@@ -836,7 +1782,7 @@ local function resetSemua()
     rSpeed.val.Text = fmt(S.speedValue)
     rJump.val.Text  = fmt(S.jumpValue)
     rClock.val.Text = formatClock(S.clockValue)
-    notify("Reset ke default ✓", true)
+    notify("Reset ke default ✓ (file rute tetap aman)", true)
 end
 
 --═══════════════ WIRING TOMBOL ═══════════════
@@ -872,16 +1818,69 @@ rClock.minus.MouseButton1Click:Connect(function() bumpClock(-CLOCK_STEP) end)
 rClock.plus.MouseButton1Click:Connect(function() bumpClock(CLOCK_STEP) end)
 rClock.toggle.MouseButton1Click:Connect(function() setClock(not S.clockOn) end)
 
--- minimize (instan)
-local function setMinimize(k)
-    scroll.Visible = not k
-    bottom.Visible = not k
-    main.Size = k and UDim2.fromOffset(480, 58) or UDim2.fromOffset(480, 620)
-end
-minBtn.MouseButton1Click:Connect(function() setMinimize(scroll.Visible) end)
+rRekam.toggle.MouseButton1Click:Connect(function() setRekam(not S.rekamOn) end)
+rRekamP.toggle.MouseButton1Click:Connect(function() setRekamP(not S.rekamPOn) end)
+rSpec.toggle.MouseButton1Click:Connect(function() setSpec(not S.specOn) end)
+rVisAll.toggle.MouseButton1Click:Connect(function()
+    S.visAll = not S.visAll
+    tampilSemua(S.visAll)
+end)
+gabungBtn.MouseButton1Click:Connect(gabungTerpilih)
+tpPilihBtn.MouseButton1Click:Connect(tpKeTerpilih)
+
+prevBtn.MouseButton1Click:Connect(function()
+    if S.rekamPOn then notify("Stop rekam dulu untuk ganti target", false) return end
+    local list = daftarPemainLain()
+    if #list == 0 then return end
+    targetIdx = (targetIdx - 2) % #list + 1
+    updateTargetLabel()
+    applySpectate()
+end)
+nextBtn.MouseButton1Click:Connect(function()
+    if S.rekamPOn then notify("Stop rekam dulu untuk ganti target", false) return end
+    local list = daftarPemainLain()
+    if #list == 0 then return end
+    targetIdx = targetIdx % #list + 1
+    updateTargetLabel()
+    applySpectate()
+end)
+
+addConn(Players.PlayerAdded:Connect(function()
+    task.defer(updateTargetLabel)
+end))
+addConn(Players.PlayerRemoving:Connect(function()
+    task.defer(updateTargetLabel)
+end))
 
 resetBtn.MouseButton1Click:Connect(resetSemua)
 exitBtn.MouseButton1Click:Connect(destroyAll)
+
+-- TAB + MINIMIZE
+local tabAktif, minimized = false, false
+
+local function applyLayout()
+    scrollMain.Visible = (not minimized) and (not tabAktif)
+    scrollRute.Visible = (not minimized) and tabAktif
+    tabBar.Visible = not minimized
+    bottom.Visible = not minimized
+    main.Size = minimized and UDim2.fromOffset(480, 58) or UDim2.fromOffset(480, 620)
+end
+
+local function pilihTab(rute)
+    tabAktif = rute
+    tabMenuBtn.BackgroundColor3 = not rute and C.Ungu or C.Hitam2
+    tabMenuBtn.TextColor3 = not rute and C.Putih or C.Abuk
+    tabRuteBtn.BackgroundColor3 = rute and C.Ungu or C.Hitam2
+    tabRuteBtn.TextColor3 = rute and C.Putih or C.Abuk
+    applyLayout()
+end
+tabMenuBtn.MouseButton1Click:Connect(function() pilihTab(false) end)
+tabRuteBtn.MouseButton1Click:Connect(function() pilihTab(true) end)
+
+minBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    applyLayout()
+end)
 
 --═══════════════ DRAG GUI ═══════════════
 do
@@ -924,10 +1923,26 @@ addConn(UserInputService.InputBegan:Connect(function(input, gp)
         setHidePlayers(not S.hidePlayersOn)
     elseif kc == Enum.KeyCode.Q then
         setSpeed(not S.speedOn)
+    elseif kc == Enum.KeyCode.K then
+        setRekam(not S.rekamOn)
+    elseif kc == Enum.KeyCode.L then
+        setRekamP(not S.rekamPOn)
     end
 end))
 
 --═══════════════ FINALIZE ═══════════════
+updateTargetLabel()
+local jumlahDimuat = muatFileTersimpan()
+renderDaftar()
 segarkanToggle()
+pilihTab(false)
 main.Visible = true
-notify("Siiilau ⚡ RACE LITE siap — F = buka/tutup", true)
+notify("Siiilau ⚡ siap — F = buka/tutup", true)
+if jumlahDimuat > 0 then
+    notify("📂 " .. jumlahDimuat .. " file rute dimuat ✓", true)
+end
+if FS_OK then
+    notify("💾 Tersimpan permanen ✓", true)
+else
+    notify("⚠️ Executor tak dukung file", false)
+end
