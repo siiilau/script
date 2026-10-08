@@ -3,7 +3,7 @@
     ─────────────────────────────────────────────
     👁️ DINDING INVISIBLE [T]
        dinding tersembunyi dibuat terlihat:
-       🔴 merah = pembatas • 🟢 hijau = platform
+       ⬜ abu-abu tua
     🚧 TRAFFIC POST [G]
        pasang post di titik A → otomatis muncul
        garis lurus ke post terdekat (titik B).
@@ -55,7 +55,7 @@ local ACCENT  = Color3.fromRGB(34, 211, 238)   -- cyan
 local UNGU    = Color3.fromRGB(167, 139, 250)
 local TEKS    = Color3.fromRGB(235, 240, 250)
 local MERAH   = Color3.fromRGB(248, 113, 113)
-local HIJAU   = Color3.fromRGB(74, 222, 128)
+local ABU     = Color3.fromRGB(70, 70, 70)     -- abu-abu tua (dinding)
 
 --═════════ FOLDER + KONEKSI ═════════
 local folderShell = Instance.new("Folder")
@@ -187,10 +187,6 @@ local function kandidatWall(p)
     return true
 end
 
-local function adalahPlatform(p)
-    return p.CFrame.UpVector:Dot(Vector3.yAxis) >= 0.6 and p.Size.Y <= 6
-end
-
 local function bersihkanShell()
     for _, data in ipairs(shellPairs) do
         pcall(function() data.shell:Destroy() end)
@@ -221,27 +217,26 @@ local function scanDinding()
             return (a.Position - pos).Magnitude < (b.Position - pos).Magnitude
         end)
 
-        local nD, nP = 0, 0
+        local nD = 0
         for i, p in ipairs(kandidat) do
             if i > MAX_SHELL then break end
             if id ~= scanId then bersihkanShell() return end
             if p.Parent then
-                local plat = adalahPlatform(p)
                 local shell = Instance.new("Part")
                 shell.Anchored, shell.CanCollide = true, false
                 shell.CanQuery, shell.CanTouch, shell.CastShadow = false, false, false
                 shell.Material = Enum.Material.Neon
-                shell.Color = plat and HIJAU or MERAH
-                shell.Transparency = plat and 0.5 or 0.65
+                shell.Color = ABU
+                shell.Transparency = 0.5
                 shell.Size = p.Size + Vector3.new(0.1, 0.1, 0.1)
                 shell.CFrame = p.CFrame
                 shell.Parent = folderShell
                 table.insert(shellPairs, {part = p, shell = shell, lastCF = p.CFrame})
-                if plat then nP += 1 else nD += 1 end
+                nD += 1
             end
         end
         if espOn and id == scanId then
-            status(("🔴 %d dinding • 🟢 %d platform"):format(nD, nP))
+            status(("⬜ %d dinding terlihat"):format(nD))
         end
     end)
 end
