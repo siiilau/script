@@ -1,8 +1,8 @@
 --[[═════════════════════════════════════════
-    ⛓️ Siiilau⚡ — RACE LITE v1.1.1
+    ⛓️ Siiilau⚡ — RACE LITE v1.1.0
     TAB: ⚙️ MENU | 🎥 RUTE | 🧱 XRAY
-    XRAY: dinding abu tua transparan (toggle stabil)
-    Rekam ultra-halus • isi nama • gabung cerdas
+    XRAY: dinding abu tua transparan (cari rute
+    paling tipis) • rekam ultra-halus • gabung cerdas
     HOTKEYS: F=GUI Q=Speed R=Hide T=Bright
              K=Rekam Diri L=Rekam Player X=XRay
     ═════════════════════════════════════════]]
@@ -35,8 +35,8 @@ local PREVIEW_BELOK    = 15
 local PREVIEW_MAX      = 12
 
 -- 🧱 XRAY DINDING
-local XRAY_WARNA   = Color3.fromRGB(62, 62, 70)
-local XRAY_MIN_DIM = 8
+local XRAY_WARNA   = Color3.fromRGB(62, 62, 70)  -- abu-abu tua
+local XRAY_MIN_DIM = 8    -- sisi terpanjang ≥ ini = dianggap dinding
 
 -- 🔗 GABUNG
 local GABUNG_MIN_JARAK = 5
@@ -623,10 +623,6 @@ local S = {
     rekamOn = false, rekamPOn = false, specOn = false, visAll = false,
 }
 
-local xrayOn        = false
-local xrayModeSemua = false
-local xrayStrength  = 0.65
-
 local function getHum()
     local c = LocalPlayer.Character
     return c and c:FindFirstChildOfClass("Humanoid")
@@ -641,7 +637,7 @@ rJump.val.Text  = fmt(S.jumpValue)
 rClock.val.Text = formatClock(S.clockValue)
 rRekam.val.Text  = "0 pt"
 rRekamP.val.Text = "0 pt"
-rXStrength.val.Text = math.floor(xrayStrength * 100 + 0.5) .. "%"
+rXStrength.val.Text = "65%"
 
 local function segarkanToggle()
     styleToggle(rSpeed.toggle, S.speedOn)
@@ -654,8 +650,8 @@ local function segarkanToggle()
     styleToggle(rRekamP.toggle, S.rekamPOn)
     styleToggle(rSpec.toggle, S.specOn)
     styleToggle(rVisAll.toggle, S.visAll)
-    styleToggle(rWall.toggle, xrayOn)
-    styleToggle(rXSemua.toggle, xrayModeSemua)
+    styleToggle(rWall.toggle, false)
+    styleToggle(rXSemua.toggle, false)
 end
 
 --═══════════════ MOVEMENT ═══════════════
@@ -1596,30 +1592,25 @@ local rekamMati = false
 
 local setRekamP -- forward
 
-local pvSelf   = {last = nil, dir = nil}
-local pvPlayer = {last = nil, dir = nil}
+local pvLast, pvDir = nil, nil
 
-local function previewLive(state, parent, gp, warna)
-    if not state.last then
-        state.last, state.dir = gp, nil
+local function previewLive(parent, gp, warna)
+    if not pvLast then
+        pvLast, pvDir = gp, nil
         return
     end
-    local d = gp - state.last
+    local d = gp - pvLast
     local mag = d.Magnitude
     if mag < 0.2 then return end
     local dirBaru = d.Unit
     local belok = 0
-    if state.dir then
-        belok = math.deg(math.acos(math.clamp(state.dir:Dot(dirBaru), -1, 1)))
+    if pvDir then
+        belok = math.deg(math.acos(math.clamp(pvDir:Dot(dirBaru), -1, 1)))
     end
-    if (state.dir == nil) or belok >= PREVIEW_BELOK or mag >= PREVIEW_MAX then
-        buatSegmen(parent, state.last, gp, warna)
-        state.last, state.dir = gp, dirBaru
+    if (pvDir == nil) or belok >= PREVIEW_BELOK or mag >= PREVIEW_MAX then
+        buatSegmen(parent, pvLast, gp, warna)
+        pvLast, pvDir = gp, dirBaru
     end
-end
-
-local function resetPreview(state)
-    state.last, state.dir = nil, nil
 end
 
 local function rebuildPreviewHalus(pts)
@@ -1629,12 +1620,12 @@ local function rebuildPreviewHalus(pts)
     buatMarker(rekamFolder, pts[#pts], C.Hijau, "END (preview)")
 end
 
-local function setRekam(on, tanpaDialog)
+local function setRekam(on)
     if on and modalBg.Visible then
         notify("Selesaikan simpan rekaman dulu 💾", false)
         return
     end
-    if on and S.rekamPOn then setRekamP(false, true) end
+    if on and S.rekamPOn then setRekamP(false) end
     S.rekamOn = on
     rekamId += 1
     local myId = rekamId
@@ -1643,7 +1634,7 @@ local function setRekam(on, tanpaDialog)
         rekamFolder:ClearAllChildren()
         rekamPts, lastPt = {}, nil
         rekamMati = false
-        resetPreview(pvSelf)
+        pvLast, pvDir = nil, nil
         rRekam.val.Text = "0 pt"
         notify("🔴 Merekam ultra-halus… nyetir jalurmu!", true)
         task.spawn(function()
@@ -1663,7 +1654,7 @@ local function setRekam(on, tanpaDialog)
                         lastPt = p
                         local gp = proyeksiTanah(p)
                         table.insert(rekamPts, gp)
-                        previewLive(pvSelf, rekamFolder, gp, C.Merah)
+                        previewLive(rekamFolder, gp, C.Merah)
                         buatMarker(rekamFolder, gp, C.Merah, "AWAL REKAM")
                     else
                         local jarak = (p - lastPt).Magnitude
@@ -1671,7 +1662,7 @@ local function setRekam(on, tanpaDialog)
                             local gp = proyeksiTanah(p)
                             table.insert(rekamPts, gp)
                             lastPt = p
-                            previewLive(pvSelf, rekamFolder, gp, C.Merah)
+                            previewLive(rekamFolder, gp, C.Merah)
                             rRekam.val.Text = #rekamPts .. " pt"
                             if #rekamPts % DRAFT_TIAP == 0 then simpanDraft(rekamPts) end
                             if #rekamPts >= MAX_TITIK then
@@ -1690,26 +1681,18 @@ local function setRekam(on, tanpaDialog)
         if #rekamPts >= 2 then
             local titik = {}
             for _, t in ipairs(rekamPts) do table.insert(titik, t) end
-            if tanpaDialog then
-                simpanDraft(titik)
-                rekamFolder:ClearAllChildren()
-                rekamPts, lastPt = {}, nil
-                resetPreview(pvSelf)
-            else
-                simpanDraft(titik)
-                rebuildPreviewHalus(titik)
-                local saran = namaUnik("Mentah")
-                bukaDialogSimpan(saran, titik)
-                if rekamMati then
-                    notify("💀 Mati — garis tetap ada, isi nama → Simpan", false)
-                end
+            rebuildPreviewHalus(titik)
+            local saran = namaUnik("Mentah")
+            bukaDialogSimpan(saran, titik)
+            if rekamMati then
+                notify("💀 Mati — garis tetap ada, isi nama → Simpan", false)
             end
         else
             notify("Rekam dibatalkan (titik terlalu sedikit)", false)
             hapusDraft()
             rekamFolder:ClearAllChildren()
             rekamPts, lastPt = {}, nil
-            resetPreview(pvSelf)
+            pvLast, pvDir = nil, nil
         end
     end
 
@@ -1778,6 +1761,7 @@ end
 local rekamPId = 0
 local rekamPPts, lastPPt = {}, nil
 local rekamPTarget, rekamPNama = nil, "?"
+local pvPLast, pvPDir = nil, nil
 
 local function getRootDari(plr)
     local c = plr and plr.Character
@@ -1789,13 +1773,13 @@ local function getRootDari(plr)
     return c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart, hum2
 end
 
-setRekamP = function(on, tanpaDialog)
+setRekamP = function(on)
     if on and modalBg.Visible then
         notify("Selesaikan simpan rekaman dulu 💾", false)
         return
     end
     if on then
-        if S.rekamOn then setRekam(false, true) end
+        if S.rekamOn then setRekam(false) end
         if not targetPlr then
             notify("Pilih target dulu (◀ ▶)", false)
             return
@@ -1808,7 +1792,7 @@ setRekamP = function(on, tanpaDialog)
     if on then
         rekamFolder:ClearAllChildren()
         rekamPPts, lastPPt = {}, nil
-        resetPreview(pvPlayer)
+        pvPLast, pvPDir = nil, nil
         rekamPTarget = targetPlr
         rekamPNama   = targetPlr.Name
         rRekamP.val.Text = "0 pt"
@@ -1828,7 +1812,7 @@ setRekamP = function(on, tanpaDialog)
                         lastPPt = p
                         local gp = proyeksiTanah(p, rekamPTarget.Character)
                         table.insert(rekamPPts, gp)
-                        previewLive(pvPlayer, rekamFolder, gp, C.Merah)
+                        previewLive(rekamFolder, gp, C.Merah)
                         buatMarker(rekamFolder, gp, C.Merah, "AWAL: " .. rekamPTarget.DisplayName)
                     else
                         local jarak = (p - lastPPt).Magnitude
@@ -1836,10 +1820,10 @@ setRekamP = function(on, tanpaDialog)
                             local gp = proyeksiTanah(p, rekamPTarget.Character)
                             if jarak < JARAK_LOMPAT then
                                 table.insert(rekamPPts, gp)
-                                previewLive(pvPlayer, rekamFolder, gp, C.Merah)
+                                previewLive(rekamFolder, gp, C.Merah)
                                 rRekamP.val.Text = #rekamPPts .. " pt"
                             else
-                                resetPreview(pvPlayer)
+                                pvPLast, pvPDir = gp, nil
                             end
                             lastPPt = p
                             if #rekamPPts % DRAFT_TIAP == 0 and #rekamPPts > 0 then simpanDraft(rekamPPts) end
@@ -1859,23 +1843,15 @@ setRekamP = function(on, tanpaDialog)
         if #rekamPPts >= 2 then
             local titik = {}
             for _, t in ipairs(rekamPPts) do table.insert(titik, t) end
-            if tanpaDialog then
-                simpanDraft(titik)
-                rekamFolder:ClearAllChildren()
-                rekamPPts, lastPPt = {}, nil
-                resetPreview(pvPlayer)
-            else
-                simpanDraft(titik)
-                rebuildPreviewHalus(titik)
-                local saran = namaUnik("P-" .. rekamPNama)
-                bukaDialogSimpan(saran, titik)
-            end
+            rebuildPreviewHalus(titik)
+            local saran = namaUnik("P-" .. rekamPNama)
+            bukaDialogSimpan(saran, titik)
         else
             notify("Rekam player dibatalkan (titik kurang)", false)
             hapusDraft()
             rekamFolder:ClearAllChildren()
             rekamPPts, lastPPt = {}, nil
-            resetPreview(pvPlayer)
+            pvPLast, pvPDir = nil, nil
         end
     end
 
@@ -1941,9 +1917,11 @@ local function tpKeTerpilih()
 end
 
 --═══════════════ 🧱 XRAY: DINDING TRANSPARAN ═══════════════
+local xrayOn = false
+local xrayModeSemua = false
+local xrayStrength = 0.65
 local savedXray = {}
 local xrayConn = nil
-local xrayScanId = 0
 
 local function isXraySkip(inst)
     if inst:IsDescendantOf(rekamFolder) or inst:IsDescendantOf(rootFolderGaris) then return true end
@@ -2019,12 +1997,9 @@ local function xrayOnDescendant(d)
 end
 
 local function xrayMulai()
-    xrayScanId += 1
-    local myId = xrayScanId
     task.spawn(function()
         local n = 0
         for _, d in ipairs(workspace:GetDescendants()) do
-            if not xrayOn or myId ~= xrayScanId or not gui.Parent then return end
             if d:IsA("BasePart") then
                 xrayTerapkan(d)
                 n += 1
@@ -2037,9 +2012,7 @@ local function xrayMulai()
 end
 
 local function setXray(on)
-    if on == xrayOn then return end
     xrayOn = on
-    xrayScanId += 1
     if on then
         xrayMulai()
         notify("🧱 Dinding transparan " .. math.floor(xrayStrength * 100 + 0.5) .. "%", true)
@@ -2048,30 +2021,24 @@ local function setXray(on)
         xrayPulihkanSemua()
         notify("🧱 Dinding transparan", false)
     end
-    styleToggle(rWall.toggle, xrayOn)
+    styleToggle(rWall.toggle, on)
 end
 
 local function setXrayStrength(v)
     xrayStrength = math.clamp(v, 0.1, 0.95)
     rXStrength.val.Text = math.floor(xrayStrength * 100 + 0.5) .. "%"
     if xrayOn then
-        for part, rec in pairs(savedXray) do
-            pcall(function()
-                part.LocalTransparencyModifier = xrayStrength
-                for dec in pairs(rec.d) do
-                    dec.Transparency = math.max(dec.Transparency, xrayStrength)
-                end
-            end)
+        for part in pairs(savedXray) do
+            pcall(function() part.LocalTransparencyModifier = xrayStrength end)
         end
     end
 end
 
 local function setXrayMode(semua)
-    if semua == xrayModeSemua then return end
     xrayModeSemua = semua
     styleToggle(rXSemua.toggle, semua)
     if xrayOn then
-        xrayScanId += 1
+        if xrayConn then xrayConn:Disconnect() xrayConn = nil end
         xrayPulihkanSemua()
         xrayMulai()
     end
@@ -2079,10 +2046,10 @@ local function setXrayMode(semua)
 end
 
 --═══════════════ RESET & KELUAR ═══════════════
-local function matikanSemua(tanpaDialog)
+local function matikanSemua()
     pcall(function() if xrayOn then setXray(false) end end)
-    pcall(function() if S.rekamOn  then setRekam(false, tanpaDialog)  end end)
-    pcall(function() if S.rekamPOn then setRekamP(false, tanpaDialog) end end)
+    pcall(function() if S.rekamOn  then setRekam(false)  end end)
+    pcall(function() if S.rekamPOn then setRekamP(false) end end)
     pcall(function() if S.specOn   then setSpec(false)   end end)
     pcall(function() if S.hidePlayersOn then setHidePlayers(false) end end)
     pcall(function() if S.hideFxOn then setHideFx(false) end end)
@@ -2094,7 +2061,7 @@ end
 
 local function destroyAll()
     silent = true
-    matikanSemua(true)
+    matikanSemua()
     silent = false
     for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
     table.clear(conns)
@@ -2105,7 +2072,7 @@ end
 
 local function resetSemua()
     silent = true
-    matikanSemua(false)
+    matikanSemua()
     silent = false
     S.speedValue, S.jumpValue = DEFAULT_SPEED, DEFAULT_JUMP
     S.clockValue = Lighting.ClockTime
@@ -2280,7 +2247,7 @@ renderDaftar()
 segarkanToggle()
 pilihTab(1)
 main.Visible = true
-notify("Siiilau ⚡ v1.1.1 siap", true)
+notify("Siiilau ⚡ v1.1.0 siap", true)
 if jumlahDimuat > 0 then
     notify("📂 " .. jumlahDimuat .. " file rute dimuat ✓", true)
 end
