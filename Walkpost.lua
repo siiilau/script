@@ -1,5 +1,5 @@
 --[[═══════════════════════════════════════════════
-    🛠️ ALAT BANTU LATIHAN v3.0
+    🛠️ ALAT BANTU LATIHAN v3.1
     ─────────────────────────────────────────────
     👁️ DINDING INVISIBLE [T]
        dinding tersembunyi dibuat terlihat:
@@ -7,13 +7,14 @@
     🚧 TRAFFIC POST [G]
        pasang post di titik A → otomatis muncul
        garis lurus ke post terdekat (titik B).
-       Susun post di tikungan = panduan jalur
-       tercepat, biar gak melebar saat balapan.
     💾 AUTO-SAVE
        post otomatis tersimpan ke file executor
        → load otomatis saat script dijalankan lagi
     🔁 REJOIN [R]
        keluar & masuk server yang sama, post aman
+    🧹 AUTO-BERSIH
+       sisa script lama (dinding merah & GUI dobel)
+       otomatis dihapus saat script dijalankan
 
     HOTKEY: F=GUI  T=Dinding  G=Post  Z=Undo  X=Hapus  R=Rejoin
     ═══════════════════════════════════════════════]]
@@ -36,6 +37,22 @@ local function getHum()
     return c and c:FindFirstChildOfClass("Humanoid")
 end
 
+--═════════ 🧹 BERSIHKAN SISA SCRIPT LAMA ═════════
+do
+    for _, n in ipairs({"_ABL_shell", "_ABL_post"}) do
+        local l = workspace:FindFirstChild(n)
+        if l then pcall(function() l:Destroy() end) end
+    end
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if pg then
+        for _, g in ipairs(pg:GetChildren()) do
+            if g:IsA("ScreenGui") and g.Name == "AlatBantuLatihan" then
+                pcall(function() g:Destroy() end)
+            end
+        end
+    end
+end
+
 --═════════ KONFIG ═════════
 -- dinding
 local MAX_SHELL, TRANS_MIN, UKURAN_MIN = 400, 0.95, 3
@@ -54,8 +71,8 @@ local HOVER   = Color3.fromRGB(46, 54, 78)
 local ACCENT  = Color3.fromRGB(34, 211, 238)   -- cyan
 local UNGU    = Color3.fromRGB(167, 139, 250)
 local TEKS    = Color3.fromRGB(235, 240, 250)
-local MERAH   = Color3.fromRGB(248, 113, 113)
-local ABU     = Color3.fromRGB(70, 70, 70)     -- abu-abu tua (dinding)
+local MERAH   = Color3.fromRGB(248, 113, 113)  -- (khusus tombol keluar)
+local ABU     = Color3.fromRGB(70, 70, 70)     -- ⬜ abu-abu tua (dinding)
 
 --═════════ FOLDER + KONEKSI ═════════
 local folderShell = Instance.new("Folder")
@@ -84,7 +101,7 @@ st.Color, st.Thickness, st.Transparency = ACCENT, 1.5, 0.55
 
 local judul = Instance.new("TextLabel", main)
 judul.Size = UDim2.new(1, -24, 0, 34); judul.Position = UDim2.new(0, 12, 0, 0)
-judul.BackgroundTransparency = 1; judul.Text = "🛠️ ALAT BANTU LATIHAN"
+judul.BackgroundTransparency = 1; judul.Text = "🛠️ ALAT BANTU LATIHAN v3.1"
 judul.TextSize = 16; judul.Font = Enum.Font.GothamBold
 judul.TextColor3 = TEKS; judul.TextXAlignment = Enum.TextXAlignment.Left
 
@@ -160,6 +177,8 @@ local function hapusFile()
         end
     end)
 end
+
+local statusPost -- didefinisikan di bagian post (dipakai setEsp)
 
 --═════════ 👁️ DINDING INVISIBLE ═════════
 local espOn = false
@@ -303,7 +322,7 @@ local function proyeksiTanah(pos)
     return Vector3.new(pos.X, pos.Y - 2.5, pos.Z)
 end
 
-local function statusPost(tambahan)
+function statusPost(tambahan)
     if #posts == 0 then return "🚧 0 post" .. TAG_FS end
     return ("🚧 %d post • jalur ±%d m%s%s"):format(
         #posts, math.floor(totalPanjang + 0.5), tambahan or "", TAG_FS)
@@ -528,4 +547,4 @@ end
 
 --═════════ START ═════════
 muatPost()
-print("✅ Alat Bantu Latihan v3.0 siap! F=GUI T=Dinding G=Post Z=Undo X=Hapus R=Rejoin")
+print("✅ ALAT BANTU LATIHAN v3.1 (dinding abu-abu) siap! F=GUI T=Dinding G=Post Z=Undo X=Hapus R=Rejoin")
