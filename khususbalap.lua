@@ -28,8 +28,8 @@ local DRAFT_TIAP       = 500    -- auto-save draft tiap N titik
 local JARAK_LOMPAT     = 60     -- teleport > ini = garis putus
 
 -- ✏️ TAMPILAN GARIS (halus & tidak mengganggu)
-local LINE_TEBAL       = 0.25   -- tipis
-local LINE_TRANS       = 0.55   -- semi transparan (0=padat, 1=hilang)
+local LINE_TEBAL       = 0.05   -- tipis
+local LINE_TRANS       = 0.7   -- semi transparan (0=padat, 1=hilang)
 local SMPL_ANGLE       = 8      -- derajat: belokan ≥ ini wajib digambar
 local SMPL_MAX_SEG     = 12     -- part maksimal 12 stud (ikut kontur tanah)
 local CHAIKIN_ITER     = 1      -- iterasi pelicin kurva (0=mati, 1=halus, 2=sangat halus)
