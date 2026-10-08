@@ -1,10 +1,12 @@
 --[[═════════════════════════════════════════
-    ⛓️ Siiilau⚡ — RACE LITE v1.1.0
-    TAB: ⚙️ MENU | 🎥 RUTE | 🧱 XRAY
-    XRAY: dinding abu tua transparan (cari rute
-    paling tipis) • rekam ultra-halus • gabung cerdas
+    ⛓️ Siiilau⚡ — RACE LITE v1.0.0 (🎥 TAB RUTE)
+    Rekam ultra-halus (0.01s / 0.5 stud) → belokan
+    sekecil apapun tercatat. Garis tampil di-smooth
+    (mulus, tipis, transparan, tidak ganggu pandangan)
+    Rekam diri/pemain → isi nama → simpan
+    GABUNG CERDAS: titik temu / jembatan otomatis
     HOTKEYS: F=GUI Q=Speed R=Hide T=Bright
-             K=Rekam Diri L=Rekam Player X=XRay
+             K=Rekam Diri L=Rekam Player
     ═════════════════════════════════════════]]
 
 --═══════════════ KONFIG ═══════════════
@@ -19,24 +21,20 @@ local CEK_INTERVAL  = 0.4
 local UKURAN_GUI    = 0.8
 
 -- 🎥 REKAM RUTE (ULTRA HALUS)
-local REC_INTERVAL     = 0.01
-local REC_MIN_JARAK    = 0.5
-local MAX_TITIK        = 30000
-local DRAFT_TIAP       = 500
-local JARAK_LOMPAT     = 60
+local REC_INTERVAL     = 0.01   -- cek posisi tiap 0.01 detik
+local REC_MIN_JARAK    = 0.5    -- titik baru tiap 0.5 stud (sangat detail)
+local MAX_TITIK        = 30000  -- batas titik per file (data, bukan part)
+local DRAFT_TIAP       = 500    -- auto-save draft tiap N titik
+local JARAK_LOMPAT     = 60     -- teleport > ini = garis putus
 
--- ✏️ TAMPILAN GARIS
-local LINE_TEBAL       = 0.25
-local LINE_TRANS       = 0.55
-local SMPL_ANGLE       = 8
-local SMPL_MAX_SEG     = 12
-local CHAIKIN_ITER     = 1
-local PREVIEW_BELOK    = 15
+-- ✏️ TAMPILAN GARIS (halus & tidak mengganggu)
+local LINE_TEBAL       = 0.25   -- tipis
+local LINE_TRANS       = 0.55   -- semi transparan (0=padat, 1=hilang)
+local SMPL_ANGLE       = 8      -- derajat: belokan ≥ ini wajib digambar
+local SMPL_MAX_SEG     = 12     -- part maksimal 12 stud (ikut kontur tanah)
+local CHAIKIN_ITER     = 1      -- iterasi pelicin kurva (0=mati, 1=halus, 2=sangat halus)
+local PREVIEW_BELOK    = 15     -- (preview live saat merekam)
 local PREVIEW_MAX      = 12
-
--- 🧱 XRAY DINDING
-local XRAY_WARNA   = Color3.fromRGB(62, 62, 70)  -- abu-abu tua
-local XRAY_MIN_DIM = 8    -- sisi terpanjang ≥ ini = dianggap dinding
 
 -- 🔗 GABUNG
 local GABUNG_MIN_JARAK = 5
@@ -276,18 +274,18 @@ local minBtn = new("TextButton", {
 new("UICorner", {CornerRadius = UDim.new(0, 9)}, minBtn)
 new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.3}, minBtn)
 
--- TAB BAR (3 TAB)
+-- TAB BAR
 local tabBar = new("Frame", {
     Position = UDim2.new(0, 10, 0, 50), Size = UDim2.new(1, -20, 0, 32),
     BackgroundTransparency = 1, BorderSizePixel = 0,
 }, panel)
-new("UIListLayout", {Padding = UDim.new(0, 5), FillDirection = Enum.FillDirection.Horizontal}, tabBar)
+new("UIListLayout", {Padding = UDim.new(0, 6), FillDirection = Enum.FillDirection.Horizontal}, tabBar)
 
 local function buatTabBtn(teks)
     local b = new("TextButton", {
-        Size = UDim2.new(1/3, -4, 1, 0), BackgroundColor3 = C.Hitam2,
+        Size = UDim2.new(0.5, -3, 1, 0), BackgroundColor3 = C.Hitam2,
         BorderSizePixel = 0, AutoButtonColor = false,
-        Text = teks, FontFace = fnt("bold"), TextSize = 14, TextColor3 = C.Abuk,
+        Text = teks, FontFace = fnt("bold"), TextSize = 15, TextColor3 = C.Abuk,
     }, tabBar)
     new("UICorner", {CornerRadius = UDim.new(0, 10)}, b)
     new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.6}, b)
@@ -295,7 +293,6 @@ local function buatTabBtn(teks)
 end
 local tabMenuBtn = buatTabBtn("⚙️ MENU")
 local tabRuteBtn = buatTabBtn("🎥 RUTE")
-local tabXrayBtn = buatTabBtn("🧱 XRAY")
 
 local scrollMain = new("ScrollingFrame", {
     Position = UDim2.new(0, 10, 0, 86), Size = UDim2.new(1, -20, 1, -146),
@@ -312,14 +309,6 @@ local scrollRute = new("ScrollingFrame", {
     CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
 }, panel)
 new("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, scrollRute)
-
-local scrollXray = new("ScrollingFrame", {
-    Position = UDim2.new(0, 10, 0, 86), Size = UDim2.new(1, -20, 1, -146),
-    BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
-    ScrollBarThickness = 5, ScrollBarImageColor3 = C.Ungu2,
-    CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, panel)
-new("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, scrollXray)
 
 local bottom = new("Frame", {
     Position = UDim2.new(0, 0, 1, -56), Size = UDim2.new(1, 0, 0, 56),
@@ -605,14 +594,6 @@ addSection(scrollRute, "📂 FILE RUTE")
 local secFileLabel = addSection(scrollRute, "(0)")
 addHint(scrollRute, "Urutan klik = urutan sambung. Tabrakan→titik temu, gap→jembatan otomatis")
 
---═══════════════ ISI TAB XRAY ═══════════════
-addSection(scrollXray, "🧱 DINDING TRANSPARAN")
-local rWall      = addRow(scrollXray, "🧱 Dinding Transparan [X]", {toggle = true})
-local rXStrength = addRow(scrollXray, "🎚️ Kekuatan Bening",       {value = true})
-local rXSemua    = addRow(scrollXray, "🎯 Mode Semua Part",       {toggle = true})
-addHint(scrollXray, "Dinding jadi abu tua bening — cari celah/rute paling tipis")
-addHint(scrollXray, "Mode Semua Part: ikut part kecil & tak solid (lebih agresif)")
-
 --═══════════════ STATE ═══════════════
 local S = {
     speedOn = false, speedValue = DEFAULT_SPEED,
@@ -637,7 +618,6 @@ rJump.val.Text  = fmt(S.jumpValue)
 rClock.val.Text = formatClock(S.clockValue)
 rRekam.val.Text  = "0 pt"
 rRekamP.val.Text = "0 pt"
-rXStrength.val.Text = "65%"
 
 local function segarkanToggle()
     styleToggle(rSpeed.toggle, S.speedOn)
@@ -650,8 +630,6 @@ local function segarkanToggle()
     styleToggle(rRekamP.toggle, S.rekamPOn)
     styleToggle(rSpec.toggle, S.specOn)
     styleToggle(rVisAll.toggle, S.visAll)
-    styleToggle(rWall.toggle, false)
-    styleToggle(rXSemua.toggle, false)
 end
 
 --═══════════════ MOVEMENT ═══════════════
@@ -1246,6 +1224,7 @@ local function proyeksiTanah(p, char)
 end
 
 -- ---- ✏️ PIPELINE GARIS HALUS ----
+-- 1) Simplifikasi: jalan lurus diringkas, SEMUA belokan (≥ SMPL_ANGLE°) dijaga
 local function sederhanakanJalur(pts)
     if #pts <= 2 then return pts end
     local hasil = {pts[1]}
@@ -1267,6 +1246,7 @@ local function sederhanakanJalur(pts)
     return hasil
 end
 
+-- 2) Chaikin: sudut patah dibulatkan jadi kelokan mulus
 local function chaikin(pts)
     if #pts < 3 then return pts end
     local out = {pts[1]}
@@ -1279,6 +1259,7 @@ local function chaikin(pts)
     return out
 end
 
+-- 3) Render: buat part tipis antar titik hasil pelician
 local function renderJalurHalus(parent, pts, warna)
     if #pts < 2 then return end
     local ringkas = sederhanakanJalur(pts)
@@ -1592,6 +1573,7 @@ local rekamMati = false
 
 local setRekamP -- forward
 
+-- state preview live (incremental, hemat part saat merekam)
 local pvLast, pvDir = nil, nil
 
 local function previewLive(parent, gp, warna)
@@ -1613,6 +1595,7 @@ local function previewLive(parent, gp, warna)
     end
 end
 
+-- rebuild preview pakai pipeline halus (dipanggil saat stop, sebelum dialog)
 local function rebuildPreviewHalus(pts)
     rekamFolder:ClearAllChildren()
     renderJalurHalus(rekamFolder, pts, C.Merah)
@@ -1681,7 +1664,7 @@ local function setRekam(on)
         if #rekamPts >= 2 then
             local titik = {}
             for _, t in ipairs(rekamPts) do table.insert(titik, t) end
-            rebuildPreviewHalus(titik)
+            rebuildPreviewHalus(titik) -- garis final smooth terlihat saat menamai
             local saran = namaUnik("Mentah")
             bukaDialogSimpan(saran, titik)
             if rekamMati then
@@ -1823,6 +1806,7 @@ setRekamP = function(on)
                                 previewLive(rekamFolder, gp, C.Merah)
                                 rRekamP.val.Text = #rekamPPts .. " pt"
                             else
+                                -- respawn/teleport: reset acuan preview
                                 pvPLast, pvPDir = gp, nil
                             end
                             lastPPt = p
@@ -1916,138 +1900,8 @@ local function tpKeTerpilih()
     notify("📌 TP ke END ▸ " .. f.nama, true)
 end
 
---═══════════════ 🧱 XRAY: DINDING TRANSPARAN ═══════════════
-local xrayOn = false
-local xrayModeSemua = false
-local xrayStrength = 0.65
-local savedXray = {}
-local xrayConn = nil
-
-local function isXraySkip(inst)
-    if inst:IsDescendantOf(rekamFolder) or inst:IsDescendantOf(rootFolderGaris) then return true end
-    local cur = inst
-    while cur and cur ~= workspace do
-        if cur:IsA("Model") then
-            if cur:FindFirstChildOfClass("Humanoid") then return true end
-            if cur:FindFirstChildOfClass("VehicleSeat") then return true end
-        end
-        cur = cur.Parent
-    end
-    return false
-end
-
-local function xrayKualifikasi(part)
-    if part.Transparency >= 0.95 then return false end
-    local s = part.Size
-    local terpanjang = math.max(s.X, s.Y, s.Z)
-    if xrayModeSemua then
-        return terpanjang >= 1.5
-    else
-        if not part.CanCollide then return false end
-        return terpanjang >= XRAY_MIN_DIM
-    end
-end
-
-local function xrayTerapkan(part)
-    if savedXray[part] then return end
-    if not part:IsA("BasePart") then return end
-    if part:IsA("Terrain") then return end
-    if isXraySkip(part) then return end
-    if not xrayKualifikasi(part) then return end
-
-    local rec = {c = part.Color, d = {}}
-    for _, ch in ipairs(part:GetChildren()) do
-        if ch:IsA("Decal") or ch:IsA("Texture") then
-            rec.d[ch] = ch.Transparency
-            ch.Transparency = math.max(ch.Transparency, xrayStrength)
-        end
-    end
-    savedXray[part] = rec
-    part.Color = XRAY_WARNA
-    part.LocalTransparencyModifier = xrayStrength
-end
-
-local function xrayPulihkanSemua()
-    for part, rec in pairs(savedXray) do
-        pcall(function()
-            part.LocalTransparencyModifier = 0
-            part.Color = rec.c
-            for dec, t in pairs(rec.d) do
-                dec.Transparency = t
-            end
-        end)
-    end
-    table.clear(savedXray)
-end
-
-local function xrayOnDescendant(d)
-    if not xrayOn then return end
-    task.defer(function()
-        if not xrayOn or not d.Parent then return end
-        if d:IsA("BasePart") then
-            xrayTerapkan(d)
-        elseif (d:IsA("Decal") or d:IsA("Texture")) and savedXray[d.Parent] then
-            local rec = savedXray[d.Parent]
-            if rec.d[d] == nil then
-                rec.d[d] = d.Transparency
-                d.Transparency = math.max(d.Transparency, xrayStrength)
-            end
-        end
-    end)
-end
-
-local function xrayMulai()
-    task.spawn(function()
-        local n = 0
-        for _, d in ipairs(workspace:GetDescendants()) do
-            if d:IsA("BasePart") then
-                xrayTerapkan(d)
-                n += 1
-                if n % 400 == 0 then task.wait() end
-            end
-        end
-    end)
-    if xrayConn then xrayConn:Disconnect() end
-    xrayConn = workspace.DescendantAdded:Connect(xrayOnDescendant)
-end
-
-local function setXray(on)
-    xrayOn = on
-    if on then
-        xrayMulai()
-        notify("🧱 Dinding transparan " .. math.floor(xrayStrength * 100 + 0.5) .. "%", true)
-    else
-        if xrayConn then xrayConn:Disconnect() xrayConn = nil end
-        xrayPulihkanSemua()
-        notify("🧱 Dinding transparan", false)
-    end
-    styleToggle(rWall.toggle, on)
-end
-
-local function setXrayStrength(v)
-    xrayStrength = math.clamp(v, 0.1, 0.95)
-    rXStrength.val.Text = math.floor(xrayStrength * 100 + 0.5) .. "%"
-    if xrayOn then
-        for part in pairs(savedXray) do
-            pcall(function() part.LocalTransparencyModifier = xrayStrength end)
-        end
-    end
-end
-
-local function setXrayMode(semua)
-    xrayModeSemua = semua
-    styleToggle(rXSemua.toggle, semua)
-    if xrayOn then
-        if xrayConn then xrayConn:Disconnect() xrayConn = nil end
-        xrayPulihkanSemua()
-        xrayMulai()
-    end
-    notify("Mode " .. (semua and "Semua Part" or "Dinding Besar"), true)
-end
-
 --═══════════════ RESET & KELUAR ═══════════════
 local function matikanSemua()
-    pcall(function() if xrayOn then setXray(false) end end)
     pcall(function() if S.rekamOn  then setRekam(false)  end end)
     pcall(function() if S.rekamPOn then setRekamP(false) end end)
     pcall(function() if S.specOn   then setSpec(false)   end end)
@@ -2125,11 +1979,6 @@ end)
 gabungBtn.MouseButton1Click:Connect(gabungTerpilih)
 tpPilihBtn.MouseButton1Click:Connect(tpKeTerpilih)
 
-rWall.toggle.MouseButton1Click:Connect(function() setXray(not xrayOn) end)
-rXSemua.toggle.MouseButton1Click:Connect(function() setXrayMode(not xrayModeSemua) end)
-rXStrength.minus.MouseButton1Click:Connect(function() setXrayStrength(xrayStrength - 0.05) end)
-rXStrength.plus.MouseButton1Click:Connect(function() setXrayStrength(xrayStrength + 0.05) end)
-
 prevBtn.MouseButton1Click:Connect(function()
     if S.rekamPOn then notify("Stop rekam dulu untuk ganti target", false) return end
     local list = daftarPemainLain()
@@ -2157,33 +2006,27 @@ end))
 resetBtn.MouseButton1Click:Connect(resetSemua)
 exitBtn.MouseButton1Click:Connect(destroyAll)
 
--- TAB + MINIMIZE (3 TAB)
-local tabAktif, minimized = 1, false
+-- TAB + MINIMIZE
+local tabAktif, minimized = false, false
 
 local function applyLayout()
-    scrollMain.Visible = (not minimized) and tabAktif == 1
-    scrollRute.Visible = (not minimized) and tabAktif == 2
-    scrollXray.Visible = (not minimized) and tabAktif == 3
+    scrollMain.Visible = (not minimized) and (not tabAktif)
+    scrollRute.Visible = (not minimized) and tabAktif
     tabBar.Visible = not minimized
     bottom.Visible = not minimized
     main.Size = minimized and UDim2.fromOffset(480, 58) or UDim2.fromOffset(480, 620)
 end
 
-local function pilihTab(idx)
-    tabAktif = idx
-    local data = {
-        {tabMenuBtn, 1}, {tabRuteBtn, 2}, {tabXrayBtn, 3},
-    }
-    for _, d in ipairs(data) do
-        local aktif = d[2] == idx
-        d[1].BackgroundColor3 = aktif and C.Ungu or C.Hitam2
-        d[1].TextColor3 = aktif and C.Putih or C.Abuk
-    end
+local function pilihTab(rute)
+    tabAktif = rute
+    tabMenuBtn.BackgroundColor3 = not rute and C.Ungu or C.Hitam2
+    tabMenuBtn.TextColor3 = not rute and C.Putih or C.Abuk
+    tabRuteBtn.BackgroundColor3 = rute and C.Ungu or C.Hitam2
+    tabRuteBtn.TextColor3 = rute and C.Putih or C.Abuk
     applyLayout()
 end
-tabMenuBtn.MouseButton1Click:Connect(function() pilihTab(1) end)
-tabRuteBtn.MouseButton1Click:Connect(function() pilihTab(2) end)
-tabXrayBtn.MouseButton1Click:Connect(function() pilihTab(3) end)
+tabMenuBtn.MouseButton1Click:Connect(function() pilihTab(false) end)
+tabRuteBtn.MouseButton1Click:Connect(function() pilihTab(true) end)
 
 minBtn.MouseButton1Click:Connect(function()
     minimized = not minimized
@@ -2235,8 +2078,6 @@ addConn(UserInputService.InputBegan:Connect(function(input, gp)
         setRekam(not S.rekamOn)
     elseif kc == Enum.KeyCode.L then
         setRekamP(not S.rekamPOn)
-    elseif kc == Enum.KeyCode.X then
-        setXray(not xrayOn)
     end
 end))
 
@@ -2245,9 +2086,9 @@ updateTargetLabel()
 local jumlahDimuat = muatFileTersimpan()
 renderDaftar()
 segarkanToggle()
-pilihTab(1)
+pilihTab(false)
 main.Visible = true
-notify("Siiilau ⚡ v1.1.0 siap", true)
+notify("Siiilau ⚡ v1.0.0 siap", true)
 if jumlahDimuat > 0 then
     notify("📂 " .. jumlahDimuat .. " file rute dimuat ✓", true)
 end
