@@ -1,13 +1,15 @@
 --[[
     ╔══════════════════════════════════════════════════╗
-    ║        SIIILAU GALAXY CINEMATIC CAM v10          ║
+    ║        SIIILAU GALAXY CINEMATIC CAM v11          ║
     ║        FREE CAM • PROFESSIONAL CAMERA            ║
     ║  + Teleport (C) • Stabil PRO & FREE cam          ║
     ║  + Auto Pagi (Z) • T = target lock ON/OFF        ║
+    ║  + RESET script • K = HAPUS script (tekan 2x)    ║
     ║  Karakter otomatis diam saat kamera aktif        ║
     ╚══════════════════════════════════════════════════╝
     R = Free Cam | G = Cam Pro | T = target lock ON/OFF
     Z = auto pagi | C = teleport | F = panel | H = hide UI
+    K = HAPUS script (tekan 2x)
     WASD + Q/E = gerak | RMB = lihat/orbit | Scroll = FOV/zoom
     Space = turbo | Ctrl = slow cinematic
 ]]
@@ -39,6 +41,7 @@ local TURBO_KEY       = Enum.KeyCode.Space
 local SLOW_KEY        = Enum.KeyCode.LeftControl
 local HIDE_UI_KEY     = Enum.KeyCode.H
 local TELEPORT_KEY    = Enum.KeyCode.C
+local UNLOAD_KEY      = Enum.KeyCode.K  -- HAPUS script (tekan 2x = konfirmasi)
 
 local MORNING_TIME                = 6.75 -- 06:45 pagi
 local MORNING_TRANSITION          = 1.8  -- detik transisi waktu (smooth)
@@ -56,6 +59,11 @@ local FREE_AIM_Y_DAMPING = 0.8  -- FREE cam: damping aim vertikal saat target lo
 local PRO_SNAP_DISTANCE  = 12   -- snap jika subjek pindah jauh (respawn/teleport)
 
 local RENDER_STEP_NAME = "SIIILAU_CAM_UPDATE"
+
+-- Nilai default (dipakai fitur RESET)
+local DEFAULT_FOV   = 70
+local DEFAULT_SPEED = CAMERA_SPEED
+local DEFAULT_TP    = TELEPORT_BEHIND_DISTANCE
 
 --// ================================================== RE-EXECUTION CLEANUP
 pcall(function() if _G.SIIILAU_CAM_UNLOAD then _G.SIIILAU_CAM_UNLOAD() end end)
@@ -125,7 +133,7 @@ local function makeStyledButton(parent, pos, size, text, onClick)
 end
 
 -- forward declarations
-local setMode, updateStatus, applyTab
+local setMode, updateStatus, applyTab, resetScript, requestUnload
 
 --// ================================================== ROOT GUI
 local gui = create("ScreenGui", {
@@ -474,10 +482,10 @@ add(minBtn, "UIStroke", {Color = THEME.LINE, Thickness = 1, Transparency = 0.4})
 
 --// ================================================== TAB BAR
 local tabBar = add(panel, "Frame", {Position = UDim2.new(0,0,0,42), Size = UDim2.new(1,0,0,34), BackgroundTransparency = 1})
-local TAB_DEFS = { {id="CAM", text="◧  CAMERA"}, {id="TARGET", text="⌖  TARGET LOCK"} }
+local TAB_DEFS = { {id="CAM", text="◧  CAM"}, {id="TARGET", text="⌖  TARGET"}, {id="SISTEM", text="⚙  SISTEM"} }
 local tabButtons = {}
 for i, def in ipairs(TAB_DEFS) do
-    local tb = makeStyledButton(tabBar, UDim2.new(0, 12 + (i-1)*156, 0, 2), UDim2.fromOffset(150,30), def.text)
+    local tb = makeStyledButton(tabBar, UDim2.new(0, 12 + (i-1)*102, 0, 2), UDim2.fromOffset(100,30), def.text)
     tabButtons[def.id] = tb
     tb.btn.MouseButton1Click:Connect(function() applyTab(def.id) end)
 end
@@ -489,6 +497,8 @@ end
 
 local tab1 = add(panel, "Frame", {Position = UDim2.new(0,0,0,80), Size = UDim2.new(1,0,0,397), BackgroundTransparency = 1})
 local tab2 = add(panel, "Frame", {Position = UDim2.new(0,0,0,80), Size = UDim2.new(1,0,0,397),
+    BackgroundTransparency = 1, Visible = false})
+local tab3 = add(panel, "Frame", {Position = UDim2.new(0,0,0,80), Size = UDim2.new(1,0,0,397),
     BackgroundTransparency = 1, Visible = false})
 
 --// ================================================== TAB 1 — CAMERA
@@ -570,9 +580,9 @@ local function makeSlider(parent, y, label, min, max, initial, callback)
     setVisual(initial)
     return { Set = setVisual }
 end
-makeSlider(tab1, 238, "KECEPATAN KAMERA", 8, 90, CAMERA_SPEED, function(v) state.baseSpeed = v end)
+local speedSlider = makeSlider(tab1, 238, "KECEPATAN KAMERA", 8, 90, CAMERA_SPEED, function(v) state.baseSpeed = v end)
 local fovSlider = makeSlider(tab1, 276, "FIELD OF VIEW", 30, 105, 70, function(v) state.fov = v end)
-makeSlider(tab1, 314, "JARAK TELEPORT (BELAKANG KAMERA)", 0, 30, TELEPORT_BEHIND_DISTANCE,
+local tpSlider = makeSlider(tab1, 314, "JARAK TELEPORT (BELAKANG KAMERA)", 0, 30, TELEPORT_BEHIND_DISTANCE,
     function(v)
         state.tpDistance = v
         tpDistLabel.Text = math.floor(v + 0.5) .. " stud"
@@ -582,7 +592,7 @@ divider(tab1, 354)
 add(tab1, "TextLabel", {Position = UDim2.new(0,14,0,360), Size = UDim2.new(1,-28,0,50), BackgroundTransparency = 1,
     Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = THEME.GREY, TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true,
-    Text = "R = Free Cam • G = Cam Pro • T = target lock ON/OFF\nZ = auto pagi • C = teleport kamera • F = panel • H = hide UI\nWASD + Q/E gerak • RMB tahan = lihat/orbit • Scroll = FOV/zoom\nSpace = turbo • Ctrl = slow • Kamera aktif = karakter otomatis diam"})
+    Text = "R = Free Cam • G = Cam Pro • T = target lock ON/OFF\nZ = auto pagi • C = teleport kamera • F = panel • H = hide UI\nWASD + Q/E gerak • RMB tahan = lihat/orbit • Scroll = FOV/zoom\nSpace = turbo • Ctrl = slow • K = HAPUS script (tekan 2x)"})
 
 --// ================================================== TAB 2 — TARGET LOCK
 local lockBtn = makeStyledButton(tab2, UDim2.new(0,12,0,4), UDim2.new(1,-24,0,36), "⌖  TARGET LOCK  [T]  •  OFF",
@@ -665,11 +675,44 @@ local function refreshTargets()
     listFrame.CanvasPosition = savedScroll
 end
 
+--// ================================================== TAB 3 — SISTEM (RESET / HAPUS SCRIPT)
+local resetBtn = makeStyledButton(tab3, UDim2.new(0,12,0,6), UDim2.new(1,-24,0,44),
+    "↻  RESET SCRIPT", function() resetScript() end)
+resetBtn.label.TextSize = 14
+
+local unloadBtn = makeStyledButton(tab3, UDim2.new(0,12,0,58), UDim2.new(1,-24,0,44),
+    "✕  HAPUS / UNLOAD SCRIPT  [K]", function()
+        if _G.SIIILAU_CAM_UNLOAD then _G.SIIILAU_CAM_UNLOAD() end
+    end)
+unloadBtn.stroke.Color = THEME.PINK
+unloadBtn.stroke.Transparency = 0.15
+unloadBtn.label.TextColor3 = THEME.PINK
+unloadBtn.label.TextSize = 14
+
+divider(tab3, 112)
+add(tab3, "TextLabel", {Position = UDim2.new(0,14,0,120), Size = UDim2.new(1,-28,0,150),
+    BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = THEME.GREY,
+    TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true,
+    Text = "↻ RESET SCRIPT\n• Matikan kamera & kembalikan kontrol karakter\n• Target lock, auto pagi, FOV, kecepatan,\n  jarak teleport → semua balik ke default\n\n✕ HAPUS SCRIPT [K]\n• Script benar-benar dihapus dari game\n• GUI hilang, kamera & karakter dikembalikan\n• Tekan K 2x untuk konfirmasi (anti salah tekan)"})
+
+--// ================================================== CHIP STATUS (muncul saat UI disembunyikan)
+local chip = add(gui, "Frame", {AnchorPoint = Vector2.new(0,1), Position = UDim2.new(0,14,1,-14),
+    Size = UDim2.fromOffset(220,26), BackgroundColor3 = THEME.BG, BackgroundTransparency = 0.25, Visible = false})
+corner(chip, 13)
+add(chip, "UIStroke", {Color = THEME.PURPLE, Thickness = 1, Transparency = 0.4})
+local chipDot = add(chip, "Frame", {Position = UDim2.new(0,10,0.5,-3), Size = UDim2.fromOffset(6,6),
+    BackgroundColor3 = THEME.GREY, BorderSizePixel = 0})
+corner(chipDot, 4)
+local chipLabel = add(chip, "TextLabel", {Position = UDim2.new(0,22,0,0), Size = UDim2.new(1,-30,1,0),
+    BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = THEME.WHITE,
+    TextXAlignment = Enum.TextXAlignment.Left, Text = "✦ SIIILAU", TextTruncate = Enum.TextTruncate.AtEnd})
+
 --// ================================================== TAB SWITCH
 applyTab = function(t)
     activeTab = t
     tab1.Visible = (t == "CAM")
     tab2.Visible = (t == "TARGET")
+    tab3.Visible = (t == "SISTEM")
     for id, tb in pairs(tabButtons) do
         local sel = (id == t)
         tb.stroke.Color = sel and THEME.PURPLE or Color3.fromRGB(60,60,95)
@@ -721,6 +764,12 @@ local function applyVisibility()
     chip.Visible = state.uiHidden
     notifContainer.Visible = not state.uiHidden
 end
+
+-- tombol minimize panel
+minBtn.MouseButton1Click:Connect(function()
+    state.panelVisible = false
+    applyVisibility()
+end)
 
 --// ================================================== VISUAL KAMERA (letterbox)
 local function applyCameraVisuals()
@@ -847,6 +896,26 @@ setMode = function(m)
     end
 end
 
+--// ================================================== RESET SCRIPT (balik ke default)
+resetScript = function()
+    if state.cameraActive then stopCamera() end
+    if state.morning then setMorning(false, true) end
+    state.targetLock = false
+    state.target = nil
+    state.aimY = nil
+    state.baseSpeed = DEFAULT_SPEED
+    state.fov = DEFAULT_FOV
+    state.tpDistance = DEFAULT_TP
+    state.mode = "FREE"
+    speedSlider.Set(DEFAULT_SPEED)
+    fovSlider.Set(DEFAULT_FOV)
+    tpSlider.Set(DEFAULT_TP)
+    applyAutoAnchor()
+    flash(THEME.GOLD, 0.5)
+    notify("Script di-RESET ke pengaturan awal ✓", "success")
+    updateStatus()
+end
+
 --// ================================================== UNLOAD
 local function unload()
     alive = false
@@ -859,8 +928,21 @@ local function unload()
     pcall(function() RunService:UnbindFromRenderStep(RENDER_STEP_NAME) end)
     pcall(function() ContextActionService:UnbindAction("SIIILAU_TURBO") end)
     pcall(function() gui:Destroy() end)
+    _G.SIIILAU_CAM_UNLOAD = nil
 end
 _G.SIIILAU_CAM_UNLOAD = unload
+
+--// ================================================== KONFIRMASI UNLOAD (anti salah tekan)
+local unloadArmed = false
+requestUnload = function()
+    if unloadArmed then
+        unload()
+    else
+        unloadArmed = true
+        notify("Tekan [K] LAGI dalam 2 detik utk konfirmasi HAPUS", "error")
+        task.delay(2, function() unloadArmed = false end)
+    end
+end
 
 --// ================================================== DRAG PANEL
 local dragging = false
@@ -901,6 +983,8 @@ table.insert(connections, UserInputService.InputBegan:Connect(function(input, gp
         setMorning(not state.morning)
     elseif kc == TELEPORT_KEY then
         teleportToCamera()
+    elseif kc == UNLOAD_KEY then
+        requestUnload()
     elseif kc == HIDE_UI_KEY then
         state.uiHidden = not state.uiHidden
         applyVisibility()
@@ -1086,43 +1170,29 @@ table.insert(connections, Players.PlayerRemoving:Connect(function(plr)
     if state.targetLock and state.target == plr then
         state.target = nil
         state.targetLock = false
-        notify("Target keluar — lock dilepas", "error")
+        state.aimY = nil
+        notify("Target keluar game — lock dilepas", "error")
         updateStatus()
     end
     task.defer(refreshTargets)
 end))
-table.insert(connections, LocalPlayer.CharacterAdded:Connect(function(char)
+
+-- respawn / karakter baru: anchor ulang jika kamera aktif
+table.insert(connections, LocalPlayer.CharacterAdded:Connect(function()
     task.defer(function()
-        local root = char:WaitForChild("HumanoidRootPart", 5)
-        if root and state.cameraActive and AUTO_ANCHOR then
-            root.Anchored = true
-        end
+        applyAutoAnchor()
+        refreshTargets()
     end)
 end))
+
+-- kamera diganti game (cutscene dll): ikuti kamera baru
 table.insert(connections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
     if workspace.CurrentCamera then
         Camera = workspace.CurrentCamera
-        if state.cameraActive then
-            Camera.CameraType = Enum.CameraType.Scriptable
-        end
     end
 end))
-
-task.spawn(function()
-    while alive do
-        task.wait(3)
-        if state.panelVisible and not state.uiHidden and activeTab == "TARGET" then
-            refreshTargets()
-        end
-    end
-end)
-
-minBtn.MouseButton1Click:Connect(function()
-    state.panelVisible = false
-    applyVisibility()
-end)
 
 --// ================================================== INIT
 applyTab("CAM")
 updateStatus()
-notify("SIIILAU GALAXY CAM v10 siap — R / G / T / Z", "success")
+notify("SIIILAU Galaxy Cam siap — tekan [F] untuk panel", "success")
