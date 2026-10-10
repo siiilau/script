@@ -1,2226 +1,937 @@
---[[═════════════════════════════════════════
-    ⛓️ Siiilau⚡ — RACE LITE v1.2.1 (⚡ OPTIMIZED)
-    ─────────────────────────────────────────
-    PERFORMA:
-    • RaycastParams di-reuse (bukan bikin baru tiap tick)
-    • Preview garis dibatasi 50 part (auto-buang yg lama)
-    • Label UI update tiap 10 titik
-    • Draft disimpan format ringkas (hemat CPU)
-    • Scan kendaraan early-exit
-    • Cache karakter/humanoid/root
-    🔒 SHIFTLOCK MOBILE (via hotkey G / tab MENU):
-    • 🐸 Saat berenang: badan TETAP TEGAK → animasi gaya
-      katak persis mobile (bukan penguin nyelam ala PC)
-    • 🚗 Duduk di kendaraan: efek suspend otomatis
-    HOTKEYS: F=GUI Q=Speed R=Hide T=Bright G=Shiftlock
-             K=Rekam Diri L=Rekam Player
-    ═════════════════════════════════════════]]
-
---═══════════════ KONFIG ═══════════════
-local DEFAULT_SPEED = 17.25
-local DEFAULT_JUMP  = 52.25
-local STEP          = 0.25
-local CLOCK_STEP    = 0.5
-local LOCK_TIME     = true
-
-local RADIUS_SENTUH = 20
-local CEK_INTERVAL  = 0.6
-local UKURAN_GUI    = 0.8
-
--- 🎥 REKAM RUTE (⚡ LITE)
-local REC_INTERVAL  = 0.02
-local REC_MIN_JARAK = 0.75
-local MAX_TITIK     = 15000
-local DRAFT_TIAP    = 1000
-local JARAK_LOMPAT  = 60
-
--- ✏️ TAMPILAN GARIS
-local LINE_TEBAL    = 0.05
-local LINE_TRANS    = 0.7
-local SMPL_ANGLE    = 8
-local SMPL_MAX_SEG  = 12
-local CHAIKIN_ITER  = 1
-local PREVIEW_BELOK = 25
-local PREVIEW_MAX   = 20
-local PV_MAX_PARTS  = 50
-
--- 🔒 SHIFTLOCK (gaya mobile)
-local SHIFTLOCK_OFFSET = Vector3.new(1.75, 0, 0) -- set Vector3.zero = kamera tanpa geser bahu
-
--- 🔗 GABUNG
-local GABUNG_MIN_JARAK = 5
-
---═══════════════ LAYANAN ═══════════════
-if not game:IsLoaded() then game.Loaded:Wait() end
+--=====================================================================--
+--  KING SILAU — Panel Utility (Client-side) v1.1
+--  FIX: Speed OFF tidak bisa jalan (nilai asli tercatat 0)
+--=====================================================================--
 
 local Players          = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local Lighting         = game:GetService("Lighting")
-local HttpService      = game:GetService("HttpService")
 local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local TeleportService  = game:GetService("TeleportService")
+local Lighting         = game:GetService("Lighting")
+local Workspace        = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then
-    warn("[SiiilauHub] GAGAL: LocalPlayer belum ada.")
-    return
-end
+local Terrain     = Workspace:WaitForChild("Terrain")
 
--- ---- FILE SYSTEM (hardened) ----
-local genv = {}
-pcall(function() genv = getgenv() or {} end)
-if type(genv) ~= "table" then genv = {} end
+--■ ANTI DOUBLE-RUN ----------------------------------------------------
+if _G.__KING_SILAU__ then return end
+_G.__KING_SILAU__ = true
 
-local function ambilFungsi(nama)
-    local ok, v = pcall(function() return _G[nama] end)
-    if ok and type(v) == "function" then return v end
-    v = genv[nama]
-    if type(v) == "function" then return v end
-    local ok2, f2 = pcall(function() return getfenv()[nama] end)
-    if ok2 and type(f2) == "function" then return f2 end
-    return nil
-end
-
-local wf   = ambilFungsi("writefile")
-local rf   = ambilFungsi("readfile")
-local isf  = ambilFungsi("isfile")
-local lf   = ambilFungsi("listfiles")
-local mf   = ambilFungsi("makefolder")
-local delf = ambilFungsi("delfile")
-local isfo = ambilFungsi("isfolder")
-
-local FOLDER     = "SiiilauHub_Rute"
-local DRAFT_PATH = FOLDER .. "/_draft.json"
-
-local function pastikanFolder()
-    if not wf then return end
-    local ada = false
-    if isfo then
-        local ok, hasil = pcall(isfo, FOLDER)
-        ada = (ok and hasil == true)
-    end
-    if not ada and mf then pcall(mf, FOLDER) end
-end
-
-local FS_OK = false
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 do
-    if wf and rf then
-        pastikanFolder()
-        local pathTes = FOLDER .. "/_tes.txt"
-        local okw = pcall(wf, pathTes, "ok")
-        local okr, isi = pcall(rf, pathTes)
-        if okw and okr and isi == "ok" then FS_OK = true end
-        if delf then pcall(delf, pathTes) end
-    end
+    local old = PlayerGui:FindFirstChild("KING_SILAU_GUI")
+    if old then old:Destroy() end
 end
 
-local conns = {}
-local function addConn(c) table.insert(conns, c) return c end
-
---═══════════════ SCREENGUI ═══════════════
-local gui = Instance.new("ScreenGui")
-gui.Name = "SiiilauHub"
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 9999
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-pcall(function() gui.OnTopOfCoreBlur = true end)
-
-local kandidatParent = {}
-pcall(function() if gethui then table.insert(kandidatParent, gethui()) end end)
-pcall(function() table.insert(kandidatParent, game:GetService("CoreGui")) end)
-pcall(function() table.insert(kandidatParent, LocalPlayer:WaitForChild("PlayerGui")) end)
-
-for _, t in ipairs(kandidatParent) do
-    pcall(function()
-        local lama = t:FindFirstChild("SiiilauHub")
-        if lama then lama:Destroy() end
-    end)
-end
-
-local terpasang = false
-for _, t in ipairs(kandidatParent) do
-    local ok = pcall(function() gui.Parent = t end)
-    if ok and gui.Parent == t then terpasang = true break end
-end
-if not terpasang then
-    warn("[SiiilauHub] GAGAL: tidak bisa memasang GUI.")
-    return
-end
-
---═══════════════ FONT ═══════════════
-local FONT_OK = pcall(function()
-    return Font.new("rbxasset://fonts/families/Bangers.json", Enum.FontWeight.Regular)
-end)
-local cacheFont = {}
-local function fnt(k)
-    if cacheFont[k] then return cacheFont[k] end
-    local v
-    if FONT_OK then
-        local fam = {
-            judul = "rbxasset://fonts/families/Bangers.json",
-            bold  = "rbxasset://fonts/families/Montserrat.json",
-            semi  = "rbxasset://fonts/families/Montserrat.json",
-            med   = "rbxasset://fonts/families/Montserrat.json",
-        }
-        local wts = {
-            judul = Enum.FontWeight.Regular,
-            bold  = Enum.FontWeight.Bold,
-            semi  = Enum.FontWeight.SemiBold,
-            med   = Enum.FontWeight.Medium,
-        }
-        v = Font.new(fam[k], wts[k])
-    else
-        local legacy = {
-            judul = Enum.Font.Bangers,
-            bold  = Enum.Font.GothamBold,
-            semi  = Enum.Font.GothamSemibold,
-            med   = Enum.Font.GothamMedium,
-        }
-        v = legacy[k]
-    end
-    cacheFont[k] = v
-    return v
-end
-local TEKS_CLASS = {TextLabel = true, TextButton = true, TextBox = true}
-
---═══════════════ TEMA ═══════════════
-local C = {
-    Hitam     = Color3.fromRGB(12, 10, 20),
-    Hitam2    = Color3.fromRGB(22, 18, 38),
-    Baris     = Color3.fromRGB(28, 24, 48),
-    BarisHov  = Color3.fromRGB(41, 34, 72),
-    offBg     = Color3.fromRGB(42, 24, 68),
-    Ungu      = Color3.fromRGB(124, 58, 237),
-    Ungu2     = Color3.fromRGB(167, 139, 250),
-    UnguMuda  = Color3.fromRGB(237, 233, 254),
-    UnguD     = Color3.fromRGB(88, 30, 150),
-    Biru      = Color3.fromRGB(37, 99, 235),
-    Biru2     = Color3.fromRGB(59, 130, 246),
-    Putih     = Color3.fromRGB(255, 255, 255),
-    Merah     = Color3.fromRGB(239, 68, 68),
-    Hijau     = Color3.fromRGB(74, 222, 128),
-    Cyan      = Color3.fromRGB(34, 211, 238),
-    Abuk      = Color3.fromRGB(160, 155, 185),
-    AbuTeks   = Color3.fromRGB(130, 125, 155),
+--■ STATE & NILAI ASLI --------------------------------------------------
+local State = {
+    SpeedOn = false, SpeedValue = 16,
+    JumpOn  = false, JumpValue = 50, JumpHeightValue = 7.2,
+    ShiftOn = false, IsSwimming = false,
+    HideOn  = false,
+    LWOn    = false,
+    LightOn = false, LightMode = "Auto", ManualTime = 14, ManualBright = 2.5,
+    WallsOn = false,
 }
+local Original = {} -- semua nilai asli disimpan di sini
 
---═══════════════ HELPER ═══════════════
-local function new(class, props, parent)
-    local inst = Instance.new(class)
-    if props then
-        for k, v in pairs(props) do
-            if k == "FontFace" and TEKS_CLASS[class] and not FONT_OK then
-                inst.Font = v
-            else
-                inst[k] = v
-            end
-        end
-    end
-    inst.Parent = parent
-    return inst
-end
-local function fmt(v) return string.format("%.2f", v) end
+--■ FORWARD -------------------------------------------------------------
+local Setters, Switches = {}, {}
+local setFeature, togglePanel, resetAll, rejoin, setLightMode
+local applySpeed, applyJump, applyManualLight, updateJumpLabel
+local RefreshSpeed, RefreshJump, JumpLabel
 
-local function brightnessFromTime(t)
-    local d = math.clamp(math.sin((t - 6) / 12 * math.pi), 0, 1)
-    return 0.5 + d * 2.5
-end
-local function formatClock(t)
-    t = t % 24
-    local h = math.floor(t)
-    local m = math.floor((t - h) * 60 + 0.5)
-    if m == 60 then h, m = h + 1, 0 end
-    if h == 24 then h = 0 end
-    return string.format("%02d:%02d", h, m)
+setFeature = function(name, v, silent)
+    local f = Setters[name]
+    if f then f(v, silent) end
 end
 
---═══════════════ GUI UTAMA ═══════════════
-local main = new("Frame", {
-    Size = UDim2.fromOffset(480, 620),
-    Position = UDim2.new(0.5, 0, 0.5, 0),
-    AnchorPoint = Vector2.new(0.5, 0.5),
-    BackgroundTransparency = 1, BorderSizePixel = 0, Active = true,
-    Visible = false,
-}, gui)
-local panelScale = new("UIScale", {Scale = UKURAN_GUI}, main)
-
-local outer = new("Frame", {
-    Size = UDim2.new(1, 0, 1, 0),
-    BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
-    ClipsDescendants = true,
-}, main)
-new("UICorner", {CornerRadius = UDim.new(0, 18)}, outer)
-new("UIStroke", {Color = C.Ungu, Thickness = 3}, outer)
-
-local panel = new("Frame", {
-    Size = UDim2.new(1, -10, 1, -10), Position = UDim2.new(0, 5, 0, 5),
-    BackgroundColor3 = C.Hitam2, BorderSizePixel = 0,
-    ClipsDescendants = true,
-}, outer)
-new("UICorner", {CornerRadius = UDim.new(0, 13)}, panel)
-new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.55}, panel)
-
-local title = new("Frame", {
-    Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = C.Hitam,
-    BorderSizePixel = 0, Active = true, ClipsDescendants = true,
-}, panel)
-new("UICorner", {CornerRadius = UDim.new(0, 13)}, title)
-new("Frame", {
-    Size = UDim2.new(1, 0, 0, 12), Position = UDim2.new(0, 0, 0, 36),
-    BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
-}, panel)
-
-new("TextLabel", {
-    BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 0),
-    Size = UDim2.new(1, -70, 1, 0), FontFace = fnt("judul"),
-    Text = "⛓️ S I I L A U ⚡ 🏁", TextColor3 = C.Putih, TextSize = 24,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, title)
-
-local minBtn = new("TextButton", {
-    Size = UDim2.fromOffset(28, 28), Position = UDim2.new(1, -40, 0.5, -14),
-    BackgroundColor3 = C.Hitam2, BorderSizePixel = 0, AutoButtonColor = false,
-    FontFace = fnt("bold"), Text = "–", TextColor3 = C.Putih, TextSize = 18,
-}, title)
-new("UICorner", {CornerRadius = UDim.new(0, 9)}, minBtn)
-new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.3}, minBtn)
-
--- TAB BAR
-local tabBar = new("Frame", {
-    Position = UDim2.new(0, 10, 0, 50), Size = UDim2.new(1, -20, 0, 32),
-    BackgroundTransparency = 1, BorderSizePixel = 0,
-}, panel)
-new("UIListLayout", {Padding = UDim.new(0, 6), FillDirection = Enum.FillDirection.Horizontal}, tabBar)
-
-local function buatTabBtn(teks)
-    local b = new("TextButton", {
-        Size = UDim2.new(0.5, -3, 1, 0), BackgroundColor3 = C.Hitam2,
-        BorderSizePixel = 0, AutoButtonColor = false,
-        Text = teks, FontFace = fnt("bold"), TextSize = 15, TextColor3 = C.Abuk,
-    }, tabBar)
-    new("UICorner", {CornerRadius = UDim.new(0, 10)}, b)
-    new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.6}, b)
-    return b
-end
-local tabMenuBtn = buatTabBtn("⚙️ MENU")
-local tabRuteBtn = buatTabBtn("🎥 RUTE")
-
-local scrollMain = new("ScrollingFrame", {
-    Position = UDim2.new(0, 10, 0, 86), Size = UDim2.new(1, -20, 1, -146),
-    BackgroundTransparency = 1, BorderSizePixel = 0,
-    ScrollBarThickness = 5, ScrollBarImageColor3 = C.Ungu2,
-    CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, panel)
-new("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, scrollMain)
-
-local scrollRute = new("ScrollingFrame", {
-    Position = UDim2.new(0, 10, 0, 86), Size = UDim2.new(1, -20, 1, -146),
-    BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
-    ScrollBarThickness = 5, ScrollBarImageColor3 = C.Ungu2,
-    CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, panel)
-new("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, scrollRute)
-
-local bottom = new("Frame", {
-    Position = UDim2.new(0, 0, 1, -56), Size = UDim2.new(1, 0, 0, 56),
-    BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
-    ClipsDescendants = true,
-}, panel)
-new("UICorner", {CornerRadius = UDim.new(0, 13)}, bottom)
-new("Frame", {
-    Size = UDim2.new(1, 0, 0, 8), Position = UDim2.new(0, 0, 1, -64),
-    BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
-}, panel)
-
-local resetBtn = new("TextButton", {
-    Size = UDim2.new(0.5, -12, 1, -16), Position = UDim2.new(0, 8, 0, 8),
-    BackgroundColor3 = C.Biru, BorderSizePixel = 0, AutoButtonColor = false,
-    FontFace = fnt("bold"), TextSize = 18, Text = "🔄 Reset Script", TextColor3 = C.Putih,
-}, bottom)
-new("UICorner", {CornerRadius = UDim.new(0, 12)}, resetBtn)
-
-local exitBtn = new("TextButton", {
-    Size = UDim2.new(0.5, -12, 1, -16), Position = UDim2.new(0.5, 4, 0, 8),
-    BackgroundColor3 = C.Hitam2, BorderSizePixel = 0, AutoButtonColor = false,
-    FontFace = fnt("bold"), TextSize = 18, Text = "🗑️ Hapus / Keluar", TextColor3 = C.Merah,
-}, bottom)
-new("UICorner", {CornerRadius = UDim.new(0, 12)}, exitBtn)
-new("UIStroke", {Color = C.Merah, Thickness = 2, Transparency = 0.6}, exitBtn)
-
---═══════════════ NOTIFIKASI ═══════════════
-local notifHolder = new("Frame", {
-    AnchorPoint = Vector2.new(1, 0),
-    Position = UDim2.new(1, -10, 0, 10),
-    Size = UDim2.fromOffset(240, 500),
-    BackgroundTransparency = 1, ZIndex = 60,
-}, gui)
-new("UIListLayout", {
-    Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder,
-    HorizontalAlignment = Enum.HorizontalAlignment.Right,
-}, notifHolder)
-
-local notifSeq, silent = 0, false
-local function notify(msg, state)
-    if silent then return end
-    notifSeq += 1
-    local aksen = (state == true) and C.Biru2 or (state == false) and C.Merah or C.Ungu2
-    local teks  = (state == nil) and msg or (msg .. " " .. (state and "ON" or "OFF"))
-    local n = new("TextLabel", {
-        Size = UDim2.fromOffset(190, 24), BackgroundColor3 = C.Hitam2,
-        BackgroundTransparency = 0.25, BorderSizePixel = 0,
-        Text = " " .. teks, TextColor3 = C.UnguMuda, TextSize = 11,
-        FontFace = fnt("semi"), TextXAlignment = Enum.TextXAlignment.Left,
-        TextTruncate = Enum.TextTruncate.AtEnd,
-        LayoutOrder = notifSeq, ZIndex = 60,
-    }, notifHolder)
-    new("UICorner", {CornerRadius = UDim.new(0, 7)}, n)
-    new("UIStroke", {Color = aksen, Thickness = 1, Transparency = 0.55}, n)
-    task.delay(1.8, function() n:Destroy() end)
-end
-
---═══════════════ PEMBANGUN UI ═══════════════
-local order = 0
-local function addSection(parent, text)
-    order += 1
-    local holder = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 34), BackgroundTransparency = 1,
-        LayoutOrder = order,
-    }, parent)
-    local lbl = new("TextLabel", {
-        Size = UDim2.new(1, -10, 0, 26), Position = UDim2.new(0, 4, 0, 0),
-        BackgroundTransparency = 1, Text = "▎ " .. text,
-        FontFace = fnt("judul"), TextSize = 21, TextColor3 = C.Ungu2,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    }, holder)
-    new("Frame", {
-        Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 4, 1, -4),
-        BackgroundColor3 = C.Ungu, BorderSizePixel = 0,
-    }, holder)
-    return lbl
-end
-local function addHint(parent, text)
-    order += 1
-    new("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1,
-        Text = "💡 " .. text, FontFace = fnt("med"), TextSize = 14, TextColor3 = C.AbuTeks,
-        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-        LayoutOrder = order,
-    }, parent)
-end
-
-local function addRow(parent, labelText, opts)
-    opts = opts or {}
-    order += 1
-    local row = new("Frame", {
-        Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = C.Baris,
-        BorderSizePixel = 0, LayoutOrder = order,
-        ClipsDescendants = true,
-    }, parent)
-    new("UICorner", {CornerRadius = UDim.new(0, 12)}, row)
-    local rowStroke = new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.78}, row)
-
-    new("Frame", {
-        Size = UDim2.new(0, 3, 1, -18), Position = UDim2.new(0, 6, 0, 9),
-        BackgroundColor3 = C.Ungu2, BorderSizePixel = 0,
-    }, row)
-
-    row.MouseEnter:Connect(function()
-        row.BackgroundColor3 = C.BarisHov
-        rowStroke.Transparency = 0.45
-    end)
-    row.MouseLeave:Connect(function()
-        row.BackgroundColor3 = C.Baris
-        rowStroke.Transparency = 0.78
-    end)
-
-    local ref = {row = row}
-    local vshift = opts.toggle and 0 or 88
-    local lw = -92
-    if opts.value then lw = opts.toggle and -300 or -212 end
-    ref.label = new("TextLabel", {
-        Size = UDim2.new(1, lw, 1, 0), Position = UDim2.new(0, 14, 0, 0),
-        BackgroundTransparency = 1, Text = labelText,
-        FontFace = fnt("semi"), TextSize = 17, TextColor3 = C.UnguMuda,
-        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-    }, row)
-
-    if opts.value then
-        ref.minus = new("TextButton", {
-            Size = UDim2.new(0, 28, 1, -16), Position = UDim2.new(1, -284 + vshift, 0, 8),
-            BackgroundColor3 = C.UnguD, BorderSizePixel = 0, AutoButtonColor = false,
-            Text = "-", FontFace = fnt("bold"), TextSize = 22, TextColor3 = C.Putih,
-        }, row)
-        new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.minus)
-
-        ref.val = new("TextLabel", {
-            Size = UDim2.new(0, 80, 1, -16), Position = UDim2.new(1, -252 + vshift, 0, 8),
-            BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
-            Text = "--", FontFace = fnt("bold"), TextSize = 17, TextColor3 = C.UnguMuda,
-        }, row)
-        new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.val)
-        new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.5}, ref.val)
-
-        ref.plus = new("TextButton", {
-            Size = UDim2.new(0, 28, 1, -16), Position = UDim2.new(1, -168 + vshift, 0, 8),
-            BackgroundColor3 = C.UnguD, BorderSizePixel = 0, AutoButtonColor = false,
-            Text = "+", FontFace = fnt("bold"), TextSize = 22, TextColor3 = C.Putih,
-        }, row)
-        new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.plus)
-    end
-
-    if opts.toggle then
-        ref.toggle = new("TextButton", {
-            Size = UDim2.new(0, 68, 1, -16), Position = UDim2.new(1, -76, 0, 8),
-            BackgroundColor3 = C.offBg, BorderSizePixel = 0, AutoButtonColor = false,
-            Text = "OFF", FontFace = fnt("bold"), TextSize = 17, TextColor3 = C.Abuk,
-        }, row)
-        new("UICorner", {CornerRadius = UDim.new(0, 10)}, ref.toggle)
-        new("UIStroke", {Color = C.Ungu, Thickness = 1.5, Transparency = 0.6}, ref.toggle)
-    end
-    return ref
-end
-
-local function addBtnRow(parent, text)
-    order += 1
-    local btn = new("TextButton", {
-        Size = UDim2.new(1, 0, 0, 40), BackgroundColor3 = C.Baris,
-        BorderSizePixel = 0, LayoutOrder = order, AutoButtonColor = false,
-        Text = text, FontFace = fnt("semi"), TextSize = 16, TextColor3 = C.UnguMuda,
-    }, parent)
-    new("UICorner", {CornerRadius = UDim.new(0, 12)}, btn)
-    btn.MouseEnter:Connect(function() btn.BackgroundColor3 = C.BarisHov end)
-    btn.MouseLeave:Connect(function() btn.BackgroundColor3 = C.Baris end)
-    return btn
-end
-
-local function styleToggle(btn, on)
-    btn.Text = on and "ON" or "OFF"
-    btn.BackgroundColor3 = on and C.Biru or C.offBg
-    btn.TextColor3 = on and C.Putih or C.Abuk
-    local st = btn:FindFirstChildOfClass("UIStroke")
-    if st then
-        st.Color = on and C.Biru2 or C.Ungu
-        st.Transparency = on and 0.1 or 0.6
-    end
-end
-
---═══════════════ ISI TAB MENU ═══════════════
-addSection(scrollMain, "MOVEMENT")
-local rSpeed = addRow(scrollMain, "🏃 Speed & Swim [Q]", {value = true, toggle = true})
-local rJump  = addRow(scrollMain, "🦘 Jump Power",       {value = true, toggle = true})
-local rShift = addRow(scrollMain, "🔒 Shiftlock Mobile [G]", {toggle = true})
-
-addSection(scrollMain, "VISUAL")
-local rHideP = addRow(scrollMain, "🙈 Hide Pemain + Kendaraan [R]", {toggle = true})
-local rHideF = addRow(scrollMain, "✨ Hide All Effects",             {toggle = true})
-local rLowG  = addRow(scrollMain, "🌫️ Low Graphic + No Fog",        {toggle = true})
-addHint(scrollMain, "Mobil lawan menempel ≤ " .. RADIUS_SENTUH .. "m → hilang, menjauh → muncul")
-
-addSection(scrollMain, "ENVIRONMENT")
-local rClock = addRow(scrollMain, "🕒 Auto Brightness [T]", {value = true, toggle = true})
-
---═══════════════ ISI TAB RUTE ═══════════════
-addSection(scrollRute, "🎥 REKAM DIRI")
-local rRekam  = addRow(scrollRute, "🔴 Rekam Rute [K]", {value = true, toggle = true})
-local rVisAll = addRow(scrollRute, "👁️ Tampil Semua Garis", {toggle = true})
-addHint(scrollRute, "Rekam halus & ringan. Belokan tercatat, garis smooth.")
-
-addSection(scrollRute, "🎯 REKAM PEMAIN LAIN")
-order += 1
-local rowTarget = new("Frame", {
-    Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = C.Baris,
-    BorderSizePixel = 0, LayoutOrder = order, ClipsDescendants = true,
-}, scrollRute)
-new("UICorner", {CornerRadius = UDim.new(0, 12)}, rowTarget)
-new("Frame", {
-    Size = UDim2.new(0, 3, 1, -18), Position = UDim2.new(0, 6, 0, 9),
-    BackgroundColor3 = C.Ungu2, BorderSizePixel = 0,
-}, rowTarget)
-
-new("TextLabel", {
-    Size = UDim2.new(0, 90, 1, 0), Position = UDim2.new(0, 14, 0, 0),
-    BackgroundTransparency = 1, Text = "🎯 Target:",
-    FontFace = fnt("semi"), TextSize = 16, TextColor3 = C.UnguMuda,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, rowTarget)
-
-local prevBtn = new("TextButton", {
-    Size = UDim2.fromOffset(30, 32), Position = UDim2.new(1, -216, 0, 7),
-    BackgroundColor3 = C.UnguD, BorderSizePixel = 0, AutoButtonColor = false,
-    Text = "◀", FontFace = fnt("bold"), TextSize = 14, TextColor3 = C.Putih,
-}, rowTarget)
-new("UICorner", {CornerRadius = UDim.new(0, 9)}, prevBtn)
-
-local namaTargetLbl = new("TextLabel", {
-    Size = UDim2.new(0, 140, 1, -14), Position = UDim2.new(1, -182, 0, 7),
-    BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
-    Text = "— pilih —", FontFace = fnt("bold"), TextSize = 14, TextColor3 = C.UnguMuda,
-    TextTruncate = Enum.TextTruncate.AtEnd,
-}, rowTarget)
-new("UICorner", {CornerRadius = UDim.new(0, 9)}, namaTargetLbl)
-new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.5}, namaTargetLbl)
-
-local nextBtn = new("TextButton", {
-    Size = UDim2.fromOffset(30, 32), Position = UDim2.new(1, -38, 0, 7),
-    BackgroundColor3 = C.UnguD, BorderSizePixel = 0, AutoButtonColor = false,
-    Text = "▶", FontFace = fnt("bold"), TextSize = 14, TextColor3 = C.Putih,
-}, rowTarget)
-new("UICorner", {CornerRadius = UDim.new(0, 9)}, nextBtn)
-
-local rRekamP = addRow(scrollRute, "🔴 Rekam Player [L]", {value = true, toggle = true})
-local rSpec   = addRow(scrollRute, "📷 Spectate Kamera",   {toggle = true})
-addHint(scrollRute, "Pilih ◀▶ → dia nyetir → stop → isi nama → Simpan")
-
-addSection(scrollRute, "🔗 GABUNG FILE")
-order += 1
-local rowGabung = new("Frame", {
-    Size = UDim2.new(1, 0, 0, 46), BackgroundColor3 = C.Baris,
-    BorderSizePixel = 0, LayoutOrder = order, ClipsDescendants = true,
-}, scrollRute)
-new("UICorner", {CornerRadius = UDim.new(0, 12)}, rowGabung)
-local namaBox = new("TextBox", {
-    Size = UDim2.new(1, -116, 1, -14), Position = UDim2.new(0, 8, 0, 7),
-    BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
-    Text = "Gabungan", PlaceholderText = "Nama file gabungan…",
-    PlaceholderColor3 = C.Abuk, ClearTextOnFocus = false,
-    FontFace = fnt("semi"), TextSize = 15, TextColor3 = C.UnguMuda,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, rowGabung)
-do
-    local pad = Instance.new("UIPadding")
-    pad.PaddingLeft = UDim.new(0, 8)
-    pad.Parent = namaBox
-end
-new("UICorner", {CornerRadius = UDim.new(0, 10)}, namaBox)
-new("UIStroke", {Color = C.Ungu, Thickness = 1, Transparency = 0.5}, namaBox)
-local gabungBtn = new("TextButton", {
-    Size = UDim2.new(0, 100, 1, -14), Position = UDim2.new(1, -108, 0, 7),
-    BackgroundColor3 = C.Biru, BorderSizePixel = 0, AutoButtonColor = false,
-    Text = "🔗 Gabung", FontFace = fnt("bold"), TextSize = 14, TextColor3 = C.Putih,
-}, rowGabung)
-new("UICorner", {CornerRadius = UDim.new(0, 10)}, gabungBtn)
-
-local tpPilihBtn = addBtnRow(scrollRute, "📌 TP ke Akhir File Terpilih")
-
-addSection(scrollRute, "📂 FILE RUTE")
-local secFileLabel = addSection(scrollRute, "(0)")
-addHint(scrollRute, "Urutan klik = urutan sambung. Tabrakan→titik temu, gap→jembatan otomatis")
-
---═══════════════ STATE ═══════════════
-local S = {
-    speedOn = false, speedValue = DEFAULT_SPEED,
-    jumpOn = false,  jumpValue = DEFAULT_JUMP,
-    hidePlayersOn = false, hideFxOn = false, lowGfxOn = false,
-    clockOn = false,
-    clockValue = Lighting.ClockTime,
-    rekamOn = false, rekamPOn = false, specOn = false, visAll = false,
-    shiftlockOn = false,
-}
-
--- ⚡ CACHE karakter/humanoid/root
-local _cChar, _cHum, _cRoot = nil, nil, nil
+--■ HELPER --------------------------------------------------------------
+local function getChar() return LocalPlayer.Character end
 local function getHum()
-    local c = LocalPlayer.Character
-    if c ~= _cChar then _cChar = c; _cHum = nil; _cRoot = nil end
-    if c and not _cHum then _cHum = c:FindFirstChildOfClass("Humanoid") end
-    return _cHum
+    local c = getChar()
+    return c and c:FindFirstChildOfClass("Humanoid")
 end
 local function getRoot()
-    local c = LocalPlayer.Character
-    if c ~= _cChar then _cChar = c; _cHum = nil; _cRoot = nil end
-    if c and not _cRoot then _cRoot = c:FindFirstChild("HumanoidRootPart") end
-    return _cRoot
+    local c = getChar()
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+local function clamp2(v) return math.floor(v * 100 + 0.5) / 100 end
+local function fmtNum(v)
+    v = clamp2(v)
+    if v % 1 == 0 then return tostring(math.floor(v)) end
+    local s = string.format("%.2f", v)
+    s = s:gsub("0+$", "")
+    s = s:gsub("%.$", "")
+    return s
+end
+-- FIX: hanya simpan nilai asli yang valid (> 0), jangan pernah 0
+local function captureWalkSpeed(hum)
+    if hum.WalkSpeed > 0 then Original.WalkSpeed = hum.WalkSpeed end
 end
 
-rSpeed.val.Text = fmt(S.speedValue)
-rJump.val.Text  = fmt(S.jumpValue)
-rClock.val.Text = formatClock(S.clockValue)
-rRekam.val.Text  = "0 pt"
-rRekamP.val.Text = "0 pt"
-
-local function segarkanToggle()
-    styleToggle(rSpeed.toggle, S.speedOn)
-    styleToggle(rJump.toggle, S.jumpOn)
-    styleToggle(rShift.toggle, S.shiftlockOn)
-    styleToggle(rHideP.toggle, S.hidePlayersOn)
-    styleToggle(rHideF.toggle, S.hideFxOn)
-    styleToggle(rLowG.toggle, S.lowGfxOn)
-    styleToggle(rClock.toggle, S.clockOn)
-    styleToggle(rRekam.toggle, S.rekamOn)
-    styleToggle(rRekamP.toggle, S.rekamPOn)
-    styleToggle(rSpec.toggle, S.specOn)
-    styleToggle(rVisAll.toggle, S.visAll)
-end
-
---═══════════════ MOVEMENT ═══════════════
-local savedHum = {}
-local FALLBACK_WS  = 16
-local lastWsNormal = 16
-
-local function captureHum(h)
-    if savedHum[h] then return end
-    local ws0 = h.WalkSpeed
-    if ws0 == nil or ws0 < 1 then
-        ws0 = (lastWsNormal >= 1) and lastWsNormal or FALLBACK_WS
-    elseif not S.speedOn then
-        lastWsNormal = ws0
-    end
-    local jp0 = h.JumpPower
-    if jp0 == nil or jp0 < 1 then jp0 = 50 end
-    local rec = {ws = ws0, ujp = h.UseJumpPower, jp = jp0, ss = nil, jh = nil}
-    pcall(function() rec.ss = h.SwimSpeed end)
-    pcall(function() rec.jh = h.JumpHeight end)
-    savedHum[h] = rec
-end
-
-local function restoreHum(h)
-    local rec = savedHum[h]
-    if not rec then return end
-    pcall(function() h.WalkSpeed    = rec.ws  end)
-    pcall(function() h.UseJumpPower = rec.ujp end)
-    pcall(function() h.JumpPower    = rec.jp  end)
-    if rec.jh then pcall(function() h.JumpHeight = rec.jh end) end
-    if rec.ss then pcall(function() h.SwimSpeed  = rec.ss end) end
-    savedHum[h] = nil
-    if h.WalkSpeed < 1 then
-        pcall(function()
-            h.WalkSpeed = (rec.ws and rec.ws >= 1) and rec.ws or FALLBACK_WS
-        end)
-    end
-end
-
-local jagaId = 0
-local function jagaGerak(durasi)
-    jagaId += 1
-    local myId = jagaId
-    task.spawn(function()
-        local t0 = os.clock()
-        while os.clock() - t0 < (durasi or 3) and myId == jagaId do
-            if not gui.Parent then return end
-            if S.speedOn then return end
-            local h = getHum()
-            if h and h.Health > 0 and not h.SeatPart and h.WalkSpeed < 1 then
-                pcall(function()
-                    h.WalkSpeed = (lastWsNormal >= 1) and lastWsNormal or FALLBACK_WS
-                end)
-            end
-            task.wait(0.25)
-        end
-    end)
-end
-
-local function applyMovement()
-    local h = getHum()
-    if not h then return end
-    if S.speedOn or S.jumpOn then captureHum(h) end
-    if S.speedOn then
-        h.WalkSpeed = S.speedValue
-        pcall(function() h.SwimSpeed = S.speedValue end)
-    end
-    if S.jumpOn then
-        pcall(function()
-            h.UseJumpPower = true
-            h.JumpPower = S.jumpValue
-        end)
-    end
-end
-
-local function setSpeed(on)
-    S.speedOn = on
-    if on then
-        applyMovement()
-    else
-        local h = getHum()
-        if h then restoreHum(h) end
-        if S.jumpOn then applyMovement() end
-        jagaGerak(3)
-    end
-    styleToggle(rSpeed.toggle, on)
-    notify("Speed & Swim", on)
-end
-
-local function setJump(on)
-    S.jumpOn = on
-    if on then
-        applyMovement()
-    else
-        local h = getHum()
-        if h then restoreHum(h) end
-        if S.speedOn then applyMovement() end
-        jagaGerak(3)
-    end
-    styleToggle(rJump.toggle, on)
-    notify("Jump Power", on)
-end
-
---═══════════════ HIDE PEMAIN + KENDARAAN ═══════════════
-local hideLoopId = 0
-local vehHidden  = {}
-local savedDecal = {}
-local R2 = RADIUS_SENTUH * RADIUS_SENTUH
-
-local function setCharHidden(char, target)
-    for _, d in ipairs(char:GetDescendants()) do
-        if d:IsA("BasePart") then
-            d.LocalTransparencyModifier = target
-        end
-    end
-end
-
-local function kendaraanDariSeat(seat)
-    local m = seat:FindFirstAncestorOfClass("Model")
-    if m then
-        while m.Parent and m.Parent ~= workspace and m.Parent:IsA("Model") do
-            m = m.Parent
-        end
-        return m
-    end
-    return seat
-end
-
-local function scanKendaraan(v, target)
-    local daftar
-    if v:IsA("Model") then
-        daftar = v:GetDescendants()
-    else
-        local ok, con = pcall(function() return v:GetConnectedParts(true) end)
-        daftar = (ok and con) or {v}
-    end
-    for _, d in ipairs(daftar) do
-        if d:IsA("BasePart") then
-            d.LocalTransparencyModifier = target
-        elseif d:IsA("Decal") or d:IsA("Texture") then
-            if target == 1 then
-                if savedDecal[d] == nil then
-                    savedDecal[d] = d.Transparency
-                    d.Transparency = 1
-                end
-            else
-                local asli = savedDecal[d]
-                if asli ~= nil then
-                    d.Transparency = asli
-                    savedDecal[d] = nil
-                end
-            end
-        end
-    end
-end
-
-local function cekKendaraan()
-    local hum = getHum()
-    local mySeat = hum and hum.SeatPart
-    local myRef = mySeat or (hum and hum.RootPart)
-    if not myRef then return end
-    local mx, mz = myRef.Position.X, myRef.Position.Z
-
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then
-            local char = plr.Character
-            if char then
-                local hum2 = char:FindFirstChildOfClass("Humanoid")
-                local seat = hum2 and hum2.SeatPart
-
-                if seat and mySeat and seat.AssemblyRootPart == mySeat.AssemblyRootPart then
-                    if vehHidden[plr] then
-                        pcall(scanKendaraan, vehHidden[plr], 0)
-                        vehHidden[plr] = nil
-                    end
-                elseif seat then
-                    local p = seat.Position
-                    local dx, dz = p.X - mx, p.Z - mz
-                    if dx*dx + dz*dz <= R2 then
-                        if not vehHidden[plr] then
-                            vehHidden[plr] = kendaraanDariSeat(seat)
-                            pcall(scanKendaraan, vehHidden[plr], 1)
-                        end
-                    elseif vehHidden[plr] then
-                        pcall(scanKendaraan, vehHidden[plr], 0)
-                        vehHidden[plr] = nil
-                    end
-                elseif vehHidden[plr] then
-                    pcall(scanKendaraan, vehHidden[plr], 0)
-                    vehHidden[plr] = nil
-                end
-
-                local root = char:FindFirstChild("HumanoidRootPart")
-                if root and root.LocalTransparencyModifier ~= 1 then
-                    setCharHidden(char, 1)
-                end
-            elseif vehHidden[plr] then
-                pcall(scanKendaraan, vehHidden[plr], 0)
-                vehHidden[plr] = nil
-            end
-        end
-    end
-end
-
-local function setHidePlayers(on)
-    S.hidePlayersOn = on
-    hideLoopId += 1
-    local myId = hideLoopId
-
-    if on then
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                setCharHidden(plr.Character, 1)
-            end
-        end
-        task.spawn(function()
-            while S.hidePlayersOn and myId == hideLoopId and gui.Parent do
-                pcall(cekKendaraan)
-                task.wait(CEK_INTERVAL)
-            end
-        end)
-    else
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                setCharHidden(plr.Character, 0)
-            end
-        end
-        for plr, v in pairs(vehHidden) do
-            if v then pcall(scanKendaraan, v, 0) end
-            vehHidden[plr] = nil
-        end
-        table.clear(savedDecal)
-    end
-
-    styleToggle(rHideP.toggle, on)
-    notify("Hide Pemain + Kendaraan", on)
-end
-
---═══════════════ HIDE ALL EFFECTS ═══════════════
-local FX_CLASSES = {
-    ParticleEmitter = "Enabled", Fire = "Enabled", Smoke = "Enabled",
-    Sparkles = "Enabled", Beam = "Enabled", Trail = "Enabled",
-    PointLight = "Enabled", SpotLight = "Enabled", SurfaceLight = "Enabled",
+--■ TEMA ----------------------------------------------------------------
+local C = {
+    BG     = Color3.fromRGB(15, 15, 23),
+    Card   = Color3.fromRGB(28, 28, 44),
+    Card2  = Color3.fromRGB(40, 40, 62),
+    Purple = Color3.fromRGB(140, 70, 255),
+    Blue   = Color3.fromRGB(45, 140, 255),
+    Text   = Color3.fromRGB(235, 235, 245),
+    Sub    = Color3.fromRGB(150, 150, 175),
+    Green  = Color3.fromRGB(60, 200, 110),
+    Red    = Color3.fromRGB(235, 75, 75),
+    Gray   = Color3.fromRGB(72, 72, 94),
 }
-local savedFx, fxConn = {}, nil
 
-local function disableFx(inst)
-    local prop = FX_CLASSES[inst.ClassName]
-    if prop and savedFx[inst] == nil then
-        pcall(function()
-            savedFx[inst] = {prop = prop, value = inst[prop]}
-            inst[prop] = false
-        end)
+local function new(class, props)
+    local inst = Instance.new(class)
+    for k, v in pairs(props) do
+        if k ~= "Parent" then inst[k] = v end
     end
+    inst.Parent = props.Parent
+    return inst
 end
 
-local function setHideFx(on)
-    S.hideFxOn = on
-    if on then
-        for _, d in ipairs(workspace:GetDescendants()) do disableFx(d) end
-        fxConn = workspace.DescendantAdded:Connect(disableFx)
-        addConn(fxConn)
-    else
-        if fxConn then fxConn:Disconnect() fxConn = nil end
-        for inst, data in pairs(savedFx) do
-            pcall(function() inst[data.prop] = data.value end)
-        end
-        savedFx = {}
-    end
-    styleToggle(rHideF.toggle, on)
-    notify("Hide All Effects", on)
+local gui = new("ScreenGui", {
+    Name = "KING_SILAU_GUI", ResetOnSpawn = false, IgnoreGuiInset = true,
+    DisplayOrder = 9999, Parent = PlayerGui,
+})
+
+--■ NOTIFIKASI (atas tengah, auto hilang ±2 detik) -----------------------
+local notifHolder = new("Frame", {
+    BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0),
+    Position = UDim2.new(0.5, 0, 0, 12), Size = UDim2.new(0, 360, 0, 400), Parent = gui,
+})
+new("UIListLayout", {Padding = UDim.new(0, 6), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Parent = notifHolder})
+
+local nOrder = 0
+local function notify(text, on)
+    nOrder += 1
+    local f = new("Frame", {BackgroundColor3 = C.Card, Size = UDim2.new(0, 250, 0, 32), LayoutOrder = nOrder, Parent = notifHolder})
+    new("UICorner", {CornerRadius = UDim.new(0, 8), Parent = f})
+    new("UIStroke", {Color = on and C.Green or C.Red, Thickness = 1, Transparency = 0.5, Parent = f})
+    local dot = new("Frame", {BackgroundColor3 = on and C.Green or C.Red, Size = UDim2.new(0, 8, 0, 8), Position = UDim2.new(0, 10, 0.5, -4), Parent = f})
+    new("UICorner", {CornerRadius = UDim.new(1, 0), Parent = dot})
+    new("TextLabel", {BackgroundTransparency = 1, Position = UDim2.new(0, 26, 0, 0), Size = UDim2.new(1, -34, 1, 0), Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = C.Text, TextXAlignment = Enum.TextXAlignment.Left, Text = text, Parent = f})
+    task.delay(2, function() f:Destroy() end)
 end
 
---═══════════════ LOW GRAPHIC ═══════════════
-local savedGfx, gfxConn = {}, nil
-local savedQuality, gfxApplied = nil, false
-
-local function setLowGfx(on)
-    S.lowGfxOn = on
-    if on then
-        gfxApplied = true
-        savedQuality = nil
-        pcall(function() savedQuality = settings().Rendering.QualityLevel end)
-        pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
-        savedGfx.shadows = Lighting.GlobalShadows
-        savedGfx.fogStart, savedGfx.fogEnd = Lighting.FogStart, Lighting.FogEnd
-        Lighting.GlobalShadows = false
-        Lighting.FogStart, Lighting.FogEnd = 9e9, 9e9
-        pcall(function()
-            savedGfx.deco = workspace.Terrain.Decoration
-            workspace.Terrain.Decoration = false
-            savedGfx.wave = workspace.Terrain.WaterWaveSize
-            workspace.Terrain.WaterWaveSize = 0
-            savedGfx.refl = workspace.Terrain.WaterReflectance
-            workspace.Terrain.WaterReflectance = 0
-        end)
-        for _, d in ipairs(Lighting:GetDescendants()) do
-            if d:IsA("PostEffect") then savedGfx[d] = d.Enabled; d.Enabled = false end
-        end
-        gfxConn = Lighting.ChildAdded:Connect(function(d)
-            if S.lowGfxOn and d:IsA("PostEffect") then savedGfx[d] = d.Enabled; d.Enabled = false end
-        end)
-        addConn(gfxConn)
-    elseif gfxApplied then
-        pcall(function()
-            if savedQuality ~= nil then
-                settings().Rendering.QualityLevel = savedQuality
-            else
-                settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
-            end
-        end)
-        if savedGfx.shadows  ~= nil then Lighting.GlobalShadows = savedGfx.shadows end
-        if savedGfx.fogStart ~= nil then Lighting.FogStart = savedGfx.fogStart end
-        if savedGfx.fogEnd   ~= nil then Lighting.FogEnd = savedGfx.fogEnd end
-        pcall(function()
-            if savedGfx.deco ~= nil then workspace.Terrain.Decoration = savedGfx.deco end
-            if savedGfx.wave ~= nil then workspace.Terrain.WaterWaveSize = savedGfx.wave end
-            if savedGfx.refl ~= nil then workspace.Terrain.WaterReflectance = savedGfx.refl end
-        end)
-        for d, v in pairs(savedGfx) do
-            if typeof(d) == "Instance" then pcall(function() d.Enabled = v end) end
-        end
-        savedGfx = {}
-        if gfxConn then gfxConn:Disconnect() gfxConn = nil end
-        gfxApplied = false
-    end
-    styleToggle(rLowG.toggle, on)
-    notify("Low Graphic Mode", on)
+local function sync(name, v, silent, label)
+    local sw = Switches[name]
+    if sw then sw.set(v) end
+    if not silent then notify(label .. ": " .. (v and "ON" or "OFF"), v) end
 end
 
---═══════════════ AUTO BRIGHTNESS ═══════════════
-local clockSnap = nil
-
-local function applyLockedClock()
-    pcall(function() Lighting.Brightness = brightnessFromTime(S.clockValue) end)
-    if LOCK_TIME then
-        pcall(function() Lighting.ClockTime = S.clockValue end)
-    end
-end
-
-local function setClock(on)
-    if on then
-        if not S.clockOn then
-            clockSnap = {ct = Lighting.ClockTime, br = Lighting.Brightness}
-        end
-        S.clockOn = true
-        applyLockedClock()
-        task.spawn(function()
-            while S.clockOn and gui.Parent do
-                task.wait(1)
-                if S.clockOn then applyLockedClock() end
-            end
-        end)
-    else
-        S.clockOn = false
-        if clockSnap then
-            pcall(function() Lighting.ClockTime = clockSnap.ct end)
-            pcall(function() Lighting.Brightness = clockSnap.br end)
-            clockSnap = nil
-        end
-    end
-    styleToggle(rClock.toggle, S.clockOn)
-    notify("Auto Brightness", S.clockOn)
-end
-
-local function bumpClock(d)
-    S.clockValue = (S.clockValue + d) % 24
-    if S.clockValue < 0 then S.clockValue += 24 end
-    rClock.val.Text = formatClock(S.clockValue)
-    if not S.clockOn then
-        setClock(true)
-    else
-        applyLockedClock()
-    end
-end
-
---═══════════════ 🔒 SHIFTLOCK GAYA MOBILE ═══════════════
--- 🐸 Kunci gaya renang mobile: badan DIPAKSA TEGAK (yaw-only)
---    SETELAH physics jalan (Character+1) → rotasi "penguin
---    nyelam" bawaan PC dibatalkan → animasi gaya katak muncul.
--- 🚗 Duduk di kendaraan: efek suspend otomatis (fisika aman).
--- ℹ️ Tanpa tombol layar — cukup hotkey G atau toggle di MENU.
-local SL_BIND = "Siiilau_Shiftlock"
-local setShiftlock -- forward
-
-setShiftlock = function(on)
-    S.shiftlockOn = on
-    if on then
-        pcall(function()
-            -- ⚡ KUNCI: bind di Character+1 (SETELAH physics karakter),
-            -- supaya override tegak kita menang dari rotasi
-            -- renang bawaan engine (yang bikin badan nyelam di PC)
-            RunService:BindToRenderStep(SL_BIND, Enum.RenderPriority.Character.Value + 1, function()
-                if not S.shiftlockOn then return end
-                local cam = workspace.CurrentCamera
-                local char = LocalPlayer.Character
-                if not (cam and char) then return end
-                local h = char:FindFirstChildOfClass("Humanoid")
-                local root = char:FindFirstChild("HumanoidRootPart")
-                if not (h and root) or h.Health <= 0 then return end
-
-                -- 🚗 duduk di kendaraan → suspend (jangan ganggu fisika mobil)
-                if h.SeatPart then
-                    if h.CameraOffset ~= Vector3.zero then h.CameraOffset = Vector3.zero end
-                    return
-                end
-
-                if h.AutoRotate then h.AutoRotate = false end
-                if h.CameraOffset ~= SHIFTLOCK_OFFSET then h.CameraOffset = SHIFTLOCK_OFFSET end
-
-                -- 🔒 YAW-ONLY SELALU (darat & air).
-                -- Di air badan DIPAKSA TEGAK tiap frame → gaya katak 🐸
-                local look = cam.CFrame.LookVector
-                local yaw = math.atan2(-look.X, -look.Z)
-                root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
-            end)
-        end)
-        notify("🔒 Shiftlock ON — renang gaya mobile 🐸", true)
-    else
-        pcall(function() RunService:UnbindFromRenderStep(SL_BIND) end)
-        local h = getHum()
-        if h then
-            h.AutoRotate = true
-            h.CameraOffset = Vector3.zero
-        end
-        notify("🔒 Shiftlock", false)
-    end
-    styleToggle(rShift.toggle, on)
-end
-
---═══════════════ 🎥 RUTE: PENYIMPANAN ═══════════════
-local daftarFile = {}
-local pilihan    = {}
-
-local function sanitize(n)
-    n = tostring(n or "")
-    n = n:gsub("[^%w%-_%. ]", "")
-    n = n:gsub("%s+", "_")
-    if n == "" then n = "rute" end
-    return n
-end
-
-local function pathDari(nama)
-    return FOLDER .. "/" .. sanitize(nama) .. ".json"
-end
-
-local function hitungPanjang(pts)
-    local L = 0
-    for i = 2, #pts do L += (pts[i] - pts[i-1]).Magnitude end
-    return L
-end
-
-local function namaUnik(base)
-    base = (base == "" and "Gabungan") or base
-    local n, i = base, 1
-    while true do
-        local bentrok = false
-        for _, f in ipairs(daftarFile) do
-            if f.nama == n then bentrok = true break end
-        end
-        if not bentrok and not (FS_OK and isf and isf(pathDari(n))) then return n end
-        i += 1
-        n = base .. " (" .. i .. ")"
-    end
-end
-
-local function titikKeArray(pts)
-    local arr = table.create(#pts)
-    for i, t in ipairs(pts) do
-        arr[i] = {
-            math.floor(t.X * 100 + 0.5) / 100,
-            math.floor(t.Y * 100 + 0.5) / 100,
-            math.floor(t.Z * 100 + 0.5) / 100,
-        }
-    end
-    return arr
-end
-
-local function simpanFile(f)
-    if not FS_OK then
-        notify("⚠️ Executor tak dukung file — data hilang saat keluar", false)
-        return
-    end
-    pastikanFolder()
-    local data = {
-        v = 1, nama = f.nama, tgl = f.tgl,
-        panjang = math.floor(f.panjang * 10 + 0.5) / 10,
-        gab = f.gabungan or nil,
-        n = #f.titik,
-        titik = titikKeArray(f.titik),
-    }
-    local ok = pcall(wf, f.path, HttpService:JSONEncode(data))
-    if not ok then
-        notify("⚠️ Gagal menulis file: " .. f.nama, false)
-    end
-end
-
--- ⚡ DRAFT RINGKAS: "x,y,z;x,y,z"
-local function simpanDraft(pts)
-    if not FS_OK then return end
-    pastikanFolder()
-    local buf = table.create(#pts)
-    for i, t in ipairs(pts) do
-        buf[i] = string.format("%.2f,%.2f,%.2f", t.X, t.Y, t.Z)
-    end
-    pcall(wf, DRAFT_PATH, table.concat(buf, ";"))
-end
-
-local function parseDraftRingkas(isi)
-    local titik = {}
-    for xyz in string.gmatch(isi, "[^;]+") do
-        local x, y, z = xyz:match("(-?%d+%.?%d*),(-?%d+%.?%d*),(-?%d+%.?%d*)")
-        if x then
-            titik[#titik + 1] = Vector3.new(tonumber(x), tonumber(y), tonumber(z))
-        end
-    end
-    return titik
-end
-
-local function hapusDraft()
-    if FS_OK and delf and isf then
-        local o, ada = pcall(isf, DRAFT_PATH)
-        if o and ada then pcall(delf, DRAFT_PATH) end
-    end
-end
-
-local function tambahFile(nama, titik, gabungan)
-    local f = {
-        nama = nama, titik = titik,
-        panjang = hitungPanjang(titik),
-        tgl = os.date("%d/%m %H:%M"),
-        vis = false, gabungan = gabungan or false,
-        path = pathDari(nama),
-    }
-    table.insert(daftarFile, f)
-    simpanFile(f)
-    return f
-end
-
-local function muatFileTersimpan()
-    if not FS_OK then return 0 end
-    local jumlah = 0
-
-    local function muatSatu(path, namaFallback)
-        local okr, isi = pcall(rf, path)
-        if not (okr and type(isi) == "string") then return false end
-
-        local titik = {}
-        -- JSON dulu (file lama), lalu format ringkas (draft baru)
-        local okd, data = pcall(function() return HttpService:JSONDecode(isi) end)
-        if okd and type(data) == "table" and type(data.titik) == "table" then
-            for _, t in ipairs(data.titik) do
-                if type(t) == "table" and t[1] and t[2] and t[3] then
-                    table.insert(titik, Vector3.new(t[1], t[2], t[3]))
-                end
-            end
-        else
-            titik = parseDraftRingkas(isi)
-        end
-
-        if #titik < 2 then return false end
-        local namaFile = path:match("[/\\]([^/\\]+)$") or namaFallback
-        namaFile = namaFile:gsub("%.json$", "")
-        local nama, isGab = namaFile, false
-        if okd and type(data) == "table" then
-            nama = data.nama or namaFile
-            isGab = data.gab == true
-        end
-        tambahFile(nama, titik, isGab)
-        return true
-    end
-
-    if isf then
-        local ok, ada = pcall(isf, DRAFT_PATH)
-        if ok and ada then
-            if muatSatu(DRAFT_PATH, "Draft") then
-                jumlah += 1
-                notify("💾 Draft rekaman terselamatkan ✓", true)
-            end
-            if delf then pcall(delf, DRAFT_PATH) end
-        end
-    end
-
-    if type(lf) == "function" then
-        local ok, files = pcall(lf, FOLDER)
-        if ok and type(files) == "table" then
-            for _, path in ipairs(files) do
-                if type(path) == "string" and string.sub(path, -5) == ".json" and path ~= DRAFT_PATH then
-                    local o, ada = true, true
-                    if isf then o, ada = pcall(isf, path) end
-                    if o and ada then
-                        if muatSatu(path, "rute") then jumlah += 1 end
-                    end
-                end
-            end
-        end
-    end
-    return jumlah
-end
-
---═══════════════ 🎥 RUTE: GARIS 3D ═══════════════
-local rekamFolder = Instance.new("Folder")
-rekamFolder.Name = "_SiiilauRekam"
-rekamFolder.Parent = workspace
-
-local rootFolderGaris = Instance.new("Folder")
-rootFolderGaris.Name = "_SiiilauRuteFiles"
-rootFolderGaris.Parent = workspace
-
-local function buatSegmen(parent, a, b, warna)
-    local jarak = (b - a).Magnitude
-    if jarak < 0.15 then return end
-    local p = Instance.new("Part")
-    p.Name = "seg"
-    p.Anchored = true
-    p.CanCollide = false
-    p.CanQuery = false
-    p.CanTouch = false
-    p.Material = Enum.Material.Neon
-    p.Color = warna
-    p.Transparency = LINE_TRANS
-    p.Size = Vector3.new(LINE_TEBAL, LINE_TEBAL, jarak)
-    p.CFrame = CFrame.lookAt((a + b) * 0.5, b)
-    p.Parent = parent
-end
-
-local function buatMarker(parent, pos, warna, teks)
-    local p = Instance.new("Part")
-    p.Name = "marker"
-    p.Anchored = true
-    p.CanCollide = false
-    p.CanQuery = false
-    p.CanTouch = false
-    p.Shape = Enum.PartType.Ball
-    p.Material = Enum.Material.Neon
-    p.Color = warna
-    p.Transparency = 0.4
-    p.Size = Vector3.new(2, 2, 2)
-    p.CFrame = CFrame.new(pos)
-    p.Parent = parent
-    local bb = Instance.new("BillboardGui")
-    bb.Size = UDim2.fromOffset(150, 24)
-    bb.StudsOffset = Vector3.new(0, 3, 0)
-    bb.AlwaysOnTop = true
-    bb.MaxDistance = 3000
-    bb.Parent = p
-    local t = Instance.new("TextLabel")
-    t.Size = UDim2.fromScale(1, 1)
-    t.BackgroundTransparency = 1
-    t.Font = Enum.Font.GothamBold
-    t.TextScaled = true
-    t.TextColor3 = warna
-    t.TextStrokeTransparency = 0.4
-    t.Text = teks
-    t.Parent = bb
-end
-
--- ⚡ RAYCASTPARAMS DI-REUSE
-local _rcParams = RaycastParams.new()
-_rcParams.FilterType = Enum.RaycastFilterType.Exclude
-_rcParams.FilterDescendantsInstances = {rekamFolder, rootFolderGaris}
-
-local function proyeksiTanah(p, char)
-    char = char or LocalPlayer.Character
-    local f = {rekamFolder, rootFolderGaris}
-    if char then f[#f + 1] = char end
-    local h = char and char:FindFirstChildOfClass("Humanoid")
-    local seat = h and h.SeatPart
-    if seat then
-        f[#f + 1] = kendaraanDariSeat(seat)
-    end
-    _rcParams.FilterDescendantsInstances = f
-    local hit = workspace:Raycast(p + Vector3.new(0, 1, 0), Vector3.new(0, -14, 0), _rcParams)
-    if hit then
-        return Vector3.new(p.X, hit.Position.Y + LINE_TEBAL * 0.5 + 0.05, p.Z)
-    end
-    return p - Vector3.new(0, 2.5, 0)
-end
-
--- ---- ✏️ PIPELINE GARIS HALUS ----
-local function sederhanakanJalur(pts)
-    if #pts <= 2 then return pts end
-    local hasil = {pts[1]}
-    for i = 2, #pts - 1 do
-        local prev = hasil[#hasil]
-        local cur  = pts[i]
-        local nxt  = pts[i + 1]
-        local d1 = cur - prev
-        local d2 = nxt - cur
-        if d1.Magnitude > 0.01 and d2.Magnitude > 0.01 then
-            local dot = math.clamp(d1.Unit:Dot(d2.Unit), -1, 1)
-            local sudut = math.deg(math.acos(dot))
-            if sudut >= SMPL_ANGLE or (nxt - prev).Magnitude >= SMPL_MAX_SEG then
-                table.insert(hasil, cur)
-            end
-        end
-    end
-    table.insert(hasil, pts[#pts])
-    return hasil
-end
-
-local function chaikin(pts)
-    if #pts < 3 then return pts end
-    local n = #pts
-    local out = table.create(n * 2)
-    out[1] = pts[1]
-    local idx = 2
-    for i = 1, n - 1 do
-        local a, b = pts[i], pts[i + 1]
-        out[idx] = a:Lerp(b, 0.25); idx += 1
-        out[idx] = a:Lerp(b, 0.75); idx += 1
-    end
-    out[idx] = pts[n]
-    return out
-end
-
-local function renderJalurHalus(parent, pts, warna)
-    if #pts < 2 then return end
-    local halus = sederhanakanJalur(pts)
-    for _ = 1, CHAIKIN_ITER do
-        halus = chaikin(halus)
-    end
-    for i = 2, #halus do
-        buatSegmen(parent, halus[i-1], halus[i], warna)
-    end
-end
-
-local function setVisFile(f, vis)
-    f.vis = vis
-    if vis then
-        if not f.folder or not f.folder.Parent then
-            f.folder = Instance.new("Folder")
-            f.folder.Name = "_r_" .. sanitize(f.nama)
-            f.folder.Parent = rootFolderGaris
-            renderJalurHalus(f.folder, f.titik, f.gabungan and C.Cyan or C.Ungu2)
-            buatMarker(f.folder, f.titik[1], C.Biru2, "START")
-            buatMarker(f.folder, f.titik[#f.titik], f.gabungan and C.Cyan or C.Hijau, "END ▸ " .. f.nama)
-        end
-    else
-        if f.folder then f.folder:Destroy() f.folder = nil end
-    end
-end
-
---═══════════════ 🎥 RUTE: DAFTAR FILE (UI) ═══════════════
-local renderDaftar -- forward
-
-local function togglePilih(f)
-    local pos = table.find(pilihan, f)
-    if pos then
-        table.remove(pilihan, pos)
-    else
-        table.insert(pilihan, f)
-    end
-    renderDaftar()
-end
-
-renderDaftar = function()
-    for _, c in ipairs(scrollRute:GetChildren()) do
-        if c:GetAttribute("itemFile") then c:Destroy() end
-    end
-    secFileLabel.Text = "▎ 📂 FILE (" .. #daftarFile .. ") • dipilih: " .. #pilihan
-
-    if #daftarFile == 0 then
-        order += 1
-        local kosong = new("TextLabel", {
-            Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1,
-            Text = "belum ada file — rekam dulu 🔴",
-            FontFace = fnt("med"), TextSize = 14, TextColor3 = C.AbuTeks,
-            LayoutOrder = order,
-        }, scrollRute)
-        kosong:SetAttribute("itemFile", true)
-        return
-    end
-
-    for _, f in ipairs(daftarFile) do
-        order += 1
-        local posPilih = table.find(pilihan, f)
-        local item = new("TextButton", {
-            Size = UDim2.new(1, 0, 0, 48), BackgroundColor3 = C.Baris,
-            BorderSizePixel = 0, AutoButtonColor = false,
-            LayoutOrder = order, Text = "",
-        }, scrollRute)
-        item:SetAttribute("itemFile", true)
-        new("UICorner", {CornerRadius = UDim.new(0, 12)}, item)
-        new("UIStroke", {
-            Color = posPilih and C.Hijau or C.Ungu,
-            Thickness = posPilih and 2 or 1,
-            Transparency = posPilih and 0.1 or 0.78,
-        }, item)
-
-        item.MouseEnter:Connect(function() item.BackgroundColor3 = C.BarisHov end)
-        item.MouseLeave:Connect(function() item.BackgroundColor3 = C.Baris end)
-
-        local labelNama = posPilih and ("✅" .. posPilih .. " " .. f.nama) or f.nama
-        if f.gabungan then labelNama = "🔗 " .. labelNama end
-
-        new("TextLabel", {
-            Size = UDim2.new(1, -130, 0, 22), Position = UDim2.new(0, 12, 0, 4),
-            BackgroundTransparency = 1, Text = labelNama,
-            FontFace = fnt("semi"), TextSize = 15, TextColor3 = posPilih and C.Hijau or C.UnguMuda,
-            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-        }, item)
-        new("TextLabel", {
-            Size = UDim2.new(1, -130, 0, 16), Position = UDim2.new(0, 12, 0, 26),
-            BackgroundTransparency = 1,
-            Text = #f.titik .. " titik • " .. math.floor(f.panjang + 0.5) .. "m • " .. f.tgl,
-            FontFace = fnt("med"), TextSize = 11, TextColor3 = C.AbuTeks,
-            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-        }, item)
-
-        local visBtn = new("TextButton", {
-            Size = UDim2.fromOffset(30, 32), Position = UDim2.new(1, -112, 0, 8),
-            BackgroundColor3 = f.vis and C.Biru or C.UnguD,
-            BorderSizePixel = 0, AutoButtonColor = false,
-            Text = "👁", TextSize = 16, TextColor3 = C.Putih, FontFace = fnt("bold"),
-        }, item)
-        new("UICorner", {CornerRadius = UDim.new(0, 9)}, visBtn)
-
-        local tpBtn = new("TextButton", {
-            Size = UDim2.fromOffset(30, 32), Position = UDim2.new(1, -76, 0, 8),
-            BackgroundColor3 = C.UnguD, BorderSizePixel = 0, AutoButtonColor = false,
-            Text = "📌", TextSize = 16, TextColor3 = C.Putih, FontFace = fnt("bold"),
-        }, item)
-        new("UICorner", {CornerRadius = UDim.new(0, 9)}, tpBtn)
-
-        local delBtn = new("TextButton", {
-            Size = UDim2.fromOffset(30, 32), Position = UDim2.new(1, -40, 0, 8),
-            BackgroundColor3 = C.UnguD, BorderSizePixel = 0, AutoButtonColor = false,
-            Text = "🗑", TextSize = 16, TextColor3 = C.Merah, FontFace = fnt("bold"),
-        }, item)
-        new("UICorner", {CornerRadius = UDim.new(0, 9)}, delBtn)
-
-        item.MouseButton1Click:Connect(function() togglePilih(f) end)
-        visBtn.MouseButton1Click:Connect(function()
-            setVisFile(f, not f.vis)
-            renderDaftar()
-        end)
-        tpBtn.MouseButton1Click:Connect(function()
-            local root = getRoot()
-            if not root then notify("Karakter belum ada / respawn dulu", false) return end
-            local h = getHum()
-            if h then pcall(function() h.Sit = false end) end
-            local p = f.titik[#f.titik]
-            root.CFrame = CFrame.new(p + Vector3.new(0, 6, 0))
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
-            notify("📌 TP ke END ▸ " .. f.nama, true)
-        end)
-        delBtn.MouseButton1Click:Connect(function()
-            local pos = table.find(pilihan, f)
-            if pos then table.remove(pilihan, pos) end
-            if f.folder then f.folder:Destroy() f.folder = nil end
-            if FS_OK and delf and isf then
-                local o, ada = pcall(isf, f.path)
-                if o and ada then pcall(delf, f.path) end
-            end
-            for i, x in ipairs(daftarFile) do
-                if x == f then table.remove(daftarFile, i) break end
-            end
-            renderDaftar()
-            notify("🗑 Hapus: " .. f.nama, false)
-        end)
-    end
-end
-
---═══════════════ 💾 DIALOG ISI NAMA ═══════════════
-local modalBg = new("TextButton", {
-    Size = UDim2.fromScale(1, 1),
-    BackgroundColor3 = C.Hitam, BackgroundTransparency = 0.45,
-    BorderSizePixel = 0, Text = "", AutoButtonColor = false,
-    Visible = false, ZIndex = 100,
-}, gui)
-
-local kartu = new("Frame", {
-    Size = UDim2.fromOffset(360, 210),
-    Position = UDim2.new(0.5, 0, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
-    BackgroundColor3 = C.Hitam2, BorderSizePixel = 0, Active = true, ZIndex = 101,
-}, modalBg)
-new("UICorner", {CornerRadius = UDim.new(0, 16)}, kartu)
-new("UIStroke", {Color = C.Ungu, Thickness = 2}, kartu)
-
-new("TextLabel", {
-    Size = UDim2.new(1, -20, 0, 34), Position = UDim2.new(0, 10, 0, 10),
-    BackgroundTransparency = 1, Text = "💾 SIMPAN REKAMAN",
-    FontFace = fnt("judul"), TextSize = 22, TextColor3 = C.Ungu2, ZIndex = 101,
-}, kartu)
-
-new("TextLabel", {
-    Size = UDim2.new(1, -20, 0, 18), Position = UDim2.new(0, 10, 0, 46),
-    BackgroundTransparency = 1, Text = "Tulis nama file biar gampang dicari saat gabung:",
-    FontFace = fnt("med"), TextSize = 13, TextColor3 = C.AbuTeks, ZIndex = 101,
-}, kartu)
-
-local namaSaveBox = new("TextBox", {
-    Size = UDim2.new(1, -40, 0, 44), Position = UDim2.new(0, 20, 0, 72),
-    BackgroundColor3 = C.Hitam, BorderSizePixel = 0,
-    Text = "", PlaceholderText = "contoh: Tikungan Jembatan…",
-    PlaceholderColor3 = C.Abuk, ClearTextOnFocus = false,
-    FontFace = fnt("semi"), TextSize = 16, TextColor3 = C.UnguMuda,
-    TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 101,
-}, kartu)
+--■ FPS COUNTER -----------------------------------------------------------
+local fpsLabel = new("TextLabel", {
+    BackgroundColor3 = C.BG, BackgroundTransparency = 0.35,
+    Position = UDim2.new(0, 8, 1, -24), Size = UDim2.new(0, 68, 0, 16),
+    Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.Sub, Text = "FPS: --", Parent = gui,
+})
+new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = fpsLabel})
 do
-    local pad = Instance.new("UIPadding")
-    pad.PaddingLeft = UDim.new(0, 10)
-    pad.Parent = namaSaveBox
-end
-new("UICorner", {CornerRadius = UDim.new(0, 10)}, namaSaveBox)
-new("UIStroke", {Color = C.Ungu, Thickness = 1.5}, namaSaveBox)
-
-local buangBtn = new("TextButton", {
-    Size = UDim2.new(0, 150, 0, 42), Position = UDim2.new(0, 20, 1, -56),
-    BackgroundColor3 = C.offBg, BorderSizePixel = 0, AutoButtonColor = false,
-    Text = "🗑️ Buang", FontFace = fnt("bold"), TextSize = 15, TextColor3 = C.Merah, ZIndex = 101,
-}, kartu)
-new("UICorner", {CornerRadius = UDim.new(0, 10)}, buangBtn)
-new("UIStroke", {Color = C.Merah, Thickness = 1.5, Transparency = 0.5}, buangBtn)
-
-local simpanBtn = new("TextButton", {
-    Size = UDim2.new(0, 150, 0, 42), Position = UDim2.new(1, -170, 1, -56),
-    BackgroundColor3 = C.Biru, BorderSizePixel = 0, AutoButtonColor = false,
-    Text = "✅ Simpan", FontFace = fnt("bold"), TextSize = 15, TextColor3 = C.Putih, ZIndex = 101,
-}, kartu)
-new("UICorner", {CornerRadius = UDim.new(0, 10)}, simpanBtn)
-
-local pendingSave = nil
-
-local function tutupDialog()
-    modalBg.Visible = false
-    pendingSave = nil
-end
-
-local function lakukanSimpan()
-    if not pendingSave then tutupDialog() return end
-    local nama = namaSaveBox.Text
-    nama = nama:gsub("^%s+", ""):gsub("%s+$", "")
-    if nama == "" then nama = pendingSave.default end
-    nama = namaUnik(nama)
-    local f = tambahFile(nama, pendingSave.titik, false)
-    rekamFolder:ClearAllChildren()
-    setVisFile(f, true)
-    renderDaftar()
-    hapusDraft()
-    notify("✅ Tersimpan: " .. nama .. " (" .. #f.titik .. " titik • " .. math.floor(f.panjang + 0.5) .. "m)", true)
-    tutupDialog()
-end
-
-local function lakukanBuang()
-    if pendingSave then
-        hapusDraft()
-        rekamFolder:ClearAllChildren()
-        notify("🗑️ Rekaman dibuang", false)
-    end
-    tutupDialog()
-end
-
-local function bukaDialogSimpan(defaultNama, titik)
-    pendingSave = {default = defaultNama, titik = titik}
-    namaSaveBox.Text = defaultNama
-    modalBg.Visible = true
-    notify("⏹ Stop! Isi nama lalu Simpan 💾", true)
-end
-
-simpanBtn.MouseButton1Click:Connect(lakukanSimpan)
-buangBtn.MouseButton1Click:Connect(lakukanBuang)
-namaSaveBox.FocusLost:Connect(function(enterPressed)
-    if enterPressed then lakukanSimpan() end
-end)
-
---═══════════════ 🔗 GABUNG CERDAS ═══════════════
-local GABUNG_MATCH  = 8
-local GABUNG_TIGHT  = 4
-local GABUNG_DEDUPE = 2.5
-
-local function gabungDuaJalur(A, B)
-    if #A == 0 then
-        local hasil = table.create(#B)
-        for i = 1, #B do hasil[i] = B[i] end
-        return hasil, false
-    end
-
-    local jA, dMin
-    for i = 1, #A do
-        local d = (A[i] - B[1]).Magnitude
-        if not dMin or d < dMin then dMin, jA = d, i end
-    end
-
-    local hasil = table.create(#A)
-    for i = 1, #A do hasil[i] = A[i] end
-
-    if dMin and dMin <= GABUNG_MATCH then
-        local k = 1
-        while (jA + k - 1) <= #A and k <= #B
-          and (A[jA + k - 1] - B[k]).Magnitude <= GABUNG_TIGHT do
-            k += 1
-        end
-        local last = hasil[#hasil]
-        for i = k, #B do
-            if (B[i] - last).Magnitude >= GABUNG_DEDUPE then
-                table.insert(hasil, B[i])
-                last = B[i]
-            end
-        end
-        return hasil, true
-    else
-        local awal, akhir = A[#A], B[1]
-        local jarak = (akhir - awal).Magnitude
-        local langkah = math.max(2, math.floor(jarak / GABUNG_MIN_JARAK))
-        for s = 1, langkah - 1 do
-            table.insert(hasil, awal:Lerp(akhir, s / langkah))
-        end
-        local last = hasil[#hasil]
-        for i = 1, #B do
-            if (B[i] - last).Magnitude >= GABUNG_DEDUPE then
-                table.insert(hasil, B[i])
-                last = B[i]
-            end
-        end
-        return hasil, false
-    end
-end
-
---═══════════════ 🎥 RUTE: REKAM / TP / GABUNG ═══════════════
-local rekamId = 0
-local rekamPts, lastPt = {}, nil
-local rekamMati = false
-
-local setRekamP -- forward
-
--- ⚡ PREVIEW LIVE: incremental + batas part
-local pvLast, pvDir = nil, nil
-local pvCount = 0
-
-local function previewReset()
-    pvLast, pvDir, pvCount = nil, nil, 0
-end
-
-local function previewLive(parent, gp, warna)
-    if not pvLast then
-        pvLast, pvDir, pvCount = gp, nil, 0
-        return
-    end
-    local d = gp - pvLast
-    local mag = d.Magnitude
-    if mag < 1.0 then return end
-    local dirBaru = d.Unit
-    local belok = 0
-    if pvDir then
-        belok = math.deg(math.acos(math.clamp(pvDir:Dot(dirBaru), -1, 1)))
-    end
-    if (pvDir == nil) or belok >= PREVIEW_BELOK or mag >= PREVIEW_MAX then
-        buatSegmen(parent, pvLast, gp, warna)
-        pvLast, pvDir = gp, dirBaru
-        pvCount += 1
-        if pvCount > PV_MAX_PARTS then
-            for _, c in ipairs(parent:GetChildren()) do
-                if c.Name == "seg" then c:Destroy() break end
-            end
-        end
-    end
-end
-
-local function rebuildPreviewHalus(pts)
-    rekamFolder:ClearAllChildren()
-    previewReset()
-    renderJalurHalus(rekamFolder, pts, C.Merah)
-    buatMarker(rekamFolder, pts[1], C.Biru2, "START")
-    buatMarker(rekamFolder, pts[#pts], C.Hijau, "END (preview)")
-end
-
-local function setRekam(on)
-    if on and modalBg.Visible then
-        notify("Selesaikan simpan rekaman dulu 💾", false)
-        return
-    end
-    if on and S.rekamPOn then setRekamP(false) end
-    S.rekamOn = on
-    rekamId += 1
-    local myId = rekamId
-
-    if on then
-        rekamFolder:ClearAllChildren()
-        rekamPts, lastPt = {}, nil
-        rekamMati = false
-        previewReset()
-        rRekam.val.Text = "0 pt"
-        notify("🔴 Merekam… nyetir jalurmu!", true)
-        task.spawn(function()
-            while S.rekamOn and myId == rekamId and gui.Parent do
-                local h = getHum()
-                if h and h.Health <= 0 then
-                    rekamMati = true
-                    task.defer(function()
-                        if S.rekamOn and myId == rekamId then setRekam(false) end
-                    end)
-                    break
-                end
-                local root = getRoot()
-                if root then
-                    local p = root.Position
-                    if not lastPt then
-                        lastPt = p
-                        local gp = proyeksiTanah(p)
-                        rekamPts[1] = gp
-                        previewLive(rekamFolder, gp, C.Merah)
-                        buatMarker(rekamFolder, gp, C.Merah, "AWAL REKAM")
-                    else
-                        local jarak = (p - lastPt).Magnitude
-                        if jarak >= REC_MIN_JARAK then
-                            lastPt = p
-                            local gp = proyeksiTanah(p)
-                            rekamPts[#rekamPts + 1] = gp
-                            if jarak >= JARAK_LOMPAT then
-                                pvLast, pvDir = gp, nil
-                            else
-                                previewLive(rekamFolder, gp, C.Merah)
-                            end
-                            local n = #rekamPts
-                            if n % 10 == 0 then
-                                rRekam.val.Text = n .. " pt"
-                            end
-                            if n % DRAFT_TIAP == 0 then simpanDraft(rekamPts) end
-                            if n >= MAX_TITIK then
-                                task.defer(function()
-                                    if S.rekamOn and myId == rekamId then setRekam(false) end
-                                end)
-                                break
-                            end
-                        end
-                    end
-                end
-                task.wait(REC_INTERVAL)
-            end
-        end)
-    else
-        if #rekamPts >= 2 then
-            local titik = table.create(#rekamPts)
-            for i, t in ipairs(rekamPts) do titik[i] = t end
-            rebuildPreviewHalus(titik)
-            local saran = namaUnik("Mentah")
-            bukaDialogSimpan(saran, titik)
-            if rekamMati then
-                notify("💀 Mati — garis tetap ada, isi nama → Simpan", false)
-            end
-        else
-            notify("Rekam dibatalkan (titik terlalu sedikit)", false)
-            hapusDraft()
-            rekamFolder:ClearAllChildren()
-            rekamPts, lastPt = {}, nil
-            previewReset()
-        end
-    end
-
-    styleToggle(rRekam.toggle, on)
-end
-
--- ---- TARGET PICKER ----
-local targetIdx = 1
-local targetPlr = nil
-
-local function daftarPemainLain()
-    local list = {}
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then table.insert(list, plr) end
-    end
-    return list
-end
-
-local function updateTargetLabel()
-    local list = daftarPemainLain()
-    if #list == 0 then
-        targetPlr = nil
-        namaTargetLbl.Text = "tidak ada"
-        return
-    end
-    if targetIdx < 1 or targetIdx > #list then targetIdx = 1 end
-    targetPlr = list[targetIdx]
-    namaTargetLbl.Text = targetPlr.DisplayName
-end
-
-local function applySpectate()
-    local cam = workspace.CurrentCamera
-    if not cam then return end
-    if S.specOn and targetPlr and targetPlr.Character then
-        local hum2 = targetPlr.Character:FindFirstChildOfClass("Humanoid")
-        if hum2 and cam.CameraSubject ~= hum2 then
-            pcall(function() cam.CameraSubject = hum2 end)
-        end
-    end
-end
-
-local specId = 0
-local function setSpec(on)
-    S.specOn = on
-    specId += 1
-    local myId = specId
-    if on then
-        applySpectate()
-        notify("📷 Spectate: " .. (targetPlr and targetPlr.DisplayName or "?"), true)
-        task.spawn(function()
-            while S.specOn and myId == specId and gui.Parent do
-                applySpectate()
-                task.wait(0.5)
-            end
-        end)
-    else
-        local cam = workspace.CurrentCamera
-        local h = getHum()
-        if cam and h then pcall(function() cam.CameraSubject = h end) end
-        notify("📷 Spectate", false)
-    end
-    styleToggle(rSpec.toggle, on)
-end
-
--- ---- REKAM PEMAIN LAIN ----
-local rekamPId = 0
-local rekamPPts, lastPPt = {}, nil
-local rekamPTarget, rekamPNama = nil, "?"
-
-local function getRootDari(plr)
-    local c = plr and plr.Character
-    if not c then return nil, nil end
-    local hum2 = c:FindFirstChildOfClass("Humanoid")
-    if hum2 and hum2.Health <= 0 then return nil, hum2 end
-    local seat = hum2 and hum2.SeatPart
-    if seat then return seat, hum2 end
-    return c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart, hum2
-end
-
-setRekamP = function(on)
-    if on and modalBg.Visible then
-        notify("Selesaikan simpan rekaman dulu 💾", false)
-        return
-    end
-    if on then
-        if S.rekamOn then setRekam(false) end
-        if not targetPlr then
-            notify("Pilih target dulu (◀ ▶)", false)
-            return
-        end
-    end
-    S.rekamPOn = on
-    rekamPId += 1
-    local myId = rekamPId
-
-    if on then
-        rekamFolder:ClearAllChildren()
-        rekamPPts, lastPPt = {}, nil
-        previewReset()
-        rekamPTarget = targetPlr
-        rekamPNama   = targetPlr.Name
-        rRekamP.val.Text = "0 pt"
-        notify("🔴 Rekam " .. targetPlr.DisplayName .. "…", true)
-        task.spawn(function()
-            while S.rekamPOn and myId == rekamPId and gui.Parent do
-                if not rekamPTarget or not rekamPTarget.Parent then
-                    task.defer(function()
-                        if S.rekamPOn and myId == rekamPId then setRekamP(false) end
-                    end)
-                    break
-                end
-                local root, hum2 = getRootDari(rekamPTarget)
-                if root and (not hum2 or hum2.Health > 0) then
-                    local p = root.Position
-                    if not lastPPt then
-                        lastPPt = p
-                        local gp = proyeksiTanah(p, rekamPTarget.Character)
-                        rekamPPts[1] = gp
-                        previewLive(rekamFolder, gp, C.Merah)
-                        buatMarker(rekamFolder, gp, C.Merah, "AWAL: " .. rekamPTarget.DisplayName)
-                    else
-                        local jarak = (p - lastPPt).Magnitude
-                        if jarak >= REC_MIN_JARAK then
-                            lastPPt = p
-                            local gp = proyeksiTanah(p, rekamPTarget.Character)
-                            if jarak < JARAK_LOMPAT then
-                                rekamPPts[#rekamPPts + 1] = gp
-                                previewLive(rekamFolder, gp, C.Merah)
-                            else
-                                pvLast, pvDir = gp, nil
-                            end
-                            local n = #rekamPPts
-                            if n % 10 == 0 then
-                                rRekamP.val.Text = n .. " pt"
-                            end
-                            if n % DRAFT_TIAP == 0 and n > 0 then simpanDraft(rekamPPts) end
-                            if n >= MAX_TITIK then
-                                task.defer(function()
-                                    if S.rekamPOn and myId == rekamPId then setRekamP(false) end
-                                end)
-                                break
-                            end
-                        end
-                    end
-                end
-                task.wait(REC_INTERVAL)
-            end
-        end)
-    else
-        if #rekamPPts >= 2 then
-            local titik = table.create(#rekamPPts)
-            for i, t in ipairs(rekamPPts) do titik[i] = t end
-            rebuildPreviewHalus(titik)
-            local saran = namaUnik("P-" .. rekamPNama)
-            bukaDialogSimpan(saran, titik)
-        else
-            notify("Rekam player dibatalkan (titik kurang)", false)
-            hapusDraft()
-            rekamFolder:ClearAllChildren()
-            rekamPPts, lastPPt = {}, nil
-            previewReset()
-        end
-    end
-
-    styleToggle(rRekamP.toggle, on)
-end
-
-local function tampilSemua(on)
-    for _, f in ipairs(daftarFile) do
-        setVisFile(f, on)
-    end
-    renderDaftar()
-    notify("Semua garis", on)
-end
-
-local function gabungTerpilih()
-    if #pilihan < 2 then
-        notify("Pilih minimal 2 file (klik nama file-nya, urut!)", false)
-        return
-    end
-    local nama = namaBox.Text
-    nama = nama:gsub("^%s+", ""):gsub("%s+$", "")
-    if nama == "" then nama = "Gabungan" end
-    nama = namaUnik(nama)
-
-    local titik = table.create(#pilihan[1].titik)
-    for i, t in ipairs(pilihan[1].titik) do titik[i] = t end
-    local nTemu, nJembatan = 0, 0
-    for i = 2, #pilihan do
-        local hasil, temu = gabungDuaJalur(titik, pilihan[i].titik)
-        titik = hasil
-        if temu then nTemu += 1 else nJembatan += 1 end
-    end
-    if #titik < 2 then
-        notify("Gagal gabung: titik kurang", false)
-        return
-    end
-
-    local f = tambahFile(nama, titik, true)
-    setVisFile(f, true)
-    table.clear(pilihan)
-    renderDaftar()
-    local detail = ""
-    if nTemu > 0 then detail = detail .. " • temu:" .. nTemu end
-    if nJembatan > 0 then detail = detail .. " • jembatan:" .. nJembatan end
-    notify("🔗 " .. nama .. " (" .. #titik .. " titik • " .. math.floor(f.panjang + 0.5) .. "m" .. detail .. ")", true)
-end
-
-local function tpKeTerpilih()
-    if #pilihan == 0 then
-        notify("Pilih file dulu (klik nama file-nya)", false)
-        return
-    end
-    local f = pilihan[1]
-    local root = getRoot()
-    if not root then notify("Karakter belum ada / respawn dulu", false) return end
-    local h = getHum()
-    if h then pcall(function() h.Sit = false end) end
-    local p = f.titik[#f.titik]
-    root.CFrame = CFrame.new(p + Vector3.new(0, 6, 0))
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-    notify("📌 TP ke END ▸ " .. f.nama, true)
-end
-
---═══════════════ RESET & KELUAR ═══════════════
-local function matikanSemua()
-    pcall(function() if S.shiftlockOn then setShiftlock(false) end end)
-    pcall(function() if S.rekamOn  then setRekam(false)  end end)
-    pcall(function() if S.rekamPOn then setRekamP(false) end end)
-    pcall(function() if S.specOn   then setSpec(false)   end end)
-    pcall(function() if S.hidePlayersOn then setHidePlayers(false) end end)
-    pcall(function() if S.hideFxOn then setHideFx(false) end end)
-    pcall(function() if S.lowGfxOn then setLowGfx(false) end end)
-    pcall(function() if S.clockOn  then setClock(false)  end end)
-    pcall(function() if S.speedOn  then setSpeed(false)  end end)
-    pcall(function() if S.jumpOn   then setJump(false)   end end)
-end
-
-local function destroyAll()
-    silent = true
-    matikanSemua()
-    silent = false
-    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
-    table.clear(conns)
-    pcall(function() rekamFolder:Destroy() end)
-    pcall(function() rootFolderGaris:Destroy() end)
-    gui:Destroy()
-end
-
-local function resetSemua()
-    silent = true
-    matikanSemua()
-    silent = false
-    S.speedValue, S.jumpValue = DEFAULT_SPEED, DEFAULT_JUMP
-    S.clockValue = Lighting.ClockTime
-    rSpeed.val.Text = fmt(S.speedValue)
-    rJump.val.Text  = fmt(S.jumpValue)
-    rClock.val.Text = formatClock(S.clockValue)
-    notify("Reset ke default ✓ (file rute tetap aman)", true)
-end
-
---═══════════════ WIRING TOMBOL ═══════════════
-rSpeed.minus.MouseButton1Click:Connect(function()
-    S.speedValue = math.max(1, S.speedValue - STEP)
-    rSpeed.val.Text = fmt(S.speedValue)
-    if S.speedOn then applyMovement() end
-end)
-rSpeed.plus.MouseButton1Click:Connect(function()
-    S.speedValue += STEP
-    rSpeed.val.Text = fmt(S.speedValue)
-    if S.speedOn then applyMovement() end
-end)
-rSpeed.toggle.MouseButton1Click:Connect(function() setSpeed(not S.speedOn) end)
-
-rJump.minus.MouseButton1Click:Connect(function()
-    S.jumpValue = math.max(1, S.jumpValue - STEP)
-    rJump.val.Text = fmt(S.jumpValue)
-    if S.jumpOn then applyMovement() end
-end)
-rJump.plus.MouseButton1Click:Connect(function()
-    S.jumpValue += STEP
-    rJump.val.Text = fmt(S.jumpValue)
-    if S.jumpOn then applyMovement() end
-end)
-rJump.toggle.MouseButton1Click:Connect(function() setJump(not S.jumpOn) end)
-
-rShift.toggle.MouseButton1Click:Connect(function() setShiftlock(not S.shiftlockOn) end)
-rHideP.toggle.MouseButton1Click:Connect(function() setHidePlayers(not S.hidePlayersOn) end)
-rHideF.toggle.MouseButton1Click:Connect(function() setHideFx(not S.hideFxOn) end)
-rLowG.toggle.MouseButton1Click:Connect(function() setLowGfx(not S.lowGfxOn) end)
-
-rClock.minus.MouseButton1Click:Connect(function() bumpClock(-CLOCK_STEP) end)
-rClock.plus.MouseButton1Click:Connect(function() bumpClock(CLOCK_STEP) end)
-rClock.toggle.MouseButton1Click:Connect(function() setClock(not S.clockOn) end)
-
-rRekam.toggle.MouseButton1Click:Connect(function() setRekam(not S.rekamOn) end)
-rRekamP.toggle.MouseButton1Click:Connect(function() setRekamP(not S.rekamPOn) end)
-rSpec.toggle.MouseButton1Click:Connect(function() setSpec(not S.specOn) end)
-rVisAll.toggle.MouseButton1Click:Connect(function()
-    S.visAll = not S.visAll
-    tampilSemua(S.visAll)
-end)
-gabungBtn.MouseButton1Click:Connect(gabungTerpilih)
-tpPilihBtn.MouseButton1Click:Connect(tpKeTerpilih)
-
-prevBtn.MouseButton1Click:Connect(function()
-    if S.rekamPOn then notify("Stop rekam dulu untuk ganti target", false) return end
-    local list = daftarPemainLain()
-    if #list == 0 then return end
-    targetIdx = (targetIdx - 2) % #list + 1
-    updateTargetLabel()
-    applySpectate()
-end)
-nextBtn.MouseButton1Click:Connect(function()
-    if S.rekamPOn then notify("Stop rekam dulu untuk ganti target", false) return end
-    local list = daftarPemainLain()
-    if #list == 0 then return end
-    targetIdx = targetIdx % #list + 1
-    updateTargetLabel()
-    applySpectate()
-end)
-
-addConn(Players.PlayerAdded:Connect(function()
-    task.defer(updateTargetLabel)
-end))
-addConn(Players.PlayerRemoving:Connect(function()
-    task.defer(updateTargetLabel)
-end))
-
-resetBtn.MouseButton1Click:Connect(resetSemua)
-exitBtn.MouseButton1Click:Connect(destroyAll)
-
---═══════════════ TAB + MINIMIZE ═══════════════
-local tabAktif, minimized = false, false
-
-local function applyLayout()
-    scrollMain.Visible = (not minimized) and (not tabAktif)
-    scrollRute.Visible = (not minimized) and tabAktif
-    tabBar.Visible = not minimized
-    bottom.Visible = not minimized
-    main.Size = minimized and UDim2.fromOffset(480, 58) or UDim2.fromOffset(480, 620)
-end
-
-local function pilihTab(rute)
-    tabAktif = rute
-    tabMenuBtn.BackgroundColor3 = not rute and C.Ungu or C.Hitam2
-    tabMenuBtn.TextColor3 = not rute and C.Putih or C.Abuk
-    tabRuteBtn.BackgroundColor3 = rute and C.Ungu or C.Hitam2
-    tabRuteBtn.TextColor3 = rute and C.Putih or C.Abuk
-    applyLayout()
-end
-tabMenuBtn.MouseButton1Click:Connect(function() pilihTab(false) end)
-tabRuteBtn.MouseButton1Click:Connect(function() pilihTab(true) end)
-
-minBtn.MouseButton1Click:Connect(function()
-    minimized = not minimized
-    applyLayout()
-end)
-
---═══════════════ DRAG GUI ═══════════════
-do
-    local dragging, dragStart, startPos = false, nil, nil
-    title.InputBegan:Connect(function(input)
-        local t = input.UserInputType
-        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = main.Position
+    local frames = 0
+    RunService.RenderStepped:Connect(function() frames += 1 end)
+    task.spawn(function()
+        while true do
+            task.wait(1)
+            fpsLabel.Text = "FPS: " .. frames
+            frames = 0
         end
     end)
-    addConn(UserInputService.InputChanged:Connect(function(input)
-        if not dragging then return end
-        local t = input.UserInputType
-        if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
-            local d = input.Position - dragStart
-            local s = panelScale.Scale
-            main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X / s,
-                startPos.Y.Scale, startPos.Y.Offset + d.Y / s)
+end
+
+--■ KOMPONEN GUI -----------------------------------------------------------
+local scroll
+local sOrder = 0
+local function nextOrder() sOrder += 1 return sOrder end
+
+local function corner(parent, r)
+    return new("UICorner", {CornerRadius = UDim.new(0, r or 8), Parent = parent})
+end
+
+local function header(text)
+    return new("TextLabel", {
+        BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16),
+        Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = C.Purple,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Text = "▎" .. string.upper(text), LayoutOrder = nextOrder(), Parent = scroll,
+    })
+end
+
+local function makeSwitch(parent)
+    local sw = new("TextButton", {
+        BackgroundColor3 = C.Gray, Size = UDim2.new(0, 40, 0, 20),
+        Position = UDim2.new(1, -50, 0.5, -10), Text = "", AutoButtonColor = false, Parent = parent,
+    })
+    corner(sw, 10)
+    local knob = new("Frame", {
+        BackgroundColor3 = Color3.fromRGB(235, 235, 240), Size = UDim2.new(0, 14, 0, 14),
+        Position = UDim2.new(0, 3, 0.5, -7), Parent = sw,
+    })
+    corner(knob, 10)
+    local api = {}
+    function api.set(on)
+        TweenService:Create(sw, TweenInfo.new(0.15), {BackgroundColor3 = on and C.Green or C.Gray}):Play()
+        TweenService:Create(knob, TweenInfo.new(0.15), {Position = on and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)}):Play()
+    end
+    return sw, api
+end
+
+local function toggleRow(labelText, keyText, featureName)
+    local row = new("Frame", {BackgroundColor3 = C.Card, Size = UDim2.new(1, 0, 0, 34), LayoutOrder = nextOrder(), Parent = scroll})
+    corner(row)
+    local label = new("TextLabel", {
+        BackgroundTransparency = 1, Position = UDim2.new(0, 10, 0, 0), Size = UDim2.new(1, -110, 1, 0),
+        Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = C.Text,
+        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        Text = labelText, Parent = row,
+    })
+    if keyText then
+        local chip = new("TextLabel", {
+            BackgroundColor3 = C.Card2, Size = UDim2.new(0, 22, 0, 20), Position = UDim2.new(1, -80, 0.5, -10),
+            Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = C.Sub, Text = keyText, Parent = row,
+        })
+        corner(chip, 6)
+    end
+    local sw, api = makeSwitch(row)
+    Switches[featureName] = api
+    api.set(State[featureName .. "On"])
+    sw.MouseButton1Click:Connect(function()
+        setFeature(featureName, not State[featureName .. "On"])
+    end)
+    return row, label
+end
+
+local function stepperRow(getV, setV)
+    local row = new("Frame", {BackgroundColor3 = C.Card, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = nextOrder(), Parent = scroll})
+    corner(row)
+    local minus = new("TextButton", {BackgroundColor3 = C.Card2, Size = UDim2.new(0, 32, 0, 22), Position = UDim2.new(0, 8, 0.5, -11), Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = C.Text, Text = "-", AutoButtonColor = false, Parent = row})
+    corner(minus, 6)
+    local box = new("TextBox", {BackgroundColor3 = C.BG, Size = UDim2.new(1, -92, 0, 22), Position = UDim2.new(0, 46, 0.5, -11), Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = C.Text, Text = fmtNum(getV()), ClearTextOnFocus = false, Parent = row})
+    corner(box, 6)
+    local plus = new("TextButton", {BackgroundColor3 = C.Card2, Size = UDim2.new(0, 32, 0, 22), Position = UDim2.new(1, -40, 0.5, -11), Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = C.Text, Text = "+", AutoButtonColor = false, Parent = row})
+    corner(plus, 6)
+    local function refresh() box.Text = fmtNum(getV()) end
+    minus.MouseButton1Click:Connect(function() setV(clamp2(getV() - 0.25)); refresh() end)
+    plus.MouseButton1Click:Connect(function() setV(clamp2(getV() + 0.25)); refresh() end)
+    box.FocusLost:Connect(function()
+        local n = tonumber(box.Text)
+        if n then setV(clamp2(math.clamp(n, 0, 1000))) end
+        refresh()
+    end)
+    return refresh
+end
+
+local function sliderRow(labelText, minV, maxV, getV, setV, fmt)
+    local row = new("Frame", {BackgroundColor3 = C.Card, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = nextOrder(), Parent = scroll})
+    corner(row)
+    local label = new("TextLabel", {BackgroundTransparency = 1, Position = UDim2.new(0, 10, 0, 4), Size = UDim2.new(1, -20, 0, 16), Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = C.Text, TextXAlignment = Enum.TextXAlignment.Left, Text = labelText, Parent = row})
+    local bar = new("Frame", {BackgroundColor3 = C.Card2, Size = UDim2.new(1, -24, 0, 6), Position = UDim2.new(0, 12, 0, 30), Parent = row})
+    corner(bar, 3)
+    local fill = new("Frame", {BackgroundColor3 = C.Purple, Size = UDim2.new(0.5, 0, 1, 0), Parent = bar})
+    corner(fill, 3)
+    local knob = new("Frame", {BackgroundColor3 = Color3.fromRGB(240, 240, 245), Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(0.5, -7, 0.5, -7), Parent = bar})
+    corner(knob, 7)
+    local function render()
+        local a = math.clamp((getV() - minV) / (maxV - minV), 0, 1)
+        fill.Size = UDim2.new(a, 0, 1, 0)
+        knob.Position = UDim2.new(a, -7, 0.5, -7)
+        label.Text = labelText .. ": " .. fmt(getV())
+    end
+    local dragging = false
+    local function apply(x)
+        local rel = math.clamp((x - bar.AbsolutePosition.X) / math.max(bar.AbsoluteSize.X, 1), 0, 1)
+        setV(minV + (maxV - minV) * rel)
+        render()
+    end
+    bar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            apply(input.Position.X)
         end
-    end))
-    addConn(UserInputService.InputEnded:Connect(function(input)
-        local t = input.UserInputType
-        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            apply(input.Position.X)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = false
         end
-    end))
+    end)
+    render()
 end
 
---═══════════════ HOTKEYS ═══════════════
-addConn(UserInputService.InputBegan:Connect(function(input, gp)
-    if gp then return end
-    local kc = input.KeyCode
-    if kc == Enum.KeyCode.F then
-        main.Visible = not main.Visible
-    elseif kc == Enum.KeyCode.T then
-        setClock(not S.clockOn)
-    elseif kc == Enum.KeyCode.R then
-        setHidePlayers(not S.hidePlayersOn)
-    elseif kc == Enum.KeyCode.Q then
-        setSpeed(not S.speedOn)
-    elseif kc == Enum.KeyCode.G then
-        setShiftlock(not S.shiftlockOn)
-    elseif kc == Enum.KeyCode.K then
-        setRekam(not S.rekamOn)
-    elseif kc == Enum.KeyCode.L then
-        setRekamP(not S.rekamPOn)
+local function actionRow(text, color, callback)
+    local btn = new("TextButton", {BackgroundColor3 = color, Size = UDim2.new(1, 0, 0, 32), LayoutOrder = nextOrder(), Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = C.Text, Text = text, AutoButtonColor = false, Parent = scroll})
+    corner(btn)
+    btn.MouseButton1Click:Connect(callback)
+end
+
+local function makeDraggable(obj, hit, onClick)
+    local dragging, moved = false, false
+    local dragStart, startPos
+    hit.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging, moved = true, false
+            dragStart, startPos = input.Position, obj.Position
+        end
+    end)
+    hit.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging and not moved and onClick then onClick() end
+            dragging = false
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            if math.abs(delta.X) + math.abs(delta.Y) > 5 then moved = true end
+            if moved then
+                obj.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end
+    end)
+end
+
+--■ PANEL UTAMA -------------------------------------------------------------
+local panel = new("Frame", {
+    BackgroundColor3 = C.BG, Visible = false, Active = true,
+    Position = UDim2.new(0.5, -160, 0.5, -215), Size = UDim2.new(0, 320, 0, 430), Parent = gui,
+})
+corner(panel, 12)
+new("UIStroke", {Color = C.Purple, Thickness = 1.5, Transparency = 0.4, Parent = panel})
+new("TextLabel", {BackgroundTransparency = 1, Position = UDim2.new(0, 14, 0, 0), Size = UDim2.new(1, -60, 0, 40), Font = Enum.Font.GothamBlack, TextSize = 17, TextColor3 = C.Text, TextXAlignment = Enum.TextXAlignment.Left, Text = "KING SILAU", Parent = panel})
+local grad = new("Frame", {BackgroundColor3 = Color3.fromRGB(255, 255, 255), Size = UDim2.new(1, -24, 0, 2), Position = UDim2.new(0, 12, 0, 40), BorderSizePixel = 0, Parent = panel})
+new("UIGradient", {Color = ColorSequence.new(C.Purple, C.Blue), Parent = grad})
+local closeBtn = new("TextButton", {BackgroundColor3 = C.Card2, Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(1, -34, 0, 7), Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = C.Text, Text = "X", AutoButtonColor = false, Parent = panel})
+corner(closeBtn, 6)
+local titleHit = new("Frame", {BackgroundTransparency = 1, Size = UDim2.new(1, -44, 0, 40), Parent = panel, Active = true})
+
+scroll = new("ScrollingFrame", {
+    BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.new(0, 10, 0, 48),
+    Size = UDim2.new(1, -20, 1, -58), CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y,
+    ScrollBarThickness = 4, ScrollBarImageColor3 = C.Purple, Parent = panel,
+})
+new("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = scroll})
+
+togglePanel = function()
+    panel.Visible = not panel.Visible
+end
+closeBtn.MouseButton1Click:Connect(function() panel.Visible = false end)
+
+--■ TOMBOL MELAYANG (bisa digeser, tap = buka panel) -------------------------
+local floatBtn = new("TextButton", {
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255), Size = UDim2.new(0, 46, 0, 46),
+    Position = UDim2.new(0, 16, 0.5, -23), Font = Enum.Font.GothamBlack, TextSize = 15,
+    TextColor3 = Color3.fromRGB(255, 255, 255), Text = "KS", AutoButtonColor = false, Parent = gui,
+})
+corner(floatBtn, 23)
+new("UIGradient", {Color = ColorSequence.new(C.Purple, C.Blue), Parent = floatBtn})
+new("UIStroke", {Color = Color3.fromRGB(255, 255, 255), Thickness = 1, Transparency = 0.7, Parent = floatBtn})
+makeDraggable(floatBtn, floatBtn, function() togglePanel() end)
+makeDraggable(panel, titleHit)
+
+--■ ISI PANEL ----------------------------------------------------------------
+header("Player")
+toggleRow("Speed", "Q", "Speed")
+RefreshSpeed = stepperRow(
+    function() return State.SpeedValue end,
+    function(v)
+        State.SpeedValue = v
+        if State.SpeedOn then applySpeed() end
     end
-end))
+)
+local _, jumpLabel = toggleRow("JumpPower", nil, "Jump")
+JumpLabel = jumpLabel
+RefreshJump = stepperRow(
+    function()
+        local hum = getHum()
+        if hum and hum.UseJumpPower == false then return State.JumpHeightValue end
+        return State.JumpValue
+    end,
+    function(v)
+        local hum = getHum()
+        if hum and hum.UseJumpPower == false then State.JumpHeightValue = v else State.JumpValue = v end
+        if State.JumpOn then applyJump() end
+    end
+)
+toggleRow("Shiftlock Mobile", "C", "Shift")
 
---═══════════════ FINALIZE ═══════════════
-updateTargetLabel()
-local jumlahDimuat = muatFileTersimpan()
-renderDaftar()
-segarkanToggle()
-pilihTab(false)
-main.Visible = true
-notify("Siiilau ⚡ LITE v1.2.1 siap", true)
-if jumlahDimuat > 0 then
-    notify("📂 " .. jumlahDimuat .. " file rute dimuat ✓", true)
+header("Visual")
+toggleRow("Hide Player + Kendaraan", "R", "Hide")
+
+header("Lightweight")
+toggleRow("Partikel / Bayangan / Efek", nil, "LW")
+
+header("Cahaya")
+toggleRow("Cahaya", "T", "Light")
+do
+    local row = new("Frame", {BackgroundColor3 = C.Card, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = nextOrder(), Parent = scroll})
+    corner(row)
+    new("TextLabel", {BackgroundTransparency = 1, Position = UDim2.new(0, 10, 0, 0), Size = UDim2.new(0, 80, 1, 0), Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = C.Text, TextXAlignment = Enum.TextXAlignment.Left, Text = "Mode", Parent = row})
+    local bA = new("TextButton", {BackgroundColor3 = C.Purple, Size = UDim2.new(0, 56, 0, 22), Position = UDim2.new(1, -124, 0.5, -11), Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = C.Text, Text = "AUTO", AutoButtonColor = false, Parent = row})
+    corner(bA, 6)
+    local bM = new("TextButton", {BackgroundColor3 = C.Card2, Size = UDim2.new(0, 64, 0, 22), Position = UDim2.new(1, -70, 0.5, -11), Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = C.Text, Text = "MANUAL", AutoButtonColor = false, Parent = row})
+    corner(bM, 6)
+    local function render()
+        bA.BackgroundColor3 = State.LightMode == "Auto" and C.Purple or C.Card2
+        bM.BackgroundColor3 = State.LightMode == "Manual" and C.Purple or C.Card2
+    end
+    bA.MouseButton1Click:Connect(function() setLightMode("Auto") render() end)
+    bM.MouseButton1Click:Connect(function() setLightMode("Manual") render() end)
+    render()
 end
-if FS_OK then
-    notify("💾 Tersimpan permanen ✓", true)
-else
-    notify("⚠️ Executor tak dukung file", false)
+sliderRow("Jam (0-24)", 0, 24,
+    function() return State.ManualTime end,
+    function(v) State.ManualTime = v; applyManualLight() end,
+    function(v) return string.format("%.1f", v) end
+)
+sliderRow("Tingkat Terang", 0, 10,
+    function() return State.ManualBright end,
+    function(v) State.ManualBright = v; applyManualLight() end,
+    function(v) return string.format("%.1f", v) end
+)
+
+header("Map")
+toggleRow("Dinding Batas", "X", "Walls")
+
+header("Ekstra")
+actionRow("RESET SCRIPT", C.Red, function() resetAll() end)
+actionRow("REJOIN SERVER", C.Blue, function() rejoin() end)
+
+--=====================================================================--
+--  FITUR
+--=====================================================================--
+
+--■ CAHAYA -----------------------------------------------------------------
+local lightThread
+local lightChangedClock = false -- apakah KITA yang ubah jam (mode manual)?
+local function captureLighting()
+    if Original.ClockTime == nil then
+        Original.ClockTime = Lighting.ClockTime
+        Original.Brightness = Lighting.Brightness
+        Original.Ambient = Lighting.Ambient
+        Original.OutdoorAmbient = Lighting.OutdoorAmbient
+    end
 end
+local function restoreLighting()
+    if Original.Brightness ~= nil then Lighting.Brightness = Original.Brightness end
+    if Original.Ambient ~= nil then Lighting.Ambient = Original.Ambient end
+    if Original.OutdoorAmbient ~= nil then Lighting.OutdoorAmbient = Original.OutdoorAmbient end
+    if lightChangedClock and Original.ClockTime ~= nil then
+        Lighting.ClockTime = Original.ClockTime
+        lightChangedClock = false
+    end
+end
+applyManualLight = function()
+    if State.LightOn and State.LightMode == "Manual" then
+        captureLighting()
+        Lighting.ClockTime = State.ManualTime
+        Lighting.Brightness = State.ManualBright
+        lightChangedClock = true
+    end
+end
+local function applyAutoLight()
+    captureLighting()
+    local t = Lighting.ClockTime
+    if t >= 18 or t < 6 then -- malam -> diterangin, tapi bukan maksimal
+        Lighting.Brightness = 3
+        Lighting.Ambient = Color3.fromRGB(96, 96, 108)
+        Lighting.OutdoorAmbient = Color3.fromRGB(96, 96, 108)
+    else -- siang -> balik normal map (jam map TIDAK disentuh, aman untuk siklus siang-malam)
+        restoreLighting()
+    end
+end
+local function stopLightLoop()
+    if lightThread then
+        task.cancel(lightThread)
+        lightThread = nil
+    end
+end
+setLightMode = function(mode)
+    if State.LightMode == mode then return end
+    local wasManual = (State.LightMode == "Manual")
+    State.LightMode = mode
+    if State.LightOn then
+        stopLightLoop()
+        if wasManual then restoreLighting() end -- balikin jam dulu kalau tadi manual
+        if mode == "Auto" then
+            lightThread = task.spawn(function()
+                while State.LightOn and State.LightMode == "Auto" do
+                    applyAutoLight()
+                    task.wait(5)
+                end
+            end)
+        else
+            applyManualLight()
+        end
+    end
+    notify("Mode Cahaya: " .. string.upper(mode), true)
+end
+
+--■ SPEED & JUMP -------------------------------------------------------------
+applySpeed = function()
+    local hum = getHum()
+    if not hum then return end
+    local base
+    if State.SpeedOn then
+        base = State.SpeedValue
+    else
+        base = Original.WalkSpeed
+        -- FIX UTAMA: jangan pernah pulihkan 0 -> itulah penyebab frozen saat OFF
+        if not base or base <= 0 then base = 16 end
+    end
+    if State.ShiftOn and State.IsSwimming then
+        base = base * 1.10 -- bonus air (bagian paket shiftlock)
+    end
+    hum.WalkSpeed = base
+end
+applyJump = function()
+    local hum = getHum()
+    if not hum then return end
+    if hum.UseJumpPower then -- auto-deteksi JumpPower / JumpHeight
+        hum.JumpPower = State.JumpOn and State.JumpValue or (Original.JumpPower or hum.JumpPower)
+    else
+        hum.JumpHeight = State.JumpOn and State.JumpHeightValue or (Original.JumpHeight or hum.JumpHeight)
+    end
+end
+updateJumpLabel = function()
+    local hum = getHum()
+    if JumpLabel then
+        JumpLabel.Text = (hum and hum.UseJumpPower) and "JumpPower" or "JumpHeight (auto)"
+    end
+    if RefreshJump then RefreshJump() end
+end
+
+Setters.Speed = function(v, silent)
+    if State.SpeedOn == v then return end
+    local hum = getHum()
+    if v and hum then
+        captureWalkSpeed(hum) -- catat nilai asli terbaru sebelum override
+    end
+    State.SpeedOn = v
+    applySpeed()
+    if not v then
+        -- jaminan ekstra: 2 detik pertama setelah OFF, karakter PASTI bisa jalan
+        task.spawn(function()
+            for _ = 1, 8 do
+                task.wait(0.25)
+                if State.SpeedOn then return end
+                local h = getHum()
+                if h and h.WalkSpeed <= 0 then
+                    h.WalkSpeed = (Original.WalkSpeed and Original.WalkSpeed > 0) and Original.WalkSpeed or 16
+                end
+            end
+        end)
+    end
+    sync("Speed", v, silent, "Speed")
+end
+Setters.Jump = function(v, silent)
+    if State.JumpOn == v then return end
+    local hum = getHum()
+    if v and hum then
+        Original.JumpPower = hum.JumpPower
+        Original.JumpHeight = hum.JumpHeight
+        Original.UseJumpPower = hum.UseJumpPower
+    end
+    State.JumpOn = v
+    applyJump()
+    sync("Jump", v, silent, "JumpPower")
+end
+
+--■ SHIFTLOCK MOBILE ----------------------------------------------------------
+Setters.Shift = function(v, silent)
+    if State.ShiftOn == v then return end
+    State.ShiftOn = v
+    if v then
+        local hum = getHum()
+        if hum then hum.AutoRotate = false end
+        RunService:BindToRenderStep("KS_SHIFTLOCK", Enum.RenderPriority.Character.Value + 1, function()
+            local char = getChar()
+            local h = char and char:FindFirstChildOfClass("Humanoid")
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            if h and root and h.Health > 0 then
+                local cam = Workspace.CurrentCamera
+                local _, yaw = cam.CFrame:ToOrientation()
+                -- karakter selalu menghadap arah kamera + tetap tegak (termasuk saat berenang)
+                root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
+            end
+        end)
+    else
+        RunService:UnbindFromRenderStep("KS_SHIFTLOCK")
+        local hum = getHum()
+        if hum then hum.AutoRotate = true end
+        applySpeed() -- buang bonus air kalau sempat aktif
+    end
+    sync("Shift", v, silent, "Shiftlock Mobile")
+end
+
+--■ HIDE PLAYER + KENDARAAN -----------------------------------------------------
+local hiddenParts, hiddenBB, hiddenHumans, hiddenCharConns = {}, {}, {}, {}
+
+local function hideApplyTo(obj)
+    if (obj:IsA("BasePart") or obj:IsA("Decal")) and hiddenParts[obj] == nil then
+        hiddenParts[obj] = obj.Transparency
+        obj.Transparency = 1
+    elseif obj:IsA("BillboardGui") and hiddenBB[obj] == nil then
+        hiddenBB[obj] = obj.Enabled
+        obj.Enabled = false
+    end
+end
+local function hideCharacter(char)
+    if hiddenCharConns[char] then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hiddenHumans[hum] = hum.DisplayDistanceType
+        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None -- nama ikut hilang
+    end
+    for _, obj in ipairs(char:GetDescendants()) do hideApplyTo(obj) end
+    hiddenCharConns[char] = char.DescendantAdded:Connect(hideApplyTo)
+end
+local function unhideCharacter(char)
+    local conn = hiddenCharConns[char]
+    if conn then conn:Disconnect() hiddenCharConns[char] = nil end
+end
+local function unhideAll()
+    for obj, t in pairs(hiddenParts) do
+        pcall(function() if obj.Parent then obj.Transparency = t end end)
+    end
+    table.clear(hiddenParts)
+    for obj, e in pairs(hiddenBB) do
+        pcall(function() if obj.Parent then obj.Enabled = e end end)
+    end
+    table.clear(hiddenBB)
+    for hum, d in pairs(hiddenHumans) do
+        pcall(function() if hum.Parent then hum.DisplayDistanceType = d end end)
+    end
+    table.clear(hiddenHumans)
+    for char in pairs(hiddenCharConns) do unhideCharacter(char) end
+end
+
+-- kendaraan: model bert-seat, ukuran wajar, radius 20 stud
+local vehParts = {} -- [model] = { [part] = transparansi asli }
+local overlapParams = OverlapParams.new()
+
+local function isMyStuff(model)
+    local char = getChar()
+    if not char then return false end
+    if model == char or char:IsDescendantOf(model) then return true end
+    local hum = getHum()
+    if hum and hum.SeatPart then
+        if hum.SeatPart:FindFirstAncestorOfClass("Model") == model then return true end
+    end
+    return false
+end
+local function vehicleModelFromPart(part)
+    local m = part:FindFirstAncestorOfClass("Model")
+    while m do
+        if m:FindFirstChildWhichIsA("Humanoid", true) then return nil end -- karakter, skip
+        if m:FindFirstChildWhichIsA("VehicleSeat", true) or m:FindFirstChildWhichIsA("Seat", true) then
+            local s = m:GetExtentsSize()
+            if math.max(s.X, s.Y, s.Z) <= 64 then return m end
+            return nil -- kegedean (bagian map), skip
+        end
+        m = m:FindFirstAncestorOfClass("Model")
+    end
+    return nil
+end
+local function applyVehicleHide(model)
+    local set = vehParts[model]
+    if not set then set = {} vehParts[model] = set end
+    for _, p in ipairs(model:GetDescendants()) do
+        if p:IsA("BasePart") and set[p] == nil then
+            set[p] = p.Transparency
+            p.Transparency = math.max(p.Transparency, 0.8) -- transparan 80%
+        end
+    end
+end
+local function restoreVehicle(model)
+    local set = vehParts[model]
+    if not set then return end
+    vehParts[model] = nil
+    for p, t in pairs(set) do
+        pcall(function() if p.Parent then p.Transparency = t end end)
+    end
+end
+local function updateVehicles()
+    local root = getRoot()
+    if not root then return end
+    local char = getChar()
+    overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+    overlapParams.FilterDescendantsInstances = char and {char} or {}
+    local near = {}
+    for _, part in ipairs(Workspace:GetPartBoundsInRadius(root.Position, 20, overlapParams)) do
+        local m = vehicleModelFromPart(part)
+        if m and not isMyStuff(m) then near[m] = true end
+    end
+    for m in pairs(near) do applyVehicleHide(m) end
+    for m in pairs(vehParts) do
+        if not near[m] then restoreVehicle(m) end
+    end
+end
+local function restoreAllVehicles()
+    for m in pairs(vehParts) do restoreVehicle(m) end
+end
+
+local function playerHideHook(plr)
+    if plr == LocalPlayer then return end
+    plr.CharacterAdded:Connect(function(char)
+        task.wait(0.4)
+        if State.HideOn then hideCharacter(char) end
+    end)
+    if plr.Character and State.HideOn then hideCharacter(plr.Character) end
+end
+
+Setters.Hide = function(v, silent)
+    if State.HideOn == v then return end
+    State.HideOn = v
+    if v then
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character then hideCharacter(plr.Character) end
+        end
+    else
+        unhideAll()
+        restoreAllVehicles()
+    end
+    sync("Hide", v, silent, "Hide Player + Kendaraan")
+end
+
+--■ LIGHTWEIGHT ------------------------------------------------------------------
+local lwEffects, lwConns = {}, {}
+local function lwDisable(obj)
+    local dis = obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
+        or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") or obj:IsA("PostEffect")
+    if dis and lwEffects[obj] == nil then
+        lwEffects[obj] = obj.Enabled
+        obj.Enabled = false
+    end
+end
+Setters.LW = function(v, silent)
+    if State.LWOn == v then return end
+    State.LWOn = v
+    if v then
+        Original.GlobalShadows = Lighting.GlobalShadows
+        Lighting.GlobalShadows = false -- bayangan off
+        Original.WaterWaveSize = Terrain.WaterWaveSize
+        Original.WaterWaveSpeed = Terrain.WaterWaveSpeed
+        Terrain.WaterWaveSize = 0 -- gelombang air statis
+        Terrain.WaterWaveSpeed = 0
+        for _, obj in ipairs(Workspace:GetDescendants()) do lwDisable(obj) end
+        for _, obj in ipairs(Lighting:GetDescendants()) do lwDisable(obj) end
+        table.insert(lwConns, Workspace.DescendantAdded:Connect(function(obj) task.defer(lwDisable, obj) end))
+        table.insert(lwConns, Lighting.DescendantAdded:Connect(function(obj) task.defer(lwDisable, obj) end))
+    else
+        if Original.GlobalShadows ~= nil then Lighting.GlobalShadows = Original.GlobalShadows end
+        if Original.WaterWaveSize ~= nil then Terrain.WaterWaveSize = Original.WaterWaveSize end
+        if Original.WaterWaveSpeed ~= nil then Terrain.WaterWaveSpeed = Original.WaterWaveSpeed end
+        for obj, e in pairs(lwEffects) do
+            pcall(function() if obj.Parent then obj.Enabled = e end end)
+        end
+        table.clear(lwEffects)
+        for _, c in ipairs(lwConns) do c:Disconnect() end
+        table.clear(lwConns)
+    end
+    sync("LW", v, silent, "Lightweight")
+end
+
+--■ CAHAYA (toggle) ---------------------------------------------------------------
+Setters.Light = function(v, silent)
+    if State.LightOn == v then return end
+    State.LightOn = v
+    if v then
+        stopLightLoop()
+        if State.LightMode == "Auto" then
+            lightThread = task.spawn(function()
+                while State.LightOn and State.LightMode == "Auto" do
+                    applyAutoLight()
+                    task.wait(5)
+                end
+            end)
+        else
+            applyManualLight()
+        end
+    else
+        stopLightLoop()
+        restoreLighting()
+    end
+    sync("Light", v, silent, "Cahaya")
+end
+
+--■ DINDING BATAS -------------------------------------------------------------------
+local wallOriginal = {}
+local wallConn
+local function isWallCandidate(part)
+    if not part:IsA("BasePart") or part == Terrain then return false end
+    if part.Transparency < 1 then return false end -- harus invisible
+    if not part.CanCollide then return false end   -- harus solid (trigger/checkpoint gak ikut)
+    local m = part:FindFirstAncestorOfClass("Model")
+    if m and Players:GetPlayerFromCharacter(m) then return false end
+    return true
+end
+local function wallify(part)
+    if wallOriginal[part] then return end
+    wallOriginal[part] = {Transparency = part.Transparency, Color = part.Color}
+    part.Transparency = 0.35
+    part.Color = Color3.fromRGB(205, 205, 205)
+end
+Setters.Walls = function(v, silent)
+    if State.WallsOn == v then return end
+    State.WallsOn = v
+    if v then
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+            if isWallCandidate(obj) then wallify(obj) end
+        end
+        wallConn = Workspace.DescendantAdded:Connect(function(obj)
+            task.defer(function()
+                if State.WallsOn and isWallCandidate(obj) then wallify(obj) end
+            end)
+        end)
+    else
+        if wallConn then wallConn:Disconnect() wallConn = nil end
+        for part, d in pairs(wallOriginal) do
+            pcall(function()
+                if part.Parent then
+                    part.Transparency = d.Transparency
+                    part.Color = d.Color
+                end
+            end)
+        end
+        table.clear(wallOriginal)
+    end
+    sync("Walls", v, silent, "Dinding Batas")
+end
+
+--■ RESET & REJOIN --------------------------------------------------------------------
+resetAll = function()
+    setFeature("Speed", false, true)
+    setFeature("Jump", false, true)
+    setFeature("Shift", false, true)
+    setFeature("Hide", false, true)
+    setFeature("LW", false, true)
+    setFeature("Light", false, true)
+    setFeature("Walls", false, true)
+    State.SpeedValue, State.JumpValue, State.JumpHeightValue = 16, 50, 7.2
+    if RefreshSpeed then RefreshSpeed() end
+    if RefreshJump then RefreshJump() end
+    notify("Reset: semua fitur OFF, nilai asli kembali", true)
+end
+rejoin = function()
+    notify("Rejoin: balik ke server dalam 3 detik...", true)
+    task.delay(3, function()
+        local ok = pcall(function()
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+        end)
+        if not ok then
+            pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
+        end
+    end)
+end
+
+--■ KARAKTER: SIMPAN NILAI ASLI + PASANG ULANG SAAT RESPAWN ------------------------------
+local initedChar
+local function initCharacter(char)
+    if initedChar == char then return end
+    initedChar = char
+    local hum = char:WaitForChild("Humanoid", 10)
+    if not hum then return end
+    captureWalkSpeed(hum) -- FIX: hanya simpan kalau valid (> 0)
+    Original.JumpPower = hum.JumpPower
+    Original.JumpHeight = hum.JumpHeight
+    Original.UseJumpPower = hum.UseJumpPower
+    updateJumpLabel()
+    hum.StateChanged:Connect(function(_, newState)
+        local swimming = (newState == Enum.HumanoidStateType.Swimming)
+        if swimming ~= State.IsSwimming then
+            State.IsSwimming = swimming
+            if State.ShiftOn then applySpeed() end -- bonus air masuk/keluar otomatis
+        end
+    end)
+    task.wait(0.25) -- tunggu game selesai set karakter
+    captureWalkSpeed(hum) -- FIX: game bisa set speed asli belakangan, catat ulang
+    if State.SpeedOn then applySpeed() end
+    if State.JumpOn then applyJump() end
+    if State.ShiftOn then hum.AutoRotate = false end
+end
+LocalPlayer.CharacterAdded:Connect(initCharacter)
+task.spawn(function()
+    local c = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    initCharacter(c)
+end)
+
+--■ WATCHER NILAI ASLI (inti fix Speed OFF) ---------------------------------------------
+-- Selama fitur OFF, nilai asli game terus dicatat -> OFF/Reset selalu pulih ke nilai BENAR.
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        local hum = getHum()
+        if hum then
+            if not State.SpeedOn and not State.ShiftOn and hum.WalkSpeed > 0 then
+                Original.WalkSpeed = hum.WalkSpeed
+            end
+            if not State.JumpOn then
+                Original.JumpPower = hum.JumpPower
+                Original.JumpHeight = hum.JumpHeight
+                Original.UseJumpPower = hum.UseJumpPower
+            end
+        end
+        if not State.LightOn then
+            Original.ClockTime = Lighting.ClockTime
+            Original.Brightness = Lighting.Brightness
+            Original.Ambient = Lighting.Ambient
+            Original.OutdoorAmbient = Lighting.OutdoorAmbient
+        end
+    end
+end)
+
+-- hook pemain lain (hide)
+Players.PlayerAdded:Connect(playerHideHook)
+for _, plr in ipairs(Players:GetPlayers()) do playerHideHook(plr) end
+Players.PlayerRemoving:Connect(function(plr)
+    if plr.Character then unhideCharacter(plr.Character) end
+end)
+
+-- loop kendaraan (radius 20 stud)
+task.spawn(function()
+    while true do
+        if State.HideOn then pcall(updateVehicles) end
+        task.wait(0.3)
+    end
+end)
+
+--■ KEYBIND PC ---------------------------------------------------------------------------
+local lastK = 0
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end -- lagi ngetik di TextBox -> abaikan
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+    local k = input.KeyCode
+    if k == Enum.KeyCode.F then
+        togglePanel()
+    elseif k == Enum.KeyCode.Q then
+        setFeature("Speed", not State.SpeedOn)
+    elseif k == Enum.KeyCode.T then
+        setFeature("Light", not State.LightOn)
+    elseif k == Enum.KeyCode.R then
+        setFeature("Hide", not State.HideOn)
+    elseif k == Enum.KeyCode.C then
+        setFeature("Shift", not State.ShiftOn)
+    elseif k == Enum.KeyCode.X then
+        setFeature("Walls", not State.WallsOn)
+    elseif k == Enum.KeyCode.K then
+        local now = os.clock()
+        if now - lastK < 0.45 then
+            lastK = 0
+            rejoin()
+        else
+            lastK = now
+            notify("Tekan K sekali lagi untuk Rejoin", true)
+        end
+    end
+end)
+
+notify("KING SILAU v1.1 aktif — tekan F / tap tombol KS", true)
