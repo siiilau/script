@@ -1,6 +1,7 @@
 --=====================================================================--
---  KING SILAU — Panel Utility (Client-side) v1.1
---  FIX: Speed OFF tidak bisa jalan (nilai asli tercatat 0)
+--  KING SILAU — Panel Utility (Client-side) v1.3
+--  NILAI AWAL: Speed = 17.25 | Jump = 62.00 (juga saat Reset)
+--  Panel dibuka lewat: F (PC) atau tap teks FPS di pojok kiri bawah.
 --=====================================================================--
 
 local Players          = game:GetService("Players")
@@ -25,9 +26,12 @@ do
 end
 
 --■ STATE & NILAI ASLI --------------------------------------------------
+local DEFAULT_SPEED = 17.25  -- ◄ posisi awal Speed
+local DEFAULT_JUMP  = 62.00  -- ◄ posisi awal JumpPower
+
 local State = {
-    SpeedOn = false, SpeedValue = 16,
-    JumpOn  = false, JumpValue = 50, JumpHeightValue = 7.2,
+    SpeedOn = false, SpeedValue = DEFAULT_SPEED,
+    JumpOn  = false, JumpValue = DEFAULT_JUMP, JumpHeightValue = 7.2,
     ShiftOn = false, IsSwimming = false,
     HideOn  = false,
     LWOn    = false,
@@ -66,7 +70,7 @@ local function fmtNum(v)
     s = s:gsub("%.$", "")
     return s
 end
--- FIX: hanya simpan nilai asli yang valid (> 0), jangan pernah 0
+-- hanya simpan nilai asli yang valid (> 0), jangan pernah 0
 local function captureWalkSpeed(hum)
     if hum.WalkSpeed > 0 then Original.WalkSpeed = hum.WalkSpeed end
 end
@@ -124,11 +128,12 @@ local function sync(name, v, silent, label)
     if not silent then notify(label .. ": " .. (v and "ON" or "OFF"), v) end
 end
 
---■ FPS COUNTER -----------------------------------------------------------
-local fpsLabel = new("TextLabel", {
-    BackgroundColor3 = C.BG, BackgroundTransparency = 0.35,
-    Position = UDim2.new(0, 8, 1, -24), Size = UDim2.new(0, 68, 0, 16),
-    Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.Sub, Text = "FPS: --", Parent = gui,
+--■ FPS COUNTER + PEMBUKA PANEL (kecil di pojok, tidak mengganggu) --------
+local fpsLabel = new("TextButton", {
+    BackgroundColor3 = C.BG, BackgroundTransparency = 0.45,
+    Position = UDim2.new(0, 8, 1, -24), Size = UDim2.new(0, 68, 0, 18),
+    Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = C.Sub,
+    Text = "FPS: --", AutoButtonColor = false, Parent = gui,
 })
 new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = fpsLabel})
 do
@@ -272,7 +277,7 @@ local function actionRow(text, color, callback)
     btn.MouseButton1Click:Connect(callback)
 end
 
-local function makeDraggable(obj, hit, onClick)
+local function makeDraggable(obj, hit)
     local dragging, moved = false, false
     local dragStart, startPos
     hit.InputBegan:Connect(function(input)
@@ -283,7 +288,6 @@ local function makeDraggable(obj, hit, onClick)
     end)
     hit.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            if dragging and not moved and onClick then onClick() end
             dragging = false
         end
     end)
@@ -324,17 +328,7 @@ togglePanel = function()
     panel.Visible = not panel.Visible
 end
 closeBtn.MouseButton1Click:Connect(function() panel.Visible = false end)
-
---■ TOMBOL MELAYANG (bisa digeser, tap = buka panel) -------------------------
-local floatBtn = new("TextButton", {
-    BackgroundColor3 = Color3.fromRGB(255, 255, 255), Size = UDim2.new(0, 46, 0, 46),
-    Position = UDim2.new(0, 16, 0.5, -23), Font = Enum.Font.GothamBlack, TextSize = 15,
-    TextColor3 = Color3.fromRGB(255, 255, 255), Text = "KS", AutoButtonColor = false, Parent = gui,
-})
-corner(floatBtn, 23)
-new("UIGradient", {Color = ColorSequence.new(C.Purple, C.Blue), Parent = floatBtn})
-new("UIStroke", {Color = Color3.fromRGB(255, 255, 255), Thickness = 1, Transparency = 0.7, Parent = floatBtn})
-makeDraggable(floatBtn, floatBtn, function() togglePanel() end)
+fpsLabel.MouseButton1Click:Connect(function() togglePanel() end) -- tap FPS = buka/tutup panel
 makeDraggable(panel, titleHit)
 
 --■ ISI PANEL ----------------------------------------------------------------
@@ -411,7 +405,7 @@ actionRow("REJOIN SERVER", C.Blue, function() rejoin() end)
 
 --■ CAHAYA -----------------------------------------------------------------
 local lightThread
-local lightChangedClock = false -- apakah KITA yang ubah jam (mode manual)?
+local lightChangedClock = false
 local function captureLighting()
     if Original.ClockTime == nil then
         Original.ClockTime = Lighting.ClockTime
@@ -440,11 +434,11 @@ end
 local function applyAutoLight()
     captureLighting()
     local t = Lighting.ClockTime
-    if t >= 18 or t < 6 then -- malam -> diterangin, tapi bukan maksimal
+    if t >= 18 or t < 6 then
         Lighting.Brightness = 3
         Lighting.Ambient = Color3.fromRGB(96, 96, 108)
         Lighting.OutdoorAmbient = Color3.fromRGB(96, 96, 108)
-    else -- siang -> balik normal map (jam map TIDAK disentuh, aman untuk siklus siang-malam)
+    else
         restoreLighting()
     end
 end
@@ -460,7 +454,7 @@ setLightMode = function(mode)
     State.LightMode = mode
     if State.LightOn then
         stopLightLoop()
-        if wasManual then restoreLighting() end -- balikin jam dulu kalau tadi manual
+        if wasManual then restoreLighting() end
         if mode == "Auto" then
             lightThread = task.spawn(function()
                 while State.LightOn and State.LightMode == "Auto" do
@@ -484,8 +478,7 @@ applySpeed = function()
         base = State.SpeedValue
     else
         base = Original.WalkSpeed
-        -- FIX UTAMA: jangan pernah pulihkan 0 -> itulah penyebab frozen saat OFF
-        if not base or base <= 0 then base = 16 end
+        if not base or base <= 0 then base = 16 end -- jangan pernah pulihkan 0
     end
     if State.ShiftOn and State.IsSwimming then
         base = base * 1.10 -- bonus air (bagian paket shiftlock)
@@ -495,7 +488,7 @@ end
 applyJump = function()
     local hum = getHum()
     if not hum then return end
-    if hum.UseJumpPower then -- auto-deteksi JumpPower / JumpHeight
+    if hum.UseJumpPower then
         hum.JumpPower = State.JumpOn and State.JumpValue or (Original.JumpPower or hum.JumpPower)
     else
         hum.JumpHeight = State.JumpOn and State.JumpHeightValue or (Original.JumpHeight or hum.JumpHeight)
@@ -513,7 +506,7 @@ Setters.Speed = function(v, silent)
     if State.SpeedOn == v then return end
     local hum = getHum()
     if v and hum then
-        captureWalkSpeed(hum) -- catat nilai asli terbaru sebelum override
+        captureWalkSpeed(hum)
     end
     State.SpeedOn = v
     applySpeed()
@@ -559,7 +552,6 @@ Setters.Shift = function(v, silent)
             if h and root and h.Health > 0 then
                 local cam = Workspace.CurrentCamera
                 local _, yaw = cam.CFrame:ToOrientation()
-                -- karakter selalu menghadap arah kamera + tetap tegak (termasuk saat berenang)
                 root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
             end
         end)
@@ -567,7 +559,7 @@ Setters.Shift = function(v, silent)
         RunService:UnbindFromRenderStep("KS_SHIFTLOCK")
         local hum = getHum()
         if hum then hum.AutoRotate = true end
-        applySpeed() -- buang bonus air kalau sempat aktif
+        applySpeed()
     end
     sync("Shift", v, silent, "Shiftlock Mobile")
 end
@@ -589,7 +581,7 @@ local function hideCharacter(char)
     local hum = char:FindFirstChildOfClass("Humanoid")
     if hum then
         hiddenHumans[hum] = hum.DisplayDistanceType
-        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None -- nama ikut hilang
+        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
     end
     for _, obj in ipairs(char:GetDescendants()) do hideApplyTo(obj) end
     hiddenCharConns[char] = char.DescendantAdded:Connect(hideApplyTo)
@@ -614,8 +606,7 @@ local function unhideAll()
     for char in pairs(hiddenCharConns) do unhideCharacter(char) end
 end
 
--- kendaraan: model bert-seat, ukuran wajar, radius 20 stud
-local vehParts = {} -- [model] = { [part] = transparansi asli }
+local vehParts = {}
 local overlapParams = OverlapParams.new()
 
 local function isMyStuff(model)
@@ -631,11 +622,11 @@ end
 local function vehicleModelFromPart(part)
     local m = part:FindFirstAncestorOfClass("Model")
     while m do
-        if m:FindFirstChildWhichIsA("Humanoid", true) then return nil end -- karakter, skip
+        if m:FindFirstChildWhichIsA("Humanoid", true) then return nil end
         if m:FindFirstChildWhichIsA("VehicleSeat", true) or m:FindFirstChildWhichIsA("Seat", true) then
             local s = m:GetExtentsSize()
             if math.max(s.X, s.Y, s.Z) <= 64 then return m end
-            return nil -- kegedean (bagian map), skip
+            return nil
         end
         m = m:FindFirstAncestorOfClass("Model")
     end
@@ -647,7 +638,7 @@ local function applyVehicleHide(model)
     for _, p in ipairs(model:GetDescendants()) do
         if p:IsA("BasePart") and set[p] == nil then
             set[p] = p.Transparency
-            p.Transparency = math.max(p.Transparency, 0.8) -- transparan 80%
+            p.Transparency = math.max(p.Transparency, 0.8)
         end
     end
 end
@@ -717,10 +708,10 @@ Setters.LW = function(v, silent)
     State.LWOn = v
     if v then
         Original.GlobalShadows = Lighting.GlobalShadows
-        Lighting.GlobalShadows = false -- bayangan off
+        Lighting.GlobalShadows = false
         Original.WaterWaveSize = Terrain.WaterWaveSize
         Original.WaterWaveSpeed = Terrain.WaterWaveSpeed
-        Terrain.WaterWaveSize = 0 -- gelombang air statis
+        Terrain.WaterWaveSize = 0
         Terrain.WaterWaveSpeed = 0
         for _, obj in ipairs(Workspace:GetDescendants()) do lwDisable(obj) end
         for _, obj in ipairs(Lighting:GetDescendants()) do lwDisable(obj) end
@@ -768,8 +759,8 @@ local wallOriginal = {}
 local wallConn
 local function isWallCandidate(part)
     if not part:IsA("BasePart") or part == Terrain then return false end
-    if part.Transparency < 1 then return false end -- harus invisible
-    if not part.CanCollide then return false end   -- harus solid (trigger/checkpoint gak ikut)
+    if part.Transparency < 1 then return false end
+    if not part.CanCollide then return false end
     local m = part:FindFirstAncestorOfClass("Model")
     if m and Players:GetPlayerFromCharacter(m) then return false end
     return true
@@ -816,10 +807,10 @@ resetAll = function()
     setFeature("LW", false, true)
     setFeature("Light", false, true)
     setFeature("Walls", false, true)
-    State.SpeedValue, State.JumpValue, State.JumpHeightValue = 16, 50, 7.2
+    State.SpeedValue, State.JumpValue, State.JumpHeightValue = DEFAULT_SPEED, DEFAULT_JUMP, 7.2
     if RefreshSpeed then RefreshSpeed() end
     if RefreshJump then RefreshJump() end
-    notify("Reset: semua fitur OFF, nilai asli kembali", true)
+    notify("Reset: semua fitur OFF, nilai awal 17.25 / 62", true)
 end
 rejoin = function()
     notify("Rejoin: balik ke server dalam 3 detik...", true)
@@ -840,7 +831,7 @@ local function initCharacter(char)
     initedChar = char
     local hum = char:WaitForChild("Humanoid", 10)
     if not hum then return end
-    captureWalkSpeed(hum) -- FIX: hanya simpan kalau valid (> 0)
+    captureWalkSpeed(hum)
     Original.JumpPower = hum.JumpPower
     Original.JumpHeight = hum.JumpHeight
     Original.UseJumpPower = hum.UseJumpPower
@@ -849,11 +840,11 @@ local function initCharacter(char)
         local swimming = (newState == Enum.HumanoidStateType.Swimming)
         if swimming ~= State.IsSwimming then
             State.IsSwimming = swimming
-            if State.ShiftOn then applySpeed() end -- bonus air masuk/keluar otomatis
+            if State.ShiftOn then applySpeed() end
         end
     end)
-    task.wait(0.25) -- tunggu game selesai set karakter
-    captureWalkSpeed(hum) -- FIX: game bisa set speed asli belakangan, catat ulang
+    task.wait(0.25)
+    captureWalkSpeed(hum)
     if State.SpeedOn then applySpeed() end
     if State.JumpOn then applyJump() end
     if State.ShiftOn then hum.AutoRotate = false end
@@ -864,8 +855,7 @@ task.spawn(function()
     initCharacter(c)
 end)
 
---■ WATCHER NILAI ASLI (inti fix Speed OFF) ---------------------------------------------
--- Selama fitur OFF, nilai asli game terus dicatat -> OFF/Reset selalu pulih ke nilai BENAR.
+--■ WATCHER NILAI ASLI -------------------------------------------------------------------
 task.spawn(function()
     while true do
         task.wait(0.5)
@@ -907,7 +897,7 @@ end)
 --■ KEYBIND PC ---------------------------------------------------------------------------
 local lastK = 0
 UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end -- lagi ngetik di TextBox -> abaikan
+    if processed then return end
     if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
     local k = input.KeyCode
     if k == Enum.KeyCode.F then
@@ -934,4 +924,4 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
-notify("KING SILAU v1.1 aktif — tekan F / tap tombol KS", true)
+notify("KING SILAU v1.3 — F / tap FPS utk buka panel", true)
