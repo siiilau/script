@@ -1,7 +1,5 @@
 --=====================================================================--
---  KING SILAU — Panel Utility (Client-side) v1.3
---  NILAI AWAL: Speed = 17.25 | Jump = 62.00 (juga saat Reset)
---  Panel dibuka lewat: F (PC) atau tap teks FPS di pojok kiri bawah.
+--  KING SILAU — Panel Utility (Client-side) v1.4
 --=====================================================================--
 
 local Players          = game:GetService("Players")
@@ -25,10 +23,14 @@ do
     if old then old:Destroy() end
 end
 
---■ STATE & NILAI ASLI --------------------------------------------------
-local DEFAULT_SPEED = 17.25  -- ◄ posisi awal Speed
-local DEFAULT_JUMP  = 62.00  -- ◄ posisi awal JumpPower
+--■ NILAI TETAP ---------------------------------------------------------
+local DEFAULT_SPEED  = 17.25  -- nilai Speed saat ON (awal & setelah Reset)
+local DEFAULT_JUMP   = 62.00  -- nilai Jump saat ON (awal & setelah Reset)
+local OFF_SPEED      = 17     -- ◄ nilai Speed saat OFF
+local OFF_JUMP       = 51.25  -- ◄ nilai Jump saat OFF (JumpPower)
+local OFF_JUMP_H     = 6.69   -- ekuivalen 51.25 untuk game yang pakai JumpHeight
 
+--■ STATE ----------------------------------------------------------------
 local State = {
     SpeedOn = false, SpeedValue = DEFAULT_SPEED,
     JumpOn  = false, JumpValue = DEFAULT_JUMP, JumpHeightValue = 7.2,
@@ -38,7 +40,7 @@ local State = {
     LightOn = false, LightMode = "Auto", ManualTime = 14, ManualBright = 2.5,
     WallsOn = false,
 }
-local Original = {} -- semua nilai asli disimpan di sini
+local Original = {} -- nilai asli Lighting (untuk fitur cahaya/lightweight)
 
 --■ FORWARD -------------------------------------------------------------
 local Setters, Switches = {}, {}
@@ -69,10 +71,6 @@ local function fmtNum(v)
     s = s:gsub("0+$", "")
     s = s:gsub("%.$", "")
     return s
-end
--- hanya simpan nilai asli yang valid (> 0), jangan pernah 0
-local function captureWalkSpeed(hum)
-    if hum.WalkSpeed > 0 then Original.WalkSpeed = hum.WalkSpeed end
 end
 
 --■ TEMA ----------------------------------------------------------------
@@ -328,7 +326,7 @@ togglePanel = function()
     panel.Visible = not panel.Visible
 end
 closeBtn.MouseButton1Click:Connect(function() panel.Visible = false end)
-fpsLabel.MouseButton1Click:Connect(function() togglePanel() end) -- tap FPS = buka/tutup panel
+fpsLabel.MouseButton1Click:Connect(function() togglePanel() end)
 makeDraggable(panel, titleHit)
 
 --■ ISI PANEL ----------------------------------------------------------------
@@ -470,16 +468,11 @@ setLightMode = function(mode)
 end
 
 --■ SPEED & JUMP -------------------------------------------------------------
+-- OFF = nilai tetap: Speed 17 | Jump 51.25 (tidak lagi memulihkan nilai asli game)
 applySpeed = function()
     local hum = getHum()
     if not hum then return end
-    local base
-    if State.SpeedOn then
-        base = State.SpeedValue
-    else
-        base = Original.WalkSpeed
-        if not base or base <= 0 then base = 16 end -- jangan pernah pulihkan 0
-    end
+    local base = State.SpeedOn and State.SpeedValue or OFF_SPEED -- ◄ OFF = 17
     if State.ShiftOn and State.IsSwimming then
         base = base * 1.10 -- bonus air (bagian paket shiftlock)
     end
@@ -489,9 +482,9 @@ applyJump = function()
     local hum = getHum()
     if not hum then return end
     if hum.UseJumpPower then
-        hum.JumpPower = State.JumpOn and State.JumpValue or (Original.JumpPower or hum.JumpPower)
+        hum.JumpPower = State.JumpOn and State.JumpValue or OFF_JUMP -- ◄ OFF = 51.25
     else
-        hum.JumpHeight = State.JumpOn and State.JumpHeightValue or (Original.JumpHeight or hum.JumpHeight)
+        hum.JumpHeight = State.JumpOn and State.JumpHeightValue or OFF_JUMP_H
     end
 end
 updateJumpLabel = function()
@@ -504,21 +497,17 @@ end
 
 Setters.Speed = function(v, silent)
     if State.SpeedOn == v then return end
-    local hum = getHum()
-    if v and hum then
-        captureWalkSpeed(hum)
-    end
     State.SpeedOn = v
     applySpeed()
     if not v then
-        -- jaminan ekstra: 2 detik pertama setelah OFF, karakter PASTI bisa jalan
+        -- jaminan ekstra: 2 detik pertama setelah OFF, speed dikunci di 17
         task.spawn(function()
             for _ = 1, 8 do
                 task.wait(0.25)
                 if State.SpeedOn then return end
                 local h = getHum()
-                if h and h.WalkSpeed <= 0 then
-                    h.WalkSpeed = (Original.WalkSpeed and Original.WalkSpeed > 0) and Original.WalkSpeed or 16
+                if h and h.WalkSpeed ~= OFF_SPEED then
+                    h.WalkSpeed = OFF_SPEED
                 end
             end
         end)
@@ -527,14 +516,25 @@ Setters.Speed = function(v, silent)
 end
 Setters.Jump = function(v, silent)
     if State.JumpOn == v then return end
-    local hum = getHum()
-    if v and hum then
-        Original.JumpPower = hum.JumpPower
-        Original.JumpHeight = hum.JumpHeight
-        Original.UseJumpPower = hum.UseJumpPower
-    end
     State.JumpOn = v
     applyJump()
+    if not v then
+        -- jaminan ekstra: 2 detik pertama setelah OFF, jump dikunci di 51.25
+        task.spawn(function()
+            for _ = 1, 8 do
+                task.wait(0.25)
+                if State.JumpOn then return end
+                local h = getHum()
+                if h then
+                    if h.UseJumpPower and h.JumpPower ~= OFF_JUMP then
+                        h.JumpPower = OFF_JUMP
+                    elseif not h.UseJumpPower and h.JumpHeight ~= OFF_JUMP_H then
+                        h.JumpHeight = OFF_JUMP_H
+                    end
+                end
+            end
+        end)
+    end
     sync("Jump", v, silent, "JumpPower")
 end
 
@@ -800,8 +800,8 @@ end
 
 --■ RESET & REJOIN --------------------------------------------------------------------
 resetAll = function()
-    setFeature("Speed", false, true)
-    setFeature("Jump", false, true)
+    setFeature("Speed", false, true) -- OFF -> speed langsung 17
+    setFeature("Jump", false, true)  -- OFF -> jump langsung 51.25
     setFeature("Shift", false, true)
     setFeature("Hide", false, true)
     setFeature("LW", false, true)
@@ -810,7 +810,7 @@ resetAll = function()
     State.SpeedValue, State.JumpValue, State.JumpHeightValue = DEFAULT_SPEED, DEFAULT_JUMP, 7.2
     if RefreshSpeed then RefreshSpeed() end
     if RefreshJump then RefreshJump() end
-    notify("Reset: semua fitur OFF, nilai awal 17.25 / 62", true)
+    notify("Reset: semua OFF (Speed 17 / Jump 51.25)", true)
 end
 rejoin = function()
     notify("Rejoin: balik ke server dalam 3 detik...", true)
@@ -824,17 +824,13 @@ rejoin = function()
     end)
 end
 
---■ KARAKTER: SIMPAN NILAI ASLI + PASANG ULANG SAAT RESPAWN ------------------------------
+--■ KARAKTER: PASANG ULANG SAAT RESPAWN -----------------------------------------------
 local initedChar
 local function initCharacter(char)
     if initedChar == char then return end
     initedChar = char
     local hum = char:WaitForChild("Humanoid", 10)
     if not hum then return end
-    captureWalkSpeed(hum)
-    Original.JumpPower = hum.JumpPower
-    Original.JumpHeight = hum.JumpHeight
-    Original.UseJumpPower = hum.UseJumpPower
     updateJumpLabel()
     hum.StateChanged:Connect(function(_, newState)
         local swimming = (newState == Enum.HumanoidStateType.Swimming)
@@ -844,7 +840,6 @@ local function initCharacter(char)
         end
     end)
     task.wait(0.25)
-    captureWalkSpeed(hum)
     if State.SpeedOn then applySpeed() end
     if State.JumpOn then applyJump() end
     if State.ShiftOn then hum.AutoRotate = false end
@@ -853,30 +848,6 @@ LocalPlayer.CharacterAdded:Connect(initCharacter)
 task.spawn(function()
     local c = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     initCharacter(c)
-end)
-
---■ WATCHER NILAI ASLI -------------------------------------------------------------------
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        local hum = getHum()
-        if hum then
-            if not State.SpeedOn and not State.ShiftOn and hum.WalkSpeed > 0 then
-                Original.WalkSpeed = hum.WalkSpeed
-            end
-            if not State.JumpOn then
-                Original.JumpPower = hum.JumpPower
-                Original.JumpHeight = hum.JumpHeight
-                Original.UseJumpPower = hum.UseJumpPower
-            end
-        end
-        if not State.LightOn then
-            Original.ClockTime = Lighting.ClockTime
-            Original.Brightness = Lighting.Brightness
-            Original.Ambient = Lighting.Ambient
-            Original.OutdoorAmbient = Lighting.OutdoorAmbient
-        end
-    end
 end)
 
 -- hook pemain lain (hide)
@@ -924,4 +895,4 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
-notify("KING SILAU v1.3 — F / tap FPS utk buka panel", true)
+notify("KING SILAU v1.4 — F / tap FPS utk buka panel", true)
