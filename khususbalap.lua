@@ -1,11 +1,20 @@
 --[[═════════════════════════════════════════
-    ⛓️ Siiilau⚡ — RACE LITE v1.0.0 (🎥 TAB RUTE)
-    Rekam ultra-halus (0.01s / 0.5 stud) → belokan
-    sekecil apapun tercatat. Garis tampil di-smooth
-    (mulus, tipis, transparan, tidak ganggu pandangan)
-    Rekam diri/pemain → isi nama → simpan
-    GABUNG CERDAS: titik temu / jembatan otomatis
-    HOTKEYS: F=GUI Q=Speed R=Hide T=Bright
+    ⛓️ Siiilau⚡ — RACE LITE v1.2.0 (⚡ OPTIMIZED)
+    ─────────────────────────────────────────
+    PERFORMA:
+    • RaycastParams di-reuse (bukan bikin baru tiap tick)
+    • Preview garis dibatasi 50 part (auto-buang yg lama)
+    • Label UI update tiap 10 titik
+    • Draft disimpan format ringkas (hemat CPU)
+    • Scan kendaraan early-exit
+    • Cache karakter/humanoid/root
+    🔒 SHIFTLOCK MOBILE:
+    • Tombol 🔒 melayang (klik=toggle, drag=geser) + hotkey G
+    • 🐸 Saat berenang: badan TETAP TEGAK → animasi gaya
+      katak persis mobile (bukan penguin nyelam ala PC)
+    • 🚗 Saat duduk di kendaraan: efek suspend otomatis
+      (tidak mengganggu fisika mobil)
+    HOTKEYS: F=GUI Q=Speed R=Hide T=Bright G=Shiftlock
              K=Rekam Diri L=Rekam Player
     ═════════════════════════════════════════]]
 
@@ -17,24 +26,28 @@ local CLOCK_STEP    = 0.5
 local LOCK_TIME     = true
 
 local RADIUS_SENTUH = 20
-local CEK_INTERVAL  = 0.4
+local CEK_INTERVAL  = 0.6      -- ⚡ dari 0.4
 local UKURAN_GUI    = 0.8
 
--- 🎥 REKAM RUTE (ULTRA HALUS)
-local REC_INTERVAL     = 0.01   -- cek posisi tiap 0.01 detik
-local REC_MIN_JARAK    = 0.5    -- titik baru tiap 0.5 stud (sangat detail)
-local MAX_TITIK        = 30000  -- batas titik per file (data, bukan part)
-local DRAFT_TIAP       = 500    -- auto-save draft tiap N titik
-local JARAK_LOMPAT     = 60     -- teleport > ini = garis putus
+-- 🎥 REKAM RUTE (⚡ LITE)
+local REC_INTERVAL  = 0.02     -- ⚡ dari 0.01 (masih detail)
+local REC_MIN_JARAK = 0.75     -- ⚡ dari 0.5
+local MAX_TITIK     = 15000    -- ⚡ dari 30000
+local DRAFT_TIAP    = 1000     -- ⚡ dari 500
+local JARAK_LOMPAT  = 60
 
--- ✏️ TAMPILAN GARIS (halus & tidak mengganggu)
-local LINE_TEBAL       = 0.05   -- tipis
-local LINE_TRANS       = 0.7   -- semi transparan (0=padat, 1=hilang)
-local SMPL_ANGLE       = 8      -- derajat: belokan ≥ ini wajib digambar
-local SMPL_MAX_SEG     = 12     -- part maksimal 12 stud (ikut kontur tanah)
-local CHAIKIN_ITER     = 1      -- iterasi pelicin kurva (0=mati, 1=halus, 2=sangat halus)
-local PREVIEW_BELOK    = 15     -- (preview live saat merekam)
-local PREVIEW_MAX      = 12
+-- ✏️ TAMPILAN GARIS
+local LINE_TEBAL    = 0.05
+local LINE_TRANS    = 0.7
+local SMPL_ANGLE    = 8
+local SMPL_MAX_SEG  = 12
+local CHAIKIN_ITER  = 1
+local PREVIEW_BELOK = 25       -- ⚡ dari 15
+local PREVIEW_MAX   = 20       -- ⚡ dari 12
+local PV_MAX_PARTS  = 50       -- ⚡ batas part preview live
+
+-- 🔒 SHIFTLOCK (gaya mobile)
+local SHIFTLOCK_OFFSET = Vector3.new(1.75, 0, 0) -- set Vector3.zero = kamera tanpa geser bahu
 
 -- 🔗 GABUNG
 local GABUNG_MIN_JARAK = 5
@@ -46,6 +59,7 @@ local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local Lighting         = game:GetService("Lighting")
 local HttpService      = game:GetService("HttpService")
+local RunService       = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 if not LocalPlayer then
@@ -65,8 +79,6 @@ local function ambilFungsi(nama)
     if type(v) == "function" then return v end
     local ok2, f2 = pcall(function() return getfenv()[nama] end)
     if ok2 and type(f2) == "function" then return f2 end
-    local ok3, s = pcall(function() return syn end)
-    if ok3 and type(s) == "table" and type(s[nama]) == "function" then return s[nama] end
     return nil
 end
 
@@ -497,6 +509,7 @@ end
 addSection(scrollMain, "MOVEMENT")
 local rSpeed = addRow(scrollMain, "🏃 Speed & Swim [Q]", {value = true, toggle = true})
 local rJump  = addRow(scrollMain, "🦘 Jump Power",       {value = true, toggle = true})
+local rShift = addRow(scrollMain, "🔒 Shiftlock Mobile [G]", {toggle = true})
 
 addSection(scrollMain, "VISUAL")
 local rHideP = addRow(scrollMain, "🙈 Hide Pemain + Kendaraan [R]", {toggle = true})
@@ -511,7 +524,7 @@ local rClock = addRow(scrollMain, "🕒 Auto Brightness [T]", {value = true, tog
 addSection(scrollRute, "🎥 REKAM DIRI")
 local rRekam  = addRow(scrollRute, "🔴 Rekam Rute [K]", {value = true, toggle = true})
 local rVisAll = addRow(scrollRute, "👁️ Tampil Semua Garis", {toggle = true})
-addHint(scrollRute, "Rekam ultra-halus (0.01s). Belokan kecil tercatat, garis smooth.")
+addHint(scrollRute, "Rekam halus & ringan. Belokan tercatat, garis smooth.")
 
 addSection(scrollRute, "🎯 REKAM PEMAIN LAIN")
 order += 1
@@ -602,15 +615,22 @@ local S = {
     clockOn = false,
     clockValue = Lighting.ClockTime,
     rekamOn = false, rekamPOn = false, specOn = false, visAll = false,
+    shiftlockOn = false,
 }
 
+-- ⚡ CACHE karakter/humanoid/root (hindari FindFirstChild berulang)
+local _cChar, _cHum, _cRoot = nil, nil, nil
 local function getHum()
     local c = LocalPlayer.Character
-    return c and c:FindFirstChildOfClass("Humanoid")
+    if c ~= _cChar then _cChar = c; _cHum = nil; _cRoot = nil end
+    if c and not _cHum then _cHum = c:FindFirstChildOfClass("Humanoid") end
+    return _cHum
 end
 local function getRoot()
     local c = LocalPlayer.Character
-    return c and c:FindFirstChild("HumanoidRootPart")
+    if c ~= _cChar then _cChar = c; _cHum = nil; _cRoot = nil end
+    if c and not _cRoot then _cRoot = c:FindFirstChild("HumanoidRootPart") end
+    return _cRoot
 end
 
 rSpeed.val.Text = fmt(S.speedValue)
@@ -622,6 +642,7 @@ rRekamP.val.Text = "0 pt"
 local function segarkanToggle()
     styleToggle(rSpeed.toggle, S.speedOn)
     styleToggle(rJump.toggle, S.jumpOn)
+    styleToggle(rShift.toggle, S.shiftlockOn)
     styleToggle(rHideP.toggle, S.hidePlayersOn)
     styleToggle(rHideF.toggle, S.hideFxOn)
     styleToggle(rLowG.toggle, S.lowGfxOn)
@@ -786,44 +807,50 @@ local function scanKendaraan(v, target)
     end
 end
 
+-- ⚡ OPTIMIZED: hitung jarak dulu, aksi belakangan
 local function cekKendaraan()
     local hum = getHum()
     local mySeat = hum and hum.SeatPart
-    local myRef  = mySeat or (hum and hum.RootPart)
+    local myRef = mySeat or (hum and hum.RootPart)
     if not myRef then return end
     local mx, mz = myRef.Position.X, myRef.Position.Z
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer then
             local char = plr.Character
-            local hum2 = char and char:FindFirstChildOfClass("Humanoid")
-            local seat = hum2 and hum2.SeatPart
+            if char then
+                local hum2 = char:FindFirstChildOfClass("Humanoid")
+                local seat = hum2 and hum2.SeatPart
 
-            if seat and mySeat and seat.AssemblyRootPart == mySeat.AssemblyRootPart then
-                if vehHidden[plr] then
+                if seat and mySeat and seat.AssemblyRootPart == mySeat.AssemblyRootPart then
+                    if vehHidden[plr] then
+                        pcall(scanKendaraan, vehHidden[plr], 0)
+                        vehHidden[plr] = nil
+                    end
+                elseif seat then
+                    local p = seat.Position
+                    local dx, dz = p.X - mx, p.Z - mz
+                    if dx*dx + dz*dz <= R2 then
+                        if not vehHidden[plr] then
+                            vehHidden[plr] = kendaraanDariSeat(seat)
+                            pcall(scanKendaraan, vehHidden[plr], 1)
+                        end
+                    elseif vehHidden[plr] then
+                        pcall(scanKendaraan, vehHidden[plr], 0)
+                        vehHidden[plr] = nil
+                    end
+                elseif vehHidden[plr] then
                     pcall(scanKendaraan, vehHidden[plr], 0)
                     vehHidden[plr] = nil
                 end
-            elseif seat then
-                local p = seat.Position
-                local dx, dz = p.X - mx, p.Z - mz
-                local sentuh = dx*dx + dz*dz <= R2
-                if sentuh and not vehHidden[plr] then
-                    local v = kendaraanDariSeat(seat)
-                    vehHidden[plr] = v
-                    pcall(scanKendaraan, v, 1)
-                elseif not sentuh and vehHidden[plr] then
-                    pcall(scanKendaraan, vehHidden[plr], 0)
-                    vehHidden[plr] = nil
+
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if root and root.LocalTransparencyModifier ~= 1 then
+                    setCharHidden(char, 1)
                 end
             elseif vehHidden[plr] then
                 pcall(scanKendaraan, vehHidden[plr], 0)
                 vehHidden[plr] = nil
-            end
-
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            if root and root.LocalTransparencyModifier ~= 1 then
-                setCharHidden(char, 1)
             end
         end
     end
@@ -1001,6 +1028,79 @@ local function bumpClock(d)
     end
 end
 
+--═══════════════ 🔒 SHIFTLOCK GAYA MOBILE ═══════════════
+-- 🐸 Kunci gaya renang mobile: badan DIPAKSA TEGAK (yaw-only)
+--    SETELAH physics jalan (Character+1) → rotasi "penguin
+--    nyelam" bawaan PC dibatalkan → animasi gaya katak muncul.
+-- 🚗 Duduk di kendaraan: efek suspend otomatis (fisika aman).
+local SL_BIND = "Siiilau_Shiftlock"
+local setShiftlock -- forward
+
+-- Tombol melayang (klik = toggle, drag = geser)
+local slBtn = new("TextButton", {
+    Size = UDim2.fromOffset(46, 46),
+    Position = UDim2.new(1, -70, 0.5, 0),
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundColor3 = C.Hitam2, BackgroundTransparency = 0.25,
+    BorderSizePixel = 0, AutoButtonColor = false,
+    Text = "🔒", TextSize = 20, TextColor3 = C.Abuk,
+    FontFace = fnt("bold"), ZIndex = 50,
+}, gui)
+new("UICorner", {CornerRadius = UDim.new(1, 0)}, slBtn)
+local slStroke = new("UIStroke", {Color = C.Ungu, Thickness = 2, Transparency = 0.4}, slBtn)
+
+local function applySLTampil(on)
+    slBtn.TextColor3 = on and C.Hijau or C.Abuk
+    slBtn.BackgroundColor3 = on and C.Ungu or C.Hitam2
+    slStroke.Color = on and C.Hijau or C.Ungu
+end
+
+setShiftlock = function(on)
+    S.shiftlockOn = on
+    if on then
+        pcall(function()
+            -- ⚡ KUNCI: bind di Character+1 (SETELAH physics karakter),
+            -- supaya override tegak kita menang dari rotasi
+            -- renang bawaan engine (yang bikin badan nyelam di PC)
+            RunService:BindToRenderStep(SL_BIND, Enum.RenderPriority.Character.Value + 1, function()
+                if not S.shiftlockOn then return end
+                local cam = workspace.CurrentCamera
+                local char = LocalPlayer.Character
+                if not (cam and char) then return end
+                local h = char:FindFirstChildOfClass("Humanoid")
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if not (h and root) or h.Health <= 0 then return end
+
+                -- 🚗 duduk di kendaraan → suspend (jangan ganggu fisika mobil)
+                if h.SeatPart then
+                    if h.CameraOffset ~= Vector3.zero then h.CameraOffset = Vector3.zero end
+                    return
+                end
+
+                if h.AutoRotate then h.AutoRotate = false end
+                if h.CameraOffset ~= SHIFTLOCK_OFFSET then h.CameraOffset = SHIFTLOCK_OFFSET end
+
+                -- 🔒 YAW-ONLY SELALU (darat & air).
+                -- Di air badan DIPAKSA TEGAK tiap frame → gaya katak 🐸
+                local look = cam.CFrame.LookVector
+                local yaw = math.atan2(-look.X, -look.Z)
+                root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
+            end)
+        end)
+        notify("🔒 Shiftlock ON — renang gaya mobile 🐸", true)
+    else
+        pcall(function() RunService:UnbindFromRenderStep(SL_BIND) end)
+        local h = getHum()
+        if h then
+            h.AutoRotate = true
+            h.CameraOffset = Vector3.zero
+        end
+        notify("🔒 Shiftlock", false)
+    end
+    applySLTampil(on)
+    styleToggle(rShift.toggle, on)
+end
+
 --═══════════════ 🎥 RUTE: PENYIMPANAN ═══════════════
 local daftarFile = {}
 local pilihan    = {}
@@ -1038,13 +1138,13 @@ local function namaUnik(base)
 end
 
 local function titikKeArray(pts)
-    local arr = {}
-    for _, t in ipairs(pts) do
-        table.insert(arr, {
+    local arr = table.create(#pts)
+    for i, t in ipairs(pts) do
+        arr[i] = {
             math.floor(t.X * 100 + 0.5) / 100,
             math.floor(t.Y * 100 + 0.5) / 100,
             math.floor(t.Z * 100 + 0.5) / 100,
-        })
+        }
     end
     return arr
 end
@@ -1068,11 +1168,26 @@ local function simpanFile(f)
     end
 end
 
+-- ⚡ DRAFT RINGKAS: "x,y,z;x,y,z" (jauh lebih murah dari JSON)
 local function simpanDraft(pts)
     if not FS_OK then return end
     pastikanFolder()
-    local data = {nama = "_draft", titik = titikKeArray(pts)}
-    pcall(wf, DRAFT_PATH, HttpService:JSONEncode(data))
+    local buf = table.create(#pts)
+    for i, t in ipairs(pts) do
+        buf[i] = string.format("%.2f,%.2f,%.2f", t.X, t.Y, t.Z)
+    end
+    pcall(wf, DRAFT_PATH, table.concat(buf, ";"))
+end
+
+local function parseDraftRingkas(isi)
+    local titik = {}
+    for xyz in string.gmatch(isi, "[^;]+") do
+        local x, y, z = xyz:match("(-?%d+%.?%d*),(-?%d+%.?%d*),(-?%d+%.?%d*)")
+        if x then
+            titik[#titik + 1] = Vector3.new(tonumber(x), tonumber(y), tonumber(z))
+        end
+    end
+    return titik
 end
 
 local function hapusDraft()
@@ -1102,18 +1217,29 @@ local function muatFileTersimpan()
     local function muatSatu(path, namaFallback)
         local okr, isi = pcall(rf, path)
         if not (okr and type(isi) == "string") then return false end
-        local okd, data = pcall(function() return HttpService:JSONDecode(isi) end)
-        if not (okd and type(data) == "table" and type(data.titik) == "table") then return false end
+
         local titik = {}
-        for _, t in ipairs(data.titik) do
-            if type(t) == "table" and t[1] and t[2] and t[3] then
-                table.insert(titik, Vector3.new(t[1], t[2], t[3]))
+        -- JSON dulu (file lama), lalu format ringkas (draft baru)
+        local okd, data = pcall(function() return HttpService:JSONDecode(isi) end)
+        if okd and type(data) == "table" and type(data.titik) == "table" then
+            for _, t in ipairs(data.titik) do
+                if type(t) == "table" and t[1] and t[2] and t[3] then
+                    table.insert(titik, Vector3.new(t[1], t[2], t[3]))
+                end
             end
+        else
+            titik = parseDraftRingkas(isi)
         end
+
         if #titik < 2 then return false end
         local namaFile = path:match("[/\\]([^/\\]+)$") or namaFallback
         namaFile = namaFile:gsub("%.json$", "")
-        tambahFile(data.nama or namaFile, titik, data.gab == true)
+        local nama, isGab = namaFile, false
+        if okd and type(data) == "table" then
+            nama = data.nama or namaFile
+            isGab = data.gab == true
+        end
+        tambahFile(nama, titik, isGab)
         return true
     end
 
@@ -1133,12 +1259,9 @@ local function muatFileTersimpan()
         if ok and type(files) == "table" then
             for _, path in ipairs(files) do
                 if type(path) == "string" and string.sub(path, -5) == ".json" and path ~= DRAFT_PATH then
-                    if isf then
-                        local o, ada = pcall(isf, path)
-                        if o and ada then
-                            if muatSatu(path, "rute") then jumlah += 1 end
-                        end
-                    else
+                    local o, ada = true, true
+                    if isf then o, ada = pcall(isf, path) end
+                    if o and ada then
                         if muatSatu(path, "rute") then jumlah += 1 end
                     end
                 end
@@ -1157,10 +1280,11 @@ local rootFolderGaris = Instance.new("Folder")
 rootFolderGaris.Name = "_SiiilauRuteFiles"
 rootFolderGaris.Parent = workspace
 
-local function buatSegmen(parent, a, b, warna, tebal)
+local function buatSegmen(parent, a, b, warna)
     local jarak = (b - a).Magnitude
     if jarak < 0.15 then return end
     local p = Instance.new("Part")
+    p.Name = "seg"
     p.Anchored = true
     p.CanCollide = false
     p.CanQuery = false
@@ -1168,13 +1292,14 @@ local function buatSegmen(parent, a, b, warna, tebal)
     p.Material = Enum.Material.Neon
     p.Color = warna
     p.Transparency = LINE_TRANS
-    p.Size = Vector3.new(tebal or LINE_TEBAL, tebal or LINE_TEBAL, jarak)
+    p.Size = Vector3.new(LINE_TEBAL, LINE_TEBAL, jarak)
     p.CFrame = CFrame.lookAt((a + b) * 0.5, b)
     p.Parent = parent
 end
 
 local function buatMarker(parent, pos, warna, teks)
     local p = Instance.new("Part")
+    p.Name = "marker"
     p.Anchored = true
     p.CanCollide = false
     p.CanQuery = false
@@ -1203,20 +1328,22 @@ local function buatMarker(parent, pos, warna, teks)
     t.Parent = bb
 end
 
+-- ⚡ RAYCASTPARAMS DI-REUSE (dulu: bikin baru tiap tick!)
+local _rcParams = RaycastParams.new()
+_rcParams.FilterType = Enum.RaycastFilterType.Exclude
+_rcParams.FilterDescendantsInstances = {rekamFolder, rootFolderGaris}
+
 local function proyeksiTanah(p, char)
     char = char or LocalPlayer.Character
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
     local f = {rekamFolder, rootFolderGaris}
-    if char then table.insert(f, char) end
+    if char then f[#f + 1] = char end
     local h = char and char:FindFirstChildOfClass("Humanoid")
     local seat = h and h.SeatPart
     if seat then
-        local ok, v = pcall(kendaraanDariSeat, seat)
-        if ok and v then table.insert(f, v) end
+        f[#f + 1] = kendaraanDariSeat(seat)
     end
-    params.FilterDescendantsInstances = f
-    local hit = workspace:Raycast(p + Vector3.new(0, 1, 0), Vector3.new(0, -14, 0), params)
+    _rcParams.FilterDescendantsInstances = f
+    local hit = workspace:Raycast(p + Vector3.new(0, 1, 0), Vector3.new(0, -14, 0), _rcParams)
     if hit then
         return Vector3.new(p.X, hit.Position.Y + LINE_TEBAL * 0.5 + 0.05, p.Z)
     end
@@ -1224,7 +1351,6 @@ local function proyeksiTanah(p, char)
 end
 
 -- ---- ✏️ PIPELINE GARIS HALUS ----
--- 1) Simplifikasi: jalan lurus diringkas, SEMUA belokan (≥ SMPL_ANGLE°) dijaga
 local function sederhanakanJalur(pts)
     if #pts <= 2 then return pts end
     local hasil = {pts[1]}
@@ -1246,24 +1372,25 @@ local function sederhanakanJalur(pts)
     return hasil
 end
 
--- 2) Chaikin: sudut patah dibulatkan jadi kelokan mulus
+-- ⚡ Chaikin pakai table.create (hemat alokasi)
 local function chaikin(pts)
     if #pts < 3 then return pts end
-    local out = {pts[1]}
-    for i = 1, #pts - 1 do
+    local n = #pts
+    local out = table.create(n * 2)
+    out[1] = pts[1]
+    local idx = 2
+    for i = 1, n - 1 do
         local a, b = pts[i], pts[i + 1]
-        table.insert(out, a:Lerp(b, 0.25))
-        table.insert(out, a:Lerp(b, 0.75))
+        out[idx] = a:Lerp(b, 0.25); idx += 1
+        out[idx] = a:Lerp(b, 0.75); idx += 1
     end
-    table.insert(out, pts[#pts])
+    out[idx] = pts[n]
     return out
 end
 
--- 3) Render: buat part tipis antar titik hasil pelician
 local function renderJalurHalus(parent, pts, warna)
     if #pts < 2 then return end
-    local ringkas = sederhanakanJalur(pts)
-    local halus = ringkas
+    local halus = sederhanakanJalur(pts)
     for _ = 1, CHAIKIN_ITER do
         halus = chaikin(halus)
     end
@@ -1520,7 +1647,7 @@ local GABUNG_DEDUPE = 2.5
 
 local function gabungDuaJalur(A, B)
     if #A == 0 then
-        local hasil = {}
+        local hasil = table.create(#B)
         for i = 1, #B do hasil[i] = B[i] end
         return hasil, false
     end
@@ -1531,7 +1658,7 @@ local function gabungDuaJalur(A, B)
         if not dMin or d < dMin then dMin, jA = d, i end
     end
 
-    local hasil = {}
+    local hasil = table.create(#A)
     for i = 1, #A do hasil[i] = A[i] end
 
     if dMin and dMin <= GABUNG_MATCH then
@@ -1573,17 +1700,22 @@ local rekamMati = false
 
 local setRekamP -- forward
 
--- state preview live (incremental, hemat part saat merekam)
+-- ⚡ PREVIEW LIVE: incremental + batas part (buang yang terlama)
 local pvLast, pvDir = nil, nil
+local pvCount = 0
+
+local function previewReset()
+    pvLast, pvDir, pvCount = nil, nil, 0
+end
 
 local function previewLive(parent, gp, warna)
     if not pvLast then
-        pvLast, pvDir = gp, nil
+        pvLast, pvDir, pvCount = gp, nil, 0
         return
     end
     local d = gp - pvLast
     local mag = d.Magnitude
-    if mag < 0.2 then return end
+    if mag < 1.0 then return end
     local dirBaru = d.Unit
     local belok = 0
     if pvDir then
@@ -1592,12 +1724,19 @@ local function previewLive(parent, gp, warna)
     if (pvDir == nil) or belok >= PREVIEW_BELOK or mag >= PREVIEW_MAX then
         buatSegmen(parent, pvLast, gp, warna)
         pvLast, pvDir = gp, dirBaru
+        pvCount += 1
+        if pvCount > PV_MAX_PARTS then
+            -- buang part "seg" tertua biar jumlah stabil
+            for _, c in ipairs(parent:GetChildren()) do
+                if c.Name == "seg" then c:Destroy() break end
+            end
+        end
     end
 end
 
--- rebuild preview pakai pipeline halus (dipanggil saat stop, sebelum dialog)
 local function rebuildPreviewHalus(pts)
     rekamFolder:ClearAllChildren()
+    previewReset()
     renderJalurHalus(rekamFolder, pts, C.Merah)
     buatMarker(rekamFolder, pts[1], C.Biru2, "START")
     buatMarker(rekamFolder, pts[#pts], C.Hijau, "END (preview)")
@@ -1617,9 +1756,9 @@ local function setRekam(on)
         rekamFolder:ClearAllChildren()
         rekamPts, lastPt = {}, nil
         rekamMati = false
-        pvLast, pvDir = nil, nil
+        previewReset()
         rRekam.val.Text = "0 pt"
-        notify("🔴 Merekam ultra-halus… nyetir jalurmu!", true)
+        notify("🔴 Merekam… nyetir jalurmu!", true)
         task.spawn(function()
             while S.rekamOn and myId == rekamId and gui.Parent do
                 local h = getHum()
@@ -1636,19 +1775,28 @@ local function setRekam(on)
                     if not lastPt then
                         lastPt = p
                         local gp = proyeksiTanah(p)
-                        table.insert(rekamPts, gp)
+                        rekamPts[1] = gp
                         previewLive(rekamFolder, gp, C.Merah)
                         buatMarker(rekamFolder, gp, C.Merah, "AWAL REKAM")
                     else
                         local jarak = (p - lastPt).Magnitude
                         if jarak >= REC_MIN_JARAK then
-                            local gp = proyeksiTanah(p)
-                            table.insert(rekamPts, gp)
                             lastPt = p
-                            previewLive(rekamFolder, gp, C.Merah)
-                            rRekam.val.Text = #rekamPts .. " pt"
-                            if #rekamPts % DRAFT_TIAP == 0 then simpanDraft(rekamPts) end
-                            if #rekamPts >= MAX_TITIK then
+                            local gp = proyeksiTanah(p)
+                            rekamPts[#rekamPts + 1] = gp
+                            if jarak >= JARAK_LOMPAT then
+                                -- teleport: jangan gambar garis panjang
+                                pvLast, pvDir = gp, nil
+                            else
+                                previewLive(rekamFolder, gp, C.Merah)
+                            end
+                            local n = #rekamPts
+                            -- ⚡ UI hanya di-update tiap 10 titik
+                            if n % 10 == 0 then
+                                rRekam.val.Text = n .. " pt"
+                            end
+                            if n % DRAFT_TIAP == 0 then simpanDraft(rekamPts) end
+                            if n >= MAX_TITIK then
                                 task.defer(function()
                                     if S.rekamOn and myId == rekamId then setRekam(false) end
                                 end)
@@ -1662,9 +1810,9 @@ local function setRekam(on)
         end)
     else
         if #rekamPts >= 2 then
-            local titik = {}
-            for _, t in ipairs(rekamPts) do table.insert(titik, t) end
-            rebuildPreviewHalus(titik) -- garis final smooth terlihat saat menamai
+            local titik = table.create(#rekamPts)
+            for i, t in ipairs(rekamPts) do titik[i] = t end
+            rebuildPreviewHalus(titik)
             local saran = namaUnik("Mentah")
             bukaDialogSimpan(saran, titik)
             if rekamMati then
@@ -1675,7 +1823,7 @@ local function setRekam(on)
             hapusDraft()
             rekamFolder:ClearAllChildren()
             rekamPts, lastPt = {}, nil
-            pvLast, pvDir = nil, nil
+            previewReset()
         end
     end
 
@@ -1744,7 +1892,6 @@ end
 local rekamPId = 0
 local rekamPPts, lastPPt = {}, nil
 local rekamPTarget, rekamPNama = nil, "?"
-local pvPLast, pvPDir = nil, nil
 
 local function getRootDari(plr)
     local c = plr and plr.Character
@@ -1775,7 +1922,7 @@ setRekamP = function(on)
     if on then
         rekamFolder:ClearAllChildren()
         rekamPPts, lastPPt = {}, nil
-        pvPLast, pvPDir = nil, nil
+        previewReset()
         rekamPTarget = targetPlr
         rekamPNama   = targetPlr.Name
         rRekamP.val.Text = "0 pt"
@@ -1794,24 +1941,27 @@ setRekamP = function(on)
                     if not lastPPt then
                         lastPPt = p
                         local gp = proyeksiTanah(p, rekamPTarget.Character)
-                        table.insert(rekamPPts, gp)
+                        rekamPPts[1] = gp
                         previewLive(rekamFolder, gp, C.Merah)
                         buatMarker(rekamFolder, gp, C.Merah, "AWAL: " .. rekamPTarget.DisplayName)
                     else
                         local jarak = (p - lastPPt).Magnitude
                         if jarak >= REC_MIN_JARAK then
+                            lastPPt = p
                             local gp = proyeksiTanah(p, rekamPTarget.Character)
                             if jarak < JARAK_LOMPAT then
-                                table.insert(rekamPPts, gp)
+                                rekamPPts[#rekamPPts + 1] = gp
                                 previewLive(rekamFolder, gp, C.Merah)
-                                rRekamP.val.Text = #rekamPPts .. " pt"
                             else
-                                -- respawn/teleport: reset acuan preview
-                                pvPLast, pvPDir = gp, nil
+                                -- respawn/teleport: reset acuan preview (tanpa garis panjang)
+                                pvLast, pvDir = gp, nil
                             end
-                            lastPPt = p
-                            if #rekamPPts % DRAFT_TIAP == 0 and #rekamPPts > 0 then simpanDraft(rekamPPts) end
-                            if #rekamPPts >= MAX_TITIK then
+                            local n = #rekamPPts
+                            if n % 10 == 0 then
+                                rRekamP.val.Text = n .. " pt"
+                            end
+                            if n % DRAFT_TIAP == 0 and n > 0 then simpanDraft(rekamPPts) end
+                            if n >= MAX_TITIK then
                                 task.defer(function()
                                     if S.rekamPOn and myId == rekamPId then setRekamP(false) end
                                 end)
@@ -1825,8 +1975,8 @@ setRekamP = function(on)
         end)
     else
         if #rekamPPts >= 2 then
-            local titik = {}
-            for _, t in ipairs(rekamPPts) do table.insert(titik, t) end
+            local titik = table.create(#rekamPPts)
+            for i, t in ipairs(rekamPPts) do titik[i] = t end
             rebuildPreviewHalus(titik)
             local saran = namaUnik("P-" .. rekamPNama)
             bukaDialogSimpan(saran, titik)
@@ -1835,7 +1985,7 @@ setRekamP = function(on)
             hapusDraft()
             rekamFolder:ClearAllChildren()
             rekamPPts, lastPPt = {}, nil
-            pvPLast, pvPDir = nil, nil
+            previewReset()
         end
     end
 
@@ -1860,8 +2010,8 @@ local function gabungTerpilih()
     if nama == "" then nama = "Gabungan" end
     nama = namaUnik(nama)
 
-    local titik = {}
-    for _, t in ipairs(pilihan[1].titik) do table.insert(titik, t) end
+    local titik = table.create(#pilihan[1].titik)
+    for i, t in ipairs(pilihan[1].titik) do titik[i] = t end
     local nTemu, nJembatan = 0, 0
     for i = 2, #pilihan do
         local hasil, temu = gabungDuaJalur(titik, pilihan[i].titik)
@@ -1902,6 +2052,7 @@ end
 
 --═══════════════ RESET & KELUAR ═══════════════
 local function matikanSemua()
+    pcall(function() if S.shiftlockOn then setShiftlock(false) end end)
     pcall(function() if S.rekamOn  then setRekam(false)  end end)
     pcall(function() if S.rekamPOn then setRekamP(false) end end)
     pcall(function() if S.specOn   then setSpec(false)   end end)
@@ -1961,6 +2112,7 @@ rJump.plus.MouseButton1Click:Connect(function()
 end)
 rJump.toggle.MouseButton1Click:Connect(function() setJump(not S.jumpOn) end)
 
+rShift.toggle.MouseButton1Click:Connect(function() setShiftlock(not S.shiftlockOn) end)
 rHideP.toggle.MouseButton1Click:Connect(function() setHidePlayers(not S.hidePlayersOn) end)
 rHideF.toggle.MouseButton1Click:Connect(function() setHideFx(not S.hideFxOn) end)
 rLowG.toggle.MouseButton1Click:Connect(function() setLowGfx(not S.lowGfxOn) end)
@@ -2006,7 +2158,39 @@ end))
 resetBtn.MouseButton1Click:Connect(resetSemua)
 exitBtn.MouseButton1Click:Connect(destroyAll)
 
--- TAB + MINIMIZE
+--═══════════════ 🔒 TOMBOL SHIFTLOCK (DRAG + KLIK) ═══════════════
+do
+    local menekan, pindah = false, 0
+    local posAwal, mula = nil, nil
+    slBtn.InputBegan:Connect(function(input)
+        local t = input.UserInputType
+        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+            menekan, pindah = true, 0
+            posAwal = slBtn.Position
+            mula = input.Position
+        end
+    end)
+    addConn(UserInputService.InputChanged:Connect(function(input)
+        if not menekan then return end
+        local t = input.UserInputType
+        if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
+            local d = input.Position - mula
+            pindah = math.max(pindah, math.abs(d.X) + math.abs(d.Y))
+            slBtn.Position = UDim2.new(0, posAwal.X.Offset + d.X, 0, posAwal.Y.Offset + d.Y)
+        end
+    end))
+    addConn(UserInputService.InputEnded:Connect(function(input)
+        local t = input.UserInputType
+        if menekan and (t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch) then
+            menekan = false
+            if pindah < 8 then
+                setShiftlock(not S.shiftlockOn) -- gerakan < 8px = klik, bukan drag
+            end
+        end
+    end))
+end
+
+--═══════════════ TAB + MINIMIZE ═══════════════
 local tabAktif, minimized = false, false
 
 local function applyLayout()
@@ -2074,6 +2258,8 @@ addConn(UserInputService.InputBegan:Connect(function(input, gp)
         setHidePlayers(not S.hidePlayersOn)
     elseif kc == Enum.KeyCode.Q then
         setSpeed(not S.speedOn)
+    elseif kc == Enum.KeyCode.G then
+        setShiftlock(not S.shiftlockOn)
     elseif kc == Enum.KeyCode.K then
         setRekam(not S.rekamOn)
     elseif kc == Enum.KeyCode.L then
@@ -2086,9 +2272,10 @@ updateTargetLabel()
 local jumlahDimuat = muatFileTersimpan()
 renderDaftar()
 segarkanToggle()
+applySLTampil(false)
 pilihTab(false)
 main.Visible = true
-notify("Siiilau ⚡ v1.0.0 siap", true)
+notify("Siiilau ⚡ LITE v1.2.0 siap", true)
 if jumlahDimuat > 0 then
     notify("📂 " .. jumlahDimuat .. " file rute dimuat ✓", true)
 end
@@ -2097,3 +2284,4 @@ if FS_OK then
 else
     notify("⚠️ Executor tak dukung file", false)
 end
+notify("🔒 Shiftlock: tombol 🦁 bisa digeser", true)
