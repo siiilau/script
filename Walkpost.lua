@@ -1,5 +1,5 @@
 --[[═══════════════════════════════════════════════
-    🛠️ ALAT BANTU LATIHAN v3.1
+    🛠️ ALAT BANTU LATIHAN v1.1
     ─────────────────────────────────────────────
     👁️ DINDING INVISIBLE [T]
        dinding tersembunyi dibuat terlihat:
@@ -10,13 +10,13 @@
     💾 AUTO-SAVE
        post otomatis tersimpan ke file executor
        → load otomatis saat script dijalankan lagi
-    🔁 REJOIN [R]
+    🔁 REJOIN
        keluar & masuk server yang sama, post aman
     🧹 AUTO-BERSIH
        sisa script lama (dinding merah & GUI dobel)
        otomatis dihapus saat script dijalankan
 
-    HOTKEY: F=GUI  T=Dinding  G=Post  Z=Undo  X=Hapus  R=Rejoin
+    HOTKEY: F=GUI  T=Dinding  G=Post
     ═══════════════════════════════════════════════]]
 
 local Players          = game:GetService("Players")
@@ -131,9 +131,9 @@ end
 
 local btnWall = buatTombol("👁️ Dinding Invisible [T]: OFF", UDim2.new(0, 12, 0, 42))
 local btnPost = buatTombol("🚧 Pasang Traffic Post [G]",     UDim2.new(0, 12, 0, 82))
-local btnUndo = buatTombol("↩️ Undo [Z]",  UDim2.new(0, 12, 0, 122), UDim2.new(0.5, -18, 0, 34))
-local btnBersihPost = buatTombol("🗑️ Hapus Post [X]", UDim2.new(0.5, 6, 0, 122), UDim2.new(0.5, -18, 0, 34))
-local btnRejoin = buatTombol("🔁 Rejoin [R] — post aman", UDim2.new(0, 12, 0, 162), nil, UNGU)
+local btnUndo = buatTombol("↩️ Undo",  UDim2.new(0, 12, 0, 122), UDim2.new(0.5, -18, 0, 34))
+local btnBersihPost = buatTombol("🗑️ Hapus Post", UDim2.new(0.5, 6, 0, 122), UDim2.new(0.5, -18, 0, 34))
+local btnRejoin = buatTombol("🔁 Rejoin — post aman", UDim2.new(0, 12, 0, 162), nil, UNGU)
 
 local lblStatus = Instance.new("TextLabel", main)
 lblStatus.Size = UDim2.new(1, -24, 0, 34); lblStatus.Position = UDim2.new(0, 12, 0, 202)
@@ -511,9 +511,6 @@ addConn(UserInputService.InputBegan:Connect(function(input, gp)
     if     k == Enum.KeyCode.F then main.Visible = not main.Visible
     elseif k == Enum.KeyCode.T then setEsp(not espOn)
     elseif k == Enum.KeyCode.G then placePost()
-    elseif k == Enum.KeyCode.Z then undoPost()
-    elseif k == Enum.KeyCode.X then bersihkanPost()
-    elseif k == Enum.KeyCode.R then rejoin()
     end
 end))
 
@@ -547,4 +544,4 @@ end
 
 --═════════ START ═════════
 muatPost()
-print("✅ ALAT BANTU LATIHAN v3.1 (dinding abu-abu) siap! F=GUI T=Dinding G=Post Z=Undo X=Hapus R=Rejoin")
+print("✅ ALAT BANTU LATIHAN v3.1 siap! F=GUI T=Dinding G=Post")
