@@ -1,5 +1,5 @@
 --[[═════════════════════════════════════════
-    ⛓️ Siiilau⚡ — RACE LITE v1.2.0 (⚡ OPTIMIZED)
+    ⛓️ Siiilau⚡ — RACE LITE v1.2.1 (⚡ OPTIMIZED)
     ─────────────────────────────────────────
     PERFORMA:
     • RaycastParams di-reuse (bukan bikin baru tiap tick)
@@ -8,12 +8,10 @@
     • Draft disimpan format ringkas (hemat CPU)
     • Scan kendaraan early-exit
     • Cache karakter/humanoid/root
-    🔒 SHIFTLOCK MOBILE:
-    • Tombol 🔒 melayang (klik=toggle, drag=geser) + hotkey G
+    🔒 SHIFTLOCK MOBILE (via hotkey G / tab MENU):
     • 🐸 Saat berenang: badan TETAP TEGAK → animasi gaya
       katak persis mobile (bukan penguin nyelam ala PC)
-    • 🚗 Saat duduk di kendaraan: efek suspend otomatis
-      (tidak mengganggu fisika mobil)
+    • 🚗 Duduk di kendaraan: efek suspend otomatis
     HOTKEYS: F=GUI Q=Speed R=Hide T=Bright G=Shiftlock
              K=Rekam Diri L=Rekam Player
     ═════════════════════════════════════════]]
@@ -26,14 +24,14 @@ local CLOCK_STEP    = 0.5
 local LOCK_TIME     = true
 
 local RADIUS_SENTUH = 20
-local CEK_INTERVAL  = 0.6      -- ⚡ dari 0.4
+local CEK_INTERVAL  = 0.6
 local UKURAN_GUI    = 0.8
 
 -- 🎥 REKAM RUTE (⚡ LITE)
-local REC_INTERVAL  = 0.02     -- ⚡ dari 0.01 (masih detail)
-local REC_MIN_JARAK = 0.75     -- ⚡ dari 0.5
-local MAX_TITIK     = 15000    -- ⚡ dari 30000
-local DRAFT_TIAP    = 1000     -- ⚡ dari 500
+local REC_INTERVAL  = 0.02
+local REC_MIN_JARAK = 0.75
+local MAX_TITIK     = 15000
+local DRAFT_TIAP    = 1000
 local JARAK_LOMPAT  = 60
 
 -- ✏️ TAMPILAN GARIS
@@ -42,9 +40,9 @@ local LINE_TRANS    = 0.7
 local SMPL_ANGLE    = 8
 local SMPL_MAX_SEG  = 12
 local CHAIKIN_ITER  = 1
-local PREVIEW_BELOK = 25       -- ⚡ dari 15
-local PREVIEW_MAX   = 20       -- ⚡ dari 12
-local PV_MAX_PARTS  = 50       -- ⚡ batas part preview live
+local PREVIEW_BELOK = 25
+local PREVIEW_MAX   = 20
+local PV_MAX_PARTS  = 50
 
 -- 🔒 SHIFTLOCK (gaya mobile)
 local SHIFTLOCK_OFFSET = Vector3.new(1.75, 0, 0) -- set Vector3.zero = kamera tanpa geser bahu
@@ -618,7 +616,7 @@ local S = {
     shiftlockOn = false,
 }
 
--- ⚡ CACHE karakter/humanoid/root (hindari FindFirstChild berulang)
+-- ⚡ CACHE karakter/humanoid/root
 local _cChar, _cHum, _cRoot = nil, nil, nil
 local function getHum()
     local c = LocalPlayer.Character
@@ -807,7 +805,6 @@ local function scanKendaraan(v, target)
     end
 end
 
--- ⚡ OPTIMIZED: hitung jarak dulu, aksi belakangan
 local function cekKendaraan()
     local hum = getHum()
     local mySeat = hum and hum.SeatPart
@@ -1033,27 +1030,9 @@ end
 --    SETELAH physics jalan (Character+1) → rotasi "penguin
 --    nyelam" bawaan PC dibatalkan → animasi gaya katak muncul.
 -- 🚗 Duduk di kendaraan: efek suspend otomatis (fisika aman).
+-- ℹ️ Tanpa tombol layar — cukup hotkey G atau toggle di MENU.
 local SL_BIND = "Siiilau_Shiftlock"
 local setShiftlock -- forward
-
--- Tombol melayang (klik = toggle, drag = geser)
-local slBtn = new("TextButton", {
-    Size = UDim2.fromOffset(46, 46),
-    Position = UDim2.new(1, -70, 0.5, 0),
-    AnchorPoint = Vector2.new(0.5, 0.5),
-    BackgroundColor3 = C.Hitam2, BackgroundTransparency = 0.25,
-    BorderSizePixel = 0, AutoButtonColor = false,
-    Text = "🔒", TextSize = 20, TextColor3 = C.Abuk,
-    FontFace = fnt("bold"), ZIndex = 50,
-}, gui)
-new("UICorner", {CornerRadius = UDim.new(1, 0)}, slBtn)
-local slStroke = new("UIStroke", {Color = C.Ungu, Thickness = 2, Transparency = 0.4}, slBtn)
-
-local function applySLTampil(on)
-    slBtn.TextColor3 = on and C.Hijau or C.Abuk
-    slBtn.BackgroundColor3 = on and C.Ungu or C.Hitam2
-    slStroke.Color = on and C.Hijau or C.Ungu
-end
 
 setShiftlock = function(on)
     S.shiftlockOn = on
@@ -1097,7 +1076,6 @@ setShiftlock = function(on)
         end
         notify("🔒 Shiftlock", false)
     end
-    applySLTampil(on)
     styleToggle(rShift.toggle, on)
 end
 
@@ -1168,7 +1146,7 @@ local function simpanFile(f)
     end
 end
 
--- ⚡ DRAFT RINGKAS: "x,y,z;x,y,z" (jauh lebih murah dari JSON)
+-- ⚡ DRAFT RINGKAS: "x,y,z;x,y,z"
 local function simpanDraft(pts)
     if not FS_OK then return end
     pastikanFolder()
@@ -1328,7 +1306,7 @@ local function buatMarker(parent, pos, warna, teks)
     t.Parent = bb
 end
 
--- ⚡ RAYCASTPARAMS DI-REUSE (dulu: bikin baru tiap tick!)
+-- ⚡ RAYCASTPARAMS DI-REUSE
 local _rcParams = RaycastParams.new()
 _rcParams.FilterType = Enum.RaycastFilterType.Exclude
 _rcParams.FilterDescendantsInstances = {rekamFolder, rootFolderGaris}
@@ -1372,7 +1350,6 @@ local function sederhanakanJalur(pts)
     return hasil
 end
 
--- ⚡ Chaikin pakai table.create (hemat alokasi)
 local function chaikin(pts)
     if #pts < 3 then return pts end
     local n = #pts
@@ -1700,7 +1677,7 @@ local rekamMati = false
 
 local setRekamP -- forward
 
--- ⚡ PREVIEW LIVE: incremental + batas part (buang yang terlama)
+-- ⚡ PREVIEW LIVE: incremental + batas part
 local pvLast, pvDir = nil, nil
 local pvCount = 0
 
@@ -1726,7 +1703,6 @@ local function previewLive(parent, gp, warna)
         pvLast, pvDir = gp, dirBaru
         pvCount += 1
         if pvCount > PV_MAX_PARTS then
-            -- buang part "seg" tertua biar jumlah stabil
             for _, c in ipairs(parent:GetChildren()) do
                 if c.Name == "seg" then c:Destroy() break end
             end
@@ -1785,13 +1761,11 @@ local function setRekam(on)
                             local gp = proyeksiTanah(p)
                             rekamPts[#rekamPts + 1] = gp
                             if jarak >= JARAK_LOMPAT then
-                                -- teleport: jangan gambar garis panjang
                                 pvLast, pvDir = gp, nil
                             else
                                 previewLive(rekamFolder, gp, C.Merah)
                             end
                             local n = #rekamPts
-                            -- ⚡ UI hanya di-update tiap 10 titik
                             if n % 10 == 0 then
                                 rRekam.val.Text = n .. " pt"
                             end
@@ -1953,7 +1927,6 @@ setRekamP = function(on)
                                 rekamPPts[#rekamPPts + 1] = gp
                                 previewLive(rekamFolder, gp, C.Merah)
                             else
-                                -- respawn/teleport: reset acuan preview (tanpa garis panjang)
                                 pvLast, pvDir = gp, nil
                             end
                             local n = #rekamPPts
@@ -2158,38 +2131,6 @@ end))
 resetBtn.MouseButton1Click:Connect(resetSemua)
 exitBtn.MouseButton1Click:Connect(destroyAll)
 
---═══════════════ 🔒 TOMBOL SHIFTLOCK (DRAG + KLIK) ═══════════════
-do
-    local menekan, pindah = false, 0
-    local posAwal, mula = nil, nil
-    slBtn.InputBegan:Connect(function(input)
-        local t = input.UserInputType
-        if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
-            menekan, pindah = true, 0
-            posAwal = slBtn.Position
-            mula = input.Position
-        end
-    end)
-    addConn(UserInputService.InputChanged:Connect(function(input)
-        if not menekan then return end
-        local t = input.UserInputType
-        if t == Enum.UserInputType.MouseMovement or t == Enum.UserInputType.Touch then
-            local d = input.Position - mula
-            pindah = math.max(pindah, math.abs(d.X) + math.abs(d.Y))
-            slBtn.Position = UDim2.new(0, posAwal.X.Offset + d.X, 0, posAwal.Y.Offset + d.Y)
-        end
-    end))
-    addConn(UserInputService.InputEnded:Connect(function(input)
-        local t = input.UserInputType
-        if menekan and (t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch) then
-            menekan = false
-            if pindah < 8 then
-                setShiftlock(not S.shiftlockOn) -- gerakan < 8px = klik, bukan drag
-            end
-        end
-    end))
-end
-
 --═══════════════ TAB + MINIMIZE ═══════════════
 local tabAktif, minimized = false, false
 
@@ -2272,10 +2213,9 @@ updateTargetLabel()
 local jumlahDimuat = muatFileTersimpan()
 renderDaftar()
 segarkanToggle()
-applySLTampil(false)
 pilihTab(false)
 main.Visible = true
-notify("Siiilau ⚡ LITE v1.2.0 siap", true)
+notify("Siiilau ⚡ LITE v1.2.1 siap", true)
 if jumlahDimuat > 0 then
     notify("📂 " .. jumlahDimuat .. " file rute dimuat ✓", true)
 end
@@ -2284,4 +2224,3 @@ if FS_OK then
 else
     notify("⚠️ Executor tak dukung file", false)
 end
-notify("🔒 Shiftlock: tombol 🦁 bisa digeser", true)
