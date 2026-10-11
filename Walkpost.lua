@@ -399,9 +399,6 @@ buat("UICorner", {CornerRadius = UDim.new(0, 11)}, panel)
 buat("UIStroke", {Color = Warna.UnguMuda, Thickness = 1, Transparency = 0.35}, panel)
 ledSweep(panel, Warna.PutihLap, Warna.Putih, Warna.BiruMuda, 5)
 
-local breath = buat("UIScale", {Scale = 1}, outer)
-tween(breath, TweenInfo.new(1.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Scale = 1.012})
-
 local partBox = buat("Frame", {
     Name = "NoFade",
     Position = UDim2.new(0, 4, 0, 50),
@@ -462,9 +459,6 @@ task.spawn(function()
         task.wait(0.8)
     end
 end)
-
-local titleScale = buat("UIScale", {Scale = 1}, title)
-tween(titleScale, TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Scale = 1.05})
 
 local minBtn = buat("TextButton", {
     Size = UDim2.fromOffset(28, 28),
