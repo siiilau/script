@@ -1,7 +1,8 @@
 --========================================================
---  TIANG PATH GUI v1.4 — "SILAU NEON"
+--  TIANG PATH GUI v1.4.3 — "SILAU NEON"
 --  TAB 1 📍 TIANG  : pasang (Y), koneksi manual pilih 2 tiang
---  TAB 2 🔴 RECORD : rekam jalur (G), mati = hangus
+--  TAB 2 🔴 RECORD : rekam jalur (G), mati = hangus,
+--                    🎯 solo (tampil 1 saja) + 👁 SEMUA
 --  Keybind: F = GUI | Y = pasang tiang | G = rekam
 --========================================================
 
@@ -36,7 +37,7 @@ end
 -- [2] KONFIGURASI ---------------------------------------------------
 local ICON_SIZE       = 36
 local TOGGLE_KEY      = Enum.KeyCode.F
-local PASANG_KEY      = Enum.KeyCode.Y     -- << GANTI: T -> Y
+local PASANG_KEY      = Enum.KeyCode.Y
 local REC_KEY         = Enum.KeyCode.G
 local TIANG_TINGGI    = 4
 local TIANG_TEBAL     = 1.1
@@ -52,6 +53,7 @@ local TOLERANSI_REK   = 0.06
 local LED_TEXT        = "⚡ S I L A U ⚡"
 local SOUND_ON        = true
 local NAMA_FILE       = "TiangPath_Silau.json"
+local NAMA_BACKUP     = "TiangPath_Silau_backup.json"
 
 local Warna = {
     Ungu      = Color3.fromRGB(124, 58, 237),
@@ -142,7 +144,6 @@ local SND_SNAP   = "rbxasset://sounds/snap.mp3"
 local SND_WHOOSH = "rbxasset://sounds/unsheath.wav"
 
 -- nomor otomatis: ambil nomor terkecil yang belum dipakai
--- (hapus Record 3 -> record baru jadi "Record 3" lagi)
 local function nomorBebas(prefix, daftarNama)
     local pakai = {}
     for _, nama in ipairs(daftarNama) do
@@ -154,7 +155,7 @@ local function nomorBebas(prefix, daftarNama)
     return n
 end
 
--- [4b] REGISTRY KONEKSI (untuk UNLOAD/RESET) ------------------------
+-- [4b] REGISTRY KONEKSI ---------------------------------------------
 local semuaKoneksi = {}
 local refGui, refFolder = nil, nil
 
@@ -185,11 +186,11 @@ local function unloadScript(sebab)
         pcall(function() refGui:Destroy() end)
         refGui = nil
     end
-    print("[TiangPath] " .. (sebab or "Script dihapus dari game ✔ (data file tetap aman)"))
+    print("[TiangPath] " .. (sebab or "Script ditutup ✔ (data file tetap aman)"))
 end
 
 local function resetScript()
-    unloadScript("Reset script...")
+    unloadScript("Muat ulang...")
     task.wait(0.1)
     jalankanScript()
 end
@@ -299,7 +300,6 @@ end
 --=====================================================================
 jalankanScript = function()
 
--- forward declarations
 local refreshList, refreshRekList
 local mulaiRekam, stopRekam, toggleRekam
 
@@ -358,7 +358,7 @@ local screenFx = buat("Frame", {
 
 local root = buat("Frame", {
     Size = UDim2.fromOffset(300, 500),
-    Position = UDim2.new(0.5, 0, 0.22, 0),
+    Position = UDim2.new(0.5, 0, 0.20, 0),
     AnchorPoint = Vector2.new(0.5, 0),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
@@ -600,7 +600,6 @@ local btnGaris = buat("TextButton", {
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnGaris)
 ledSweep(btnGaris, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.4)
 
--- BARU v1.4: sambung / putus koneksi manual
 local btnSambung = buat("TextButton", {
     Size = UDim2.new(0.5, -4, 0, 24),
     Position = UDim2.new(0, 12, 0, 106),
@@ -629,48 +628,33 @@ local btnPutus = buat("TextButton", {
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnPutus)
 buat("UIStroke", {Color = Warna.Merah, Thickness = 1, Transparency = 0.4}, btnPutus)
 
-local btnReset = buat("TextButton", {
-    Size = UDim2.new(0.5, -4, 0, 24),
+local btnPulihkan = buat("TextButton", {
+    Size = UDim2.new(1, -24, 0, 24),
     Position = UDim2.new(0, 12, 0, 136),
     BackgroundColor3 = Warna.Putih,
     BorderSizePixel = 0,
     FontFace = fnt("bold"),
-    Text = "🔁 RESET SCRIPT",
+    Text = "♻ PULIHKAN BACKUP",
     TextColor3 = Warna.Putih,
     TextSize = 10,
     AutoButtonColor = false,
 }, kontenTiang)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnReset)
-ledSweep(btnReset, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.8)
+buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnPulihkan)
+buat("UIStroke", {Color = Warna.Biru, Thickness = 1, Transparency = 0.3}, btnPulihkan)
 
-local btnUnload = buat("TextButton", {
-    Size = UDim2.new(0.5, -4, 0, 24),
-    Position = UDim2.new(0.5, 4, 0, 136),
-    BackgroundColor3 = Warna.Putih,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "❌ UNLOAD",
-    TextColor3 = Warna.Putih,
-    TextSize = 10,
-    AutoButtonColor = false,
-}, kontenTiang)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnUnload)
-buat("UIStroke", {Color = Warna.Merah, Thickness = 1, Transparency = 0.4}, btnUnload)
-
--- BARU v1.4: hapus data + tutup
-local btnHapusTutup = buat("TextButton", {
+local btnTutup = buat("TextButton", {
     Size = UDim2.new(1, -24, 0, 24),
     Position = UDim2.new(0, 12, 0, 166),
     BackgroundColor3 = Warna.Putih,
     BorderSizePixel = 0,
     FontFace = fnt("bold"),
-    Text = "🗑️ HAPUS DATA & TUTUP",
+    Text = "🗑️ HAPUS & TUTUP SCRIPT",
     TextColor3 = Warna.Putih,
     TextSize = 10,
     AutoButtonColor = false,
 }, kontenTiang)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnHapusTutup)
-buat("UIStroke", {Color = Warna.Merah, Thickness = 1}, btnHapusTutup)
+buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnTutup)
+buat("UIStroke", {Color = Warna.Merah, Thickness = 1}, btnTutup)
 
 local listLabel = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 196),
@@ -758,20 +742,35 @@ local btnGabung = buat("TextButton", {
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnGabung)
 ledSweep(btnGabung, Warna.Ungu, Warna.Putih, Warna.Biru2, 2.4)
 
-local listLabelRek = buat("TextLabel", {
+-- BARU v1.4.3: tampilkan semua
+local btnSemua = buat("TextButton", {
+    Size = UDim2.new(1, -24, 0, 24),
     Position = UDim2.new(0, 12, 0, 88),
+    BackgroundColor3 = Warna.Putih,
+    BorderSizePixel = 0,
+    FontFace = fnt("bold"),
+    Text = "👁 TAMPILKAN SEMUA",
+    TextColor3 = Warna.Putih,
+    TextSize = 10,
+    AutoButtonColor = false,
+}, kontenRekam)
+buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnSemua)
+ledSweep(btnSemua, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.8)
+
+local listLabelRek = buat("TextLabel", {
+    Position = UDim2.new(0, 12, 0, 118),
     Size = UDim2.new(1, -24, 0, 14),
     BackgroundTransparency = 1,
     FontFace = fnt("semi"),
-    Text = "🎥 RECORD • 0",
+    Text = "🎥 RECORD • 0  (🎯 = tampil itu saja)",
     TextColor3 = Warna.AbuTeks,
     TextSize = 10,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, kontenRekam)
 
 local scrollRek = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 106),
-    Size = UDim2.new(1, -24, 1, -142),
+    Position = UDim2.new(0, 12, 0, 136),
+    Size = UDim2.new(1, -24, 1, -172),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ScrollBarThickness = 4,
@@ -828,15 +827,15 @@ local marqueeClip = buat("Frame", {
 local marquee = buat("TextLabel", {
     BackgroundTransparency = 1,
     Position = UDim2.fromOffset(280, 0),
-    Size = UDim2.fromOffset(780, 13),
+    Size = UDim2.fromOffset(820, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = GUI   ✦   Y = pasang tiang   ✦   G = rekam jalur   ✦   🔗 klik nomor 2 tiang → SAMBUNG   ✦   ✂️ PUTUS utk lepas garis   ✦   🔗 gabung record   ✦   💀 mati = record hangus   ✦   💾 tersimpan permanen",
+    Text = "⌨ F = GUI   ✦   Y = pasang tiang   ✦   G = rekam jalur   ✦   🎯 solo: tampil 1 jalur saja   ✦   👁 SEMUA utk munculkan lagi   ✦   🔗 gabung record   ✦   💀 mati = record hangus   ✦   ♻ backup otomatis",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, marqueeClip)
-tween(marquee, TweenInfo.new(14, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-    {Position = UDim2.fromOffset(-780, 0)})
+tween(marquee, TweenInfo.new(15, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+    {Position = UDim2.fromOffset(-820, 0)})
 
 local posisiTitik = {
     UDim2.new(0.5, 0, 0, 1),
@@ -1123,7 +1122,8 @@ fadeVal.Changed:Connect(setFade)
 
 -- [13] DUNIA: TIANG -------------------------------------------------
 local daftarTiang  = {}
-local koneksiAktif = {}   -- { {a = idA, b = idB, parts = {...}}, ... }  (BARU v1.4)
+local daftarRekaman = {}
+local koneksiAktif = {}
 local genPath      = 0
 
 pcall(function()
@@ -1205,7 +1205,7 @@ local function perbaruiNomor()
     end
 end
 
--- [14] GARIS (lurus, naik-turun ikut tanah) -------------------------
+-- [14] GARIS --------------------------------------------------------
 local function buatSegmen(p1, p2, warna, tebal, parent)
     local jarak = (p2 - p1).Magnitude
     if jarak < 0.1 then return end
@@ -1275,7 +1275,6 @@ local function tiangPunyaKoneksi(id)
     return false
 end
 
--- bangun garis untuk satu pasangan koneksi
 local function bangunGarisKoneksi(k)
     local tA, tB = tiangDariId(k.a), tiangDariId(k.b)
     if not tA or not tB then return end
@@ -1345,7 +1344,7 @@ local function rebuildGaris()
     end
 end
 
--- [15] PERSISTENSI (tiang + koneksi + record) -----------------------
+-- [15] PERSISTENSI ---------------------------------------------------
 local fileOk = (type(writefile) == "function" and type(readfile) == "function")
 
 local function idBaru()
@@ -1381,7 +1380,6 @@ local function simpanKeFile()
     end
     entri.tiang = daftarT
 
-    -- koneksi manual (BARU v1.4)
     local daftarK = {}
     for _, k in ipairs(koneksiAktif) do
         table.insert(daftarK, {a = k.a, b = k.b})
@@ -1389,7 +1387,7 @@ local function simpanKeFile()
     entri.koneksi = daftarK
 
     local daftarR = {}
-    for _, r in ipairs(daftarRekaman or {}) do
+    for _, r in ipairs(daftarRekaman) do
         local poinSimpan = {}
         for _, p in ipairs(r.poin) do
             table.insert(poinSimpan, {r2(p.X), r2(p.Y), r2(p.Z)})
@@ -1407,6 +1405,13 @@ local function simpanKeFile()
 
     local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
     if ok and type(json) == "string" then
+        pcall(function()
+            local isiLama = readfile(NAMA_FILE)
+            if type(isiLama) == "string" and #isiLama > 0 then
+                writefile(NAMA_BACKUP, isiLama)
+            end
+        end)
+
         local okTulis = pcall(function() writefile(NAMA_FILE, json) end)
         if not okTulis then
             warn("[TiangPath] Gagal menulis file penyimpanan: " .. NAMA_FILE)
@@ -1456,7 +1461,6 @@ local function hapusTiang(idx)
     local nama = t.nama
     genPath += 1
 
-    -- lepas semua koneksi yang melibatkan tiang ini (BARU v1.4)
     for i = #koneksiAktif, 1, -1 do
         local k = koneksiAktif[i]
         if k.a == t.id or k.b == t.id then
@@ -1508,7 +1512,6 @@ local function pasangTiang(namaManual)
 
     local nama = (namaManual or ""):gsub("^%s+", ""):gsub("%s+$", "")
     if nama == "" then
-        -- nomor otomatis isi slot kosong (v1.4)
         local namaNama = {}
         for _, t in ipairs(daftarTiang) do table.insert(namaNama, t.nama) end
         nama = "Tiang " .. nomorBebas("Tiang", namaNama)
@@ -1526,8 +1529,6 @@ local function pasangTiang(namaManual)
         pilih  = false,
     })
     simpanKeFile()
-
-    -- TIDAK auto-sambung lagi (v1.4): koneksi manual via pilihan
 
     refreshList(true)
     scroll.CanvasPosition = Vector2.new(0, 1e6)
@@ -1560,7 +1561,7 @@ refreshList = function(animasi)
         }, scroll)
         local ring = buat("Frame", {
             Name = "NoFade", AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.5, 0, 0, 50), Size = UDim2.fromOffset(46, 46),
+            Position = UDim2.new(0.5, 0, 0, 40), Size = UDim2.fromOffset(46, 46),
             BackgroundTransparency = 1, BorderSizePixel = 0,
         }, kosong)
         buat("UICorner", {CornerRadius = UDim.new(1, 0)}, ring)
@@ -1570,22 +1571,22 @@ refreshList = function(animasi)
 
         local pin = buat("TextLabel", {
             Name = "NoFade", AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.5, 0, 0, 50), Size = UDim2.fromOffset(40, 40),
+            Position = UDim2.new(0.5, 0, 0, 40), Size = UDim2.fromOffset(40, 40),
             BackgroundTransparency = 1, Font = Enum.Font.SourceSans,
             Text = "📍", TextSize = 30,
         }, kosong)
         task.spawn(function()
             while pin.Parent do
-                tween(pin, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = UDim2.new(0.5, 0, 0, 44)})
+                tween(pin, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = UDim2.new(0.5, 0, 0, 34)})
                 task.wait(0.9)
                 if not pin.Parent then break end
-                tween(pin, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = UDim2.new(0.5, 0, 0, 50)})
+                tween(pin, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = UDim2.new(0.5, 0, 0, 40)})
                 task.wait(0.9)
             end
         end)
 
         buat("TextLabel", {
-            Position = UDim2.new(0, 10, 0, 92),
+            Position = UDim2.new(0, 10, 0, 80),
             Size = UDim2.new(1, -20, 0, 40),
             BackgroundTransparency = 1,
             FontFace = fnt("med"),
@@ -1625,7 +1626,6 @@ refreshList = function(animasi)
             tween(item, TweenInfo.new(0.12), {BackgroundColor3 = Warna.AbuItem})
         end)
 
-        -- badge = tombol PILIH (BARU v1.4)
         local badge = buat("TextButton", {
             Position = UDim2.new(0, 8, 0.5, -9),
             Size = UDim2.fromOffset(18, 18),
@@ -1639,11 +1639,12 @@ refreshList = function(animasi)
         }, item)
         buat("UICorner", {CornerRadius = UDim.new(1, 0)}, badge)
         local badgeGrad = buat("UIGradient", {
-            Color = ColorSequence.new(Warna.Ungu, Warna.Biru),
+            Color = lok.pilih
+                and ColorSequence.new(Warna.Hijau2, Warna.Hijau)
+                or  ColorSequence.new(Warna.Ungu, Warna.Biru),
             Rotation = i % 2 == 0 and 25 or -25,
         }, badge)
-        -- stroke hijau = tiang punya koneksi; stroke hilang = belum tersambung
-        local badgeStroke = buat("UIStroke", {
+        buat("UIStroke", {
             Color = Warna.Hijau2,
             Thickness = 2,
             Transparency = tiangPunyaKoneksi(lok.id) and 0 or 1,
@@ -1692,7 +1693,6 @@ refreshList = function(animasi)
             end
         end)
 
-        -- ikon 🔗 kalau tiang ini punya koneksi
         if tiangPunyaKoneksi(lok.id) then
             buat("TextLabel", {
                 BackgroundTransparency = 1,
@@ -1758,7 +1758,6 @@ refreshList = function(animasi)
     kumpulkanFade()
 end
 
--- kumpulkan tiang terpilih (urut sesuai daftar)
 local function tiangTerpilih()
     local hasil = {}
     for _, t in ipairs(daftarTiang) do
@@ -1773,7 +1772,6 @@ local function bersihkanPilihanTiang()
 end
 
 -- [17] RECORD JALUR -------------------------------------------------
-local daftarRekaman = {}
 local sedangRekam = false
 local rekamPoin = {}
 local rekamMulai = 0
@@ -1874,7 +1872,6 @@ mulaiRekam = function()
     bunyi(SND_PING, 0.35, 1.35)
     toast("⏺ MULAI MEREKAM — jalan sesukamu!", Warna.Hijau2)
 
-    -- sampling: hanya saat bergerak
     rekamConn = RunService.Heartbeat:Connect(function()
         local _, h = getKarakter()
         if not h then return end
@@ -1891,7 +1888,6 @@ mulaiRekam = function()
     end)
     catat(rekamConn)
 
-    -- BARU v1.4: mati = record hangus
     if hum then
         rekamDiedConn = hum.Died:Connect(function()
             if rekamConn then putuskan(rekamConn) rekamConn = nil end
@@ -1938,7 +1934,6 @@ stopRekam = function()
         return
     end
 
-    -- nama otomatis isi slot kosong (v1.4)
     local namaNama = {}
     for _, r in ipairs(daftarRekaman) do table.insert(namaNama, r.nama) end
     local namaBaru = "Rekaman " .. nomorBebas("Rekaman", namaNama)
@@ -1956,12 +1951,10 @@ stopRekam = function()
     table.insert(daftarRekaman, rek)
     rekamPoin = {}
 
-    -- bangun line hijau
     if tampilRekamanGlobal and rek.tampil then
         local poinRapi = sederhanakan(rek.poin, TOLERANSI_REK)
         for i = 1, #poinRapi - 1 do
-            local prt = buatSegmen(poinRapi[i], poinRapi[i + 1], Warna.Hijau, TEBAL_LINE_REK, rek.folder)
-            if prt then end
+            buatSegmen(poinRapi[i], poinRapi[i + 1], Warna.Hijau, TEBAL_LINE_REK, rek.folder)
         end
     end
 
@@ -1976,7 +1969,6 @@ toggleRekam = function()
     if sedangRekam then stopRekam() else mulaiRekam() end
 end
 
--- loop update indikator
 task.spawn(function()
     while screenGui.Parent do
         task.wait(0.25)
@@ -2011,12 +2003,29 @@ local function hapusRekaman(rek)
     refreshRekList(true)
 end
 
+-- BARU v1.4.3: SOLO — tampilkan 1 record saja
+local function soloRek(target)
+    for _, r in ipairs(daftarRekaman) do
+        r.tampil = (r == target)
+        bangunLineRek(r)
+    end
+    simpanKeFile()
+    refreshRekList(false)
+    bunyi(SND_PING, 0.3, 1.35)
+    toast("🎯 Solo: hanya '" .. target.nama .. "' yang tampil", Warna.Hijau2)
+end
+
 refreshRekList = function(animasi)
     for _, c in ipairs(scrollRek:GetChildren()) do
         if c:IsA("GuiObject") then c:Destroy() end
     end
 
+    local nTampil = 0
+    for _, r in ipairs(daftarRekaman) do
+        if r.tampil then nTampil += 1 end
+    end
     listLabelRek.Text = "🎥 RECORD • " .. #daftarRekaman
+        .. "  •  tampil " .. nTampil .. "/" .. #daftarRekaman
 
     if #daftarRekaman == 0 then
         local kosong = buat("Frame", {
@@ -2054,7 +2063,7 @@ refreshRekList = function(animasi)
     for i, rek in ipairs(daftarRekaman) do
         local item = buat("Frame", {
             Size = UDim2.new(1, -6, 0, 36),
-            BackgroundColor3 = Warna.AbuItem,
+            BackgroundColor3 = rek.tampil and Warna.AbuItem or Color3.fromRGB(240, 238, 248),
             BorderSizePixel = 0,
             LayoutOrder = i,
         }, scrollRek)
@@ -2073,12 +2082,15 @@ refreshRekList = function(animasi)
             tween(item, TweenInfo.new(0.12), {BackgroundColor3 = Warna.BiruMuda})
         end)
         item.MouseLeave:Connect(function()
-            tween(item, TweenInfo.new(0.12), {BackgroundColor3 = Warna.AbuItem})
+            tween(item, TweenInfo.new(0.12), {
+                BackgroundColor3 = rek.tampil and Warna.AbuItem or Color3.fromRGB(240, 238, 248),
+            })
         end)
 
+        -- checkbox utk gabung
         local cekBtn = buat("TextButton", {
             Size = UDim2.fromOffset(18, 18),
-            Position = UDim2.new(0, 8, 0.5, -9),
+            Position = UDim2.new(0, 6, 0.5, -9),
             BackgroundColor3 = rek.pilih and Warna.Hijau2 or Warna.Putih,
             BorderSizePixel = 0,
             FontFace = fnt("bold"),
@@ -2099,11 +2111,11 @@ refreshRekList = function(animasi)
 
         local nameEdit = buat("TextBox", {
             BackgroundTransparency = 1,
-            Position = UDim2.new(0, 30, 0, 0),
-            Size = UDim2.new(1, -140, 1, 0),
+            Position = UDim2.new(0, 28, 0, 0),
+            Size = UDim2.new(1, -168, 1, 0),
             FontFace = fnt("med"),
             Text = rek.nama,
-            TextColor3 = Warna.TeksGelap,
+            TextColor3 = rek.tampil and Warna.TeksGelap or Warna.AbuTeks,
             TextSize = 12,
             TextXAlignment = Enum.TextXAlignment.Left,
             ClearTextOnFocus = false,
@@ -2123,14 +2135,34 @@ refreshRekList = function(animasi)
             end
         end)
 
+        -- BARU v1.4.3: SOLO 🎯 — tampil ini saja
+        local soloBtn = buat("TextButton", {
+            Size = UDim2.fromOffset(26, 26),
+            Position = UDim2.new(1, -142, 0.5, -13),
+            BackgroundColor3 = Warna.Putih,
+            BorderSizePixel = 0,
+            FontFace = fnt("reg"),
+            Text = "🎯",
+            TextSize = 12,
+            AutoButtonColor = false,
+        }, item)
+        buat("UICorner", {CornerRadius = UDim.new(0, 7)}, soloBtn)
+        buat("UIStroke", {Color = Warna.Hijau2, Thickness = 1, Transparency = 0.5}, soloBtn)
+
+        soloBtn.MouseButton1Click:Connect(function()
+            ripple(soloBtn, Warna.Hijau2)
+            soloRek(rek)
+        end)
+
+        -- TP ke titik AKHIR
         local tpBtn = buat("TextButton", {
-            Size = UDim2.fromOffset(36, 26),
-            Position = UDim2.new(1, -110, 0.5, -13),
+            Size = UDim2.fromOffset(30, 26),
+            Position = UDim2.new(1, -106, 0.5, -13),
             BackgroundColor3 = Warna.Putih,
             BorderSizePixel = 0,
             FontFace = fnt("bold"),
             Text = "🏁",
-            TextSize = 13,
+            TextSize = 12,
             AutoButtonColor = false,
         }, item)
         buat("UICorner", {CornerRadius = UDim.new(0, 7)}, tpBtn)
@@ -2146,6 +2178,7 @@ refreshRekList = function(animasi)
             end
         end)
 
+        -- show/hide per record
         local eyeBtn = buat("TextButton", {
             Size = UDim2.fromOffset(26, 26),
             Position = UDim2.new(1, -68, 0.5, -13),
@@ -2164,6 +2197,7 @@ refreshRekList = function(animasi)
             bangunLineRek(rek)
             simpanKeFile()
             bunyi(SND_PING, 0.25, rek.tampil and 1.2 or 0.8)
+            refreshRekList(false)
         end)
 
         local delBtn = buat("TextButton", {
@@ -2192,6 +2226,7 @@ refreshRekList = function(animasi)
         end)
 
         efekTombol(tpBtn)
+        efekTombol(soloBtn, 1.1)
         efekTombol(eyeBtn, 1.1)
         efekTombol(delBtn, 1.1)
     end
@@ -2244,7 +2279,6 @@ local function muatDariFile()
     end
     perbaruiNomor()
 
-    -- koneksi manual tersimpan
     for _, k in ipairs(daftarK) do
         if type(k) == "table" and type(k.a) == "string" and type(k.b) == "string"
         and tiangDariId(k.a) and tiangDariId(k.b)
@@ -2253,7 +2287,6 @@ local function muatDariFile()
         end
     end
 
-    -- record
     for _, e in ipairs(daftarR) do
         if type(e) == "table" and type(e.nama) == "string"
         and type(e.poin) == "table" and #e.poin >= 2 then
@@ -2290,6 +2323,16 @@ local function muatDariFile()
     end
 
     if #koneksiAktif > 0 then rebuildGaris() end
+
+    if #daftarTiang == 0 and #daftarRekaman == 0 then
+        local adaBackup
+        pcall(function() adaBackup = readfile(NAMA_BACKUP) end)
+        if type(adaBackup) == "string" and #adaBackup > 0 then
+            task.delay(2, function()
+                toast("ℹ️ Ada backup tersimpan — tombol ♻ PULIHKAN BACKUP di tab Tiang", Warna.Biru)
+            end)
+        end
+    end
 end
 
 -- [19] BUKA / TUTUP -------------------------------------------------
@@ -2399,6 +2442,18 @@ btnTampil.MouseButton1Click:Connect(function()
     toast(tampilRekamanGlobal and "👁 Semua line record: ON" or "🚫 Semua line record: OFF", Warna.Hijau2)
 end)
 
+-- BARU v1.4.3: tampilkan semua record
+btnSemua.MouseButton1Click:Connect(function()
+    for _, r in ipairs(daftarRekaman) do
+        r.tampil = true
+        bangunLineRek(r)
+    end
+    simpanKeFile()
+    refreshRekList(false)
+    bunyi(SND_PING, 0.3, 1.2)
+    toast("👁 Semua record tampil lagi", Warna.Biru)
+end)
+
 btnGabung.MouseButton1Click:Connect(function()
     local pilih = {}
     for _, rek in ipairs(daftarRekaman) do
@@ -2443,7 +2498,6 @@ btnGabung.MouseButton1Click:Connect(function()
     toast("🔗 Digabung " .. #pilih .. " record → '" .. gab.nama .. "'", Warna.Ungu)
 end)
 
--- SAMBUNG: pilih 2+ tiang -> tersambung berurutan (BARU v1.4)
 btnSambung.MouseButton1Click:Connect(function()
     local pilih = tiangTerpilih()
     if #pilih < 2 then
@@ -2467,13 +2521,14 @@ btnSambung.MouseButton1Click:Connect(function()
     bersihkanPilihanTiang()
     bunyi(SND_PING, 0.3, 1.3)
     if dibuat > 0 then
-        toast("🔗 " .. dibuat .. " garis dibuat" .. (sudud and 0 or ""), Warna.Hijau2)
+        local pesan = "🔗 " .. dibuat .. " garis dibuat"
+        if sudah > 0 then pesan = pesan .. " • " .. sudah .. " sudah ada" end
+        toast(pesan, Warna.Hijau2)
     else
         toast("⚠️ Semua pasangan sudah terhubung", Warna.Merah)
     end
 end)
 
--- PUTUS: pilih tepat 2 tiang yang terhubung (BARU v1.4)
 btnPutus.MouseButton1Click:Connect(function()
     local pilih = tiangTerpilih()
     if #pilih ~= 2 then
@@ -2535,61 +2590,68 @@ btnGaris.MouseButton1Click:Connect(function()
     toast("↺ " .. #koneksiAktif .. " garis dihitung ulang", Warna.Biru)
 end)
 
-btnReset.MouseButton1Click:Connect(function()
-    ripple(btnReset, Warna.Putih)
-    bunyi(SND_PING, 0.3, 1.2)
-    resetScript()
-end)
-
-local unloadSiap = false
-btnUnload.MouseButton1Click:Connect(function()
-    if not unloadSiap then
-        unloadSiap = true
-        btnUnload.Text = "❗ YAKIN? KLIK LAGI"
-        btnUnload.BackgroundColor3 = Warna.Merah
+local pulihkanSiap = false
+btnPulihkan.MouseButton1Click:Connect(function()
+    if not pulihkanSiap then
+        pulihkanSiap = true
+        btnPulihkan.Text = "❗ TIMPA DATA DENGAN BACKUP? KLIK LAGI"
+        btnPulihkan.BackgroundColor3 = Warna.Merah
         bunyi(SND_SNAP, 0.3, 0.8)
         task.delay(3, function()
-            unloadSiap = false
-            if btnUnload.Parent then
-                btnUnload.Text = "❌ UNLOAD"
-                btnUnload.BackgroundColor3 = Warna.Putih
+            pulihkanSiap = false
+            if btnPulihkan.Parent then
+                btnPulihkan.Text = "♻ PULIHKAN BACKUP"
+                btnPulihkan.BackgroundColor3 = Warna.Putih
             end
         end)
     else
-        unloadSiap = false
-        bunyi(SND_SNAP, 0.35, 0.6)
-        unloadScript("Dihapus manual dari GUI ✔ — data file tetap aman")
+        pulihkanSiap = false
+        local isiBackup
+        pcall(function() isiBackup = readfile(NAMA_BACKUP) end)
+        if type(isiBackup) == "string" and #isiBackup > 0 then
+            pcall(function() writefile(NAMA_FILE, isiBackup) end)
+            bunyi(SND_PING, 0.35, 1.2)
+            toast("♻ Backup dipulihkan — memuat ulang...", Warna.Biru)
+            task.wait(0.3)
+            resetScript()
+        else
+            toast("⚠️ Tidak ada file backup", Warna.Merah)
+        end
     end
 end)
 
--- BARU v1.4: hapus data + tutup total
-local hapusTutupSiap = false
-btnHapusTutup.MouseButton1Click:Connect(function()
-    if not hapusTutupSiap then
-        hapusTutupSiap = true
-        btnHapusTutup.Text = "❗ HAPUS SEMUA DATA? KLIK LAGI"
-        btnHapusTutup.BackgroundColor3 = Warna.Merah
+local tutupSiap = false
+btnTutup.MouseButton1Click:Connect(function()
+    if not tutupSiap then
+        tutupSiap = true
+        btnTutup.Text = "❗ HAPUS SEMUA DATA & TUTUP? KLIK LAGI"
+        btnTutup.BackgroundColor3 = Warna.Merah
         bunyi(SND_SNAP, 0.3, 0.8)
         task.delay(3, function()
-            hapusTutupSiap = false
-            if btnHapusTutup.Parent then
-                btnHapusTutup.Text = "🗑️ HAPUS DATA & TUTUP"
-                btnHapusTutup.BackgroundColor3 = Warna.Putih
+            tutupSiap = false
+            if btnTutup.Parent then
+                btnTutup.Text = "🗑️ HAPUS & TUTUP SCRIPT"
+                btnTutup.BackgroundColor3 = Warna.Putih
             end
         end)
     else
-        hapusTutupSiap = false
+        tutupSiap = false
         bunyi(SND_SNAP, 0.35, 0.5)
 
-        -- hapus file data total
         local terhapus = false
         if fileOk then
             pcall(function()
-                if type(delfile) == "function" and isfile and isfile(NAMA_FILE) then
-                    delfile(NAMA_FILE)
+                if type(delfile) == "function" then
+                    if type(isfile) ~= "function" or isfile(NAMA_FILE) then
+                        delfile(NAMA_FILE)
+                    end
+                    if type(isfile) ~= "function" or isfile(NAMA_BACKUP) then
+                        delfile(NAMA_BACKUP)
+                    end
                     terhapus = true
                 else
                     writefile(NAMA_FILE, "{}")
+                    pcall(function() writefile(NAMA_BACKUP, "{}") end)
                     terhapus = true
                 end
             end)
@@ -2608,11 +2670,11 @@ efekTombol(btnBersih)
 efekTombol(btnGaris)
 efekTombol(btnSambung)
 efekTombol(btnPutus)
-efekTombol(btnReset)
-efekTombol(btnUnload)
-efekTombol(btnHapusTutup)
+efekTombol(btnPulihkan)
+efekTombol(btnTutup)
 efekTombol(recBtn)
 efekTombol(btnTampil)
+efekTombol(btnSemua)
 efekTombol(btnGabung)
 efekTombol(tabTiang)
 efekTombol(tabRekam)
@@ -2658,10 +2720,8 @@ task.delay(1.2, function()
     end
 end)
 
-print("[TiangPath] SIAP ✔ — F = GUI | Y = pasang tiang | G = rekam jalur")
-print("[TiangPath] Koneksi manual: klik nomor 2 tiang → 🔗 SAMBUNG / ✂️ PUTUS")
-print("[TiangPath] 🔁 RESET | ❌ UNLOAD (data aman) | 🗑️ HAPUS DATA & TUTUP (bersih total)")
-print("[TiangPath] Penyimpanan: " .. (fileOk and ("file '" .. NAMA_FILE .. "' (per game: " .. game.PlaceId .. ")") or "TIDAK TERSEDIA"))
+print("[TiangPath] v1.4.3 SIAP ✔ — F = GUI | Y = pasang | G = rekam")
+print("[TiangPath] 🎯 SOLO (tampil 1 saja) + 👁 TAMPILKAN SEMUA")
 
 end -- akhir jalankanScript
 
