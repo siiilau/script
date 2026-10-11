@@ -1,5 +1,8 @@
 --=====================================================================--
---  KING SILAU — Panel Utility (Client-side) v1.4
+--  KING SILAU — Panel Utility (Client-side) v1.5
+--  BARU: tombol HAPUS SCRIPT (hapus semua jejak script + GUI)
+--  Nilai: Speed ON 17.25 / OFF 17 | Jump ON 62.00 / OFF 51.25
+--  Panel dibuka lewat: F (PC) atau tap teks FPS di pojok kiri bawah.
 --=====================================================================--
 
 local Players          = game:GetService("Players")
@@ -26,8 +29,8 @@ end
 --■ NILAI TETAP ---------------------------------------------------------
 local DEFAULT_SPEED  = 17.25  -- nilai Speed saat ON (awal & setelah Reset)
 local DEFAULT_JUMP   = 62.00  -- nilai Jump saat ON (awal & setelah Reset)
-local OFF_SPEED      = 17     -- ◄ nilai Speed saat OFF
-local OFF_JUMP       = 51.25  -- ◄ nilai Jump saat OFF (JumpPower)
+local OFF_SPEED      = 17     -- nilai Speed saat OFF
+local OFF_JUMP       = 51.25  -- nilai Jump saat OFF (JumpPower)
 local OFF_JUMP_H     = 6.69   -- ekuivalen 51.25 untuk game yang pakai JumpHeight
 
 --■ STATE ----------------------------------------------------------------
@@ -39,12 +42,14 @@ local State = {
     LWOn    = false,
     LightOn = false, LightMode = "Auto", ManualTime = 14, ManualBright = 2.5,
     WallsOn = false,
+    Removed = false, -- true = script sudah dihapus
 }
-local Original = {} -- nilai asli Lighting (untuk fitur cahaya/lightweight)
+local Original = {}
 
 --■ FORWARD -------------------------------------------------------------
 local Setters, Switches = {}, {}
-local setFeature, togglePanel, resetAll, rejoin, setLightMode
+local setFeature, togglePanel, resetAll, rejoin, setLightMode, unloadScript
+local stopLightLoop -- forward
 local applySpeed, applyJump, applyManualLight, updateJumpLabel
 local RefreshSpeed, RefreshJump, JumpLabel
 
@@ -110,6 +115,7 @@ new("UIListLayout", {Padding = UDim.new(0, 6), HorizontalAlignment = Enum.Horizo
 
 local nOrder = 0
 local function notify(text, on)
+    if State.Removed then return end
     nOrder += 1
     local f = new("Frame", {BackgroundColor3 = C.Card, Size = UDim2.new(0, 250, 0, 32), LayoutOrder = nOrder, Parent = notifHolder})
     new("UICorner", {CornerRadius = UDim.new(0, 8), Parent = f})
@@ -126,7 +132,7 @@ local function sync(name, v, silent, label)
     if not silent then notify(label .. ": " .. (v and "ON" or "OFF"), v) end
 end
 
---■ FPS COUNTER + PEMBUKA PANEL (kecil di pojok, tidak mengganggu) --------
+--■ FPS COUNTER + PEMBUKA PANEL -------------------------------------------
 local fpsLabel = new("TextButton", {
     BackgroundColor3 = C.BG, BackgroundTransparency = 0.45,
     Position = UDim2.new(0, 8, 1, -24), Size = UDim2.new(0, 68, 0, 18),
@@ -134,11 +140,14 @@ local fpsLabel = new("TextButton", {
     Text = "FPS: --", AutoButtonColor = false, Parent = gui,
 })
 new("UICorner", {CornerRadius = UDim.new(0, 6), Parent = fpsLabel})
+local fpsConn
 do
     local frames = 0
-    RunService.RenderStepped:Connect(function() frames += 1 end)
+    fpsConn = RunService.RenderStepped:Connect(function()
+        if not State.Removed then frames += 1 end
+    end)
     task.spawn(function()
-        while true do
+        while not State.Removed do
             task.wait(1)
             fpsLabel.Text = "FPS: " .. frames
             frames = 0
@@ -394,8 +403,18 @@ header("Map")
 toggleRow("Dinding Batas", "X", "Walls")
 
 header("Ekstra")
-actionRow("RESET SCRIPT", C.Red, function() resetAll() end)
+actionRow("RESET SCRIPT", C.Blue, function() resetAll() end)
 actionRow("REJOIN SERVER", C.Blue, function() rejoin() end)
+actionRow("HAPUS SCRIPT", C.Red, function()
+    if not _G.__KS_DELETE_ARMED__ then
+        _G.__KS_DELETE_ARMED__ = true
+        notify("Tap sekali lagi untuk HAPUS script", false)
+        task.delay(3, function() _G.__KS_DELETE_ARMED__ = nil end)
+    else
+        _G.__KS_DELETE_ARMED__ = nil
+        unloadScript()
+    end
+end)
 
 --=====================================================================--
 --  FITUR
@@ -440,7 +459,7 @@ local function applyAutoLight()
         restoreLighting()
     end
 end
-local function stopLightLoop()
+stopLightLoop = function()
     if lightThread then
         task.cancel(lightThread)
         lightThread = nil
@@ -468,13 +487,12 @@ setLightMode = function(mode)
 end
 
 --■ SPEED & JUMP -------------------------------------------------------------
--- OFF = nilai tetap: Speed 17 | Jump 51.25 (tidak lagi memulihkan nilai asli game)
 applySpeed = function()
     local hum = getHum()
     if not hum then return end
-    local base = State.SpeedOn and State.SpeedValue or OFF_SPEED -- ◄ OFF = 17
+    local base = State.SpeedOn and State.SpeedValue or OFF_SPEED -- OFF = 17
     if State.ShiftOn and State.IsSwimming then
-        base = base * 1.10 -- bonus air (bagian paket shiftlock)
+        base = base * 1.10
     end
     hum.WalkSpeed = base
 end
@@ -482,7 +500,7 @@ applyJump = function()
     local hum = getHum()
     if not hum then return end
     if hum.UseJumpPower then
-        hum.JumpPower = State.JumpOn and State.JumpValue or OFF_JUMP -- ◄ OFF = 51.25
+        hum.JumpPower = State.JumpOn and State.JumpValue or OFF_JUMP -- OFF = 51.25
     else
         hum.JumpHeight = State.JumpOn and State.JumpHeightValue or OFF_JUMP_H
     end
@@ -500,11 +518,10 @@ Setters.Speed = function(v, silent)
     State.SpeedOn = v
     applySpeed()
     if not v then
-        -- jaminan ekstra: 2 detik pertama setelah OFF, speed dikunci di 17
         task.spawn(function()
             for _ = 1, 8 do
                 task.wait(0.25)
-                if State.SpeedOn then return end
+                if State.SpeedOn or State.Removed then return end
                 local h = getHum()
                 if h and h.WalkSpeed ~= OFF_SPEED then
                     h.WalkSpeed = OFF_SPEED
@@ -519,11 +536,10 @@ Setters.Jump = function(v, silent)
     State.JumpOn = v
     applyJump()
     if not v then
-        -- jaminan ekstra: 2 detik pertama setelah OFF, jump dikunci di 51.25
         task.spawn(function()
             for _ = 1, 8 do
                 task.wait(0.25)
-                if State.JumpOn then return end
+                if State.JumpOn or State.Removed then return end
                 local h = getHum()
                 if h then
                     if h.UseJumpPower and h.JumpPower ~= OFF_JUMP then
@@ -674,7 +690,7 @@ local function playerHideHook(plr)
     if plr == LocalPlayer then return end
     plr.CharacterAdded:Connect(function(char)
         task.wait(0.4)
-        if State.HideOn then hideCharacter(char) end
+        if State.HideOn and not State.Removed then hideCharacter(char) end
     end)
     if plr.Character and State.HideOn then hideCharacter(plr.Character) end
 end
@@ -800,8 +816,8 @@ end
 
 --■ RESET & REJOIN --------------------------------------------------------------------
 resetAll = function()
-    setFeature("Speed", false, true) -- OFF -> speed langsung 17
-    setFeature("Jump", false, true)  -- OFF -> jump langsung 51.25
+    setFeature("Speed", false, true)
+    setFeature("Jump", false, true)
     setFeature("Shift", false, true)
     setFeature("Hide", false, true)
     setFeature("LW", false, true)
@@ -824,9 +840,41 @@ rejoin = function()
     end)
 end
 
+--■ HAPUS SCRIPT -----------------------------------------------------------------------
+unloadScript = function()
+    if State.Removed then return end
+    State.Removed = true
+
+    -- 1) matikan semua fitur bersih-bersih (pulihkan visual, kendaraan, dinding, cahaya)
+    setFeature("Speed", false, true)
+    setFeature("Jump", false, true)
+    setFeature("Shift", false, true)
+    setFeature("Hide", false, true)
+    setFeature("LW", false, true)
+    setFeature("Light", false, true)
+    setFeature("Walls", false, true)
+    stopLightLoop()
+    RunService:UnbindFromRenderStep("KS_SHIFTLOCK")
+
+    -- 2) hancurkan seluruh GUI
+    pcall(function() gui:Destroy() end)
+
+    -- 3) izinkan script dijalankan lagi di kemudian hari
+    _G.__KING_SILAU__ = nil
+
+    -- 4) hancurkan script-nya sendiri (LocalScript hilang dari game)
+    pcall(function()
+        if script and script.Parent then
+            script.Disabled = true
+            script:Destroy()
+        end
+    end)
+end
+
 --■ KARAKTER: PASANG ULANG SAAT RESPAWN -----------------------------------------------
 local initedChar
 local function initCharacter(char)
+    if State.Removed then return end
     if initedChar == char then return end
     initedChar = char
     local hum = char:WaitForChild("Humanoid", 10)
@@ -840,6 +888,7 @@ local function initCharacter(char)
         end
     end)
     task.wait(0.25)
+    if State.Removed then return end
     if State.SpeedOn then applySpeed() end
     if State.JumpOn then applyJump() end
     if State.ShiftOn then hum.AutoRotate = false end
@@ -848,6 +897,19 @@ LocalPlayer.CharacterAdded:Connect(initCharacter)
 task.spawn(function()
     local c = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     initCharacter(c)
+end)
+
+--■ WATCHER CAHAYA ASLI ------------------------------------------------------------------
+task.spawn(function()
+    while not State.Removed do
+        task.wait(0.5)
+        if not State.LightOn then
+            Original.ClockTime = Lighting.ClockTime
+            Original.Brightness = Lighting.Brightness
+            Original.Ambient = Lighting.Ambient
+            Original.OutdoorAmbient = Lighting.OutdoorAmbient
+        end
+    end
 end)
 
 -- hook pemain lain (hide)
@@ -859,15 +921,17 @@ end)
 
 -- loop kendaraan (radius 20 stud)
 task.spawn(function()
-    while true do
+    while not State.Removed do
         if State.HideOn then pcall(updateVehicles) end
         task.wait(0.3)
     end
 end)
 
 --■ KEYBIND PC ---------------------------------------------------------------------------
+local keyConn
 local lastK = 0
-UserInputService.InputBegan:Connect(function(input, processed)
+keyConn = UserInputService.InputBegan:Connect(function(input, processed)
+    if State.Removed then keyConn:Disconnect() return end
     if processed then return end
     if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
     local k = input.KeyCode
@@ -895,4 +959,4 @@ UserInputService.InputBegan:Connect(function(input, processed)
     end
 end)
 
-notify("KING SILAU v1.4 — F / tap FPS utk buka panel", true)
+notify("KING SILAU v1.5 — F / tap FPS utk buka panel", true)
