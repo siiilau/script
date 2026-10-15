@@ -758,7 +758,10 @@ local sliderKnob = buat("Frame", {
 }, sliderBar)
 buat("UICorner", {CornerRadius = UDim.new(1, 0)}, sliderKnob)
 buat("UIStroke", {Color = W.TXT, Thickness = 1.5}, sliderKnob)
-for i, (lbl, xr) in ipairs({{"17.00", 0}, {"20.00", 0.5}, {"25.00", 1}}) do
+local skalaLabels = {{"17.00", 0}, {"20.00", 0.5}, {"25.00", 1}}
+for i = 1, #skalaLabels do
+    local lbl = skalaLabels[i][1]
+    local xr  = skalaLabels[i][2]
     buat("TextLabel", {
         BackgroundTransparency = 1,
         AnchorPoint = Vector2.new(xr, 0),
@@ -2132,15 +2135,7 @@ icon.InputBegan:Connect(function(input)
         -- drag kecil: kalau cuma klik → buka
     end
 end)
-icon.MouseButton1Click = nil
--- klik ikon = buka (pakai InputEnded sederhana)
-local iconDown = nil
-icon.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-    or input.UserInputType == Enum.UserInputType.Touch then
-        iconDown = os.clock()
-    end
-end)
+
 icon.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
     or input.UserInputType == Enum.UserInputType.Touch then
