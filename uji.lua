@@ -1,10 +1,11 @@
 --========================================================
--- ROUTETOOLS v6.1 — Dark Dashboard Edition
--- Tab 1: Tools | Tab 2: Teleport + Replay | Tab 3: Record + Files
--- Keybind: F=GUI  R=Record  T=Replay  Q=Speed  C=Cahaya
+-- ROUTETOOLS v6.2 — Dark Dashboard
+-- F=GUI  R=Record  T=Replay  Q=Speed  C=Cahaya
+-- Baru: gabungan→Tab 2, jembatan gap, jump replay,
+--       approach ke depan, auto-stop, nama gap-fill
 --========================================================
 
--- [1] PENGAMAN DASAR ------------------------------------------------
+-- [1] PENGAMAN ------------------------------------------------------
 local RunService = game:GetService("RunService")
 if not RunService:IsClient() then
     warn("[RouteTools] GAGAL: harus jalan di CLIENT (executor)!")
@@ -34,12 +35,10 @@ local KEY_LIGHT  = Enum.KeyCode.C
 local TELEPORT_OFFSET = 3.5
 local SOUND_ON        = true
 
--- Speedwalk (permintaan user)
 local SPEED_MIN, SPEED_MAX, SPEED_STEP = 17.00, 25.00, 0.25
 local SPEED_DEFAULT = 17.25
-local SPEED_NORMAL  = 17      -- saat OFF
+local SPEED_NORMAL  = 17
 
--- Record / Replay
 local REC_INTERVAL   = 0.1
 local REC_MIN_MOVE   = 0.35
 local REC_MAX_POINTS = 15000
@@ -50,10 +49,14 @@ local APPROACH_TIMEOUT = 12
 local STALL_SKIP       = 3
 local ANTI_FALL_H      = 5.5
 
+-- jembatan gap antar file saat gabung/Replay All
+local GAP_JOIN_DIST = 1.5   -- lebih dekat dari ini = anggap titik dobel
+local GAP_STEP      = 3.0   -- jarak antar titik jembatan
+
 local FILE_LOKASI  = "TeleportGui_Silau.json"
 local FILE_REKAMAN = "TeleportGui_Silau_Replay.json"
 
--- [3] TEMA WARNA (dark dashboard) ------------------------------------
+-- [3] TEMA ----------------------------------------------------------
 local W = {
     BG0     = Color3.fromRGB(10, 16, 30),
     BG1     = Color3.fromRGB(13, 21, 38),
@@ -71,7 +74,7 @@ local W = {
     ABU     = Color3.fromRGB(40, 52, 80),
 }
 
--- [4] FONT -----------------------------------------------------------
+-- [4] FONT ----------------------------------------------------------
 local FONT_OK = pcall(function()
     return Font.new("rbxasset://fonts/families/Montserrat.json", Enum.FontWeight.Regular)
 end)
@@ -80,9 +83,8 @@ local function fnt(k)
     if cacheFont[k] then return cacheFont[k] end
     local v
     if FONT_OK then
-        local fam = { bold="rbxasset://fonts/families/Montserrat.json", reg="rbxasset://fonts/families/Montserrat.json" }
-        local wts = { bold=Enum.FontWeight.Bold, reg=Enum.FontWeight.Regular }
-        v = Font.new(fam[k], wts[k])
+        v = Font.new("rbxasset://fonts/families/Montserrat.json",
+            (k == "bold") and Enum.FontWeight.Bold or Enum.FontWeight.Regular)
     else
         v = (k == "bold") and Enum.Font.GothamBold or Enum.Font.Gotham
     end
@@ -91,7 +93,7 @@ local function fnt(k)
 end
 local TEKS_CLASS = {TextLabel = true, TextButton = true, TextBox = true}
 
--- [5] HELPER DASAR ---------------------------------------------------
+-- [5] HELPER DASAR --------------------------------------------------
 local rnd = math.random
 local koneksi = {}
 local function sambung(sig, fn)
@@ -116,23 +118,47 @@ local function tween(obj, info, props)
     t:Play()
     return t
 end
-local SND_PING = "rbxasset://sounds/electronicpingshort.wav"
-local SND_SNAP = "rbxasset://sounds/snap.mp3"
+local SND_PING   = "rbxasset://sounds/electronicpingshort.wav"
+local SND_SNAP   = "rbxasset://sounds/snap.mp3"
 local SND_WHOOSH = "rbxasset://sounds/unsheath.wav"
 
 local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
+
 local function ribu(n)
     n = math.floor(n + 0.5)
-    local out = tostring(n):reverse():gsub("(%d%d%d)", "%1.")
-    out = tostring(out):reverse()
-    return (out:gsub("^%.", ""))
+    local s = tostring(n)
+    local tanda = ""
+    if s:sub(1, 1) == "-" then
+        tanda = "-"
+        s = s:sub(2)
+    end
+    local parts = {}
+    while #s > 3 do
+        table.insert(parts, 1, s:sub(-3))
+        s = s:sub(1, #s - 3)
+    end
+    table.insert(parts, 1, s)
+    return tanda .. table.concat(parts, ".")
 end
+
 local function fmtDur(sec)
     sec = math.max(0, math.floor(sec))
     return string.format("%02d:%02d", math.floor(sec / 60), sec % 60)
 end
 
--- [6] SCREENGUI ------------------------------------------------------
+-- nomor otomatis: cari nomor terkecil yang belum dipakai (gap-fill)
+local function nomorBebas(prefix, daftarNama)
+    local dipakai = {}
+    for _, nama in ipairs(daftarNama) do
+        local n = tonumber(tostring(nama):match("^" .. prefix .. " (%d+)"))
+        if n then dipakai[n] = true end
+    end
+    local n = 1
+    while dipakai[n] do n += 1 end
+    return n
+end
+
+-- [6] SCREENGUI -----------------------------------------------------
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "TeleportGui"
 screenGui.ResetOnSpawn = false
@@ -284,11 +310,10 @@ local panel = buat("Frame", {
 }, root)
 buat("UICorner", {CornerRadius = UDim.new(0, 14)}, panel)
 buat("UIStroke", {Color = W.BORDER, Thickness = 1}, panel)
-buat("UIStroke", {Color = W.BLUEDIM, Thickness = 1, Transparency = 0.85}, panel) -- hint neon
+buat("UIStroke", {Color = W.BLUEDIM, Thickness = 1, Transparency = 0.85}, panel)
 
 local panelScale = buat("UIScale", {Scale = 1}, panel)
 
--- auto-scale utk layar kecil (HP)
 local function updateScale()
     local cam = workspace.CurrentCamera
     local vp = cam and cam.ViewportSize or Vector2.new(1366, 768)
@@ -316,7 +341,7 @@ local sidebar = buat("Frame", {
     Size = UDim2.new(0, 190, 1, 0), BackgroundColor3 = W.BG0, BorderSizePixel = 0,
 }, panel)
 buat("UICorner", {CornerRadius = UDim.new(0, 14)}, sidebar)
-buat("Frame", { -- pembatas
+buat("Frame", {
     Position = UDim2.new(1, -1, 0, 0), Size = UDim2.new(0, 1, 1, 0),
     BackgroundColor3 = W.BORDER, BorderSizePixel = 0,
 }, sidebar)
@@ -333,7 +358,7 @@ local logo = buat("TextLabel", {
 }, logoDrag)
 
 local navBtns, navDots = {}, {}
-local fungsiPilihTab -- forward
+local fungsiPilihTab
 
 local function buatNav(urut, ikon, label)
     local b = buat("TextButton", {
@@ -363,9 +388,8 @@ local function buatNav(urut, ikon, label)
         bunyi(SND_PING, 0.22, 1.15 + urut * 0.1)
         if fungsiPilihTab then fungsiPilihTab(urut) end
     end)
-    navBtns[urut] = {btn = b, label = lb, ikon = ic, stroke = nil}
+    navBtns[urut] = {btn = b, label = lb, ikon = ic}
     navDots[urut] = dot
-    return b
 end
 buatNav(1, "⚙", "Tools")
 buatNav(2, "📍", "Teleport +\nReplay")
@@ -405,7 +429,6 @@ local subjudul = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
 }, headerDrag)
 
--- pill status (kanan atas)
 local pill = buat("Frame", {
     AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 14),
     Size = UDim2.fromOffset(140, 24), BackgroundColor3 = W.GREEN,
@@ -424,9 +447,8 @@ local pillLabel = buat("TextLabel", {
     TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left,
 }, pill)
 
--- tombol minimize kecil
 local minBtn = buat("TextButton", {
-    AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, -0),
+    AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 0),
     Size = UDim2.fromOffset(22, 22), BackgroundColor3 = W.CARD, BorderSizePixel = 0,
     FontFace = fnt("bold"), Text = "–", TextColor3 = W.SUB, TextSize = 14,
     AutoButtonColor = false, ZIndex = 5,
@@ -434,7 +456,6 @@ local minBtn = buat("TextButton", {
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, minBtn)
 buat("UIStroke", {Color = W.BORDER, Thickness = 1}, minBtn)
 
--- divider header
 buat("Frame", {
     Position = UDim2.new(0, 14, 0, 84), Size = UDim2.new(1, -28, 0, 1),
     BackgroundColor3 = W.BORDER, BorderSizePixel = 0,
@@ -552,7 +573,7 @@ local function bacaJSON(path)
     local data
     local ok = pcall(function() data = HttpService:JSONDecode(isi) end)
     if ok and type(data) == "table" then return data end
-    pcall(function() writefile(path .. ".bak", isi) end) -- backup anti korup
+    pcall(function() writefile(path .. ".bak", isi) end)
     warn("[RouteTools] JSON korup, backup: " .. path .. ".bak")
     return nil
 end
@@ -566,9 +587,7 @@ local function tulisJSON(path, data)
     end
 end
 
--- lokasi teleport
 local lokasiTersimpan = {}
-local counterNama = 0
 local function muatLokasi()
     local data = bacaJSON(FILE_LOKASI)
     if not data or type(data.games) ~= "table" then return end
@@ -598,9 +617,10 @@ local function simpanLokasiKeFile()
     tulisJSON(FILE_LOKASI, data)
 end
 
--- rekaman jalur
+-- rekaman asli (Tab 3) + gabungan (Tab 2) — satu file, dibedakan flag g
 local rekamanTersimpan = {}
-local counterJalur = 0
+local gabunganTersimpan = {}
+
 local function muatRekaman()
     local data = bacaJSON(FILE_REKAMAN)
     if not data or type(data.games) ~= "table" then return end
@@ -613,12 +633,17 @@ local function muatRekaman()
                 if type(p) ~= "table" or type(p.c) ~= "table" or #p.c < 12 then valid = false break end
             end
             if valid then
-                table.insert(rekamanTersimpan, {
+                local obj = {
                     id = tostring(e.id or e.nama), nama = e.nama,
                     waktu = tostring(e.waktu or "?"),
                     durasi = tonumber(e.durasi) or 0,
-                    pts = e.pts,
-                })
+                    pts = e.pts, g = (e.g == true),
+                }
+                if obj.g then
+                    table.insert(gabunganTersimpan, obj)
+                else
+                    table.insert(rekamanTersimpan, obj)
+                end
             end
         end
     end
@@ -626,20 +651,15 @@ end
 local function simpanRekamanKeFile()
     local data = bacaJSON(FILE_REKAMAN)
     data = (type(data) == "table" and type(data.games) == "table") and data or {games = {}}
-    data.games[tostring(game.PlaceId)] = rekamanTersimpan
+    local daftar = {}
+    for _, r in ipairs(rekamanTersimpan) do table.insert(daftar, r) end
+    for _, g in ipairs(gabunganTersimpan) do table.insert(daftar, g) end
+    data.games[tostring(game.PlaceId)] = daftar
     tulisJSON(FILE_REKAMAN, data)
 end
 
 muatLokasi()
 muatRekaman()
-for _, l in ipairs(lokasiTersimpan) do
-    local n = tonumber(l.nama:match("^Lokasi (%d+)$"))
-    if n and n > counterNama then counterNama = n end
-end
-for _, r in ipairs(rekamanTersimpan) do
-    local n = tonumber(r.nama:match("^Jalur (%d+)"))
-    if n and n > counterJalur then counterJalur = n end
-end
 
 -- [15] KARAKTER + TELEPORT -------------------------------------------
 local function getKarakter()
@@ -684,7 +704,7 @@ local function fxTeleport()
     task.delay(0.5, function() r:Destroy() end)
 end
 
--- [16] STATE + FORWARD DEKLARASI UI -----------------------------------
+-- [16] STATE + FORWARD ------------------------------------------------
 local sedangRekam, sedangReplay = false, false
 local speedOn, lightOn, hotkeyAktif = false, false, true
 local speedValue = SPEED_DEFAULT
@@ -695,9 +715,10 @@ local origSpeed = nil
 
 local updatePill, updateNavDots, updateRecUI, updateReplayUI
 local updateSpeedUI, updateLightUI, perbaruiBadge
-local refreshLokasi, refreshRekaman
+local refreshLokasi, refreshRekaman, refreshGabungan
+local fungsiPilihTab
 
--- [17] ===== TAB 1: TOOLS =============================================
+-- [17] TAB 1: TOOLS ===================================================
 local tab1 = tabFrames[1]
 local scrollT1 = buat("ScrollingFrame", {
     Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -705,12 +726,9 @@ local scrollT1 = buat("ScrollingFrame", {
     CanvasSize = UDim2.new(0, 0, 0, 428),
 }, tab1)
 
-local lebarKonten = 552 -- 780-190-28-... disesuaikan runtime di bawah
--- (dihitung ulang: area width = 780-190-28 = 562)
-lebarKonten = 562
+local lebarKonten = 562
 local halfW = math.floor((lebarKonten - 10) / 2)
 
--- ---- Kartu Speedwalk (kiri) ----
 local cardSpeed = buatCard(scrollT1, 0, 0, halfW, 132)
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(1, -100, 0, 16),
@@ -758,6 +776,7 @@ local sliderKnob = buat("Frame", {
 }, sliderBar)
 buat("UICorner", {CornerRadius = UDim.new(1, 0)}, sliderKnob)
 buat("UIStroke", {Color = W.TXT, Thickness = 1.5}, sliderKnob)
+
 local skalaLabels = {{"17.00", 0}, {"20.00", 0.5}, {"25.00", 1}}
 for i = 1, #skalaLabels do
     local lbl = skalaLabels[i][1]
@@ -780,7 +799,6 @@ local function updateSliderVis(rel)
 end
 updateSliderVis((SPEED_DEFAULT - SPEED_MIN) / (SPEED_MAX - SPEED_MIN))
 
--- ---- Kartu Fullbright (kanan) ----
 local cardLight = buatCard(scrollT1, halfW + 10, 0, halfW, 132)
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(1, -70, 0, 16),
@@ -812,7 +830,6 @@ buat("TextLabel", {
 }, cardLight)
 local lightSwitch = buatSwitch(cardLight, UDim2.new(1, -52, 0, 9), false, nil)
 
--- ---- Kartu Hotkey ----
 local cardKey = buatCard(scrollT1, 0, 142, lebarKonten, 176)
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(0, 200, 0, 16),
@@ -864,7 +881,6 @@ buat("TextLabel", {
     TextColor3 = W.SUB, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left,
 }, cardKey)
 
--- ---- Kartu Hapus Script ----
 local cardDel = buatCard(scrollT1, 0, 328, lebarKonten, 86)
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(0, 300, 0, 16),
@@ -885,10 +901,16 @@ local unloadBtn = buat("TextButton", {
 }, cardDel)
 buat("UICorner", {CornerRadius = UDim.new(0, 9)}, unloadBtn)
 
--- [18] ===== TAB 2: TELEPORT + REPLAY =================================
+-- [18] TAB 2: TELEPORT + RUTE GABUNGAN ================================
 local tab2 = tabFrames[2]
+local scrollT2 = buat("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
+    ScrollBarThickness = 3, ScrollBarImageColor3 = W.BORDER,
+    CanvasSize = UDim2.new(0, 0, 0, 600),
+}, tab2)
 
-local cardSimpan = buatCard(tab2, 0, 0, lebarKonten, 96)
+-- kartu simpan lokasi
+local cardSimpan = buatCard(scrollT2, 0, 0, lebarKonten, 96)
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(0, 240, 0, 16),
     FontFace = fnt("bold"), Text = "📍 Simpan Lokasi Baru", TextColor3 = W.TXT, TextSize = 13,
@@ -923,20 +945,20 @@ local saveBtn = buat("TextButton", {
 }, cardSimpan)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, saveBtn)
 
--- Kartu Replay All (highlight biru)
-local cardReplayAll = buatCard(tab2, 0, 104, lebarKonten, 62)
+-- kartu Replay All (menjalankan rute gabungan)
+local cardReplayAll = buatCard(scrollT2, 0, 104, lebarKonten, 62)
 local raStroke = cardReplayAll:FindFirstChildOfClass("UIStroke")
 raStroke.Color = W.BLUEDIM
 raStroke.Transparency = 0.35
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(0, 260, 0, 16),
-    FontFace = fnt("bold"), Text = "▶ Replay All", TextColor3 = W.TXT, TextSize = 13,
+    FontFace = fnt("bold"), Text = "▶ Replay All (rute gabungan)", TextColor3 = W.TXT, TextSize = 13,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, cardReplayAll)
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 30), Size = UDim2.new(1, -190, 0, 22),
     FontFace = fnt("reg"), TextWrapped = true,
-    Text = "Jalankan semua file secara kronologis tanpa jeda.",
+    Text = "Jalankan semua rute gabungan secara kronologis, gap otomatis disambung.",
     TextColor3 = W.SUB, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left,
 }, cardReplayAll)
 local replayAllBtn = buat("TextButton", {
@@ -947,9 +969,35 @@ local replayAllBtn = buat("TextButton", {
 }, cardReplayAll)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, replayAllBtn)
 
--- Kartu daftar lokasi
-local tinggiDaftar = 412 - 104 - 62 - 16
-local cardDaftar = buatCard(tab2, 0, 174, lebarKonten, tinggiDaftar)
+-- kartu rute gabungan (hasil GABUNG dari Tab 3)
+local cardGabungan = buatCard(scrollT2, 0, 174, lebarKonten, 180)
+buat("TextLabel", {
+    BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(0, 220, 0, 16),
+    FontFace = fnt("bold"), Text = "🔗 Rute Gabungan", TextColor3 = W.TXT, TextSize = 13,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, cardGabungan)
+local gabCounter = buat("TextLabel", {
+    BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -12, 0, 12), Size = UDim2.fromOffset(160, 14),
+    FontFace = fnt("reg"), Text = "0 rute gabungan", TextColor3 = W.SUB, TextSize = 10,
+    TextXAlignment = Enum.TextXAlignment.Right,
+}, cardGabungan)
+buat("TextLabel", {
+    BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 28), Size = UDim2.new(1, -24, 0, 12),
+    FontFace = fnt("reg"), Text = "Salinan hasil gabungan file record (Tab 3). Klik nama untuk ubah.",
+    TextColor3 = W.SUB, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left,
+}, cardGabungan)
+local scrollGab = buat("ScrollingFrame", {
+    Position = UDim2.new(0, 12, 0, 46), Size = UDim2.new(1, -24, 1, -56),
+    BackgroundTransparency = 1, BorderSizePixel = 0,
+    ScrollBarThickness = 3, ScrollBarImageColor3 = W.BORDER,
+    ScrollingDirection = Enum.ScrollingDirection.Y,
+    CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, cardGabungan)
+buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollGab)
+
+-- kartu daftar lokasi
+local cardDaftar = buatCard(scrollT2, 0, 362, lebarKonten, 238)
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(0, 260, 0, 16),
     FontFace = fnt("bold"), Text = "Daftar Lokasi Teleport", TextColor3 = W.TXT, TextSize = 13,
@@ -979,11 +1027,10 @@ local scrollLok = buat("ScrollingFrame", {
 }, cardDaftar)
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollLok)
 
--- [19] ===== TAB 3: RECORD + FILES ====================================
+-- [19] TAB 3: RECORD ==================================================
 local tab3 = tabFrames[3]
 
 local cardRec = buatCard(tab3, 0, 0, lebarKonten, 150)
--- lingkaran REC
 local recCircle = buat("TextButton", {
     Position = UDim2.new(0, 16, 0.5, -38), Size = UDim2.fromOffset(76, 76),
     BackgroundColor3 = Color3.fromRGB(60, 24, 30), BorderSizePixel = 0,
@@ -1052,7 +1099,6 @@ local simpanNamaBtn = buat("TextButton", {
 }, cardRec)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, simpanNamaBtn)
 
--- Kartu file rekaman
 local cardFile = buatCard(tab3, 0, 158, lebarKonten, 412 - 158)
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(0, 200, 0, 16),
@@ -1080,12 +1126,11 @@ local scrollRec = buat("ScrollingFrame", {
 }, cardFile)
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollRec)
 
--- [20] UPDATE TAMPILAN STATUS -----------------------------------------
-local tabAktif = 2
+-- [20] UPDATE STATUS UI -----------------------------------------------
+local tabAktif = 1
 
 updateSpeedUI = function()
     if speedOn then
-        speedPill.Text = ("ON · Q"):gsub("ON", "ON")
         speedPill.Text = string.format("%.2f · Q", speedValue)
         speedPill.BackgroundColor3 = W.BLUEDIM
         speedPill.TextColor3 = W.TXT
@@ -1114,12 +1159,10 @@ end
 updateRecUI = function()
     if sedangRekam then
         recMain.Text = "■ STOP"
-        recSub.Text = "Tekan R"
         recMain.TextColor3 = W.TXT
         recGlow.Transparency = 0.1
     else
         recMain.Text = "● REC"
-        recSub.Text = "Tekan R"
         recMain.TextColor3 = W.RED
         recGlow.Transparency = 0.4
     end
@@ -1166,21 +1209,20 @@ end
 
 local teksHeader = {
     [1] = {"TAB 1 · SETTINGS", "Tools", "Atur movement, pencahayaan, dan kontrol script."},
-    [2] = {"TAB 2 · NAVIGATION", "Teleport + Replay", "Kelola lokasi teleport dan jalankan replay semua jalur."},
+    [2] = {"TAB 2 · NAVIGATION", "Teleport + Replay", "Kelola lokasi teleport dan rute gabungan."},
     [3] = {"TAB 3 · RECORDER", "Record + File Rekaman", "Buat, ubah nama, replay, dan gabungkan jalur."},
 }
 local teksSidebar = {
     [1] = "Tab 1 mengatur kecepatan, pencahayaan, dan hotkey.\n\nTekan <b>F</b> untuk buka/tutup GUI.",
-    [2] = "Simpan lokasi teleport di sini.\n\nReplay akan menuju titik rute <b>terdekat</b> secara natural sebelum mengikuti jalur.",
-    [3] = "Rekam jalur, beri nama file, lalu replay kapan saja.\n\nTekan <b>R</b> untuk mulai/berhenti record.",
+    [2] = "Rute gabungan (hasil GABUNG Tab 3) diputar di sini.\n\nReplay menuju titik rute <b>di depan</b> secara natural — tidak memotong jalur.",
+    [3] = "Rekam jalur, beri nama file, lalu gabung.\n\nTekan <b>R</b> untuk mulai/berhenti record.",
 }
 local teksFooter = {
     [1] = {"Rekaman otomatis tersimpan", "Config · per game"},
-    [2] = {"Data tersimpan otomatis", FILE_LOKASI},
+    [2] = {"Data tersimpan otomatis", FILE_LOKASI .. "  +  " .. FILE_REKAMAN},
     [3] = {"Backup otomatis aktif", FILE_REKAMAN},
 }
 
--- blink dot pill
 task.spawn(function()
     local on = true
     while screenGui.Parent do
@@ -1194,7 +1236,6 @@ task.spawn(function()
     end
 end)
 
--- REC pulse
 task.spawn(function()
     while screenGui.Parent do
         task.wait(0.7)
@@ -1208,15 +1249,12 @@ task.spawn(function()
     end
 end)
 
--- update durasi & titik live
 task.spawn(function()
     while screenGui.Parent do
         task.wait(0.25)
         if sedangRekam and recAktif then
             statDurasi.Text = fmtDur(os.clock() - recMulai)
             statTitik.Text = ribu(#recAktif.pts)
-        elseif not sedangRekam then
-            -- biarkan nilai terakhir terlihat
         end
     end
 end)
@@ -1256,7 +1294,7 @@ fungsiPilihTab = function(n)
     updateNavDots()
 end
 
--- [21] SPEEDWALK LOGIKA ------------------------------------------------
+-- [21] SPEEDWALK --------------------------------------------------------
 local function terapkanSpeed()
     local _, _, hum = getKarakter()
     if hum then
@@ -1314,7 +1352,7 @@ speedPill.MouseButton1Click:Connect(function()
         or string.format("⚡ OFF (kembali %.2f)", SPEED_NORMAL), W.BLUE)
 end)
 
--- [22] FULLBRIGHT ADAPTIF ----------------------------------------------
+-- [22] FULLBRIGHT -------------------------------------------------------
 local lightOrig, lightProfil = nil, nil
 
 local function profilLight()
@@ -1388,8 +1426,6 @@ local function setLight(on)
     perbaruiBadge()
 end
 
-lightSwitch.onChange = nil
--- hook manual: wrap set asli
 do
     local swSet = lightSwitch.set
     lightSwitch.set = function(v, noCb)
@@ -1397,14 +1433,7 @@ do
         setLight(v)
     end
 end
--- klik switch memanggil api.set internal -> perlu intercept
--- (buatSwitch memanggil onChange; kita beri onChange via metatable sederhana)
--- Solusi: ganti: pakai callback saat klik
--- Karena buatSwitch sudah dibuat tanpa onChange, kita intercept klik:
--- (switch internal toggle state sendiri) → singkronkan:
 lightSwitch.set(lightOn, true)
--- intercept klik:
--- cari tombol switch = cardLight children TextButton dengan size 42x22
 for _, c in ipairs(cardLight:GetChildren()) do
     if c:IsA("TextButton") and c.Size == UDim2.fromOffset(42, 22) then
         c.MouseButton1Click:Connect(function()
@@ -1425,9 +1454,11 @@ local function selesaikanRekam()
     if not recAktif then return end
     local durasi = os.clock() - recMulai
     local nama = recAktif.namaOverride or namaBerikutnya
-    if not nama or nama == "" then
-        counterJalur += 1
-        nama = ("Jalur %d • %s"):format(counterJalur, recAktif.waktu)
+    if not nama or trim(nama) == "" then
+        -- gap-fill: pakai nomor terkecil yang belum dipakai
+        local daftarNama = {}
+        for _, r in ipairs(rekamanTersimpan) do table.insert(daftarNama, r.nama) end
+        nama = ("Jalur %d • %s"):format(nomorBebas("Jalur", daftarNama), recAktif.waktu)
     end
     recAktif.nama = nama
     recAktif.durasi = durasi
@@ -1472,6 +1503,11 @@ local function mulaiRekam()
     sedangRekam = true
     mintaStopRekam = false
     recMulai = os.clock()
+
+    -- FIX: reset statistik saat rekam baru
+    statDurasi.Text = "00:00"
+    statTitik.Text = "0"
+
     hum.Died:Connect(function()
         if sedangRekam then mintaStopRekam = true end
     end)
@@ -1487,7 +1523,10 @@ local function mulaiRekam()
                 break
             end
             local pos = h2.CFrame
-            local jump = (hu2:GetState() == Enum.HumanoidStateType.Jumping) or hu2.Jump
+            local st = hu2:GetState()
+            local jump = (st == Enum.HumanoidStateType.Jumping)
+                or (st == Enum.HumanoidStateType.Freefall)
+                or hu2.Jump
             local gerak = jarakXZ(pos.Position, terakhir.Position)
             local bedaY = math.abs(pos.Y - terakhir.Y)
             local jumpBeda = jump ~= recAktif.pts[#recAktif.pts].j
@@ -1495,7 +1534,7 @@ local function mulaiRekam()
                 table.insert(recAktif.pts, buatCFramePts(pos, jump))
                 terakhir = pos
                 if #recAktif.pts >= REC_MAX_POINTS then
-                    toast("⚠ Rekaman penuh (15.000 titik), auto-stop", W.RED)
+                    toast("⚠ Rekaman penuh, auto-stop", W.RED)
                     mintaStopRekam = true
                 end
             end
@@ -1519,36 +1558,73 @@ local function toggleRekam()
     end
 end
 
--- [24] REPLAY ENGINE -----------------------------------------------------
+-- [24] REPLAY ENGINE =====================================================
+local function cfDariPt(p)
+    local ok, cf = pcall(CFrame.new, table.unpack(p.c, 1, 12))
+    if ok then return cf end
+    return nil
+end
+
+-- gabung beberapa rekaman; GAP antar file diisi titik jembatan (interpolasi)
 local function bangunRute(daftarRekaman)
     local rute = {}
+    local cfPrev = nil
     for _, r in ipairs(daftarRekaman) do
         for idx, p in ipairs(r.pts) do
-            if idx == 1 and #rute > 0 then
-                local akhir = rute[#rute]
-                local cf1 = CFrame.new(table.unpack(akhir.c, 1, 12))
-                local cf2 = CFrame.new(table.unpack(p.c, 1, 12))
-                if jarakXZ(cf1.Position, cf2.Position) < 1.5 then
-                    continue -- sambungan mulus, lewati titik dobel
+            local cf = cfDariPt(p)
+            if cf then
+                if idx == 1 and cfPrev then
+                    local d = jarakXZ(cfPrev.Position, cf.Position)
+                    if d >= GAP_JOIN_DIST then
+                        -- sisipkan titik jembatan: 1234 [5 6] 789
+                        local jumlah = math.max(1, math.floor(d / GAP_STEP))
+                        for k = 1, jumlah - 1 do
+                            local a = k / jumlah
+                            local cfi = cfPrev:Lerp(cf, a)
+                            table.insert(rute, {c = {cfi:GetComponents()}, j = false})
+                        end
+                    end
+                    -- kalau sangat dekat: skip (titik dobel)
                 end
+                table.insert(rute, p)
+                cfPrev = cf
             end
-            table.insert(rute, p)
         end
     end
     return rute
 end
 
-local function cariTitikTerdekat(rute, posisi)
-    local terbaik, jarakTerbaik = 1, math.huge
+-- pilih titik mulai: utamakan titik rute DI DEPAN arah hadap (tidak putar balik)
+local function pilihTitikMulai(rute, hrp)
+    local look = hrp.CFrame.LookVector
+    local lx, lz = look.X, look.Z
+    local mag = math.sqrt(lx * lx + lz * lz)
+    if mag < 0.05 then
+        lx, lz = 0, -1
+    else
+        lx, lz = lx / mag, lz / mag
+    end
+    local iBest, dBest = 1, math.huge
+    local iFront, dFront = nil, math.huge
     for i, p in ipairs(rute) do
-        local cf = CFrame.new(table.unpack(p.c, 1, 12))
-        local d = jarakXZ(cf.Position, posisi)
-        if d < jarakTerbaik then
-            jarakTerbaik = d
-            terbaik = i
+        local cf = cfDariPt(p)
+        if cf then
+            local d = jarakXZ(cf.Position, hrp.Position)
+            if d < dBest then dBest, iBest = d, i end
+            local ax = cf.Position.X - hrp.Position.X
+            local az = cf.Position.Z - hrp.Position.Z
+            local am = math.sqrt(ax * ax + az * az)
+            if am > 0.5 then
+                local dot = (ax / am) * lx + (az / am) * lz
+                if dot > 0.2 and d < dFront then dFront, iFront = d, i end
+            end
         end
     end
-    return terbaik, jarakTerbaik
+    -- titik di depan dipilih asal tidak jauh-jauh amat dibanding terdekat global
+    if iFront and dFront <= dBest * 2.5 + 10 then
+        return iFront, dFront
+    end
+    return iBest, dBest
 end
 
 local function antiJatuh(hum, hrp, aktif)
@@ -1587,86 +1663,94 @@ local function jalankanReplay(daftarRekaman, labelRute)
     toast("▶ Replay: " .. labelRute .. " (" .. ribu(#rute) .. " titik)", W.BLUE)
 
     task.spawn(function()
-        local jalanTerus = true
-        while jalanTerus and sedangReplay and not mintaStopReplay do
-            local _, hrp, hum = getKarakter()
-            if not hrp or not hum or hum.Health <= 0 then break end
+        local gagal = false
 
-            -- FASE APPROACH: menuju titik terdekat (bukan motong)
-            local idx = cariTitikTerdekat(rute, hrp.Position)
-            local cfTarget = CFrame.new(table.unpack(rute[idx].c, 1, 12))
-            local jarakAwal = jarakXZ(cfTarget.Position, hrp.Position)
-
+        local _, hrp, hum = getKarakter()
+        if hrp and hum and hum.Health > 0 and not mintaStopReplay then
+            -- ===== FASE APPROACH: titik rute terdekat DI DEPAN =====
+            local idx, jarakAwal = pilihTitikMulai(rute, hrp)
             if jarakAwal > APPROACH_DIST then
-                toast("🚶 Menuju rute terdekat...", W.BLUE)
-                local t0 = os.clock()
-                local best = math.huge
-                local tMove = os.clock()
-                hum:MoveTo(cfTarget.Position)
-                while sedangReplay and not mintaStopReplay do
-                    task.wait(0.05)
-                    local _, h2, hu2 = getKarakter()
-                    if not h2 or not hu2 or hu2.Health <= 0 then break end
-                    antiJatuh(hu2, h2, true)
-                    local d = jarakXZ(cfTarget.Position, h2.Position)
-                    if d <= APPROACH_REACH then break end
-                    if os.clock() - tMove > 1.0 then
-                        hu2:MoveTo(cfTarget.Position)
-                        tMove = os.clock()
+                local cfTarget = cfDariPt(rute[idx])
+                if cfTarget then
+                    toast("🚶 Menuju titik rute terdekat di depan...", W.BLUE)
+                    local t0 = os.clock()
+                    local best = math.huge
+                    local tMove = os.clock()
+                    hum:MoveTo(cfTarget.Position)
+                    while sedangReplay and not mintaStopReplay do
+                        task.wait(0.05)
+                        local _, h2, hu2 = getKarakter()
+                        if not h2 or not hu2 or hu2.Health <= 0 then break end
+                        antiJatuh(hu2, h2, true)
+                        local d = jarakXZ(cfTarget.Position, h2.Position)
+                        if d <= APPROACH_REACH then break end
+                        if os.clock() - tMove > 1.0 then
+                            hu2:MoveTo(cfTarget.Position)
+                            tMove = os.clock()
+                        end
+                        if d < best then best = d t0 = os.clock() end
+                        if os.clock() - t0 > APPROACH_TIMEOUT then break end
                     end
-                    if d < best then best = d; t0 = os.clock() end
-                    if os.clock() - t0 > APPROACH_TIMEOUT then break end
                 end
-                if not sedangReplay or mintaStopReplay then break end
                 local _, h3 = getKarakter()
-                if not h3 or jarakXZ(cfTarget.Position, h3.Position) > APPROACH_REACH + 2 then
-                    toast("❌ Gagal menuju rute (mentok tembok?)", W.RED)
-                    sedangReplay = false
-                    break
-                end
-            end
-
-            -- FASE IKUTI RUTE
-            local i = idx
-            while i <= #rute and sedangReplay and not mintaStopReplay do
-                local _, h, hu = getKarakter()
-                if not h or not hu or hu.Health <= 0 then break end
-                local cfT = CFrame.new(table.unpack(rute[i].c, 1, 12))
-                local posisi = cfT.Position
-                if rute[i].j then hu.Jump = true end
-                hu:MoveTo(posisi)
-
-                local tMulai = os.clock()
-                local tGerak = os.clock()
-                local bestD = jarakXZ(posisi, h.Position)
-                local tBest = os.clock()
-                while true do
-                    task.wait(0.05)
-                    if not sedangReplay or mintaStopReplay then break end
-                    local _, h2, hu2 = getKarakter()
-                    if not h2 or not hu2 or hu2.Health <= 0 then break end
-                    antiJatuh(hu2, h2, true)
-                    local d = jarakXZ(posisi, h2.Position)
-                    if d <= REACH_DIST then break end
-                    if os.clock() - tGerak > 1.0 then
-                        hu2:MoveTo(posisi)
-                        tGerak = os.clock()
+                if sedangReplay and not mintaStopReplay then
+                    if not h3 or not cfDariPt(rute[idx])
+                    or jarakXZ(cfDariPt(rute[idx]).Position, h3.Position) > APPROACH_REACH + 2 then
+                        toast("❌ Gagal menuju rute (mentok tembok?)", W.RED)
+                        gagal = true
                     end
-                    if d < bestD then bestD = d; tBest = os.clock() end
-                    if os.clock() - tBest > STALL_SKIP then break end -- mentok → skip waypoint
-                    if os.clock() - tMulai > 30 then break end
                 end
-                i += 1
             end
 
-            local _, _, hu3 = getKarakter()
-            if hu3 then antiJatuh(hu3, hu3.Parent and hu3.Parent:FindFirstChild("HumanoidRootPart") or nil, false) end
-
-            if sedangReplay and not mintaStopReplay then
-                task.wait(0.4) -- ulangi rute (toggle)
+            -- ===== FASE IKUTI RUTE (sekali jalan, selesai otomatis) =====
+            if not gagal and sedangReplay and not mintaStopReplay then
+                local _, h4, hu4 = getKarakter()
+                if h4 and hu4 and hu4.Health > 0 then
+                    local i = idx
+                    while i <= #rute and sedangReplay and not mintaStopReplay do
+                        local _, h, hu = getKarakter()
+                        if not h or not hu or hu.Health <= 0 then break end
+                        local cfT = cfDariPt(rute[i])
+                        if cfT then
+                            local posisi = cfT.Position
+                            hu:MoveTo(posisi)
+                            local tMulai = os.clock()
+                            local tGerak = os.clock()
+                            local bestD = jarakXZ(posisi, h.Position)
+                            local tBest = os.clock()
+                            local sampai = false
+                            while true do
+                                task.wait(0.05)
+                                if not sedangReplay or mintaStopReplay then break end
+                                local _, h2, hu2 = getKarakter()
+                                if not h2 or not hu2 or hu2.Health <= 0 then break end
+                                antiJatuh(hu2, h2, true)
+                                local d = jarakXZ(posisi, h2.Position)
+                                if d <= REACH_DIST then sampai = true break end
+                                if os.clock() - tGerak > 1.0 then
+                                    hu2:MoveTo(posisi)
+                                    tGerak = os.clock()
+                                end
+                                if d < bestD then bestD = d tBest = os.clock() end
+                                if os.clock() - tBest > STALL_SKIP then break end
+                                if os.clock() - tMulai > 30 then break end
+                            end
+                            -- FIX: lompat saat TEPAT mencapai titik lompatan
+                            if sampai and rute[i].j then
+                                local _, _, huJ = getKarakter()
+                                if huJ then
+                                    pcall(function() huJ.Jump = true end)
+                                end
+                            end
+                        end
+                        i += 1
+                    end
+                end
             end
         end
 
+        -- cleanup
+        local selesaiNormal = (not gagal) and (not mintaStopReplay)
         sedangReplay = false
         mintaStopReplay = false
         local _, _, hu = getKarakter()
@@ -1675,6 +1759,10 @@ local function jalankanReplay(daftarRekaman, labelRute)
         updateNavDots()
         updatePill()
         perbaruiBadge()
+        if selesaiNormal then
+            bunyi(SND_SNAP, 0.35, 1.2)
+            toast("✔ Rute selesai", W.GREEN)
+        end
     end)
 end
 
@@ -1686,7 +1774,7 @@ local function toggleReplay()
         return
     end
     if sedangRekam then
-        mintaStopRekam = true -- stop rekam
+        mintaStopRekam = true
         task.delay(0.35, function()
             if #rekamanTersimpan > 0 then
                 local terakhir = rekamanTersimpan[#rekamanTersimpan]
@@ -1695,28 +1783,30 @@ local function toggleReplay()
         end)
         return
     end
-    if #rekamanTersimpan == 0 then
+    if #rekamanTersimpan == 0 and #gabunganTersimpan == 0 then
         toast("⚠ Belum ada rekaman — tekan R dulu", W.RED)
         return
     end
-    local terakhir = rekamanTersimpan[#rekamanTersimpan]
-    jalankanReplay({terakhir}, terakhir.nama)
+    if #gabunganTersimpan > 0 then
+        jalankanReplay(gabunganTersimpan, "RUTE GABUNGAN (" .. #gabunganTersimpan .. ")")
+    else
+        local terakhir = rekamanTersimpan[#rekamanTersimpan]
+        jalankanReplay({terakhir}, terakhir.nama)
+    end
 end
 
--- [25] REFRESH LIST LOKASI (TAB 2) --------------------------------------
+-- [25] REFRESH LOKASI (TAB 2) --------------------------------------------
 refreshLokasi = function()
     for _, c in ipairs(scrollLok:GetChildren()) do
         if c:IsA("GuiObject") then c:Destroy() end
     end
     local q = trim(searchBox.Text):lower()
-    local jumlah = 0
     lokasiCounter.Text = ("%d lokasi tersimpan"):format(#lokasiTersimpan)
 
     local urut = 0
     for _, lok in ipairs(lokasiTersimpan) do
         if q == "" or lok.nama:lower():find(q, 1, true) then
             urut += 1
-            jumlah += 1
             local item = buat("Frame", {
                 Size = UDim2.new(1, -6, 0, 44), BackgroundColor3 = W.CARD2,
                 BorderSizePixel = 0, LayoutOrder = urut,
@@ -1795,7 +1885,96 @@ refreshLokasi = function()
     end
 end
 
--- [26] REFRESH LIST REKAMAN (TAB 3) --------------------------------------
+-- [26] REFRESH RUTE GABUNGAN (TAB 2) --------------------------------------
+refreshGabungan = function(focusId)
+    for _, c in ipairs(scrollGab:GetChildren()) do
+        if c:IsA("GuiObject") then c:Destroy() end
+    end
+    gabCounter.Text = ("%d rute gabungan"):format(#gabunganTersimpan)
+
+    if #gabunganTersimpan == 0 then
+        local kosong = buat("TextLabel", {
+            Size = UDim2.new(1, -6, 0, 60), BackgroundTransparency = 1,
+            FontFace = fnt("reg"), TextWrapped = true,
+            Text = "Belum ada rute gabungan.\nCentang file di Tab 3 lalu klik 🔗 GABUNG.",
+            TextColor3 = W.SUB, TextSize = 10,
+        }, scrollGab)
+        kosong.LayoutOrder = 999
+        return
+    end
+
+    for i, g in ipairs(gabunganTersimpan) do
+        local item = buat("Frame", {
+            Size = UDim2.new(1, -6, 0, 40), BackgroundColor3 = W.CARD2,
+            BorderSizePixel = 0, LayoutOrder = i,
+        }, scrollGab)
+        buat("UICorner", {CornerRadius = UDim.new(0, 9)}, item)
+        buat("UIStroke", {Color = W.BORDER, Thickness = 1}, item)
+
+        local nameEdit = buat("TextBox", {
+            BackgroundTransparency = 1, Position = UDim2.new(0, 10, 0, 3),
+            Size = UDim2.new(1, -116, 0, 17), FontFace = fnt("bold"),
+            Text = g.nama, TextColor3 = W.TXT, TextSize = 12,
+            TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, item)
+        buat("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.new(0, 10, 0, 21),
+            Size = UDim2.new(1, -116, 0, 12), FontFace = fnt("reg"),
+            Text = ("%s • %s titik"):format(tostring(g.waktu or "?"), ribu(#g.pts)),
+            TextColor3 = W.SUB, TextSize = 9,
+            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+        }, item)
+        nameEdit.Focused:Connect(function() nameEdit.BackgroundTransparency = 0.2 end)
+        nameEdit.FocusLost:Connect(function()
+            nameEdit.BackgroundTransparency = 1
+            local baru = trim(nameEdit.Text)
+            if baru ~= "" and baru ~= g.nama then
+                g.nama = baru
+                simpanRekamanKeFile()
+            elseif baru == "" then
+                nameEdit.Text = g.nama
+            end
+        end)
+
+        local playBtn = buat("TextButton", {
+            AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -40, 0.5, 0),
+            Size = UDim2.fromOffset(54, 26), BackgroundColor3 = Color3.fromRGB(30, 64, 120),
+            BorderSizePixel = 0, FontFace = fnt("bold"), Text = "▶ Replay",
+            TextColor3 = W.CYAN, TextSize = 9, AutoButtonColor = false,
+        }, item)
+        buat("UICorner", {CornerRadius = UDim.new(0, 7)}, playBtn)
+        playBtn.MouseButton1Click:Connect(function()
+            ripple(playBtn, W.BLUE)
+            jalankanReplay({g}, g.nama)
+        end)
+
+        local delBtn = buat("TextButton", {
+            AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0),
+            Size = UDim2.fromOffset(26, 26), BackgroundColor3 = Color3.fromRGB(60, 24, 30),
+            BorderSizePixel = 0, Font = Enum.Font.SourceSans, Text = "🗑️",
+            TextSize = 12, TextColor3 = W.RED, AutoButtonColor = false,
+        }, item)
+        buat("UICorner", {CornerRadius = UDim.new(0, 7)}, delBtn)
+        delBtn.MouseButton1Click:Connect(konfirmasiDuaKali(delBtn, "🗑️", function()
+            bunyi(SND_SNAP, 0.3, 0.7)
+            for idx, gg in ipairs(gabunganTersimpan) do
+                if gg == g then table.remove(gabunganTersimpan, idx) break end
+            end
+            simpanRekamanKeFile()
+            toast("🗑️ Rute gabungan dihapus: " .. g.nama, W.RED)
+            refreshGabungan()
+        end))
+
+        if focusId and g.id == focusId then
+            task.delay(0.15, function()
+                if nameEdit.Parent then nameEdit:CaptureFocus() end
+            end)
+        end
+    end
+end
+
+-- [27] REFRESH FILE REKAMAN (TAB 3) ---------------------------------------
 local pilihanGabung = {}
 
 refreshRekaman = function(animasi)
@@ -1836,7 +2015,6 @@ refreshRekaman = function(animasi)
             end)
         end
 
-        -- checkbox gabung
         local cek = buat("TextButton", {
             Position = UDim2.new(0, 8, 0.5, -10), Size = UDim2.fromOffset(20, 20),
             BackgroundColor3 = W.BG0, BorderSizePixel = 0,
@@ -1844,21 +2022,20 @@ refreshRekaman = function(animasi)
             TextColor3 = W.CYAN, TextSize = 12, AutoButtonColor = false,
         }, item)
         buat("UICorner", {CornerRadius = UDim.new(0, 6)}, cek)
-        buat("UIStroke", {Color = pilihanGabung[rek.id] and W.BLUE or W.BORDER, Thickness = 1}, cek)
+        local cekStroke = buat("UIStroke", {Color = pilihanGabung[rek.id] and W.BLUE or W.BORDER, Thickness = 1}, cek)
         cek.MouseButton1Click:Connect(function()
             if pilihanGabung[rek.id] then
                 pilihanGabung[rek.id] = nil
                 cek.Text = ""
-                cek.UIStroke.Color = W.BORDER
+                cekStroke.Color = W.BORDER
             else
                 pilihanGabung[rek.id] = true
                 cek.Text = "✓"
-                cek.UIStroke.Color = W.BLUE
+                cekStroke.Color = W.BLUE
             end
             bunyi(SND_PING, 0.2, 1.4)
         end)
 
-        -- nama (editable) + info
         local nameEdit = buat("TextBox", {
             BackgroundTransparency = 1, Position = UDim2.new(0, 36, 0, 4),
             Size = UDim2.new(1, -286, 0, 17), FontFace = fnt("bold"),
@@ -1889,7 +2066,6 @@ refreshRekaman = function(animasi)
             end
         end)
 
-        -- tombol ▶ Replay
         local playBtn = buat("TextButton", {
             AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -136, 0.5, 0),
             Size = UDim2.fromOffset(62, 26), BackgroundColor3 = Color3.fromRGB(30, 64, 120),
@@ -1902,7 +2078,6 @@ refreshRekaman = function(animasi)
             jalankanReplay({rek}, rek.nama)
         end)
 
-        -- tombol ◎ TP awal
         local tpBtn = buat("TextButton", {
             AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -70, 0.5, 0),
             Size = UDim2.fromOffset(58, 26), BackgroundColor3 = Color3.fromRGB(30, 64, 120),
@@ -1920,7 +2095,6 @@ refreshRekaman = function(animasi)
             end
         end)
 
-        -- tombol – (ubah nama: fokuskan textbox)
         local renBtn = buat("TextButton", {
             AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -38, 0.5, 0),
             Size = UDim2.fromOffset(26, 26), BackgroundColor3 = Color3.fromRGB(70, 55, 20),
@@ -1933,7 +2107,6 @@ refreshRekaman = function(animasi)
             task.defer(function() nameEdit:CaptureFocus() end)
         end)
 
-        -- tombol 🗑
         local delBtn = buat("TextButton", {
             AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0),
             Size = UDim2.fromOffset(26, 26), BackgroundColor3 = Color3.fromRGB(60, 24, 30),
@@ -1953,7 +2126,7 @@ refreshRekaman = function(animasi)
     end
 end
 
--- [27] KLIK-KLIK ---------------------------------------------------------
+-- [28] KLIK-KLIK ----------------------------------------------------------
 local function simpanLokasi()
     local _, hrp = getKarakter()
     if not hrp then
@@ -1962,8 +2135,9 @@ local function simpanLokasi()
     end
     local nama = trim(nameBox.Text)
     if nama == "" then
-        counterNama += 1
-        nama = "Lokasi " .. counterNama
+        local daftarNama = {}
+        for _, l in ipairs(lokasiTersimpan) do table.insert(daftarNama, l.nama) end
+        nama = ("Lokasi %d"):format(nomorBebas("Lokasi", daftarNama))
     end
     table.insert(lokasiTersimpan, {
         id = idBaru(), nama = nama, waktu = os.date("%d/%m %H:%M"), cframe = hrp.CFrame,
@@ -1996,11 +2170,11 @@ replayAllBtn.MouseButton1Click:Connect(function()
         toast("⏹ Replay dihentikan", W.SUB)
         return
     end
-    if #rekamanTersimpan == 0 then
-        toast("⚠ Belum ada rekaman", W.RED)
+    if #gabunganTersimpan == 0 then
+        toast("⚠ Belum ada rute gabungan — centang file di Tab 3 lalu GABUNG", W.AMBER)
         return
     end
-    jalankanReplay(rekamanTersimpan, "SEMUA (" .. #rekamanTersimpan .. " file)")
+    jalankanReplay(gabunganTersimpan, "SEMUA RUTE (" .. #gabunganTersimpan .. ")")
 end)
 
 recCircle.MouseButton1Click:Connect(function()
@@ -2032,45 +2206,42 @@ gabungBtn.MouseButton1Click:Connect(function()
         toast("⚠ Tidak ada rekaman untuk digabung", W.RED)
         return
     end
+    -- HANYA yang dicentang (tidak ada fallback "semua")
     local terpilih = {}
     for _, r in ipairs(rekamanTersimpan) do
         if pilihanGabung[r.id] then table.insert(terpilih, r) end
     end
-    if #terpilih == 0 then
-        for _, r in ipairs(rekamanTersimpan) do table.insert(terpilih, r) end
-    end
     if #terpilih < 2 then
-        toast("⚠ Centang minimal 2 file (atau biarkan kosong = semua)", W.AMBER)
+        toast("⚠ Centang minimal 2 file untuk digabung", W.AMBER)
         return
     end
     local totalDurasi = 0
     for _, r in ipairs(terpilih) do totalDurasi += (r.durasi or 0) end
-    counterJalur += 1
+    local daftarGab = {}
+    for _, g in ipairs(gabunganTersimpan) do table.insert(daftarGab, g.nama) end
     local gab = {
         id = idBaru(),
-        nama = ("Gabungan %d • %s"):format(counterJalur, os.date("%d/%m %H:%M")),
+        nama = ("Gabungan %d • %s"):format(nomorBebas("Gabungan", daftarGab), os.date("%d/%m %H:%M")),
         waktu = os.date("%d/%m %H:%M"),
         durasi = totalDurasi,
-        pts = bangunRute(terpilih),
+        pts = bangunRute(terpilih), -- gap otomatis dijembatani
+        g = true,
     }
     if #gab.pts < 2 then
         toast("⚠ Gabungan gagal (terlalu pendek)", W.RED)
         return
     end
-    table.insert(rekamanTersimpan, gab)
+    table.insert(gabunganTersimpan, gab)
     simpanRekamanKeFile()
     table.clear(pilihanGabung)
     bunyi(SND_SNAP, 0.4, 1.1)
-    toast("🔗 Digabung: " .. gab.nama .. " (" .. ribu(#gab.pts) .. " titik)", W.GREEN)
+    toast("🔗 Gabungan dibuat → Tab 2 (" .. ribu(#gab.pts) .. " titik)", W.GREEN)
     refreshRekaman(true)
+    refreshGabungan(gab.id)
+    fungsiPilihTab(2) -- salinan "berpindah" ke Tab 2
 end)
 
-minBtn.MouseButton1Click:Connect(function()
-    ripple(minBtn, W.BLUE)
-    -- minimize
-end)
-
--- [28] UNLOAD -------------------------------------------------------------
+-- [29] UNLOAD ---------------------------------------------------------------
 local sudahUnload = false
 local function unloadScript()
     if sudahUnload then return end
@@ -2095,7 +2266,7 @@ local function unloadScript()
 end
 unloadBtn.MouseButton1Click:Connect(konfirmasiDuaKali(unloadBtn, "Hapus Script", unloadScript))
 
--- [29] MINIMIZE / BUKA ----------------------------------------------------
+-- [30] MINIMIZE / BUKA / DRAG ------------------------------------------------
 local sesiAnim = 0
 local function minimizeGui()
     if not root.Visible then return end
@@ -2129,13 +2300,14 @@ minBtn.MouseButton1Click:Connect(function()
     ripple(minBtn, W.BLUE)
     minimizeGui()
 end)
+
+local iconDown = nil
 icon.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
     or input.UserInputType == Enum.UserInputType.Touch then
-        -- drag kecil: kalau cuma klik → buka
+        iconDown = os.clock()
     end
 end)
-
 icon.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
     or input.UserInputType == Enum.UserInputType.Touch then
@@ -2146,13 +2318,12 @@ icon.InputEnded:Connect(function(input)
     end
 end)
 
--- drag panel
 local function buatDraggable(handle, target)
-    local dragging, dragStart, startPos, jarak = false, nil, nil, 0
+    local dragging, dragStart, startPos = false, nil, nil
     handle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
-            dragging, dragStart, startPos, jarak = true, input.Position, target.Position, 0
+            dragging, dragStart, startPos = true, input.Position, target.Position
         end
     end)
     handle.InputEnded:Connect(function(input)
@@ -2165,7 +2336,6 @@ local function buatDraggable(handle, target)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
         or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
-            jarak = math.abs(delta.X) + math.abs(delta.Y)
             target.Position = UDim2.new(
                 startPos.X.Scale, math.round(startPos.X.Offset + delta.X),
                 startPos.Y.Scale, math.round(startPos.Y.Offset + delta.Y))
@@ -2175,7 +2345,7 @@ end
 buatDraggable(logoDrag, root)
 buatDraggable(headerDrag, root)
 
--- [30] HOTKEY --------------------------------------------------------------
+-- [31] HOTKEY -----------------------------------------------------------------
 sambung(UserInputService.InputBegan, function(input, gameProcessed)
     if gameProcessed then return end
     local kc = input.KeyCode
@@ -2198,7 +2368,6 @@ sambung(UserInputService.InputBegan, function(input, gameProcessed)
     end
 end)
 
--- master switch hook
 do
     local mSet = masterSwitch.set
     masterSwitch.set = function(v, noCb)
@@ -2222,7 +2391,7 @@ for _, c in ipairs(cardKey:GetChildren()) do
     end
 end
 
--- [31] RESPAWN --------------------------------------------------------------
+-- [32] RESPAWN ------------------------------------------------------------------
 sambung(LocalPlayer.CharacterAdded, function(char)
     local hum = char:WaitForChild("Humanoid", 10)
     if hum then
@@ -2238,13 +2407,14 @@ do
     if hum0 then origSpeed = hum0.WalkSpeed end
 end
 
--- [32] MULAI ------------------------------------------------------------------
+-- [33] MULAI ---------------------------------------------------------------------
 fungsiPilihTab(1)
 updateSpeedUI()
 updateLightUI()
 updateRecUI()
 updateReplayUI()
 refreshLokasi()
+refreshGabungan()
 refreshRekaman(true)
 task.delay(0.15, bukaGui)
 
@@ -2252,6 +2422,7 @@ task.delay(1.2, function()
     local pesan = {}
     if #lokasiTersimpan > 0 then table.insert(pesan, #lokasiTersimpan .. " lokasi") end
     if #rekamanTersimpan > 0 then table.insert(pesan, #rekamanTersimpan .. " rekaman") end
+    if #gabunganTersimpan > 0 then table.insert(pesan, #gabunganTersimpan .. " gabungan") end
     if #pesan > 0 then
         toast("📂 Dimuat: " .. table.concat(pesan, " + "), W.BLUE)
     elseif not fileOk then
@@ -2259,6 +2430,6 @@ task.delay(1.2, function()
     end
 end)
 
-print("[RouteTools] v6.1 SIAP ✔ — F=GUI R=REC T=REPLAY Q=SPEED C=CAHAYA")
+print("[RouteTools] v6.2 SIAP ✔ — F=GUI R=REC T=REPLAY Q=SPEED C=CAHAYA")
 print("[RouteTools] File: " .. FILE_LOKASI .. " + " .. FILE_REKAMAN
     .. (fileOk and (" (PlaceId " .. game.PlaceId .. ")") or " — TIDAK TERSEDIA"))
