@@ -1,8 +1,7 @@
 --========================================================
--- ROUTETOOLS v6.2 — Dark Dashboard
+-- ROUTETOOLS v6.2.1 — Dark Dashboard (audit-fix)
+-- FIX: klik tab nav, toast master switch, direct-switch ref
 -- F=GUI  R=Record  T=Replay  Q=Speed  C=Cahaya
--- Baru: gabungan→Tab 2, jembatan gap, jump replay,
---       approach ke depan, auto-stop, nama gap-fill
 --========================================================
 
 -- [1] PENGAMAN ------------------------------------------------------
@@ -49,9 +48,8 @@ local APPROACH_TIMEOUT = 12
 local STALL_SKIP       = 3
 local ANTI_FALL_H      = 5.5
 
--- jembatan gap antar file saat gabung/Replay All
-local GAP_JOIN_DIST = 1.5   -- lebih dekat dari ini = anggap titik dobel
-local GAP_STEP      = 3.0   -- jarak antar titik jembatan
+local GAP_JOIN_DIST = 1.5
+local GAP_STEP      = 3.0
 
 local FILE_LOKASI  = "TeleportGui_Silau.json"
 local FILE_REKAMAN = "TeleportGui_Silau_Replay.json"
@@ -146,7 +144,6 @@ local function fmtDur(sec)
     return string.format("%02d:%02d", math.floor(sec / 60), sec % 60)
 end
 
--- nomor otomatis: cari nomor terkecil yang belum dipakai (gap-fill)
 local function nomorBebas(prefix, daftarNama)
     local dipakai = {}
     for _, nama in ipairs(daftarNama) do
@@ -268,7 +265,7 @@ local function buatCard(parent, x, y, w, h)
     return card
 end
 
-local function buatSwitch(parent, pos, awalOn, onChange)
+local function buatSwitch(parent, pos, awalOn)
     local state = awalOn and true or false
     local sw = buat("TextButton", {
         Position = pos, Size = UDim2.fromOffset(42, 22),
@@ -283,17 +280,14 @@ local function buatSwitch(parent, pos, awalOn, onChange)
     }, sw)
     buat("UICorner", {CornerRadius = UDim.new(1, 0)}, knob)
     local api = {}
+    api.btn = sw -- referensi langsung (audit-fix)
     api.get = function() return state end
-    api.set = function(v, tanpaCallback)
+    api.set = function(v)
         state = v and true or false
         tween(sw, TweenInfo.new(0.15), {BackgroundColor3 = state and W.GREEN or W.ABU})
         tween(knob, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
             {Position = UDim2.new(0, state and 23 or 3, 0.5, 0)})
-        if onChange and not tanpaCallback then onChange(state) end
     end
-    sw.MouseButton1Click:Connect(function()
-        api.set(not state)
-    end)
     return api
 end
 
@@ -358,7 +352,7 @@ local logo = buat("TextLabel", {
 }, logoDrag)
 
 local navBtns, navDots = {}, {}
-local fungsiPilihTab
+local fungsiPilihTab -- SATU deklarasi saja (audit-fix: dulu dobel → nav mati)
 
 local function buatNav(urut, ikon, label)
     local b = buat("TextButton", {
@@ -617,7 +611,6 @@ local function simpanLokasiKeFile()
     tulisJSON(FILE_LOKASI, data)
 end
 
--- rekaman asli (Tab 3) + gabungan (Tab 2) — satu file, dibedakan flag g
 local rekamanTersimpan = {}
 local gabunganTersimpan = {}
 
@@ -704,7 +697,7 @@ local function fxTeleport()
     task.delay(0.5, function() r:Destroy() end)
 end
 
--- [16] STATE + FORWARD ------------------------------------------------
+-- [16] STATE + FORWARD (audit-fix: TIDAK ada fungsiPilihTab di sini) ----
 local sedangRekam, sedangReplay = false, false
 local speedOn, lightOn, hotkeyAktif = false, false, true
 local speedValue = SPEED_DEFAULT
@@ -716,7 +709,6 @@ local origSpeed = nil
 local updatePill, updateNavDots, updateRecUI, updateReplayUI
 local updateSpeedUI, updateLightUI, perbaruiBadge
 local refreshLokasi, refreshRekaman, refreshGabungan
-local fungsiPilihTab
 
 -- [17] TAB 1: TOOLS ===================================================
 local tab1 = tabFrames[1]
@@ -828,7 +820,7 @@ buat("TextLabel", {
     Text = "Menyesuaikan ClockTime secara halus. OFF mengembalikan Lighting semula.",
     TextColor3 = W.SUB, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left,
 }, cardLight)
-local lightSwitch = buatSwitch(cardLight, UDim2.new(1, -52, 0, 9), false, nil)
+local lightSwitch = buatSwitch(cardLight, UDim2.new(1, -52, 0, 9), false)
 
 local cardKey = buatCard(scrollT1, 0, 142, lebarKonten, 176)
 buat("TextLabel", {
@@ -847,7 +839,7 @@ buat("TextLabel", {
     FontFace = fnt("reg"), Text = "Master hotkey", TextColor3 = W.TXT, TextSize = 10,
     TextXAlignment = Enum.TextXAlignment.Right,
 }, cardKey)
-local masterSwitch = buatSwitch(cardKey, UDim2.new(1, -52, 0, 9), true, nil)
+local masterSwitch = buatSwitch(cardKey, UDim2.new(1, -52, 0, 9), true)
 
 local function hotkeyRow(parent, x, y, w, label, key)
     local row = buat("Frame", {
@@ -906,10 +898,9 @@ local tab2 = tabFrames[2]
 local scrollT2 = buat("ScrollingFrame", {
     Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
     ScrollBarThickness = 3, ScrollBarImageColor3 = W.BORDER,
-    CanvasSize = UDim2.new(0, 0, 0, 600),
+    CanvasSize = UDim2.new(0, 0, 0, 610),
 }, tab2)
 
--- kartu simpan lokasi
 local cardSimpan = buatCard(scrollT2, 0, 0, lebarKonten, 96)
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(0, 240, 0, 16),
@@ -945,7 +936,6 @@ local saveBtn = buat("TextButton", {
 }, cardSimpan)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, saveBtn)
 
--- kartu Replay All (menjalankan rute gabungan)
 local cardReplayAll = buatCard(scrollT2, 0, 104, lebarKonten, 62)
 local raStroke = cardReplayAll:FindFirstChildOfClass("UIStroke")
 raStroke.Color = W.BLUEDIM
@@ -958,7 +948,7 @@ buat("TextLabel", {
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 30), Size = UDim2.new(1, -190, 0, 22),
     FontFace = fnt("reg"), TextWrapped = true,
-    Text = "Jalankan semua rute gabungan secara kronologis, gap otomatis disambung.",
+    Text = "Jalankan semua rute gabungan berurutan, gap otomatis disambung.",
     TextColor3 = W.SUB, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left,
 }, cardReplayAll)
 local replayAllBtn = buat("TextButton", {
@@ -969,8 +959,7 @@ local replayAllBtn = buat("TextButton", {
 }, cardReplayAll)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, replayAllBtn)
 
--- kartu rute gabungan (hasil GABUNG dari Tab 3)
-local cardGabungan = buatCard(scrollT2, 0, 174, lebarKonten, 180)
+local cardGabungan = buatCard(scrollT2, 0, 174, lebarKonten, 184)
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(0, 220, 0, 16),
     FontFace = fnt("bold"), Text = "🔗 Rute Gabungan", TextColor3 = W.TXT, TextSize = 13,
@@ -996,8 +985,7 @@ local scrollGab = buat("ScrollingFrame", {
 }, cardGabungan)
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollGab)
 
--- kartu daftar lokasi
-local cardDaftar = buatCard(scrollT2, 0, 362, lebarKonten, 238)
+local cardDaftar = buatCard(scrollT2, 0, 366, lebarKonten, 244)
 buat("TextLabel", {
     BackgroundTransparency = 1, Position = UDim2.new(0, 12, 0, 10), Size = UDim2.new(0, 260, 0, 16),
     FontFace = fnt("bold"), Text = "Daftar Lokasi Teleport", TextColor3 = W.TXT, TextSize = 13,
@@ -1214,7 +1202,7 @@ local teksHeader = {
 }
 local teksSidebar = {
     [1] = "Tab 1 mengatur kecepatan, pencahayaan, dan hotkey.\n\nTekan <b>F</b> untuk buka/tutup GUI.",
-    [2] = "Rute gabungan (hasil GABUNG Tab 3) diputar di sini.\n\nReplay menuju titik rute <b>di depan</b> secara natural — tidak memotong jalur.",
+    [2] = "Replay menuju titik rute <b>terdekat di depan</b> arah hadap — tidak memotong jalur, tidak putar balik.",
     [3] = "Rekam jalur, beri nama file, lalu gabung.\n\nTekan <b>R</b> untuk mulai/berhenti record.",
 }
 local teksFooter = {
@@ -1381,7 +1369,7 @@ local function terapkanProfil(mode)
     end
 end
 
-local function setLight(on)
+local function setLight(on, dariKlik)
     lightOn = on
     if on then
         lightOrig = {
@@ -1421,28 +1409,20 @@ local function setLight(on)
         end
         lightProfil = nil
     end
+    lightSwitch.set(lightOn)
     updateLightUI()
     updateNavDots()
     perbaruiBadge()
+    if dariKlik then
+        bunyi(SND_PING, 0.3, lightOn and 1.2 or 0.8)
+        toast(lightOn and ("☀ Fullbright ON — " .. (lightProfil == "siang" and "mode siang" or "mode malam"))
+            or "☀ Fullbright OFF (normal)", lightOn and W.AMBER or W.SUB)
+    end
 end
 
-do
-    local swSet = lightSwitch.set
-    lightSwitch.set = function(v, noCb)
-        swSet(v, true)
-        setLight(v)
-    end
-end
-lightSwitch.set(lightOn, true)
-for _, c in ipairs(cardLight:GetChildren()) do
-    if c:IsA("TextButton") and c.Size == UDim2.fromOffset(42, 22) then
-        c.MouseButton1Click:Connect(function()
-            task.defer(function()
-                setLight(lightSwitch.get())
-            end)
-        end)
-    end
-end
+lightSwitch.btn.MouseButton1Click:Connect(function()
+    setLight(not lightOn, true)
+end)
 
 -- [23] RECORD ENGINE ----------------------------------------------------
 local function buatCFramePts(cf, jump)
@@ -1455,7 +1435,6 @@ local function selesaikanRekam()
     local durasi = os.clock() - recMulai
     local nama = recAktif.namaOverride or namaBerikutnya
     if not nama or trim(nama) == "" then
-        -- gap-fill: pakai nomor terkecil yang belum dipakai
         local daftarNama = {}
         for _, r in ipairs(rekamanTersimpan) do table.insert(daftarNama, r.nama) end
         nama = ("Jalur %d • %s"):format(nomorBebas("Jalur", daftarNama), recAktif.waktu)
@@ -1504,7 +1483,6 @@ local function mulaiRekam()
     mintaStopRekam = false
     recMulai = os.clock()
 
-    -- FIX: reset statistik saat rekam baru
     statDurasi.Text = "00:00"
     statTitik.Text = "0"
 
@@ -1565,7 +1543,6 @@ local function cfDariPt(p)
     return nil
 end
 
--- gabung beberapa rekaman; GAP antar file diisi titik jembatan (interpolasi)
 local function bangunRute(daftarRekaman)
     local rute = {}
     local cfPrev = nil
@@ -1576,7 +1553,6 @@ local function bangunRute(daftarRekaman)
                 if idx == 1 and cfPrev then
                     local d = jarakXZ(cfPrev.Position, cf.Position)
                     if d >= GAP_JOIN_DIST then
-                        -- sisipkan titik jembatan: 1234 [5 6] 789
                         local jumlah = math.max(1, math.floor(d / GAP_STEP))
                         for k = 1, jumlah - 1 do
                             local a = k / jumlah
@@ -1584,7 +1560,6 @@ local function bangunRute(daftarRekaman)
                             table.insert(rute, {c = {cfi:GetComponents()}, j = false})
                         end
                     end
-                    -- kalau sangat dekat: skip (titik dobel)
                 end
                 table.insert(rute, p)
                 cfPrev = cf
@@ -1594,7 +1569,7 @@ local function bangunRute(daftarRekaman)
     return rute
 end
 
--- pilih titik mulai: utamakan titik rute DI DEPAN arah hadap (tidak putar balik)
+-- approach sesuai gambar: titik terdekat DI DEPAN arah hadap (panah hijau)
 local function pilihTitikMulai(rute, hrp)
     local look = hrp.CFrame.LookVector
     local lx, lz = look.X, look.Z
@@ -1620,7 +1595,6 @@ local function pilihTitikMulai(rute, hrp)
             end
         end
     end
-    -- titik di depan dipilih asal tidak jauh-jauh amat dibanding terdekat global
     if iFront and dFront <= dBest * 2.5 + 10 then
         return iFront, dFront
     end
@@ -1667,7 +1641,6 @@ local function jalankanReplay(daftarRekaman, labelRute)
 
         local _, hrp, hum = getKarakter()
         if hrp and hum and hum.Health > 0 and not mintaStopReplay then
-            -- ===== FASE APPROACH: titik rute terdekat DI DEPAN =====
             local idx, jarakAwal = pilihTitikMulai(rute, hrp)
             if jarakAwal > APPROACH_DIST then
                 local cfTarget = cfDariPt(rute[idx])
@@ -1694,15 +1667,15 @@ local function jalankanReplay(daftarRekaman, labelRute)
                 end
                 local _, h3 = getKarakter()
                 if sedangReplay and not mintaStopReplay then
-                    if not h3 or not cfDariPt(rute[idx])
-                    or jarakXZ(cfDariPt(rute[idx]).Position, h3.Position) > APPROACH_REACH + 2 then
+                    local cfCek = cfDariPt(rute[idx])
+                    if not h3 or not cfCek
+                    or jarakXZ(cfCek.Position, h3.Position) > APPROACH_REACH + 2 then
                         toast("❌ Gagal menuju rute (mentok tembok?)", W.RED)
                         gagal = true
                     end
                 end
             end
 
-            -- ===== FASE IKUTI RUTE (sekali jalan, selesai otomatis) =====
             if not gagal and sedangReplay and not mintaStopReplay then
                 local _, h4, hu4 = getKarakter()
                 if h4 and hu4 and hu4.Health > 0 then
@@ -1735,7 +1708,6 @@ local function jalankanReplay(daftarRekaman, labelRute)
                                 if os.clock() - tBest > STALL_SKIP then break end
                                 if os.clock() - tMulai > 30 then break end
                             end
-                            -- FIX: lompat saat TEPAT mencapai titik lompatan
                             if sampai and rute[i].j then
                                 local _, _, huJ = getKarakter()
                                 if huJ then
@@ -1749,7 +1721,6 @@ local function jalankanReplay(daftarRekaman, labelRute)
             end
         end
 
-        -- cleanup
         local selesaiNormal = (not gagal) and (not mintaStopReplay)
         sedangReplay = false
         mintaStopReplay = false
@@ -2206,7 +2177,6 @@ gabungBtn.MouseButton1Click:Connect(function()
         toast("⚠ Tidak ada rekaman untuk digabung", W.RED)
         return
     end
-    -- HANYA yang dicentang (tidak ada fallback "semua")
     local terpilih = {}
     for _, r in ipairs(rekamanTersimpan) do
         if pilihanGabung[r.id] then table.insert(terpilih, r) end
@@ -2224,7 +2194,7 @@ gabungBtn.MouseButton1Click:Connect(function()
         nama = ("Gabungan %d • %s"):format(nomorBebas("Gabungan", daftarGab), os.date("%d/%m %H:%M")),
         waktu = os.date("%d/%m %H:%M"),
         durasi = totalDurasi,
-        pts = bangunRute(terpilih), -- gap otomatis dijembatani
+        pts = bangunRute(terpilih),
         g = true,
     }
     if #gab.pts < 2 then
@@ -2238,7 +2208,7 @@ gabungBtn.MouseButton1Click:Connect(function()
     toast("🔗 Gabungan dibuat → Tab 2 (" .. ribu(#gab.pts) .. " titik)", W.GREEN)
     refreshRekaman(true)
     refreshGabungan(gab.id)
-    fungsiPilihTab(2) -- salinan "berpindah" ke Tab 2
+    fungsiPilihTab(2)
 end)
 
 -- [29] UNLOAD ---------------------------------------------------------------
@@ -2364,32 +2334,18 @@ sambung(UserInputService.InputBegan, function(input, gameProcessed)
         toast(speedOn and string.format("⚡ ON: %.2f", speedValue)
             or string.format("⚡ OFF (%.2f)", SPEED_NORMAL), W.BLUE)
     elseif kc == KEY_LIGHT then
-        lightSwitch.set(not lightOn)
+        setLight(not lightOn, true)
     end
 end)
 
-do
-    local mSet = masterSwitch.set
-    masterSwitch.set = function(v, noCb)
-        hotkeyAktif = v
-        mSet(v, true)
-        updateNavDots()
-        if not noCb then
-            bunyi(SND_PING, 0.3, v and 1.2 or 0.8)
-            toast(v and "⌨ Hotkey AKTIF" or "⌨ Hotkey MATI (F tetap jalan)", v and W.GREEN or W.RED)
-        end
-    end
-end
-for _, c in ipairs(cardKey:GetChildren()) do
-    if c:IsA("TextButton") and c.Size == UDim2.fromOffset(42, 22) then
-        c.MouseButton1Click:Connect(function()
-            task.defer(function()
-                hotkeyAktif = masterSwitch.get()
-                updateNavDots()
-            end)
-        end)
-    end
-end
+masterSwitch.btn.MouseButton1Click:Connect(function()
+    hotkeyAktif = not hotkeyAktif
+    masterSwitch.set(hotkeyAktif)
+    updateNavDots()
+    bunyi(SND_PING, 0.3, hotkeyAktif and 1.2 or 0.8)
+    toast(hotkeyAktif and "⌨ Hotkey AKTIF" or "⌨ Hotkey MATI (F tetap jalan)",
+        hotkeyAktif and W.GREEN or W.RED)
+end)
 
 -- [32] RESPAWN ------------------------------------------------------------------
 sambung(LocalPlayer.CharacterAdded, function(char)
@@ -2430,6 +2386,6 @@ task.delay(1.2, function()
     end
 end)
 
-print("[RouteTools] v6.2 SIAP ✔ — F=GUI R=REC T=REPLAY Q=SPEED C=CAHAYA")
+print("[RouteTools] v6.2.1 SIAP ✔ — F=GUI R=REC T=REPLAY Q=SPEED C=CAHAYA")
 print("[RouteTools] File: " .. FILE_LOKASI .. " + " .. FILE_REKAMAN
     .. (fileOk and (" (PlaceId " .. game.PlaceId .. ")") or " — TIDAK TERSEDIA"))
