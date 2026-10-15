@@ -1,13 +1,15 @@
 --========================================================
---  TELEPORT GUI v5.3 — "SILAU NEON" + AUTO TP & RESPAWN
+--  TELEPORT GUI v5.4 — "SILAU NEON" + AUTO TP + ANTI-AFK
 --  Lokasi tersimpan di file executor, dipisah per game.
 --  Keybind: F = buka/tutup
 --
---  FITUR BARU:
---   🤖 Auto TP   : teleport otomatis ke semua titik berurutan
---   ⏱ Delay/jam : bisa diset global DAN per titik
---   💀 Auto Respawn : setelah titik terakhir (summit) → mati → respawn
---   🔄 Otomatis mulai ulang TP dari titik 1 setelah summit/respawn
+--  FITUR:
+--   💾 Simpan lokasi permanen (per game)
+--   🤖 Auto TP  : teleport otomatis semua titik berurutan
+--   ⏱ Delay    : global + bisa diset per titik
+--   💀 Auto Respawn : habis summit → mati → respawn → ulang dari titik 1
+--   🔁 Loop     : habis summit → balik titik 1 tanpa mati (opsional)
+--   👻 Anti-AFK : 2 lapis, tak terlihat, menangkal kick 20 menit
 --========================================================
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
@@ -315,8 +317,8 @@ local screenFx = buat("Frame", {
 }, screenGui)
 
 local root = buat("Frame", {
-    Size = UDim2.fromOffset(300, 594), -- <<< lebih tinggi (ada panel auto)
-    Position = UDim2.new(0.5, 0, 0.15, 0),
+    Size = UDim2.fromOffset(300, 620),
+    Position = UDim2.new(0.5, 0, 0.13, 0),
     AnchorPoint = Vector2.new(0.5, 0),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
@@ -374,7 +376,7 @@ for i = 1, 3 do
         Name = "NoFade",
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.new(0.3 * i, 0, 0.5, 0),
-        Size = UDim2.fromOffset(26, 500),
+        Size = UDim2.fromOffset(26, 520),
         Rotation = 24,
         BackgroundColor3 = i % 2 == 0 and Warna.UnguMuda or Warna.BiruMuda,
         BackgroundTransparency = 0.5,
@@ -508,7 +510,7 @@ local listLabel = buat("TextLabel", {
 
 local scroll = buat("ScrollingFrame", {
     Position = UDim2.new(0, 12, 0, 160),
-    Size = UDim2.new(1, -24, 1, -320), -- <<< disesuaikan (ada panel auto di bawah)
+    Size = UDim2.new(1, -24, 1, -346),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ScrollBarThickness = 4,
@@ -519,11 +521,11 @@ local scroll = buat("ScrollingFrame", {
 }, panel)
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scroll)
 
--- [8B] PANEL AUTO TP + RESPAWN --------------------------------------
+-- [8B] PANEL AUTO TP + RESPAWN + ANTI-AFK ---------------------------
 local autoPanel = buat("Frame", {
     Name = "AutoPanel",
-    Position = UDim2.new(0, 12, 1, -156),
-    Size = UDim2.new(1, -24, 0, 118),
+    Position = UDim2.new(0, 12, 1, -185),
+    Size = UDim2.new(1, -24, 0, 144),
     BackgroundColor3 = Warna.Hitam2,
     BorderSizePixel = 0,
 }, panel)
@@ -697,6 +699,32 @@ autoUI.restartBtn = buat("TextButton", {
 buat("UICorner", {CornerRadius = UDim.new(0, 6)}, autoUI.restartBtn)
 buat("UIStroke", {Color = Warna.Hijau, Thickness = 1, Transparency = 0.45}, autoUI.restartBtn)
 
+-- baris 5 : ANTI-AFK
+autoUI.afkBtn = buat("TextButton", {
+    Size = UDim2.fromOffset(118, 22),
+    Position = UDim2.new(0, 10, 0, 117),
+    BackgroundColor3 = Warna.Hijau,
+    BorderSizePixel = 0,
+    FontFace = fnt("bold"),
+    Text = "👻 Anti-AFK: ON",
+    TextColor3 = Warna.HijauMuda,
+    TextSize = 10,
+    AutoButtonColor = false,
+}, autoPanel)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, autoUI.afkBtn)
+buat("UIStroke", {Color = Warna.Hijau, Thickness = 1, Transparency = 0.45}, autoUI.afkBtn)
+
+autoUI.afkStatus = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 134, 0, 117),
+    Size = UDim2.new(1, -144, 0, 22),
+    FontFace = fnt("reg"),
+    Text = "🛡 siaga",
+    TextColor3 = Warna.HijauMuda,
+    TextSize = 9,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, autoPanel)
+
 local function gayaToggle(btn, on)
     btn.BackgroundColor3 = on and Warna.Hijau or Warna.Merah
     btn.BackgroundTransparency = on and 0.78 or 0.82
@@ -748,15 +776,15 @@ local marqueeClip = buat("Frame", {
 local marquee = buat("TextLabel", {
     BackgroundTransparency = 1,
     Position = UDim2.fromOffset(300, 0),
-    Size = UDim2.fromOffset(760, 13),
+    Size = UDim2.fromOffset(800, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = buka/tutup   ✦   💾 lokasi permanen (auto-save)   ✦   🤖 AUTO TP semua titik   ✦   ⏱ delay per titik (kotak kecil di tiap baris)   ✦   💀 auto respawn setelah summit + ulang dari titik 1",
+    Text = "⌨ F = buka/tutup   ✦   💾 lokasi permanen (auto-save)   ✦   🤖 AUTO TP semua titik   ✦   ⏱ delay per titik   ✦   💀 auto respawn setelah summit   ✦   👻 anti-AFK menangkal kick 20 menit",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, marqueeClip)
-tween(marquee, TweenInfo.new(13, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-    {Position = UDim2.fromOffset(-760, 0)})
+tween(marquee, TweenInfo.new(14, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+    {Position = UDim2.fromOffset(-800, 0)})
 
 local posisiTitik = {
     UDim2.new(0.5, 0, 0, 1),
@@ -1097,7 +1125,7 @@ local function muatLokasi()
                     id     = tostring(e.id or e.nama),
                     nama   = e.nama,
                     cframe = cf,
-                    delay  = tonumber(e.delay), -- <<< delay per titik (boleh nil)
+                    delay  = tonumber(e.delay), -- delay per titik (boleh nil)
                 })
             end
         end
@@ -1123,7 +1151,7 @@ local function simpanKeFile()
         table.insert(daftar, {
             id    = l.id,
             nama  = l.nama,
-            delay = l.delay, -- <<< delay per titik ikut disimpan
+            delay = l.delay, -- delay per titik ikut disimpan
             cf    = { l.cframe:GetComponents() },
         })
     end
@@ -1738,6 +1766,125 @@ LocalPlayer.CharacterAdded:Connect(function()
     end
 end)
 
+-- [17C] MESIN ANTI-AFK — menangkal kick 20 menit --------------------
+local VirtualUser = game:GetService("VirtualUser")
+
+local AFK_CFG = {
+    interval     = 240,   -- detik antar intervensi terjadwal (4 menit)
+    jitter       = 60,    -- + acak, biar polanya tidak kaku
+    jumpMode     = false, -- ubah ke true HANYA kalau game punya anti-AFK sendiri
+    jumpInterval = 45,
+}
+
+local afkState = { aktif = true, jumlah = 0, terakhir = 0, sudahIngatkan = false }
+local inputTerakhir = os.time()
+UserInputService.InputBegan:Connect(function() inputTerakhir = os.time() end)
+
+local function afkStatusUpdate()
+    if not autoUI.afkStatus then return end
+    if afkState.aktif then
+        if afkState.terakhir > 0 then
+            autoUI.afkStatus.Text = string.format("🛡 %dx • %dm lalu",
+                afkState.jumlah, math.floor((os.time() - afkState.terakhir) / 60))
+        else
+            autoUI.afkStatus.Text = string.format("🛡 %dx • siaga", afkState.jumlah)
+        end
+        autoUI.afkStatus.TextColor3 = Warna.HijauMuda
+    else
+        autoUI.afkStatus.Text = "🛡 mati"
+        autoUI.afkStatus.TextColor3 = Warna.AbuGelap
+    end
+end
+
+local function afkIntervensi(alasan)
+    local ok = pcall(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end)
+    if not ok then -- fallback kalau executor tidak support metode utama
+        pcall(function()
+            local vim = game:GetService("VirtualInputManager")
+            vim:SendMouseButtonEvent(5, 5, 1, true, game, 0)
+            vim:SendMouseButtonEvent(5, 5, 1, false, game, 0)
+        end)
+    end
+    afkState.jumlah += 1
+    afkState.terakhir = os.time()
+    print("[Anti-AFK] intervensi #" .. afkState.jumlah .. " (" .. tostring(alasan) .. ")")
+    afkStatusUpdate()
+end
+
+-- Lapis 1: bereaksi saat Roblox menyatakan kita idle
+LocalPlayer.Idled:Connect(function()
+    if afkState.aktif then afkIntervensi("event Idled") end
+end)
+
+-- Lapis 2: jadwal sendiri — di-skip kalau kamu masih aktif main
+task.spawn(function()
+    while screenGui.Parent do
+        if afkState.aktif then
+            local tunggu = AFK_CFG.interval + rnd(0, AFK_CFG.jitter)
+            task.wait(tunggu)
+            if afkState.aktif and screenGui.Parent
+            and (os.time() - inputTerakhir) >= AFK_CFG.interval then
+                afkIntervensi("jadwal " .. tunggu .. "s")
+            end
+        else
+            task.wait(2)
+        end
+    end
+end)
+
+-- Lapis 3 (opsional): lompatan kecil, khusus game dengan anti-AFK sendiri
+if AFK_CFG.jumpMode then
+    task.spawn(function()
+        while screenGui.Parent do
+            task.wait(AFK_CFG.jumpInterval)
+            if afkState.aktif then
+                local _, _, hum = getKarakter()
+                if hum and hum.Health > 0 then
+                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jump) end)
+                end
+            end
+        end
+    end)
+end
+
+-- refresh label status
+task.spawn(function()
+    while screenGui.Parent do
+        task.wait(30)
+        afkStatusUpdate()
+    end
+end)
+
+-- pengingat kalau Auto TP jalan tapi Anti-AFK mati
+task.spawn(function()
+    while screenGui.Parent do
+        task.wait(10)
+        if autoState.aktif and not afkState.aktif and not afkState.sudahIngatkan then
+            afkState.sudahIngatkan = true
+            toast("⚠️ Auto TP jalan tapi Anti-AFK mati — bisa ke-kick 20 menit!", Warna.Merah)
+        end
+        if afkState.aktif then afkState.sudahIngatkan = false end
+    end
+end)
+
+-- toggle di GUI
+autoUI.afkBtn.MouseButton1Click:Connect(function()
+    ripple(autoUI.afkBtn, Warna.HijauMuda)
+    afkState.aktif = not afkState.aktif
+    gayaToggle(autoUI.afkBtn, afkState.aktif)
+    autoUI.afkBtn.Text = afkState.aktif and "👻 Anti-AFK: ON" or "👻 Anti-AFK: OFF"
+    bunyi(SND_PING, 0.3, afkState.aktif and 1.15 or 0.85)
+    afkStatusUpdate()
+    toast(afkState.aktif and "👻 Anti-AFK aktif — aman AFK berjam-jam"
+        or "👻 Anti-AFK mati", afkState.aktif and Warna.Hijau or Warna.Merah)
+end)
+
+efekTombol(autoUI.afkBtn, 1.05)
+afkStatusUpdate()
+
 -- [18] MULAI --------------------------------------------------------
 refreshList(true)
 task.delay(0.15, bukaGui)
@@ -1752,4 +1899,5 @@ end)
 
 print("[TeleportGui] SIAP ✔ — tekan F untuk buka/tutup")
 print("[TeleportGui] Auto TP: MULAI/STOP di panel bawah. Delay per titik di kotak kecil tiap baris (kosong = pakai delay global).")
+print("[TeleportGui] Anti-AFK: aktif otomatis (2 lapis) — status di panel bawah, cek F9 untuk log intervensi.")
 print("[TeleportGui] Penyimpanan: " .. (fileOk and ("file '" .. NAMA_FILE .. "' (per game: " .. game.PlaceId .. ")") or "TIDAK TERSEDIA (bukan executor / tanpa file API)"))
