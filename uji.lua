@@ -1,5 +1,5 @@
 --========================================================
---  TELEPORT GUI v5.4 — "SILAU NEON" + AUTO TP + ANTI-AFK
+--  TELEPORT GUI v5.5 — "SILAU NEON" + AUTO TP + ANTI-AFK
 --  Lokasi tersimpan di file executor, dipisah per game.
 --  Keybind: F = buka/tutup
 --
@@ -8,6 +8,7 @@
 --   🤖 Auto TP  : teleport otomatis semua titik berurutan
 --   ⏱ Delay    : global + bisa diset per titik
 --   💀 Auto Respawn : habis summit → mati → respawn → ulang dari titik 1
+--   🎭 Gerak Summit : saat "tunggu" di summit → jalan/putar/lompat acak
 --   🔁 Loop     : habis summit → balik titik 1 tanpa mati (opsional)
 --   👻 Anti-AFK : 2 lapis, tak terlihat, menangkal kick 20 menit
 --========================================================
@@ -68,12 +69,13 @@ local Warna = {
 
 -- [2B] PENGATURAN AUTO TP / AUTO RESPAWN (bisa diubah lewat GUI) ----
 local AUTO = {
-    delayDefault    = 2,   -- detik antar titik (dipakai jika titik tidak punya delay sendiri)
-    respawnDelay    = 3,   -- detik berdiri di titik TERAKHIR (summit) sebelum mati
-    respawnWait     = 2,   -- detik jeda setelah respawn sebelum TP dimulai lagi
+    delayDefault    = 2,     -- detik antar titik (dipakai jika titik tidak punya delay sendiri)
+    respawnDelay    = 3,     -- detik berdiri di titik TERAKHIR (summit) sebelum mati
+    respawnWait     = 2,     -- detik jeda setelah respawn sebelum TP dimulai lagi
     loop            = true,  -- habis titik terakhir → balik ke titik 1 (tanpa mati)
     autoRespawn     = true,  -- habis titik terakhir → mati + respawn → mulai dari titik 1
     restartJikaMati = true,  -- mati di tengah jalan → otomatis mulai lagi dari titik 1
+    gerakSaatDelay  = false, -- true = gerakan acak juga selama delay antar titik (bukan cuma di summit)
 }
 
 local autoState = {
@@ -85,6 +87,7 @@ local autoState = {
     restart      = AUTO.restartJikaMati,
     respawnDelay = AUTO.respawnDelay,
     respawnWait  = AUTO.respawnWait,
+    gerak        = true, -- 🎭 gerak bebas saat "tunggu" di summit
 }
 
 local autoUI = {} -- elemen UI auto (diisi di bagian [8B])
@@ -317,8 +320,8 @@ local screenFx = buat("Frame", {
 }, screenGui)
 
 local root = buat("Frame", {
-    Size = UDim2.fromOffset(300, 620),
-    Position = UDim2.new(0.5, 0, 0.13, 0),
+    Size = UDim2.fromOffset(300, 646),
+    Position = UDim2.new(0.5, 0, 0.11, 0),
     AnchorPoint = Vector2.new(0.5, 0),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
@@ -376,7 +379,7 @@ for i = 1, 3 do
         Name = "NoFade",
         AnchorPoint = Vector2.new(0.5, 0.5),
         Position = UDim2.new(0.3 * i, 0, 0.5, 0),
-        Size = UDim2.fromOffset(26, 520),
+        Size = UDim2.fromOffset(26, 540),
         Rotation = 24,
         BackgroundColor3 = i % 2 == 0 and Warna.UnguMuda or Warna.BiruMuda,
         BackgroundTransparency = 0.5,
@@ -510,7 +513,7 @@ local listLabel = buat("TextLabel", {
 
 local scroll = buat("ScrollingFrame", {
     Position = UDim2.new(0, 12, 0, 160),
-    Size = UDim2.new(1, -24, 1, -346),
+    Size = UDim2.new(1, -24, 1, -372),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ScrollBarThickness = 4,
@@ -524,8 +527,8 @@ buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.Layou
 -- [8B] PANEL AUTO TP + RESPAWN + ANTI-AFK ---------------------------
 local autoPanel = buat("Frame", {
     Name = "AutoPanel",
-    Position = UDim2.new(0, 12, 1, -185),
-    Size = UDim2.new(1, -24, 0, 144),
+    Position = UDim2.new(0, 12, 1, -211),
+    Size = UDim2.new(1, -24, 0, 170),
     BackgroundColor3 = Warna.Hitam2,
     BorderSizePixel = 0,
 }, panel)
@@ -725,6 +728,32 @@ autoUI.afkStatus = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
 }, autoPanel)
 
+-- baris 6 : 🎭 GERAK BEBAS SAAT TUNGGU DI SUMMIT
+autoUI.gerakBtn = buat("TextButton", {
+    Size = UDim2.fromOffset(118, 22),
+    Position = UDim2.new(0, 10, 0, 139),
+    BackgroundColor3 = Warna.Hijau,
+    BorderSizePixel = 0,
+    FontFace = fnt("bold"),
+    Text = "🎭 Gerak Summit: ON",
+    TextColor3 = Warna.HijauMuda,
+    TextSize = 10,
+    AutoButtonColor = false,
+}, autoPanel)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, autoUI.gerakBtn)
+buat("UIStroke", {Color = Warna.Hijau, Thickness = 1, Transparency = 0.45}, autoUI.gerakBtn)
+
+buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 134, 0, 139),
+    Size = UDim2.new(1, -144, 0, 22),
+    FontFace = fnt("reg"),
+    Text = "jalan • putar • lompat (acak)",
+    TextColor3 = Warna.AbuGelap,
+    TextSize = 9,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, autoPanel)
+
 local function gayaToggle(btn, on)
     btn.BackgroundColor3 = on and Warna.Hijau or Warna.Merah
     btn.BackgroundTransparency = on and 0.78 or 0.82
@@ -740,6 +769,7 @@ local footer = buat("Frame", {
 buat("UICorner", {CornerRadius = UDim.new(0, 11)}, footer)
 buat("Frame", {
     Size = UDim2.new(1, 0, 0, 11),
+    Position = UDim2.new(0, 0, 1, -41),
     BackgroundColor3 = Warna.Hitam2,
     BorderSizePixel = 0,
 }, panel)
@@ -776,15 +806,15 @@ local marqueeClip = buat("Frame", {
 local marquee = buat("TextLabel", {
     BackgroundTransparency = 1,
     Position = UDim2.fromOffset(300, 0),
-    Size = UDim2.fromOffset(800, 13),
+    Size = UDim2.fromOffset(900, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = buka/tutup   ✦   💾 lokasi permanen (auto-save)   ✦   🤖 AUTO TP semua titik   ✦   ⏱ delay per titik   ✦   💀 auto respawn setelah summit   ✦   👻 anti-AFK menangkal kick 20 menit",
+    Text = "⌨ F = buka/tutup   ✦   💾 lokasi permanen (auto-save)   ✦   🤖 AUTO TP semua titik   ✦   ⏱ delay per titik   ✦   💀 auto respawn setelah summit   ✦   🎭 gerak bebas saat tunggu   ✦   👻 anti-AFK menangkal kick 20 menit",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, marqueeClip)
-tween(marquee, TweenInfo.new(14, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-    {Position = UDim2.fromOffset(-800, 0)})
+tween(marquee, TweenInfo.new(15, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+    {Position = UDim2.fromOffset(-900, 0)})
 
 local posisiTitik = {
     UDim2.new(0.5, 0, 0, 1),
@@ -1151,7 +1181,7 @@ local function simpanKeFile()
         table.insert(daftar, {
             id    = l.id,
             nama  = l.nama,
-            delay = l.delay, -- delay per titik ikut disimpan
+            delay = l.delay,
             cf    = { l.cframe:GetComponents() },
         })
     end
@@ -1525,6 +1555,70 @@ local function tungguRespawn(charLama, timeout)
     return nil
 end
 
+-- [15C] 🎭 GERAKAN ACAK — dipakai saat "tunggu" sebelum mati ---------
+-- Gerakan dibuat NETRAL (bolak-balik) supaya karakter tetap
+-- berada di sekitar titik summit dan tidak jatuh/nyasar.
+local function gerakanAcak(durasi)
+    if (durasi or 0) < 0.6 then return end
+    local _, hrp, hum = getKarakter()
+    if not hrp or not hum or hum.Health <= 0 then return end
+
+    local awalCf = hrp.CFrame -- posisi summit, untuk dikunci balik di akhir
+    local t0 = os.clock()
+
+    local function jalan(arahFn, dur)
+        local t = os.clock()
+        while autoState.aktif and os.clock() - t < dur do
+            if hum.Health <= 0 then break end
+            hum:Move(arahFn(), false)
+            task.wait(0.08)
+        end
+        hum:Move(Vector3.zero, false)
+    end
+
+    local function putar(sudut, dur)
+        local langkah = 8
+        for _ = 1, langkah do
+            if not autoState.aktif or hum.Health <= 0 then break end
+            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(sudut / langkah), 0)
+            task.wait(dur / langkah)
+        end
+    end
+
+    while autoState.aktif and os.clock() - t0 < durasi do
+        if hum.Health <= 0 then break end
+
+        local pola    = rnd(1, 5)
+        local langkah = rnd(25, 45) / 100 -- 0.25 - 0.45 detik per langkah
+
+        if pola == 1 then      -- jalan maju → mundur
+            jalan(function() return  hrp.CFrame.LookVector end, langkah)
+            jalan(function() return -hrp.CFrame.LookVector end, langkah)
+        elseif pola == 2 then  -- mundur → maju
+            jalan(function() return -hrp.CFrame.LookVector end, langkah)
+            jalan(function() return  hrp.CFrame.LookVector end, langkah)
+        elseif pola == 3 then  -- geser kiri → kanan
+            jalan(function() return -hrp.CFrame.RightVector end, langkah)
+            jalan(function() return  hrp.CFrame.RightVector end, langkah)
+        elseif pola == 4 then  -- putar badan → balik arah semula
+            local a = rnd(30, 75) * (rnd(0, 1) == 0 and 1 or -1)
+            putar(a, 0.5)
+            putar(-a, 0.5)
+        else                   -- lompat di tempat
+            pcall(function() hum.Jump = true end)
+            task.wait(0.7)
+        end
+
+        task.wait(rnd(10, 25) / 100) -- jeda kecil antar gerakan
+    end
+
+    pcall(function() hum:Move(Vector3.zero, false) end)
+    pcall(function() hrp.CFrame = awalCf end) -- kunci balik pas di titik summit
+    hrp.AssemblyLinearVelocity  = Vector3.zero
+    hrp.AssemblyAngularVelocity = Vector3.zero
+end
+
+-- [15D] LOOP UTAMA AUTO TP ------------------------------------------
 local function jalankanAutoTP()
     while autoState.aktif do
         local _, hrp, hum = getKarakter()
@@ -1548,15 +1642,19 @@ local function jalankanAutoTP()
                 -- ===== TP ke titik ini =====
                 teleportKe(lok.cframe)
                 fxTeleport()
-                local d = tonumber(lok.delay) or autoState.delay -- delay titik ini, fallback ke global
+                local d = tonumber(lok.delay) or autoState.delay
                 autoSetStatus(string.format("🚀 Titik %d/%d — %s (%.1fs)",
                     autoState.indeks, #lokasiTersimpan, lok.nama, d), Warna.HijauMuda)
 
-                local t0 = os.clock()
-                while autoState.aktif and os.clock() - t0 < d do
-                    local _, _, h2 = getKarakter()
-                    if h2 and h2.Health <= 0 then break end
-                    task.wait(0.1)
+                if AUTO.gerakSaatDelay and autoState.gerak then
+                    gerakanAcak(d)
+                else
+                    local t0 = os.clock()
+                    while autoState.aktif and os.clock() - t0 < d do
+                        local _, _, h2 = getKarakter()
+                        if h2 and h2.Health <= 0 then break end
+                        task.wait(0.1)
+                    end
                 end
 
                 if autoState.aktif then
@@ -1568,12 +1666,19 @@ local function jalankanAutoTP()
             else
                 -- ===== SEMUA TITIK SELESAI (SUMMIT) =====
                 if autoState.respawn then
-                    autoSetStatus("🏁 SUMMIT! Mati dalam " .. string.format("%.1f", autoState.respawnDelay) .. "s...", Warna.Ungu2)
-                    local t0 = os.clock()
-                    while autoState.aktif and os.clock() - t0 < autoState.respawnDelay do
-                        task.wait(0.1)
+                    if autoState.gerak then
+                        -- 🎭 gerak bebas selama waktu "tunggu" lalu mati
+                        autoSetStatus(string.format("🎭 Summit! Gerak bebas %.1fs lalu mati...", autoState.respawnDelay), Warna.Ungu2)
+                        gerakanAcak(autoState.respawnDelay)
+                        if not autoState.aktif then break end
+                    else
+                        autoSetStatus("🏁 SUMMIT! Mati dalam " .. string.format("%.1f", autoState.respawnDelay) .. "s...", Warna.Ungu2)
+                        local t0 = os.clock()
+                        while autoState.aktif and os.clock() - t0 < autoState.respawnDelay do
+                            task.wait(0.1)
+                        end
+                        if not autoState.aktif then break end
                     end
-                    if not autoState.aktif then break end
 
                     local charLama = LocalPlayer.Character
                     matikanKarakter()
@@ -1754,10 +1859,21 @@ autoUI.restartBtn.MouseButton1Click:Connect(function()
     bunyi(SND_PING, 0.3, autoState.restart and 1.1 or 0.9)
 end)
 
+autoUI.gerakBtn.MouseButton1Click:Connect(function()
+    ripple(autoUI.gerakBtn, Warna.HijauMuda)
+    autoState.gerak = not autoState.gerak
+    gayaToggle(autoUI.gerakBtn, autoState.gerak)
+    autoUI.gerakBtn.Text = autoState.gerak and "🎭 Gerak Summit: ON" or "🎭 Gerak Summit: OFF"
+    bunyi(SND_PING, 0.3, autoState.gerak and 1.15 or 0.9)
+    toast(autoState.gerak and "🎭 Gerak saat tunggu summit: AKTIF"
+        or "🎭 Gerak saat tunggu summit: MATI", autoState.gerak and Warna.Hijau or Warna.Merah)
+end)
+
 efekTombol(autoUI.btn)
 efekTombol(autoUI.loopBtn, 1.05)
 efekTombol(autoUI.respawnBtn, 1.05)
 efekTombol(autoUI.restartBtn, 1.02)
+efekTombol(autoUI.gerakBtn, 1.05)
 
 -- kalau mati di tengah jalan (atau respawn), mulai lagi dari titik 1
 LocalPlayer.CharacterAdded:Connect(function()
@@ -1801,7 +1917,7 @@ local function afkIntervensi(alasan)
         VirtualUser:CaptureController()
         VirtualUser:ClickButton2(Vector2.new())
     end)
-    if not ok then -- fallback kalau executor tidak support metode utama
+    if not ok then
         pcall(function()
             local vim = game:GetService("VirtualInputManager")
             vim:SendMouseButtonEvent(5, 5, 1, true, game, 0)
@@ -1814,12 +1930,10 @@ local function afkIntervensi(alasan)
     afkStatusUpdate()
 end
 
--- Lapis 1: bereaksi saat Roblox menyatakan kita idle
 LocalPlayer.Idled:Connect(function()
     if afkState.aktif then afkIntervensi("event Idled") end
 end)
 
--- Lapis 2: jadwal sendiri — di-skip kalau kamu masih aktif main
 task.spawn(function()
     while screenGui.Parent do
         if afkState.aktif then
@@ -1835,7 +1949,6 @@ task.spawn(function()
     end
 end)
 
--- Lapis 3 (opsional): lompatan kecil, khusus game dengan anti-AFK sendiri
 if AFK_CFG.jumpMode then
     task.spawn(function()
         while screenGui.Parent do
@@ -1850,7 +1963,6 @@ if AFK_CFG.jumpMode then
     end)
 end
 
--- refresh label status
 task.spawn(function()
     while screenGui.Parent do
         task.wait(30)
@@ -1858,7 +1970,6 @@ task.spawn(function()
     end
 end)
 
--- pengingat kalau Auto TP jalan tapi Anti-AFK mati
 task.spawn(function()
     while screenGui.Parent do
         task.wait(10)
@@ -1870,7 +1981,6 @@ task.spawn(function()
     end
 end)
 
--- toggle di GUI
 autoUI.afkBtn.MouseButton1Click:Connect(function()
     ripple(autoUI.afkBtn, Warna.HijauMuda)
     afkState.aktif = not afkState.aktif
@@ -1899,5 +2009,6 @@ end)
 
 print("[TeleportGui] SIAP ✔ — tekan F untuk buka/tutup")
 print("[TeleportGui] Auto TP: MULAI/STOP di panel bawah. Delay per titik di kotak kecil tiap baris (kosong = pakai delay global).")
+print("[TeleportGui] 🎭 Gerak Summit: ON — saat 'tunggu' sebelum mati, karakter jalan/putar/lompat acak lalu kembali ke titik summit.")
 print("[TeleportGui] Anti-AFK: aktif otomatis (2 lapis) — status di panel bawah, cek F9 untuk log intervensi.")
 print("[TeleportGui] Penyimpanan: " .. (fileOk and ("file '" .. NAMA_FILE .. "' (per game: " .. game.PlaceId .. ")") or "TIDAK TERSEDIA (bukan executor / tanpa file API)"))
