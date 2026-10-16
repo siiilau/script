@@ -1,15 +1,5 @@
 --========================================================
 --  SIIILAU HUB SCRIPTS v1.0.01
---  F=GUI  Q=speed  Q Q=sprint  V=jump  R=hide player
---  T=brightness  C=renang  X=dinding  Z=info  K K=hapus
---
---  SMART FALL ASSIST (mesin baru):
---   jatuh bebas normal -> BENTURAN di 50% ketinggian
---   (sentakan sekali, seperti nabrak pipa tak terlihat)
---   -> jatuh lanjut normal terpagar -42/s
---   -> 12 stud terakhir diperlunak ke -28/s
---   -> mendarat pelan, damage minimum
---   Darah TIDAK disentuh sama sekali.
 --========================================================
 print("[SilauHub] v1.0.01 loading...")
 
