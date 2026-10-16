@@ -1,7 +1,7 @@
 --========================================================
---  SIIILAU HUB SCRIPTS v1.0.01
+--  SIIILAU HUB SCRIPTS v1.0.1
 --========================================================
-print("[SilauHub] v1.0.01 loading...")
+print("[SilauHub] v1.0.1 loading...")
 
 local function fatal(e)
  warn("[SilauHub] ERROR: "..tostring(e))
@@ -34,11 +34,10 @@ local RUN=true
 local cfg={
  wOff=17.10, wOn=17.25,
  sOff=21.10, sOn=21.25,
- jOff=55.00, jOn=65.00,
- -- fall assist
+ jOff=51.25, jOn=65.50,
+ -- fall assist (cuma benturan, tanpa perlambatan)
  fMinJatuh=30, fPosisi=0.50, fCadang=-70,
  fBenturKe=-14, fBenturDur=0.15,
- fPagar=-42, fLembutJarak=12, fLembutKe=-28,
 }
 
 -- ================= WARNA =================
@@ -383,8 +382,7 @@ local function rNum(ti,label,default,cb)
  bx.FocusLost:Connect(function()
   local n=tonumber((bx.Text:gsub("[^%d%.%-]","")))
   if n then
-   if label:find("CADANG") or label:find("PAGAR") or label:find("BENTUR KE")
-   or label:find("LEMBUT KE") then n=-math.abs(n) end
+   if label:find("CADANG") or label:find("BENTUR KE") then n=-math.abs(n) end
    cb(n) bx.Text=string.format("%.2f",n)
    notif(label.." = "..string.format("%.2f",n),C.biru)
   else
@@ -421,10 +419,10 @@ local tgS=rTgl(1,"SPRINT [Q Q]",false,function(v)
 end)
 
 rSect(1,"LOMPATAN")
-local tgJump=rTgl(1,"JUMP POWER [V] (ON "..string.format("%.0f",cfg.jOn).." / OFF "..string.format("%.0f",cfg.jOff)..")",false,function(v)
+local tgJump=rTgl(1,"JUMP POWER [V] (ON "..string.format("%.2f",cfg.jOn).." / OFF "..string.format("%.2f",cfg.jOff)..")",false,function(v)
  mv.jump=v
- notif(v and ("JUMP "..string.format("%.0f",cfg.jOn).." ON")
-  or ("JUMP NORMAL "..string.format("%.0f",cfg.jOff)),C.ungu)
+ notif(v and ("JUMP "..string.format("%.2f",cfg.jOn).." ON")
+  or ("JUMP NORMAL "..string.format("%.2f",cfg.jOff)),C.ungu)
 end)
 rTgl(1,"DOUBLE JUMP (1X EXTRA)",false,function(v)
  mv.dj=v mv.djOK=true
@@ -436,7 +434,7 @@ local tgFall=rTgl(1,"SMART FALL ASSIST",false,function(v)
  mv.fall=v
  notif(v and "FALL ASSIST ON" or "FALL ASSIST OFF",C.hijau)
 end)
-rInfo(1,"Jatuh bebas normal -> TERBENTUR di 50% ketinggian\n(sentakan sekali, seperti nabrak pipa)\n-> jatuh lanjut terpagar -> mendarat pelan.\nDarah tidak disentuh - damage tampil normal.",46)
+rInfo(1,"Jatuh bebas normal -> TERBENTUR sekali di 50% ketinggian\n(kecepatan dipangkas sekejap, seperti nabrak pipa)\n-> sisa jatuh kembali 100% NORMAL.\nDarah tidak disentuh sama sekali.",46)
 
 rSect(1,"PENGATURAN NILAI")
 rNum(1,"SPEED OFF",cfg.wOff,function(n) cfg.wOff=n updInfoSpeed() end)
@@ -453,9 +451,9 @@ rNum(1,"POSISI BENTUR (0-1)",cfg.fPosisi,function(n)
 end)
 rNum(1,"BENTUR CADANG",cfg.fCadang,function(n) cfg.fCadang=n end)
 rNum(1,"BENTUR KE",cfg.fBenturKe,function(n) cfg.fBenturKe=n end)
-rNum(1,"PAGAR KECEPATAN",cfg.fPagar,function(n) cfg.fPagar=n end)
-rNum(1,"LEMBUT JARAK",cfg.fLembutJarak,function(n) cfg.fLembutJarak=n end)
-rNum(1,"LEMBUT KE",cfg.fLembutKe,function(n) cfg.fLembutKe=n end)
+rNum(1,"BENTUR DURASI",cfg.fBenturDur,function(n)
+ if n>0.05 and n<=0.5 then cfg.fBenturDur=n end
+end)
 
 -- ================= TAB 2 : VISUAL =================
 rSect(2,"TARGET")
@@ -657,12 +655,11 @@ LP.CharacterAdded:Connect(function(c)
  end)
 end)
 
--- ===== SMART FALL ASSIST v1.0.6 (BENTURAN + PAGAR) =====
+-- ===== SMART FALL ASSIST (BENTURAN SAJA, TANPA PERLAMBATAN) =====
 local fJatuh=false
 local fApex=0
 local fBentur=false
 local fBenturSampai=0
-local fPagar=false
 local fSejak=0
 
 RS.Heartbeat:Connect(function(dt)
@@ -672,13 +669,9 @@ RS.Heartbeat:Connect(function(dt)
  local now=os.clock()
  local v=hp.AssemblyLinearVelocity
 
- -- sentakan benturan
+ -- sentakan benturan (satu-satunya intervensi)
  if now<fBenturSampai then
   local nv=v.Y+(cfg.fBenturKe-v.Y)*math.clamp(dt*12,0,1)
-  hp.AssemblyLinearVelocity=Vector3.new(v.X,nv,v.Z)
- -- pagar kecepatan setelah benturan
- elseif fPagar and v.Y<cfg.fPagar then
-  local nv=v.Y+(cfg.fPagar-v.Y)*math.clamp(dt*4,0,1)
   hp.AssemblyLinearVelocity=Vector3.new(v.X,nv,v.Z)
  end
 
@@ -689,7 +682,6 @@ RS.Heartbeat:Connect(function(dt)
    fJatuh=true
    fApex=hp.Position.Y
    fBentur=false
-   fPagar=false
    fSejak=now
   end
   fApex=math.max(fApex,hp.Position.Y)
@@ -715,26 +707,20 @@ RS.Heartbeat:Connect(function(dt)
    end
    if picu then
     fBentur=true
-    fPagar=true
     fBenturSampai=now+cfg.fBenturDur
     notif("TERBENTUR - kecepatan terpangkas",C.kuning)
    end
   end
 
-  -- pelembut menjelang tanah
-  if fBentur and sisaJatuh and sisaJatuh<cfg.fLembutJarak
-  and v.Y<cfg.fLembutKe then
-   local nv=v.Y+(cfg.fLembutKe-v.Y)*math.clamp(dt*5,0,1)
-   hp.AssemblyLinearVelocity=Vector3.new(v.X,nv,v.Z)
-  end
+  -- TIDAK ADA perlambatan / pagar / pelembut setelah ini.
+  -- Sisa jatuh kembali 100% fisika normal.
 
  elseif fJatuh then
   fJatuh=false
-  fPagar=false
   local tdah=fBentur
   fBentur=false
   if tdah then
-   notif("MENDARAT - damage minimal",C.hijau)
+   notif("MENDARAT (setelah benturan)",C.hijau)
   end
  end
 end)
@@ -1090,7 +1076,7 @@ do
  local bd=mk("TextLabel",{AnchorPoint=Vector2.new(.5,.5),
   Position=UDim2.new(0.5,0,0.38,0),Size=UDim2.fromOffset(310,42),
   BackgroundColor3=C.bg,Font=F_TITLE,TextSize=16,
-  TextColor3=C.pink2,Text="SIIILAU HUB SCRIPTS  v1.0.01",ZIndex=999},g)
+  TextColor3=C.pink2,Text="SIIILAU HUB SCRIPTS  v1.0.1",ZIndex=999},g)
  corner(bd,10) stroke(bd,C.pink,2)
  task.delay(1.5,function()
   pcall(function()
@@ -1103,15 +1089,15 @@ end
 local foot=mk("TextLabel",{Size=UDim2.new(1,0,0,14),
  Position=UDim2.new(0,0,1,-18),BackgroundTransparency=1,
  Font=F_SEMI,TextSize=8,TextColor3=C.abuT,
- Text="SIIILAU HUB SCRIPTS  v1.0.01"},panel)
+ Text="SIIILAU HUB SCRIPTS  v1.0.1"},panel)
 
 tab(1)
 task.delay(0.45,function() buka() end)
 task.delay(1.2,function()
- notif("SIIILAU HUB v1.0.01 SIAP - TEKAN F",C.pink)
+ notif("SIIILAU HUB v1.0.1 SIAP - TEKAN F",C.pink)
 end)
 
-print("[SilauHub] v1.0.01 SIAP")
+print("[SilauHub] v1.0.1 SIAP")
 
 end)
 
