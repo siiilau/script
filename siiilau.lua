@@ -39,7 +39,7 @@ local cfg={
  -- FALL ASSIST v3 (SIMPLE)
  fMinJatuh=50,   -- jatuh harus lebih tinggi dari ini (stud)
  fPosisi=0.20,   -- nyenggol di 20% perjalanan jatuh
- fBenturKe=20,  -- (internal tetap) kecepatan setelah nyenggol
+ fBenturKe=-30,  -- (internal tetap) kecepatan setelah nyenggol
 }
 
 -- ================= TEMA KING SILAU =================
