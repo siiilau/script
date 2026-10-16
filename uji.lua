@@ -1,39 +1,35 @@
 --========================================================
---  SILAU HUB v1.2 — MOVEMENT + VISUAL + HUD (HARDENED)
+--  SILAU HUB v1.3 — MOVEMENT + VISUAL + HUD (XENO FIX)
 --  F=GUI  Q=speed  QQ=sprint  Shift=sprint sementara
 --  T=brightness  C=swim  X=wall  Z=info  KK=kill
---  Kalau gagal → kotak MERAH muncul di layar (screenshot & kirim!)
+--  GUI dipasang ke PlayerGui dulu (pasti render di semua executor)
 --========================================================
 
-local RunService = game:GetService("RunService")
-if not RunService:IsClient() then warn("[SilauHub] Harus di CLIENT!") return end
-if not game:IsLoaded() then game.Loaded:Wait() end
+print("[SilauHub] memuat... (v1.3)")
 
-local Players            = game:GetService("Players")
-local UserInputService   = game:GetService("UserInputService")
-local TweenService       = game:GetService("TweenService")
-local Lighting           = game:GetService("Lighting")
-local MarketplaceService = game:GetService("MarketplaceService")
-local VirtualUser        = game:GetService("VirtualUser")
-
-local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
-if not LocalPlayer then warn("[SilauHub] LocalPlayer belum ada. Masuk game dulu.") return end
-
--- Fungsi laporan error (selalu tampil di layar)
+-- Laporan error: TANPA service apapun, supaya selalu bisa tampil
 local function tampilkanFatal(err)
     warn("[SilauHub] ERROR: "..tostring(err))
     local g=Instance.new("ScreenGui")
     g.Name="SilauHubFatal" g.ResetOnSpawn=false g.DisplayOrder=99999
-    local okp=pcall(function() g.Parent=(gethui and gethui()) or game:GetService("CoreGui") end)
-    if not okp or not g.Parent then
-        pcall(function() g.Parent=LocalPlayer:WaitForChild("PlayerGui",5) end)
+    local lp=game:GetService("Players").LocalPlayer
+    local ditampol=false
+    if lp then
+        local pg=lp:FindFirstChild("PlayerGui")
+        if pg then pcall(function() g.Parent=pg ditampol=true end) end
+    end
+    if not ditampol then
+        pcall(function() g.Parent=(gethui and gethui()) end)
+    end
+    if not g.Parent then
+        pcall(function() g.Parent=game:GetService("CoreGui") end)
     end
     if not g.Parent then return end
     local f=Instance.new("Frame")
     f.Size=UDim2.fromOffset(480,190) f.Position=UDim2.new(0.5,0,0.5,0)
     f.AnchorPoint=Vector2.new(0.5,0.5) f.BackgroundColor3=Color3.fromRGB(35,0,0)
     f.BorderSizePixel=0 f.Parent=g
-    local c=Instance.new("UICorner") c.CornerRadius=UDim.new(0,12) c.Parent=f
+    Instance.new("UICorner", f).CornerRadius=UDim.new(0,12)
     local s=Instance.new("UIStroke") s.Color=Color3.fromRGB(255,60,60) s.Thickness=2 s.Parent=f
     local t=Instance.new("TextLabel")
     t.Size=UDim2.new(1,-20,1,-20) t.Position=UDim2.new(0,10,0,10)
@@ -47,8 +43,20 @@ end
 
 local sukses, errSilau = pcall(function()
 
-local VERSI = "1.2"
+local RunService          = game:GetService("RunService")
+local Players             = game:GetService("Players")
+local UserInputService    = game:GetService("UserInputService")
+local TweenService        = game:GetService("TweenService")
+local Lighting            = game:GetService("Lighting")
+local MarketplaceService  = game:GetService("MarketplaceService")
+local VirtualUser         = game:GetService("VirtualUser")
+
+local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
+if not LocalPlayer then error("LocalPlayer tidak ditemukan — masuk game dulu") end
+
+local VERSI = "1.3"
 local RUNNING = true
+local SOUND_ON = true
 
 -- [KONFIG] -----------------------------------------------------------
 local KEY_GUI, KEY_Q, KEY_T, KEY_C, KEY_X, KEY_Z, KEY_K =
@@ -92,19 +100,25 @@ local myGyro = nil
 local canDouble = true
 local original = {walk=16, jump=50, useJP=true}
 local origLight = nil
-local killScript = nil -- diisi nanti (dipakai tombol & keybind)
+local killScript = nil
 
 local rayParams = RaycastParams.new()
 local okEx = pcall(function() rayParams.FilterType = Enum.RaycastFilterType.Exclude end)
 if not okEx then pcall(function() rayParams.FilterType = Enum.RaycastFilterType.Blacklist end) end
 
-local HIGHLIGHT_OK = pcall(function() local t=Instance.new("Highlight") t:Destroy() end)
-local sudahWarnHighlight = false
+local HIGHLIGHT_OK = pcall(function()
+    local t=Instance.new("Highlight") t:Destroy()
+end)
 
 -- [FONT & HELPER] ----------------------------------------------------
+-- probe yang benar: uji PEMBUATAN Font DAN pengisian FontFace
 local FONT_OK = pcall(function()
-    return Font.new("rbxasset://fonts/families/Bangers.json", Enum.FontWeight.Regular)
+    local t=Instance.new("TextLabel")
+    t.FontFace=Font.new("rbxasset://fonts/families/Bangers.json", Enum.FontWeight.Regular)
+    t:Destroy()
 end)
+print("[SilauHub] FontFace support:", tostring(FONT_OK), "| Highlight:", tostring(HIGHLIGHT_OK))
+
 local cacheFont = {}
 local function fnt(k)
     if cacheFont[k] then return cacheFont[k] end
@@ -135,7 +149,7 @@ end
 local SND_PING="rbxasset://sounds/electronicpingshort.wav"
 local SND_SNAP="rbxasset://sounds/snap.mp3"
 
--- [SCREENGUI + PROTEKSI] ---------------------------------------------
+-- [SCREENGUI — PLAYERGUI DULU!] --------------------------------------
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name="SilauHubGui" screenGui.ResetOnSpawn=false
 screenGui.DisplayOrder=9997 screenGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
@@ -143,10 +157,15 @@ pcall(function() screenGui.OnTopOfCoreBlur=true end)
 pcall(function() if syn and syn.protect_gui then syn.protect_gui(screenGui) end end)
 pcall(function() if protectgui then protectgui(screenGui) end end)
 
+-- URUTAN: PlayerGui dulu (PASTI render), baru gethui, baru CoreGui
 local kandidat={}
+pcall(function()
+    local pg=LocalPlayer:FindFirstChild("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui",5)
+    if pg then table.insert(kandidat,pg) end
+end)
 pcall(function() if gethui then table.insert(kandidat,gethui()) end end)
 pcall(function() table.insert(kandidat,game:GetService("CoreGui")) end)
-pcall(function() table.insert(kandidat,LocalPlayer:WaitForChild("PlayerGui")) end)
+
 for _,t in ipairs(kandidat) do
     pcall(function() local l=t:FindFirstChild("SilauHubGui") if l then l:Destroy() end end)
 end
@@ -155,9 +174,13 @@ for _,t in ipairs(kandidat) do
     local o=pcall(function() screenGui.Parent=t end)
     if o and screenGui.Parent==t then terpasang=true break end
 end
-if not terpasang then error("Tidak bisa memasang GUI ke CoreGui/PlayerGui") end
+if not terpasang then error("Tidak bisa memasang GUI ke PlayerGui/gethui/CoreGui") end
 
--- SELF-HEAL: kalau GUI dihapus game, pasang ulang
+pcall(function()
+    print("[SilauHub] GUI dipasang di: "..screenGui.Parent:GetFullName())
+end)
+
+-- SELF-HEAL: kalau GUI dihapus (game/antibet), pasang ulang
 task.spawn(function()
     while RUNNING do
         task.wait(2)
@@ -171,7 +194,7 @@ task.spawn(function()
 end)
 
 local function bunyi(id,vol,pitch)
-    if not SOUND then return end
+    if not SOUND_ON then return end
     pcall(function()
         local s=Instance.new("Sound") s.SoundId=id s.Volume=vol or 0.3
         s.PlaybackSpeed=pitch or 1 s.Parent=screenGui s:Play()
@@ -179,7 +202,7 @@ local function bunyi(id,vol,pitch)
     end)
 end
 
--- badge "LOADED" — bukti visual script hidup
+-- BADGE LOADED — bukti visual hidup
 do
     local badge=buat("TextLabel",{AnchorPoint=Vector2.new(0.5,0.5),
         Position=UDim2.new(0.5,0,0.35,0),Size=UDim2.fromOffset(280,40),
@@ -188,7 +211,7 @@ do
         TextColor3=Warna.Pink2,TextSize=16,ZIndex=9999},screenGui)
     buat("UICorner",{CornerRadius=UDim.new(0,10)},badge)
     buat("UIStroke",{Color=Warna.Pink,Thickness=2},badge)
-    task.delay(1.6,function()
+    task.delay(1.8,function()
         if badge.Parent then
             tween(badge,TweenInfo.new(0.4),{TextTransparency=1,BackgroundTransparency=1})
             task.delay(0.45,function() pcall(function() badge:Destroy() end) end)
@@ -391,6 +414,7 @@ buat("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,1,0),
     FontFace=fnt("judul"),Text="⚡ S I L A U   H U B ⚡",TextColor3=Warna.Putih,
     TextSize=12},footer)
 
+-- ⚡ ikon (beacon) — juga jadi tombol buka saat GUI diminimize
 local icon=buat("Frame",{Size=UDim2.fromOffset(36,36),Position=UDim2.new(0,10,1,-10),
     AnchorPoint=Vector2.new(0,1),BackgroundColor3=Warna.Hitam,BorderSizePixel=0,
     Visible=false},screenGui)
@@ -483,7 +507,7 @@ local tglSprint = rowToggle(1,"🏃 Sprint 21.25-23.00","Q Q",false,function(v)
     notif(v and ("🏃 SPRINT ON — "..string.format("%.2f",mv.sprintVal)) or "🏃 Sprint OFF semua",Warna.Pink)
 end)
 
-local tglJump = rowToggle(1,"🦘 Jump Power 61.25-63.50",nil,false,function(v)
+rowToggle(1,"🦘 Jump Power 61.25-63.50",nil,false,function(v)
     mv.jump=v
     local _,hum=getMy()
     if hum then
@@ -515,11 +539,10 @@ local function warnaUntuk(p)
     return Warna.Ungu
 end
 
-local tglESP = rowToggle(2,"👁 ESP / Highlight","warna tim",false,function(v)
+rowToggle(2,"👁 ESP / Highlight","warna tim",false,function(v)
     vis.esp=v
-    if v and not HIGHLIGHT_OK and not sudahWarnHighlight then
-        sudahWarnHighlight=true
-        notif("⚠️ Executor tidak support Highlight — ESP tidak tersedia",Warna.Kuning)
+    if v and not HIGHLIGHT_OK then
+        notif("⚠️ Executor tidak support Highlight",Warna.Kuning)
     end
     if not v then
         for _,d in pairs(espFolder) do pcall(function() d:Destroy() end) end
@@ -528,7 +551,7 @@ local tglESP = rowToggle(2,"👁 ESP / Highlight","warna tim",false,function(v)
     notif(v and "👁 ESP ON" or "👁 ESP OFF",Warna.Ungu)
 end)
 
-local tglTag = rowToggle(2,"🏷 Nametag + Info Player","Z",false,function(v)
+rowToggle(2,"🏷 Nametag + Info Player","Z",false,function(v)
     vis.tag=v
     if not v then
         for _,t in pairs(tagFolder) do pcall(function() t.bb:Destroy() end) end
@@ -566,7 +589,7 @@ local function bangunCrosshair()
 end
 
 local gayaNama={"OFF","Dot","Cross","Circle"}
-local btnCross = rowAksi(2,"✛ Crosshair: OFF (klik = ganti)",function(b)
+rowAksi(2,"✛ Crosshair: OFF (klik = ganti)",function(b)
     vis.crossStyle=(vis.crossStyle+1)%4
     vis.cross=(vis.crossStyle>0)
     bangunCrosshair()
@@ -834,7 +857,7 @@ rowAksi(3,"💥 HAPUS SCRIPT (sama dengan K-K)",function()
     if killScript then killScript() end
 end,26)
 
--- [LOOPS: MOVEMENT] --------------------------------------------------
+-- [LOOP MOVEMENT] ----------------------------------------------------
 local nextSprintRot=0
 local nextJumpRot=0
 
@@ -973,7 +996,7 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- [LOOPS: VISUAL] ----------------------------------------------------
+-- [LOOP VISUAL] ------------------------------------------------------
 task.spawn(function()
     while RUNNING do
         task.wait(1)
@@ -1008,7 +1031,7 @@ task.spawn(function()
                 if p~=LocalPlayer and p.Character and not tagFolder[p] then
                     local head=p.Character:FindFirstChild("Head")
                     if head then
-                        local okB, bb = pcall(function()
+                        local okB, data = pcall(function()
                             local b=Instance.new("BillboardGui")
                             b.Name="SilauTag" b.Size=UDim2.fromOffset(150,54)
                             b.StudsOffset=Vector3.new(0,2.6,0) b.AlwaysOnTop=true
@@ -1028,16 +1051,9 @@ task.spawn(function()
                             dst.BackgroundTransparency=1 dst.Font=Enum.Font.Gotham
                             dst.TextSize=9 dst.TextColor3=Color3.new(0.7,0.7,0.7)
                             dst.TextStrokeTransparency=0.4 dst.Text="" dst.Parent=b
-                            return b
+                            return {bb=b, info=inf, dist=dst}
                         end)
-                        if okB then tagFolder[p]={bb=bb,info=bb:FindFirstChild("SilauTag") and nil or nil} end
-                        if okB then
-                            local labels={}
-                            for _,l in ipairs(bb:GetChildren()) do
-                                if l:IsA("TextLabel") then table.insert(labels,l) end
-                            end
-                            tagFolder[p]={bb=bb,info=labels[2],dist=labels[3]}
-                        end
+                        if okB and data then tagFolder[p]=data end
                     end
                 end
             end
@@ -1061,7 +1077,7 @@ task.spawn(function()
                         local curang=(sp>WALK_ON+0.05)
                             or (hum2.UseJumpPower and jp>JUMP_OFF+0.05)
                         data.info.Text=string.format("🏃%.1f 🦘%.1f%s",sp,jp,curang and " ⚠️" or "")
-                        data.info.TextColor3=curang and Warna.Merah or Warna.HijauMuda
+                        data.info.TextColor3=curang and Warna.Merah or Color3.fromRGB(187,247,208)
                         if data.dist then data.dist.Text=string.format("📏 %d stud",dist) end
                     end
                 else
@@ -1091,8 +1107,8 @@ task.spawn(function()
     while RUNNING do
         task.wait(1)
         if vis.bright then
-            local t=Lighting.ClockTime
             pcall(function()
+                local t=Lighting.ClockTime
                 if t>=18 or t<6 then
                     Lighting.Brightness=3
                     Lighting.Ambient=Color3.fromRGB(140,140,165)
@@ -1176,10 +1192,13 @@ task.spawn(function()
     end
 end)
 
+-- nama game diambil DI TASK TERPISAH (tidak memblokir startup)
 local namaGame="?"
-pcall(function()
-    local info=MarketplaceService:GetProductInfo(game.PlaceId)
-    if info and info.Name then namaGame=info.Name end
+task.spawn(function()
+    pcall(function()
+        local info=MarketplaceService:GetProductInfo(game.PlaceId)
+        if info and info.Name then namaGame=info.Name end
+    end)
 end)
 
 task.spawn(function()
@@ -1217,6 +1236,7 @@ task.spawn(function()
     end
 end)
 
+-- ANTI-AFK (2 lapis)
 LocalPlayer.Idled:Connect(function()
     if RUNNING and hudOn.afk then
         pcall(function()
@@ -1391,8 +1411,10 @@ end)
 
 -- [MULAI] ------------------------------------------------------------
 pilihTab(1)
-task.delay(0.15,function() pcall(buka) end)
-task.delay(1,function()
+-- ⚡ BEACON: ikon selalu muncul dulu — bukti GUI sistem hidup
+task.delay(0.25,function() icon.Visible=true end)
+task.delay(0.5,function() pcall(buka) end)
+task.delay(1.2,function()
     notif("⚡ SILAU HUB v"..VERSI.." siap! F = GUI",Warna.Pink)
 end)
 
