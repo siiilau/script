@@ -1,21 +1,10 @@
 --========================================================
---  SILAU HUB v1.1 — MOVEMENT + VISUAL + HUD (AUDITED)
---  Keybind:
---   F    : buka/tutup GUI
---   Q    : Speed OFF→WALK(17.25)→OFF
---   Q Q  : SPRINT (21.25-23.00) | Q saat sprint = OFF semua
---   Shift: tahan = sprint sementara
---   T    : Auto Brightness
---   C    : Swim mode (Normal→Katak+20%→Tegak)
---   X    : Reveal Invisible Wall
---   Z    : Info player (nametag)
---   K K  : HAPUS SCRIPT (konfirmasi 2 detik)
+--  SILAU HUB v1.2 — MOVEMENT + VISUAL + HUD (HARDENED)
+--  F=GUI  Q=speed  QQ=sprint  Shift=sprint sementara
+--  T=brightness  C=swim  X=wall  Z=info  KK=kill
+--  Kalau gagal → kotak MERAH muncul di layar (screenshot & kirim!)
 --========================================================
 
-local VERSI = "1.1"
-local RUNNING = true
-
--- [1] PENGAMAN & SERVICES -------------------------------------------
 local RunService = game:GetService("RunService")
 if not RunService:IsClient() then warn("[SilauHub] Harus di CLIENT!") return end
 if not game:IsLoaded() then game.Loaded:Wait() end
@@ -28,9 +17,40 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local VirtualUser        = game:GetService("VirtualUser")
 
 local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
-if not LocalPlayer then warn("[SilauHub] LocalPlayer belum ada.") return end
+if not LocalPlayer then warn("[SilauHub] LocalPlayer belum ada. Masuk game dulu.") return end
 
--- [2] KONFIGURASI ----------------------------------------------------
+-- Fungsi laporan error (selalu tampil di layar)
+local function tampilkanFatal(err)
+    warn("[SilauHub] ERROR: "..tostring(err))
+    local g=Instance.new("ScreenGui")
+    g.Name="SilauHubFatal" g.ResetOnSpawn=false g.DisplayOrder=99999
+    local okp=pcall(function() g.Parent=(gethui and gethui()) or game:GetService("CoreGui") end)
+    if not okp or not g.Parent then
+        pcall(function() g.Parent=LocalPlayer:WaitForChild("PlayerGui",5) end)
+    end
+    if not g.Parent then return end
+    local f=Instance.new("Frame")
+    f.Size=UDim2.fromOffset(480,190) f.Position=UDim2.new(0.5,0,0.5,0)
+    f.AnchorPoint=Vector2.new(0.5,0.5) f.BackgroundColor3=Color3.fromRGB(35,0,0)
+    f.BorderSizePixel=0 f.Parent=g
+    local c=Instance.new("UICorner") c.CornerRadius=UDim.new(0,12) c.Parent=f
+    local s=Instance.new("UIStroke") s.Color=Color3.fromRGB(255,60,60) s.Thickness=2 s.Parent=f
+    local t=Instance.new("TextLabel")
+    t.Size=UDim2.new(1,-20,1,-20) t.Position=UDim2.new(0,10,0,10)
+    t.BackgroundTransparency=1 t.Font=Enum.Font.Code t.TextSize=13
+    t.TextColor3=Color3.fromRGB(255,130,130)
+    t.TextWrapped=true t.TextXAlignment=Enum.TextXAlignment.Left
+    t.TextYAlignment=Enum.TextYAlignment.Top
+    t.Text="SILAU HUB GAGAL — screenshot ini & kirim:\n\n"..tostring(err)
+    t.Parent=f
+end
+
+local sukses, errSilau = pcall(function()
+
+local VERSI = "1.2"
+local RUNNING = true
+
+-- [KONFIG] -----------------------------------------------------------
 local KEY_GUI, KEY_Q, KEY_T, KEY_C, KEY_X, KEY_Z, KEY_K =
     Enum.KeyCode.F, Enum.KeyCode.Q, Enum.KeyCode.T,
     Enum.KeyCode.C, Enum.KeyCode.X, Enum.KeyCode.Z, Enum.KeyCode.K
@@ -57,7 +77,6 @@ local Warna = {
     HijauMuda=Color3.fromRGB(187,247,208), Kuning=Color3.fromRGB(250,204,21),
 }
 
--- [3] STATE ----------------------------------------------------------
 local mv   = {walk=false, sprint=false, shift=false, jump=false, dj=false,
               fall=false, sprintVal=22.1, jumpVal=62.0}
 local vis  = {esp=false, tag=false, cross=false, crossStyle=0, moon=false,
@@ -73,10 +92,16 @@ local myGyro = nil
 local canDouble = true
 local original = {walk=16, jump=50, useJP=true}
 local origLight = nil
-local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
+local killScript = nil -- diisi nanti (dipakai tombol & keybind)
 
--- [4] FONT & HELPER --------------------------------------------------
+local rayParams = RaycastParams.new()
+local okEx = pcall(function() rayParams.FilterType = Enum.RaycastFilterType.Exclude end)
+if not okEx then pcall(function() rayParams.FilterType = Enum.RaycastFilterType.Blacklist end) end
+
+local HIGHLIGHT_OK = pcall(function() local t=Instance.new("Highlight") t:Destroy() end)
+local sudahWarnHighlight = false
+
+-- [FONT & HELPER] ----------------------------------------------------
 local FONT_OK = pcall(function()
     return Font.new("rbxasset://fonts/families/Bangers.json", Enum.FontWeight.Regular)
 end)
@@ -110,11 +135,13 @@ end
 local SND_PING="rbxasset://sounds/electronicpingshort.wav"
 local SND_SNAP="rbxasset://sounds/snap.mp3"
 
--- [5] SCREENGUI ------------------------------------------------------
+-- [SCREENGUI + PROTEKSI] ---------------------------------------------
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name="SilauHubGui" screenGui.ResetOnSpawn=false
 screenGui.DisplayOrder=9997 screenGui.ZIndexBehavior=Enum.ZIndexBehavior.Sibling
 pcall(function() screenGui.OnTopOfCoreBlur=true end)
+pcall(function() if syn and syn.protect_gui then syn.protect_gui(screenGui) end end)
+pcall(function() if protectgui then protectgui(screenGui) end end)
 
 local kandidat={}
 pcall(function() if gethui then table.insert(kandidat,gethui()) end end)
@@ -128,15 +155,48 @@ for _,t in ipairs(kandidat) do
     local o=pcall(function() screenGui.Parent=t end)
     if o and screenGui.Parent==t then terpasang=true break end
 end
-if not terpasang then warn("[SilauHub] Gagal pasang GUI.") return end
+if not terpasang then error("Tidak bisa memasang GUI ke CoreGui/PlayerGui") end
+
+-- SELF-HEAL: kalau GUI dihapus game, pasang ulang
+task.spawn(function()
+    while RUNNING do
+        task.wait(2)
+        if RUNNING and screenGui and not screenGui.Parent then
+            for _,t in ipairs(kandidat) do
+                local o=pcall(function() screenGui.Parent=t end)
+                if o and screenGui.Parent then break end
+            end
+        end
+    end
+end)
 
 local function bunyi(id,vol,pitch)
-    local s=Instance.new("Sound") s.SoundId=id s.Volume=vol or 0.3
-    s.PlaybackSpeed=pitch or 1 s.Parent=screenGui s:Play()
-    task.delay(3,function() s:Destroy() end)
+    if not SOUND then return end
+    pcall(function()
+        local s=Instance.new("Sound") s.SoundId=id s.Volume=vol or 0.3
+        s.PlaybackSpeed=pitch or 1 s.Parent=screenGui s:Play()
+        task.delay(3,function() s:Destroy() end)
+    end)
 end
 
--- [6] EFEK -----------------------------------------------------------
+-- badge "LOADED" — bukti visual script hidup
+do
+    local badge=buat("TextLabel",{AnchorPoint=Vector2.new(0.5,0.5),
+        Position=UDim2.new(0.5,0,0.35,0),Size=UDim2.fromOffset(280,40),
+        BackgroundColor3=Warna.Hitam,BorderSizePixel=0,
+        FontFace=fnt("judul"),Text="⚡ SILAU HUB LOADED ⚡",
+        TextColor3=Warna.Pink2,TextSize=16,ZIndex=9999},screenGui)
+    buat("UICorner",{CornerRadius=UDim.new(0,10)},badge)
+    buat("UIStroke",{Color=Warna.Pink,Thickness=2},badge)
+    task.delay(1.6,function()
+        if badge.Parent then
+            tween(badge,TweenInfo.new(0.4),{TextTransparency=1,BackgroundTransparency=1})
+            task.delay(0.45,function() pcall(function() badge:Destroy() end) end)
+        end
+    end)
+end
+
+-- [EFEK & DRAG] ------------------------------------------------------
 local function ledSweep(inst,base,bandA,bandB,dur)
     local g=buat("UIGradient",{Color=ColorSequence.new({
         ColorSequenceKeypoint.new(0,base),ColorSequenceKeypoint.new(0.4,base),
@@ -167,7 +227,7 @@ local function buatDraggable(handle,target,onClickIfClick)
     end)
 end
 
--- [7] KARAKTER -------------------------------------------------------
+-- [KARAKTER] ---------------------------------------------------------
 local function getMy()
     local c=LocalPlayer.Character
     if not c then return nil end
@@ -179,17 +239,18 @@ local function refreshRay()
 end
 refreshRay()
 
-local _, myHum0 = getMy()
-if myHum0 then
-    original.walk=myHum0.WalkSpeed
-    original.jump=myHum0.JumpPower
-    original.useJP=myHum0.UseJumpPower
+do
+    local _,h0=getMy()
+    if h0 then
+        original.walk=h0.WalkSpeed
+        original.jump=h0.JumpPower
+        original.useJP=h0.UseJumpPower
+    end
 end
 
--- [8] HUD CONTAINER + NOTIF ------------------------------------------
-local hudFrame = buat("Frame",{
-    Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,BorderSizePixel=0,
-},screenGui)
+-- [HUD + NOTIF] ------------------------------------------------------
+local hudFrame = buat("Frame",{Size=UDim2.new(1,0,1,0),
+    BackgroundTransparency=1,BorderSizePixel=0},screenGui)
 
 local notifList = buat("Frame",{
     AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-12,0,12),
@@ -228,12 +289,10 @@ local function notif(teks,warnaAksen)
     end
 end
 
--- [9] BANGUN PANEL UTAMA ---------------------------------------------
-local root = buat("Frame",{
-    Size=UDim2.fromOffset(360,540),Position=UDim2.new(0.5,0,0.1,0),
-    AnchorPoint=Vector2.new(0.5,0),BackgroundTransparency=1,BorderSizePixel=0,
-    Visible=false,
-},screenGui)
+-- [PANEL UTAMA] ------------------------------------------------------
+local root = buat("Frame",{Size=UDim2.fromOffset(360,540),
+    Position=UDim2.new(0.5,0,0.1,0),AnchorPoint=Vector2.new(0.5,0),
+    BackgroundTransparency=1,BorderSizePixel=0,Visible=false},screenGui)
 local panelScale=buat("UIScale",{Scale=1},root)
 
 local outer=buat("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=Warna.Hitam,
@@ -341,7 +400,7 @@ local iconScale=buat("UIScale",{Scale=1},icon)
 buat("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,1,0),
     FontFace=fnt("judul"),Text="⚡",TextColor3=Warna.Pink2,TextSize=18},icon)
 
--- [10] FACTORY BARIS -------------------------------------------------
+-- [FACTORY] ----------------------------------------------------------
 local orderCounter={0,0,0}
 
 local function rowToggle(tabIdx,teks,hint,initial,cb)
@@ -372,7 +431,7 @@ local function rowToggle(tabIdx,teks,hint,initial,cb)
         sw.BackgroundColor3=v and Warna.Hijau or Warna.Merah
         sw.BackgroundTransparency=v and 0.75 or 0.82
         sw.TextColor3=v and Warna.HijauMuda or Warna.MerahMuda
-        if not noCb then cb(v) end
+        if not noCb then pcall(function() cb(v) end) end
     end
     sw.MouseButton1Click:Connect(function()
         bunyi(SND_PING,0.25,obj.state and 0.9 or 1.15)
@@ -390,7 +449,7 @@ local function rowAksi(tabIdx,teks,cb,h)
         AutoButtonColor=false,LayoutOrder=orderCounter[tabIdx]},sf)
     buat("UICorner",{CornerRadius=UDim.new(0,8)},b)
     ledSweep(b,Warna.Ungu,Warna.Putih,Warna.Pink,2.6)
-    b.MouseButton1Click:Connect(function() cb(b) end)
+    b.MouseButton1Click:Connect(function() pcall(function() cb(b) end) end)
     return b
 end
 
@@ -404,7 +463,7 @@ local function rowInfo(tabIdx,teks,h)
         LayoutOrder=orderCounter[tabIdx]},sf)
 end
 
--- [11] TAB 1 : MOVEMENT ---------------------------------------------
+-- [TAB 1 : MOVEMENT] -------------------------------------------------
 rowInfo(1,"🚶 OFF 17.00 → ON 17.25 | Sprint QQ: 21.25-23.00 acak")
 
 local tglWalk = rowToggle(1,"🚶 Walk Speed 17.25","Q",false,function(v)
@@ -447,7 +506,7 @@ rowToggle(1,"💨 Smart Fall Assist",nil,false,function(v)
 end)
 rowInfo(1,"💨 Pantul kena atap • slide di lereng • roll mendarat rata •\ndash kalau jatuh dalam. Damage ≤25% darah otomatis di-no-kan.")
 
--- [12] TAB 2 : VISUAL -----------------------------------------------
+-- [TAB 2 : VISUAL] ---------------------------------------------------
 local cam = workspace.CurrentCamera
 local crossFrame = nil
 
@@ -456,9 +515,12 @@ local function warnaUntuk(p)
     return Warna.Ungu
 end
 
--- FIX #4: ESP pasang ulang otomatis setelah respawn
 local tglESP = rowToggle(2,"👁 ESP / Highlight","warna tim",false,function(v)
     vis.esp=v
+    if v and not HIGHLIGHT_OK and not sudahWarnHighlight then
+        sudahWarnHighlight=true
+        notif("⚠️ Executor tidak support Highlight — ESP tidak tersedia",Warna.Kuning)
+    end
     if not v then
         for _,d in pairs(espFolder) do pcall(function() d:Destroy() end) end
         table.clear(espFolder)
@@ -466,7 +528,6 @@ local tglESP = rowToggle(2,"👁 ESP / Highlight","warna tim",false,function(v)
     notif(v and "👁 ESP ON" or "👁 ESP OFF",Warna.Ungu)
 end)
 
--- FIX #3: nametag pakai referensi label eksplisit
 local tglTag = rowToggle(2,"🏷 Nametag + Info Player","Z",false,function(v)
     vis.tag=v
     if not v then
@@ -476,27 +537,26 @@ local tglTag = rowToggle(2,"🏷 Nametag + Info Player","Z",false,function(v)
     notif(v and "🏷 Info player ON" or "🏷 Info player OFF",Warna.Biru)
 end)
 
--- FIX #2: crosshair ditulis ulang bersih
 local function bangunCrosshair()
     if crossFrame then pcall(function() crossFrame:Destroy() end) crossFrame=nil end
     if not vis.cross then return end
     crossFrame=buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),
         Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(0,0),
         BackgroundTransparency=1,BorderSizePixel=0,ZIndex=900},hudFrame)
-    if vis.crossStyle==1 then -- dot
+    if vis.crossStyle==1 then
         local d=buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),
             Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(6,6),
             BackgroundColor3=Warna.Putih,BorderSizePixel=0,ZIndex=901},crossFrame)
         buat("UICorner",{CornerRadius=UDim.new(1,0)},d)
         buat("UIStroke",{Color=Warna.Hitam,Thickness=1,Transparency=0.5},d)
-    elseif vis.crossStyle==2 then -- cross +
+    elseif vis.crossStyle==2 then
         buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),
             Size=UDim2.fromOffset(20,2),BackgroundColor3=Warna.Putih,
             BorderSizePixel=0,ZIndex=901},crossFrame)
         buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),
             Size=UDim2.fromOffset(2,20),BackgroundColor3=Warna.Putih,
             BorderSizePixel=0,ZIndex=901},crossFrame)
-    else -- circle
+    else
         local c=buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),
             Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(22,22),
             BackgroundTransparency=1,BorderSizePixel=0,ZIndex=901},crossFrame)
@@ -520,7 +580,7 @@ rowToggle(2,"🚶‍♂️ Moonwalk",nil,false,function(v)
     notif(v and "🕺 Moonwalk ON — hee-hee!" or "🕺 Moonwalk OFF",Warna.Pink)
 end)
 
-local tglHideP = rowToggle(2,"🫥 Hide Other Players",nil,false,function(v)
+rowToggle(2,"🫥 Hide Other Players",nil,false,function(v)
     vis.hideP=v
     if not v then
         for _,pt in ipairs(hiddenParts) do
@@ -531,22 +591,23 @@ local tglHideP = rowToggle(2,"🫥 Hide Other Players",nil,false,function(v)
     notif(v and "🫥 Pemain lain disembunyikan (ESP tetap)" or "🫥 Pemain lain ditampilkan",Warna.Ungu)
 end)
 
-local tglHideFx = rowToggle(2,"✨ Hide All Effects (FPS boost)",nil,false,function(v)
+rowToggle(2,"✨ Hide All Effects (FPS boost)",nil,false,function(v)
     vis.hideFx=v
     if v then
         for _,d in ipairs(workspace:GetDescendants()) do
-            if d:IsA("ParticleEmitter") or d:IsA("Fire") or d:IsA("Smoke")
-            or d:IsA("Sparkles") or d:IsA("Beam") or d:IsA("Trail") then
-                if d.Enabled then
-                    d.Enabled=false
-                    table.insert(hiddenFx,d)
+            pcall(function()
+                if d:IsA("ParticleEmitter") or d:IsA("Fire") or d:IsA("Smoke")
+                or d:IsA("Sparkles") or d:IsA("Beam") or d:IsA("Trail") then
+                    if d.Enabled then d.Enabled=false table.insert(hiddenFx,d) end
                 end
-            end
+            end)
         end
         for _,d in ipairs(Lighting:GetChildren()) do
-            if d:IsA("PostEffect") and d.Enabled then
-                d.Enabled=false table.insert(hiddenFx,d)
-            end
+            pcall(function()
+                if d:IsA("PostEffect") and d.Enabled then
+                    d.Enabled=false table.insert(hiddenFx,d)
+                end
+            end)
         end
         notif("✨ Efek dimatikan — FPS naik!",Warna.Hijau)
     else
@@ -560,17 +621,18 @@ origLight = {B=Lighting.Brightness,A=Lighting.Ambient,OA=Lighting.OutdoorAmbient
 local tglBright = rowToggle(2,"🌗 Auto Brightness","T",false,function(v)
     vis.bright=v
     if not v and origLight then
-        Lighting.Brightness=origLight.B
-        Lighting.Ambient=origLight.A
-        Lighting.OutdoorAmbient=origLight.OA
+        pcall(function()
+            Lighting.Brightness=origLight.B
+            Lighting.Ambient=origLight.A
+            Lighting.OutdoorAmbient=origLight.OA
+        end)
     end
     notif(v and "🌗 Auto Brightness ON" or "🌗 Auto Brightness OFF",Warna.Kuning)
 end)
 
--- FIX #1: swim pakai satu fungsi bersama (dipakai GUI & keybind C)
 local namaSwim={"Normal","🐸 Katak (+20%)","🧍 Tegak"}
 local siklusSwim
-local btnSwim = rowAksi(2,"🏊 Swim Mode: Normal (C = ganti)",function(b)
+local btnSwim = rowAksi(2,"🏊 Swim Mode: Normal (C = ganti)",function()
     siklusSwim()
 end,26)
 siklusSwim = function()
@@ -583,14 +645,14 @@ end
 local function scanWall()
     if not vis.wall then return end
     for _,d in ipairs(workspace:GetDescendants()) do
-        if d:IsA("BasePart") and not wallParts[d]
-        and d.Transparency>0.5 and d.CanCollide then
-            wallParts[d]={t=d.Transparency,c=d.Color}
-            pcall(function()
+        pcall(function()
+            if d:IsA("BasePart") and not wallParts[d]
+            and d.Transparency>0.5 and d.CanCollide then
+                wallParts[d]={t=d.Transparency,c=d.Color}
                 d.Transparency=0.55
                 d.Color=Warna.Ungu
-            end)
-        end
+            end
+        end)
     end
 end
 local tglWall = rowToggle(2,"🧱 Reveal Invisible Wall","X",false,function(v)
@@ -615,7 +677,7 @@ rowAksi(2,"🔍 Scan Ulang Invisible Wall",function()
     end
 end,24)
 
--- [13] TAB 3 : HUD ---------------------------------------------------
+-- [TAB 3 : HUD] ------------------------------------------------------
 local function buatPanelJudul(pos,size,judul)
     local p=buat("Frame",{Position=pos,Size=size,BackgroundColor3=Warna.Hitam2,
         BackgroundTransparency=0.12,BorderSizePixel=0,Active=true},hudFrame)
@@ -668,7 +730,6 @@ rowToggle(3,"📈 FPS + Ping",nil,true,function(v) fpsPanel.Visible=v end)
 rowToggle(3,"🖥 Info Server",nil,true,function(v) svPanel.Visible=v end)
 rowInfo(3,"Semua panel bisa digeser — drag judulnya.")
 
--- Alarm
 orderCounter[3]+=1
 local alarmRow=buat("Frame",{Size=UDim2.new(1,-6,0,30),BackgroundColor3=Warna.AbuItem,
     BorderSizePixel=0,LayoutOrder=orderCounter[3]},tabFrames[3])
@@ -709,7 +770,6 @@ alarmBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- FOV
 orderCounter[3]+=1
 local fovRow=buat("Frame",{Size=UDim2.new(1,-6,0,30),BackgroundColor3=Warna.AbuItem,
     BorderSizePixel=0,LayoutOrder=orderCounter[3]},tabFrames[3])
@@ -723,14 +783,13 @@ local function fovBtn(teks,x,fn)
         BorderSizePixel=0,FontFace=fnt("bold"),Text=teks,
         TextColor3=Warna.Putih,TextSize=10,AutoButtonColor=false},fovRow)
     buat("UICorner",{CornerRadius=UDim.new(0,6)},b)
-    b.MouseButton1Click:Connect(function() fn() bunyi(SND_PING,0.2,1) end)
+    b.MouseButton1Click:Connect(function() pcall(fn) bunyi(SND_PING,0.2,1) end)
 end
 fovBtn("– 5",84,function() cam.FieldOfView=math.clamp(cam.FieldOfView+5,50,120) end)
 fovBtn("+ 5",126,function() cam.FieldOfView=math.clamp(cam.FieldOfView-5,50,120) end)
 fovBtn("RESET",168,function() cam.FieldOfView=70 end)
 rowInfo(3,"(– 5 = zoom out lebih jauh, + 5 = balik dekat)")
 
--- Pin lokasi
 rowAksi(3,"📍 Pin Lokasi di Sini",function()
     local _,_,hrp=getMy()
     if not hrp then return end
@@ -759,24 +818,11 @@ rowAksi(3,"🗑️ Hapus Semua Pin",function()
     notif("🗑️ Semua pin dihapus",Warna.Merah)
 end,24)
 
--- Anti-AFK (2 lapis)
 rowToggle(3,"👻 Anti-AFK",nil,true,function(v)
     hudOn.afk=v
     notif(v and "👻 Anti-AFK ON" or "👻 Anti-AFK OFF",v and Warna.Hijau or Warna.Merah)
 end)
-task.spawn(function()
-    while RUNNING do
-        task.wait(240+rnd(0,60))
-        if RUNNING and hudOn.afk then
-            pcall(function()
-                VirtualUser:CaptureController()
-                VirtualUser:ClickButton2(Vector2.new())
-            end)
-        end
-    end
-end)
 
--- Mode bersih & tombol kill
 rowAksi(3,"📸 Mode Bersih (sembunyikan semua HUD)",function()
     bersihMode=not bersihMode
     hudFrame.Visible=not bersihMode
@@ -785,10 +831,10 @@ end,26)
 rowAksi(3,"💥 HAPUS SCRIPT (sama dengan K-K)",function()
     notif("💥 Menghapus...",Warna.Merah)
     task.wait(0.4)
-    killScript()
+    if killScript then killScript() end
 end,26)
 
--- [14] MOVEMENT LOOP -------------------------------------------------
+-- [LOOPS: MOVEMENT] --------------------------------------------------
 local nextSprintRot=0
 local nextJumpRot=0
 
@@ -818,14 +864,12 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Double jump
 UserInputService.JumpRequest:Connect(function()
     if not RUNNING or not mv.dj or not canDouble then return end
     local _,hum=getMy()
     if hum and hum.FloorMaterial==Enum.Material.Air
     and hum:GetState()~=Enum.HumanoidStateType.Swimming then
         canDouble=false
-        task.delay(0.15,function() end) -- pemisah biar tidak dobel-pemicu
         pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
     end
 end)
@@ -843,7 +887,7 @@ LocalPlayer.CharacterAdded:Connect(function(c)
     end)
 end)
 
--- [14B] SMART FALL ASSIST (FIX #5: pantul dideteksi SEBELUM menabrak)
+-- [FALL ASSIST] ------------------------------------------------------
 local falling=false, fallTopY=0, healthBefore=0, bounced=false
 
 RunService.Heartbeat:Connect(function()
@@ -861,11 +905,9 @@ RunService.Heartbeat:Connect(function()
         fallTopY=math.max(fallTopY,hrp.Position.Y)
         local jarakJatuh=fallTopY-hrp.Position.Y
 
-        -- 🏀 PANTUL: akan menabrak atap/obstacle (bukan tanah) saat jatuh kencang
         if not bounced and v.Y<-70 and jarakJatuh>30 then
             local r=workspace:Raycast(hrp.Position,Vector3.new(0,-25,0),rayParams)
             if r then
-                -- cek: di bawah obstacle ada tanah lagi? kalau ya → r adalah atap
                 local ground=workspace:Raycast(r.Position+Vector3.new(0,-3,0),
                     Vector3.new(0,-150,0),rayParams)
                 if ground then
@@ -877,7 +919,6 @@ RunService.Heartbeat:Connect(function()
             end
         end
 
-        -- 💫 DASH: jatuh sangat dalam → lempar ke arah terbuka
         if v.Y<-60 and jarakJatuh>80 then
             local r=workspace:Raycast(hrp.Position,Vector3.new(0,-500,0),rayParams)
             if r and (hrp.Position.Y-r.Position.Y)>100 then
@@ -904,7 +945,6 @@ RunService.Heartbeat:Connect(function()
             if hit then
                 local n=hit.Normal
                 if n.Y<0.85 and n.Y>0.2 then
-                    -- 🌀 SLIDE lereng
                     local h=Vector3.new(n.X,0,n.Z)
                     if h.Magnitude>0.05 then
                         local downhill=(-h.Unit)*22
@@ -913,13 +953,11 @@ RunService.Heartbeat:Connect(function()
                         notif("🌀 Slide lereng",Warna.Hijau)
                     end
                 elseif n.Y>=0.85 and fallDist>=ROLL_MIN and fallDist<=90 then
-                    -- 🌀 ROLL mendarat rata
                     local look=hrp.CFrame.LookVector
                     hrp.AssemblyLinearVelocity+=Vector3.new(look.X,0,look.Z)*16
                     notif("🌀 Roll mendarat!",Warna.Hijau)
                 end
             end
-            -- NEGATE damage kecil
             if fallDist<=90 and not bounced then
                 task.delay(0.12,function()
                     local _,hum2=getMy()
@@ -935,22 +973,27 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- [15] VISUAL LOOP ---------------------------------------------------
+-- [LOOPS: VISUAL] ----------------------------------------------------
 task.spawn(function()
     while RUNNING do
         task.wait(1)
-        if vis.esp then
+        if vis.esp and HIGHLIGHT_OK then
             for _,p in ipairs(Players:GetPlayers()) do
                 if p~=LocalPlayer and p.Character then
                     local h=espFolder[p]
-                    if h and h.Parent==nil then h=nil espFolder[p]=nil end -- FIX #4
+                    if h and h.Parent==nil then
+                        h=nil espFolder[p]=nil
+                    end
                     if not h then
-                        local nh=Instance.new("Highlight")
-                        nh.Name="SilauESP" nh.FillTransparency=0.75
-                        nh.FillColor=warnaUntuk(p) nh.OutlineColor=warnaUntuk(p)
-                        nh.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
-                        nh.Parent=p.Character
-                        espFolder[p]=nh
+                        local okH, nh = pcall(function()
+                            local x=Instance.new("Highlight")
+                            x.Name="SilauESP" x.FillTransparency=0.75
+                            x.FillColor=warnaUntuk(p) x.OutlineColor=warnaUntuk(p)
+                            x.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+                            x.Parent=p.Character
+                            return x
+                        end)
+                        if okH then espFolder[p]=nh end
                     else
                         pcall(function()
                             h.FillColor=warnaUntuk(p)
@@ -965,26 +1008,36 @@ task.spawn(function()
                 if p~=LocalPlayer and p.Character and not tagFolder[p] then
                     local head=p.Character:FindFirstChild("Head")
                     if head then
-                        local bb=Instance.new("BillboardGui")
-                        bb.Name="SilauTag" bb.Size=UDim2.fromOffset(150,54)
-                        bb.StudsOffset=Vector3.new(0,2.6,0) bb.AlwaysOnTop=true
-                        bb.Parent=head
-                        local nm=Instance.new("TextLabel")
-                        nm.Size=UDim2.new(1,0,0,18) nm.BackgroundTransparency=1
-                        nm.Font=Enum.Font.GothamBold nm.TextSize=11
-                        nm.TextColor3=Warna.Putih nm.TextStrokeTransparency=0.3
-                        nm.Text=p.DisplayName nm.Parent=bb
-                        local inf=Instance.new("TextLabel")
-                        inf.Position=UDim2.new(0,0,0,19) inf.Size=UDim2.new(1,0,0,16)
-                        inf.BackgroundTransparency=1 inf.Font=Enum.Font.Gotham
-                        inf.TextSize=9 inf.TextColor3=Warna.HijauMuda
-                        inf.TextStrokeTransparency=0.4 inf.Text="..." inf.Parent=bb
-                        local dst=Instance.new("TextLabel")
-                        dst.Position=UDim2.new(0,0,0,36) dst.Size=UDim2.new(1,0,0,14)
-                        dst.BackgroundTransparency=1 dst.Font=Enum.Font.Gotham
-                        dst.TextSize=9 dst.TextColor3=Warna.AbuGelap
-                        dst.TextStrokeTransparency=0.4 dst.Text="" dst.Parent=bb
-                        tagFolder[p]={bb=bb,info=inf,dist=dst} -- FIX #3
+                        local okB, bb = pcall(function()
+                            local b=Instance.new("BillboardGui")
+                            b.Name="SilauTag" b.Size=UDim2.fromOffset(150,54)
+                            b.StudsOffset=Vector3.new(0,2.6,0) b.AlwaysOnTop=true
+                            b.Parent=head
+                            local nm=Instance.new("TextLabel")
+                            nm.Size=UDim2.new(1,0,0,18) nm.BackgroundTransparency=1
+                            nm.Font=Enum.Font.GothamBold nm.TextSize=11
+                            nm.TextColor3=Color3.new(1,1,1) nm.TextStrokeTransparency=0.3
+                            nm.Text=p.DisplayName nm.Parent=b
+                            local inf=Instance.new("TextLabel")
+                            inf.Position=UDim2.new(0,0,0,19) inf.Size=UDim2.new(1,0,0,16)
+                            inf.BackgroundTransparency=1 inf.Font=Enum.Font.Gotham
+                            inf.TextSize=9 inf.TextColor3=Color3.new(0.7,1,0.7)
+                            inf.TextStrokeTransparency=0.4 inf.Text="..." inf.Parent=b
+                            local dst=Instance.new("TextLabel")
+                            dst.Position=UDim2.new(0,0,0,36) dst.Size=UDim2.new(1,0,0,14)
+                            dst.BackgroundTransparency=1 dst.Font=Enum.Font.Gotham
+                            dst.TextSize=9 dst.TextColor3=Color3.new(0.7,0.7,0.7)
+                            dst.TextStrokeTransparency=0.4 dst.Text="" dst.Parent=b
+                            return b
+                        end)
+                        if okB then tagFolder[p]={bb=bb,info=bb:FindFirstChild("SilauTag") and nil or nil} end
+                        if okB then
+                            local labels={}
+                            for _,l in ipairs(bb:GetChildren()) do
+                                if l:IsA("TextLabel") then table.insert(labels,l) end
+                            end
+                            tagFolder[p]={bb=bb,info=labels[2],dist=labels[3]}
+                        end
                     end
                 end
             end
@@ -1001,7 +1054,7 @@ task.spawn(function()
                 if p.Parent and p.Character then
                     local hum2=p.Character:FindFirstChildOfClass("Humanoid")
                     local hrp2=p.Character:FindFirstChild("HumanoidRootPart")
-                    if hum2 and hrp2 then
+                    if hum2 and hrp2 and data.info then
                         local sp=hum2.WalkSpeed
                         local jp=hum2.UseJumpPower and hum2.JumpPower or hum2.JumpHeight
                         local dist=(hrp2.Position-myHrp.Position).Magnitude
@@ -1009,10 +1062,11 @@ task.spawn(function()
                             or (hum2.UseJumpPower and jp>JUMP_OFF+0.05)
                         data.info.Text=string.format("🏃%.1f 🦘%.1f%s",sp,jp,curang and " ⚠️" or "")
                         data.info.TextColor3=curang and Warna.Merah or Warna.HijauMuda
-                        data.dist.Text=string.format("📏 %d stud",dist)
+                        if data.dist then data.dist.Text=string.format("📏 %d stud",dist) end
                     end
                 else
-                    data.info.Text="..." data.dist.Text=""
+                    if data.info then data.info.Text="..." end
+                    if data.dist then data.dist.Text="" end
                 end
             end
         end
@@ -1021,8 +1075,10 @@ task.spawn(function()
                 if p~=LocalPlayer and p.Character then
                     for _,d in ipairs(p.Character:GetDescendants()) do
                         if d:IsA("BasePart") and not table.find(hiddenParts,d) then
-                            d.LocalTransparencyModifier=0.85
-                            table.insert(hiddenParts,d)
+                            pcall(function()
+                                d.LocalTransparencyModifier=0.85
+                                table.insert(hiddenParts,d)
+                            end)
                         end
                     end
                 end
@@ -1031,32 +1087,33 @@ task.spawn(function()
     end
 end)
 
--- Auto brightness + wall scan
 task.spawn(function()
     while RUNNING do
         task.wait(1)
         if vis.bright then
             local t=Lighting.ClockTime
-            if t>=18 or t<6 then
-                Lighting.Brightness=3
-                Lighting.Ambient=Color3.fromRGB(140,140,165)
-                Lighting.OutdoorAmbient=Color3.fromRGB(140,140,165)
-            else
-                Lighting.Brightness=1
-                Lighting.Ambient=Color3.fromRGB(110,110,120)
-                Lighting.OutdoorAmbient=Color3.fromRGB(110,110,120)
-            end
+            pcall(function()
+                if t>=18 or t<6 then
+                    Lighting.Brightness=3
+                    Lighting.Ambient=Color3.fromRGB(140,140,165)
+                    Lighting.OutdoorAmbient=Color3.fromRGB(140,140,165)
+                else
+                    Lighting.Brightness=1
+                    Lighting.Ambient=Color3.fromRGB(110,110,120)
+                    Lighting.OutdoorAmbient=Color3.fromRGB(110,110,120)
+                end
+            end)
         end
         if vis.wall and math.random()<0.06 then scanWall() end
     end
 end)
 
--- Swim mode
 RunService.Heartbeat:Connect(function()
     if not RUNNING then return end
     local c,hum,hrp=getMy()
     if not hum or not hrp then return end
-    local swimming=(hum:GetState()==Enum.HumanoidStateType.Swimming)
+    local swimming=false
+    pcall(function() swimming=(hum:GetState()==Enum.HumanoidStateType.Swimming) end)
     if swimming and vis.swim>0 then
         if not myGyro or not myGyro.Parent then
             myGyro=Instance.new("BodyGyro")
@@ -1067,13 +1124,12 @@ RunService.Heartbeat:Connect(function()
         local md=hum.MoveDirection
         local flat=(md.Magnitude>0.01) and Vector3.new(md.X,0,md.Z).Unit
             or hrp.CFrame.LookVector
-        if vis.swim==1 then -- katak: horizontal
+        if vis.swim==1 then
             myGyro.CFrame=CFrame.lookAt(Vector3.zero,flat)
                 *CFrame.Angles(math.rad(80),0,0)
-        else -- tegak
+        else
             myGyro.CFrame=CFrame.lookAt(Vector3.zero,flat)
         end
-        -- boost +20% saat renang katak
         if vis.swim==1 then
             local target=(mv.sprint or mv.shift) and mv.sprintVal
                 or (mv.walk and WALK_ON or WALK_OFF)
@@ -1087,7 +1143,6 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- Moonwalk (hanya saat di tanah, biar tidak chaos di udara)
 RunService.RenderStepped:Connect(function()
     if not RUNNING or not vis.moon then return end
     local c,hum,hrp=getMy()
@@ -1104,7 +1159,6 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- FPS & ping
 local frameCount=0
 RunService.RenderStepped:Connect(function()
     if RUNNING then frameCount+=1 end
@@ -1113,7 +1167,8 @@ task.spawn(function()
     while RUNNING do
         task.wait(1)
         local fps=frameCount frameCount=0
-        local ping=math.floor(LocalPlayer:GetNetworkPing()*1000)
+        local ping=0
+        pcall(function() ping=math.floor(LocalPlayer:GetNetworkPing()*1000) end)
         if fpsPanel.Visible then
             fpsLbl.Text=string.format("FPS %d | %d ms",fps,ping)
             fpsLbl.TextColor3=(fps>=50 and Warna.HijauMuda) or (fps>=25 and Warna.Kuning) or Warna.MerahMuda
@@ -1162,7 +1217,6 @@ task.spawn(function()
     end
 end)
 
--- Anti-AFK lapis 1 (event)
 LocalPlayer.Idled:Connect(function()
     if RUNNING and hudOn.afk then
         pcall(function()
@@ -1171,8 +1225,19 @@ LocalPlayer.Idled:Connect(function()
         end)
     end
 end)
+task.spawn(function()
+    while RUNNING do
+        task.wait(240+rnd(0,60))
+        if RUNNING and hudOn.afk then
+            pcall(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new())
+            end)
+        end
+    end
+end)
 
--- [16] BUKA/TUTUP + TAB ---------------------------------------------
+-- [BUKA/TUTUP + TAB] -------------------------------------------------
 local sesi=0
 local function pilihTab(n)
     for i=1,3 do
@@ -1182,10 +1247,11 @@ local function pilihTab(n)
         tabBtns[i].stroke.Color=i==n and Warna.Pink or Warna.AbuTeks
         tabBtns[i].stroke.Transparency=i==n and 0 or 0.6
     end
-    bunyi(SND_PING,0.2,1+0.1*n)
 end
 for i,t in ipairs(tabBtns) do
-    t.btn.MouseButton1Click:Connect(function() pilihTab(i) end)
+    t.btn.MouseButton1Click:Connect(function()
+        pilihTab(i) bunyi(SND_PING,0.2,1+0.1*i)
+    end)
 end
 
 local function minimize()
@@ -1217,9 +1283,8 @@ helpClose.MouseButton1Click:Connect(function() helpPanel.Visible=false end)
 buatDraggable(header,root)
 buatDraggable(icon,icon,buka)
 
--- [17] KEYBIND -------------------------------------------------------
--- FIX #7: kill script pakai nilai asli game
-function killScript()
+-- [KILL SCRIPT] ------------------------------------------------------
+killScript = function()
     RUNNING=false
     pcall(function()
         local _,hum=getMy()
@@ -1245,10 +1310,11 @@ function killScript()
     pcall(function() cam.FieldOfView=70 end)
     if myGyro then pcall(function() myGyro:Destroy() end) end
     if crossFrame then pcall(function() crossFrame:Destroy() end) end
-    screenGui:Destroy()
+    pcall(function() screenGui:Destroy() end)
     print("[SilauHub] Script dihapus total ✔")
 end
 
+-- [KEYBIND] ----------------------------------------------------------
 local function doQ()
     if mv.sprint then
         tglSprint.set(false,true)
@@ -1261,6 +1327,9 @@ end
 
 local qCount,qTimer=0,nil
 local kCount,kTimer=0,nil
+local function cancelTimer(t)
+    if t then pcall(function() task.cancel(t) end) end
+end
 
 UserInputService.InputBegan:Connect(function(input,gp)
     if not RUNNING then return end
@@ -1273,7 +1342,7 @@ UserInputService.InputBegan:Connect(function(input,gp)
 
     elseif k==KEY_Q then
         qCount+=1
-        if qTimer then task.cancel(qTimer) qTimer=nil end
+        cancelTimer(qTimer) qTimer=nil
         if qCount>=2 then
             qCount=0
             tglSprint.set(true)
@@ -1288,7 +1357,7 @@ UserInputService.InputBegan:Connect(function(input,gp)
         tglBright.set(not vis.bright)
 
     elseif k==KEY_C then
-        siklusSwim() -- FIX #1
+        siklusSwim()
 
     elseif k==KEY_X then
         tglWall.set(not vis.wall)
@@ -1298,7 +1367,7 @@ UserInputService.InputBegan:Connect(function(input,gp)
 
     elseif k==KEY_K then
         kCount+=1
-        if kTimer then task.cancel(kTimer) kTimer=nil end
+        cancelTimer(kTimer) kTimer=nil
         if kCount>=2 then
             kCount=0
             notif("💥 Menghapus SILAU HUB...",Warna.Merah)
@@ -1320,11 +1389,17 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- [18] MULAI ---------------------------------------------------------
+-- [MULAI] ------------------------------------------------------------
 pilihTab(1)
-task.delay(0.15,buka)
+task.delay(0.15,function() pcall(buka) end)
 task.delay(1,function()
     notif("⚡ SILAU HUB v"..VERSI.." siap! F = GUI",Warna.Pink)
 end)
 
-print("[SilauHub v"..VERSI.."] SIAP ✔ (audited) — F=GUI Q=speed QQ=sprint T=brightness C=swim X=wall Z=info KK=kill")
+print("[SilauHub v"..VERSI.."] SIAP ✔ — F=GUI Q=speed QQ=sprint T=brightness C=swim X=wall Z=info KK=kill")
+
+end) -- akhir pcall utama
+
+if not sukses then
+    tampilkanFatal(errSilau)
+end
