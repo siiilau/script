@@ -1,5 +1,5 @@
 --========================================================
---  SILAU HUB v1.0 — MOVEMENT + VISUAL + HUD
+--  SILAU HUB v1.1 — MOVEMENT + VISUAL + HUD (AUDITED)
 --  Keybind:
 --   F    : buka/tutup GUI
 --   Q    : Speed OFF→WALK(17.25)→OFF
@@ -12,7 +12,7 @@
 --   K K  : HAPUS SCRIPT (konfirmasi 2 detik)
 --========================================================
 
-local VERSI = "1.0"
+local VERSI = "1.1"
 local RUNNING = true
 
 -- [1] PENGAMAN & SERVICES -------------------------------------------
@@ -20,12 +20,12 @@ local RunService = game:GetService("RunService")
 if not RunService:IsClient() then warn("[SilauHub] Harus di CLIENT!") return end
 if not game:IsLoaded() then game.Loaded:Wait() end
 
-local Players          = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local TweenService     = game:GetService("TweenService")
-local Lighting         = game:GetService("Lighting")
+local Players            = game:GetService("Players")
+local UserInputService   = game:GetService("UserInputService")
+local TweenService       = game:GetService("TweenService")
+local Lighting           = game:GetService("Lighting")
 local MarketplaceService = game:GetService("MarketplaceService")
-local VirtualUser      = game:GetService("VirtualUser")
+local VirtualUser        = game:GetService("VirtualUser")
 
 local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
 if not LocalPlayer then warn("[SilauHub] LocalPlayer belum ada.") return end
@@ -36,13 +36,12 @@ local KEY_GUI, KEY_Q, KEY_T, KEY_C, KEY_X, KEY_Z, KEY_K =
     Enum.KeyCode.C, Enum.KeyCode.X, Enum.KeyCode.Z, Enum.KeyCode.K
 local SPRINT_KEYS = {Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift}
 
-local WALK_ON, WALK_OFF     = 17.25, 17.00
+local WALK_ON, WALK_OFF      = 17.25, 17.00
 local SPRINT_MIN, SPRINT_MAX = 21.25, 23.00
 local JUMP_ON_MIN, JUMP_ON_MAX, JUMP_OFF = 61.25, 63.50, 51.25
-local SWIM_BOOST   = 0.20   -- +20% renang katak
-local DASH_FALL    = 100    -- stud, jatuh sedalam ini → dash
-local NEGATE_MAX   = 0.25   -- damage <= 25% darah → di-no-kan
-local ROLL_MIN     = 25     -- jatuh >= 25 stud → roll
+local SWIM_BOOST = 0.20
+local NEGATE_MAX = 0.25
+local ROLL_MIN   = 25
 
 local Warna = {
     Ungu=Color3.fromRGB(124,58,237), Ungu2=Color3.fromRGB(167,139,250),
@@ -59,20 +58,23 @@ local Warna = {
 }
 
 -- [3] STATE ----------------------------------------------------------
-local mv = {walk=false, sprint=false, shift=false, jump=false, dj=false,
-            fall=false, sprintVal=22.1, jumpVal=62.0}
-local vis = {esp=false, tag=false, cross=false, crossStyle=2, moon=false,
-             hideP=false, hideFx=false, bright=false, swim=0, wall=false}
-local hudOn = {status=true, id=true, clock=true, fps=true, server=true, afk=true}
-local alarm = {aktif=false, sisa=0, total=0, akhir=0}
+local mv   = {walk=false, sprint=false, shift=false, jump=false, dj=false,
+              fall=false, sprintVal=22.1, jumpVal=62.0}
+local vis  = {esp=false, tag=false, cross=false, crossStyle=0, moon=false,
+              hideP=false, hideFx=false, bright=false, swim=0, wall=false}
+local hudOn = {afk=true}
+local alarm = {aktif=false, akhir=0}
 local bersihMode = false
 
-local charConn = {}      -- koneksi per karakter
+local espFolder, tagFolder = {}, {}
+local hiddenParts, hiddenFx = {}, {}
+local wallParts, pins = {}, {}
 local myGyro = nil
 local canDouble = true
 local original = {walk=16, jump=50, useJP=true}
 local origLight = nil
 local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
 -- [4] FONT & HELPER --------------------------------------------------
 local FONT_OK = pcall(function()
@@ -121,12 +123,12 @@ pcall(function() table.insert(kandidat,LocalPlayer:WaitForChild("PlayerGui")) en
 for _,t in ipairs(kandidat) do
     pcall(function() local l=t:FindFirstChild("SilauHubGui") if l then l:Destroy() end end)
 end
-local ok=false
+local terpasang=false
 for _,t in ipairs(kandidat) do
     local o=pcall(function() screenGui.Parent=t end)
-    if o and screenGui.Parent==t then ok=true break end
+    if o and screenGui.Parent==t then terpasang=true break end
 end
-if not ok then warn("[SilauHub] Gagal pasang GUI.") return end
+if not terpasang then warn("[SilauHub] Gagal pasang GUI.") return end
 
 local function bunyi(id,vol,pitch)
     local s=Instance.new("Sound") s.SoundId=id s.Volume=vol or 0.3
@@ -143,30 +145,23 @@ local function ledSweep(inst,base,bandA,bandB,dur)
         Offset=Vector2.new(-1,0)},inst)
     tween(g,TweenInfo.new(dur or 2.4,Enum.EasingStyle.Linear,Enum.EasingDirection.Out,-1),{Offset=Vector2.new(1,0)})
 end
-local function cycleColor(obj,prop,colors,interval)
-    task.spawn(function()
-        local i=1
-        while obj.Parent and RUNNING do
-            tween(obj,TweenInfo.new(interval*0.5,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{[prop]=colors[i]})
-            task.wait(interval)
-            if not obj.Parent then break end
-            i=i%#colors+1
-        end
-    end)
-end
-local function buatDraggable(handle,target)
-    local drag,ds,sp=false,nil,nil
+local function buatDraggable(handle,target,onClickIfClick)
+    local drag,ds,sp,jarak=false,nil,nil,0
     handle.InputBegan:Connect(function(inp)
         if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
-            drag,ds,sp=true,inp.Position,target.Position
+            drag,ds,sp,jarak=true,inp.Position,target.Position,0
         end
     end)
     handle.InputEnded:Connect(function(inp)
-        if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then drag=false end
+        if inp.UserInputType==Enum.UserInputType.MouseButton1 or inp.UserInputType==Enum.UserInputType.Touch then
+            if drag and onClickIfClick and jarak<6 then onClickIfClick() end
+            drag=false
+        end
     end)
     UserInputService.InputChanged:Connect(function(inp)
         if drag and (inp.UserInputType==Enum.UserInputType.MouseMovement or inp.UserInputType==Enum.UserInputType.Touch) then
             local d=inp.Position-ds
+            jarak=math.abs(d.X)+math.abs(d.Y)
             target.Position=UDim2.new(sp.X.Scale,math.round(sp.X.Offset+d.X),sp.Y.Scale,math.round(sp.Y.Offset+d.Y))
         end
     end)
@@ -184,11 +179,11 @@ local function refreshRay()
 end
 refreshRay()
 
-local char, myHum, myHrp = getMy()
-if myHum then
-    original.walk=myHum.WalkSpeed
-    original.jump=myHum.JumpPower
-    original.useJP=myHum.UseJumpPower
+local _, myHum0 = getMy()
+if myHum0 then
+    original.walk=myHum0.WalkSpeed
+    original.jump=myHum0.JumpPower
+    original.useJP=myHum0.UseJumpPower
 end
 
 -- [8] HUD CONTAINER + NOTIF ------------------------------------------
@@ -222,7 +217,6 @@ local function notif(teks,warnaAksen)
             task.delay(0.35,function() n:Destroy() end)
         end
     end)
-    -- batasi jumlah
     local c=0
     for _,ch in ipairs(notifList:GetChildren()) do
         if ch:IsA("GuiObject") then c+=1 end
@@ -283,7 +277,6 @@ local minBtn=buat("TextButton",{Size=UDim2.fromOffset(26,26),
 buat("UICorner",{CornerRadius=UDim.new(0,9)},minBtn)
 buat("UIStroke",{Color=Warna.Ungu,Thickness=1,Transparency=0.3},minBtn)
 
--- TAB BAR
 local tabBar=buat("Frame",{Position=UDim2.new(0,10,0,50),Size=UDim2.new(1,-20,0,30),
     BackgroundTransparency=1,BorderSizePixel=0},panel)
 buat("UIListLayout",{Padding=UDim.new(0,5),FillDirection=Enum.FillDirection.Horizontal},tabBar)
@@ -313,7 +306,6 @@ for i=1,3 do
     tabFrames[i]=sf
 end
 
--- PANEL HELP
 local helpPanel=buat("Frame",{Position=UDim2.new(0,6,0,50),
     Size=UDim2.new(1,-12,1,-90),BackgroundColor3=Warna.Hitam2,
     BorderSizePixel=0,Visible=false,ZIndex=50},panel)
@@ -321,7 +313,7 @@ buat("UICorner",{CornerRadius=UDim.new(0,10)},helpPanel)
 buat("UIStroke",{Color=Warna.Pink,Thickness=1,Transparency=0.4,ZIndex=50},helpPanel)
 buat("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,12,0,8),
     Size=UDim2.new(1,-24,1,-50),FontFace=fnt("med"),
-    Text="F buka/tutup  •  Q speed walk  •  Q Q sprint  •  Shift sprint sementara\nT auto brightness  •  C swim mode  •  X invisible wall  •  Z info player\nK K (dobel) = HAPUS SCRIPT  •  semua toggle juga ada di tab\n\nSpeed: OFF 17.00 | WALK 17.25 | SPRINT 21.25-23.00\nJump: OFF 51.25 | ON 61.25-63.50 (acak biar aman)\nFall Assist: pantul/slide/roll/dash otomatis saat jatuh\ndamage kecil di-no-kan, damage besar dibiarkan",
+    Text="F buka/tutup  •  Q speed walk  •  Q Q sprint  •  Shift sprint sementara\nT auto brightness  •  C swim mode  •  X invisible wall  •  Z info player\nK K (dobel) = HAPUS SCRIPT  •  semua toggle juga ada di tab\n\nSpeed: OFF 17.00 | WALK 17.25 | SPRINT 21.25-23.00 (acak)\nJump: OFF 51.25 | ON 61.25-63.50 (acak)\nFall Assist: pantul kena atap • slide lereng • roll mendarat •\ndash jatuh dalam. Damage ≤25% darah di-no-kan, besar dibiarkan.",
     TextColor3=Warna.UnguMuda,TextSize=10,TextWrapped=true,
     TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,ZIndex=51},helpPanel)
 local helpClose=buat("TextButton",{Size=UDim2.new(1,-24,0,24),
@@ -330,7 +322,6 @@ local helpClose=buat("TextButton",{Size=UDim2.new(1,-24,0,24),
     TextColor3=Warna.Putih,TextSize=12,AutoButtonColor=false,ZIndex=51},helpPanel)
 buat("UICorner",{CornerRadius=UDim.new(0,8)},helpClose)
 
--- FOOTER
 local footer=buat("Frame",{Size=UDim2.new(1,0,0,26),Position=UDim2.new(0,0,1,-26),
     BackgroundColor3=Warna.Hitam2,BorderSizePixel=0},panel)
 buat("UICorner",{CornerRadius=UDim.new(0,11)},footer)
@@ -341,7 +332,6 @@ buat("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,1,0),
     FontFace=fnt("judul"),Text="⚡ S I L A U   H U B ⚡",TextColor3=Warna.Putih,
     TextSize=12},footer)
 
--- IKON MINIMIZE
 local icon=buat("Frame",{Size=UDim2.fromOffset(36,36),Position=UDim2.new(0,10,1,-10),
     AnchorPoint=Vector2.new(0,1),BackgroundColor3=Warna.Hitam,BorderSizePixel=0,
     Visible=false},screenGui)
@@ -351,9 +341,8 @@ local iconScale=buat("UIScale",{Scale=1},icon)
 buat("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,1,0),
     FontFace=fnt("judul"),Text="⚡",TextColor3=Warna.Pink2,TextSize=18},icon)
 
--- [10] FACTORY: BARIS TOGGLE & BARIS AKSI ----------------------------
+-- [10] FACTORY BARIS -------------------------------------------------
 local orderCounter={0,0,0}
-local semuaToggle={}
 
 local function rowToggle(tabIdx,teks,hint,initial,cb)
     orderCounter[tabIdx]+=1
@@ -389,7 +378,6 @@ local function rowToggle(tabIdx,teks,hint,initial,cb)
         bunyi(SND_PING,0.25,obj.state and 0.9 or 1.15)
         obj.set(not obj.state)
     end)
-    table.insert(semuaToggle,obj)
     return obj
 end
 
@@ -409,27 +397,30 @@ end
 local function rowInfo(tabIdx,teks,h)
     orderCounter[tabIdx]+=1
     local sf=tabFrames[tabIdx]
-    local l=buat("TextLabel",{Size=UDim2.new(1,-6,0,h or 22),
+    return buat("TextLabel",{Size=UDim2.new(1,-6,0,h or 22),
         BackgroundTransparency=1,BorderSizePixel=0,FontFace=fnt("reg"),
         Text=teks,TextColor3=Warna.AbuTeks,TextSize=10,
         TextXAlignment=Enum.TextXAlignment.Left,TextWrapped=true,
         LayoutOrder=orderCounter[tabIdx]},sf)
-    return l
 end
 
--- [11] ================== TAB 1 : MOVEMENT ===========================
-rowInfo(1,"🚶 WalkSpeed: OFF 17.00 → ON 17.25 | Sprint Q-Q: 21.25-23.00 acak")
+-- [11] TAB 1 : MOVEMENT ---------------------------------------------
+rowInfo(1,"🚶 OFF 17.00 → ON 17.25 | Sprint QQ: 21.25-23.00 acak")
 
 local tglWalk = rowToggle(1,"🚶 Walk Speed 17.25","Q",false,function(v)
     mv.walk=v
     notif(v and "🚶 WalkSpeed 17.25 ON" or "🚶 WalkSpeed normal (17.00)",Warna.Biru)
 end)
 
-local lblSprint
-lblSprint = rowInfo(1,"🏃 Sprint: OFF (Q-Q untuk aktifkan)")
+local lblSprint = rowInfo(1,"🏃 Sprint: OFF (Q-Q untuk aktifkan)")
 local tglSprint = rowToggle(1,"🏃 Sprint 21.25-23.00","Q Q",false,function(v)
     mv.sprint=v
-    if v then mv.sprintVal=rnd(SPRINT_MIN*100,SPRINT_MAX*100)/100 end
+    if v then
+        mv.sprintVal=rnd(SPRINT_MIN*100,SPRINT_MAX*100)/100
+        lblSprint.Text="🏃 Sprint aktif: "..string.format("%.2f",mv.sprintVal).." stud/s"
+    else
+        lblSprint.Text="🏃 Sprint: OFF (Q-Q untuk aktifkan)"
+    end
     notif(v and ("🏃 SPRINT ON — "..string.format("%.2f",mv.sprintVal)) or "🏃 Sprint OFF semua",Warna.Pink)
 end)
 
@@ -445,35 +436,28 @@ local tglJump = rowToggle(1,"🦘 Jump Power 61.25-63.50",nil,false,function(v)
     notif(v and "🦘 Jump tinggi ON" or "🦘 Jump normal (51.25)",Warna.Ungu)
 end)
 
-local tglDJ = rowToggle(1,"🪂 Double Jump (1x ekstra)",nil,false,function(v)
+rowToggle(1,"🪂 Double Jump (1x ekstra)",nil,false,function(v)
     mv.dj=v canDouble=true
     notif(v and "🪂 Double Jump ON" or "🪂 Double Jump OFF",Warna.Biru2)
 end)
 
-local tglFall = rowToggle(1,"💨 Smart Fall Assist",nil,false,function(v)
+rowToggle(1,"💨 Smart Fall Assist",nil,false,function(v)
     mv.fall=v
     notif(v and "💨 Fall Assist ON — pantul/slide/roll/dash" or "💨 Fall Assist OFF",Warna.Hijau)
 end)
 rowInfo(1,"💨 Pantul kena atap • slide di lereng • roll mendarat rata •\ndash kalau jatuh dalam. Damage ≤25% darah otomatis di-no-kan.")
 
--- [12] ================== TAB 2 : VISUAL =============================
-local espFolder = {}
-local tagFolder = {}
-local hiddenParts = {}
-local hiddenFx = {}
-local wallParts = {}
-local pins = {}
+-- [12] TAB 2 : VISUAL -----------------------------------------------
 local cam = workspace.CurrentCamera
-
-local crossFrame -- dibuat nanti
+local crossFrame = nil
 
 local function warnaUntuk(p)
     if p.Team then return p.TeamColor.Color end
     return Warna.Ungu
 end
 
--- ESP
-local tglESP = rowToggle(2,"👁 ESP / Highlight","tim/ungu",false,function(v)
+-- FIX #4: ESP pasang ulang otomatis setelah respawn
+local tglESP = rowToggle(2,"👁 ESP / Highlight","warna tim",false,function(v)
     vis.esp=v
     if not v then
         for _,d in pairs(espFolder) do pcall(function() d:Destroy() end) end
@@ -482,67 +466,60 @@ local tglESP = rowToggle(2,"👁 ESP / Highlight","tim/ungu",false,function(v)
     notif(v and "👁 ESP ON" or "👁 ESP OFF",Warna.Ungu)
 end)
 
--- Nametag + info
+-- FIX #3: nametag pakai referensi label eksplisit
 local tglTag = rowToggle(2,"🏷 Nametag + Info Player","Z",false,function(v)
     vis.tag=v
     if not v then
-        for _,t in pairs(tagFolder) do pcall(function() t:Destroy() end) end
+        for _,t in pairs(tagFolder) do pcall(function() t.bb:Destroy() end) end
         table.clear(tagFolder)
     end
     notif(v and "🏷 Info player ON" or "🏷 Info player OFF",Warna.Biru)
 end)
 
--- Crosshair
-local gayaCross={"Dot","Cross","Circle"}
-local btnCross
-btnCross = rowAksi(2,"✛ Crosshair: OFF (klik = ganti gaya)",function(b)
-    if not vis.cross then
-        vis.cross=true
-    else
-        vis.crossStyle=vis.crossStyle%3+1
-        if vis.crossStyle==1 then vis.cross=false end
+-- FIX #2: crosshair ditulis ulang bersih
+local function bangunCrosshair()
+    if crossFrame then pcall(function() crossFrame:Destroy() end) crossFrame=nil end
+    if not vis.cross then return end
+    crossFrame=buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),
+        Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(0,0),
+        BackgroundTransparency=1,BorderSizePixel=0,ZIndex=900},hudFrame)
+    if vis.crossStyle==1 then -- dot
+        local d=buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),
+            Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(6,6),
+            BackgroundColor3=Warna.Putih,BorderSizePixel=0,ZIndex=901},crossFrame)
+        buat("UICorner",{CornerRadius=UDim.new(1,0)},d)
+        buat("UIStroke",{Color=Warna.Hitam,Thickness=1,Transparency=0.5},d)
+    elseif vis.crossStyle==2 then -- cross +
+        buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),
+            Size=UDim2.fromOffset(20,2),BackgroundColor3=Warna.Putih,
+            BorderSizePixel=0,ZIndex=901},crossFrame)
+        buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.fromScale(0.5,0.5),
+            Size=UDim2.fromOffset(2,20),BackgroundColor3=Warna.Putih,
+            BorderSizePixel=0,ZIndex=901},crossFrame)
+    else -- circle
+        local c=buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),
+            Position=UDim2.fromScale(0.5,0.5),Size=UDim2.fromOffset(22,22),
+            BackgroundTransparency=1,BorderSizePixel=0,ZIndex=901},crossFrame)
+        buat("UICorner",{CornerRadius=UDim.new(1,0)},c)
+        buat("UIStroke",{Color=Warna.Putih,Thickness=2},c)
     end
-    -- rebuild
-    if crossFrame then crossFrame:Destroy() crossFrame=nil end
-    if vis.cross then
-        crossFrame=buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),
-            Position=UDim2.new(0.5,0,0.5,0),BackgroundTransparency=1,
-            BorderSizePixel=0,ZIndex=900},hudFrame)
-        if vis.crossStyle==1 then
-            buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),Position=UDim2.new(0.5,0,0.5,0),
-                Size=UDim2.fromOffset(5,5),BackgroundColor3=Warna.Putih,
-                BorderSizePixel=0,ZIndex=901},crossFrame)
-            buat("UICorner",{CornerRadius=UDim.new(1,0)},crossFrame:GetChildren()[1])
-        elseif vis.crossStyle==2 then
-            for _,o in ipairs({{0,-9,0.5,0,18,2},{0.5,0,0,-9,2,18}}) do
-                local bar=buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),
-                    Position=UDim2.new(o[3],o[2],o[4],o[5]),
-                    Size=UDim2.fromOffset(o[5],o[6]),
-                    BackgroundColor3=Warna.Putih,BorderSizePixel=0,ZIndex=901},crossFrame)
-                bar.Position=UDim2.new(0.5,0,0.5,0)
-                bar.Size=UDim2.fromOffset(o[5],o[6])
-            end
-            -- dua bar membentuk +
-            local b1=crossFrame:GetChildren()[1] b1.Size=UDim2.fromOffset(18,2) b1.Position=UDim2.new(0.5,0,0.5,0)
-            local b2=crossFrame:GetChildren()[2] b2.Size=UDim2.fromOffset(2,18) b2.Position=UDim2.new(0.5,0,0.5,0)
-        else
-            local c=buat("Frame",{AnchorPoint=Vector2.new(0.5,0.5),
-                Position=UDim2.new(0.5,0,0.5,0),Size=UDim2.fromOffset(22,22),
-                BackgroundTransparency=1,BorderSizePixel=0,ZIndex=901},crossFrame)
-            buat("UICorner",{CornerRadius=UDim.new(1,0)},c)
-            buat("UIStroke",{Color=Warna.Putih,Thickness=2},c)
-        end
-    end
-    b.Text = vis.cross and ("✛ Crosshair: "..gayaCross[vis.crossStyle]) or "✛ Crosshair: OFF"
+end
+
+local gayaNama={"OFF","Dot","Cross","Circle"}
+local btnCross = rowAksi(2,"✛ Crosshair: OFF (klik = ganti)",function(b)
+    vis.crossStyle=(vis.crossStyle+1)%4
+    vis.cross=(vis.crossStyle>0)
+    bangunCrosshair()
+    b.Text="✛ Crosshair: "..gayaNama[vis.crossStyle+1].." (klik = ganti)"
+    bunyi(SND_PING,0.25,1+vis.crossStyle*0.1)
+    if vis.cross then notif("✛ Crosshair: "..gayaNama[vis.crossStyle+1],Warna.Pink) end
 end,26)
 
--- Moonwalk
-local tglMoon = rowToggle(2,"🚶‍♂️ Moonwalk",nil,false,function(v)
+rowToggle(2,"🚶‍♂️ Moonwalk",nil,false,function(v)
     vis.moon=v
     notif(v and "🕺 Moonwalk ON — hee-hee!" or "🕺 Moonwalk OFF",Warna.Pink)
 end)
 
--- Hide players
 local tglHideP = rowToggle(2,"🫥 Hide Other Players",nil,false,function(v)
     vis.hideP=v
     if not v then
@@ -554,7 +531,6 @@ local tglHideP = rowToggle(2,"🫥 Hide Other Players",nil,false,function(v)
     notif(v and "🫥 Pemain lain disembunyikan (ESP tetap)" or "🫥 Pemain lain ditampilkan",Warna.Ungu)
 end)
 
--- Hide effects
 local tglHideFx = rowToggle(2,"✨ Hide All Effects (FPS boost)",nil,false,function(v)
     vis.hideFx=v
     if v then
@@ -580,7 +556,6 @@ local tglHideFx = rowToggle(2,"✨ Hide All Effects (FPS boost)",nil,false,funct
     end
 end)
 
--- Auto Brightness
 origLight = {B=Lighting.Brightness,A=Lighting.Ambient,OA=Lighting.OutdoorAmbient}
 local tglBright = rowToggle(2,"🌗 Auto Brightness","T",false,function(v)
     vis.bright=v
@@ -592,17 +567,19 @@ local tglBright = rowToggle(2,"🌗 Auto Brightness","T",false,function(v)
     notif(v and "🌗 Auto Brightness ON" or "🌗 Auto Brightness OFF",Warna.Kuning)
 end)
 
--- Swim mode
+-- FIX #1: swim pakai satu fungsi bersama (dipakai GUI & keybind C)
 local namaSwim={"Normal","🐸 Katak (+20%)","🧍 Tegak"}
-local btnSwim
-btnSwim = rowAksi(2,"🏊 Swim Mode: Normal (C = ganti)",function(b)
+local siklusSwim
+local btnSwim = rowAksi(2,"🏊 Swim Mode: Normal (C = ganti)",function(b)
+    siklusSwim()
+end,26)
+siklusSwim = function()
     vis.swim=vis.swim%3+1
-    b.Text="🏊 Swim Mode: "..namaSwim[vis.swim+1].." (C = ganti)"
+    btnSwim.Text="🏊 Swim Mode: "..namaSwim[vis.swim+1].." (C = ganti)"
     bunyi(SND_PING,0.25,1+vis.swim*0.15)
     notif("🏊 Swim: "..namaSwim[vis.swim+1],Warna.Biru)
-end,26)
+end
 
--- Invisible wall
 local function scanWall()
     if not vis.wall then return end
     for _,d in ipairs(workspace:GetDescendants()) do
@@ -638,8 +615,7 @@ rowAksi(2,"🔍 Scan Ulang Invisible Wall",function()
     end
 end,24)
 
--- [13] ================== TAB 3 : HUD ================================
--- panel-panel HUD
+-- [13] TAB 3 : HUD ---------------------------------------------------
 local function buatPanelJudul(pos,size,judul)
     local p=buat("Frame",{Position=pos,Size=size,BackgroundColor3=Warna.Hitam2,
         BackgroundTransparency=0.12,BorderSizePixel=0,Active=true},hudFrame)
@@ -651,7 +627,6 @@ local function buatPanelJudul(pos,size,judul)
     return p
 end
 
--- Status sendiri
 local stPanel = buatPanelJudul(UDim2.new(0,12,0,120),UDim2.fromOffset(170,96),"📊 STATUS")
 buatDraggable(stPanel,stPanel)
 local stLbl = buat("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,0,18),
@@ -659,15 +634,13 @@ local stLbl = buat("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,
     TextColor3=Warna.Putih,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,
     TextYAlignment=Enum.TextYAlignment.Top,LineHeight=1.15},stPanel)
 
--- Identitas
 local idPanel = buatPanelJudul(UDim2.new(0,12,0,12),UDim2.fromOffset(170,30),"🪪")
 buatDraggable(idPanel,idPanel)
-local idLbl = buat("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,0,14),
+buat("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,0,14),
     Size=UDim2.new(1,-16,1,-18),FontFace=fnt("semi"),
     Text=LocalPlayer.DisplayName.." @"..LocalPlayer.Name,
     TextColor3=Warna.Putih,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left},idPanel)
 
--- Jam + koordinat
 local clPanel = buatPanelJudul(UDim2.new(0,12,0,224),UDim2.fromOffset(170,86),"🕐 WAKTU & POSISI")
 buatDraggable(clPanel,clPanel)
 local clLbl = buat("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,0,18),
@@ -675,14 +648,12 @@ local clLbl = buat("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,
     TextColor3=Warna.Putih,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left,
     TextYAlignment=Enum.TextYAlignment.Top,LineHeight=1.2},clPanel)
 
--- FPS + Ping
 local fpsPanel = buatPanelJudul(UDim2.new(0,12,0,318),UDim2.fromOffset(170,30),"📈")
 buatDraggable(fpsPanel,fpsPanel)
 local fpsLbl = buat("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,0,14),
     Size=UDim2.new(1,-16,1,-18),FontFace=fnt("semi"),Text="FPS ... | ... ms",
     TextColor3=Warna.HijauMuda,TextSize=10,TextXAlignment=Enum.TextXAlignment.Left},fpsPanel)
 
--- Server info
 local svPanel = buatPanelJudul(UDim2.new(0,12,0,356),UDim2.fromOffset(170,68),"🖥 SERVER")
 buatDraggable(svPanel,svPanel)
 local svLbl = buat("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,0,18),
@@ -690,13 +661,12 @@ local svLbl = buat("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,
     TextColor3=Warna.Putih,TextSize=9,TextXAlignment=Enum.TextXAlignment.Left,
     TextYAlignment=Enum.TextYAlignment.Top,LineHeight=1.2},svPanel)
 
--- toggle HUD panel di tab 3
-local tglSt  = rowToggle(3,"📊 Status sendiri",nil,true,function(v) stPanel.Visible=v end)
-local tglId  = rowToggle(3,"🪪 Display & Username",nil,true,function(v) idPanel.Visible=v end)
-local tglCl  = rowToggle(3,"🕐 Tanggal, Jam, Koordinat",nil,true,function(v) clPanel.Visible=v end)
-local tglFps = rowToggle(3,"📈 FPS + Ping",nil,true,function(v) fpsPanel.Visible=v end)
-local tglSv  = rowToggle(3,"🖥 Info Server",nil,true,function(v) svPanel.Visible=v end)
-rowInfo(3,"Semua panel bisa digeser — drag judulnya. Notif selalu aktif di kanan atas.")
+rowToggle(3,"📊 Status sendiri",nil,true,function(v) stPanel.Visible=v end)
+rowToggle(3,"🪪 Display & Username",nil,true,function(v) idPanel.Visible=v end)
+rowToggle(3,"🕐 Tanggal, Jam, Koordinat",nil,true,function(v) clPanel.Visible=v end)
+rowToggle(3,"📈 FPS + Ping",nil,true,function(v) fpsPanel.Visible=v end)
+rowToggle(3,"🖥 Info Server",nil,true,function(v) svPanel.Visible=v end)
+rowInfo(3,"Semua panel bisa digeser — drag judulnya.")
 
 -- Alarm
 orderCounter[3]+=1
@@ -730,7 +700,7 @@ alarmBtn.MouseButton1Click:Connect(function()
     end
     local n=tonumber((alarmBox.Text:gsub("[^%d]","")))
     if n and n>=1 then
-        alarm.aktif=true alarm.total=n*60 alarm.akhir=os.clock()+alarm.total
+        alarm.aktif=true alarm.akhir=os.clock()+n*60
         alarmStat.Text="⏳ "..n.." menit"
         bunyi(SND_PING,0.3,1.2)
         notif("⏰ Alarm "..n.." menit diset!",Warna.Hijau)
@@ -755,19 +725,13 @@ local function fovBtn(teks,x,fn)
     buat("UICorner",{CornerRadius=UDim.new(0,6)},b)
     b.MouseButton1Click:Connect(function() fn() bunyi(SND_PING,0.2,1) end)
 end
-fovBtn("– 5",84,function()
-    cam.FieldOfView=math.clamp(cam.FieldOfView+5,50,120)
-end)
-fovBtn("+ 5",126,function()
-    cam.FieldOfView=math.clamp(cam.FieldOfView-5,50,120)
-end)
-fovBtn("RESET",168,function()
-    cam.FieldOfView=70
-end)
+fovBtn("– 5",84,function() cam.FieldOfView=math.clamp(cam.FieldOfView+5,50,120) end)
+fovBtn("+ 5",126,function() cam.FieldOfView=math.clamp(cam.FieldOfView-5,50,120) end)
+fovBtn("RESET",168,function() cam.FieldOfView=70 end)
 rowInfo(3,"(– 5 = zoom out lebih jauh, + 5 = balik dekat)")
 
 -- Pin lokasi
-local btnPin=  rowAksi(3,"📍 Pin Lokasi di Sinip",function()
+rowAksi(3,"📍 Pin Lokasi di Sini",function()
     local _,_,hrp=getMy()
     if not hrp then return end
     local pos=hrp.Position
@@ -795,26 +759,36 @@ rowAksi(3,"🗑️ Hapus Semua Pin",function()
     notif("🗑️ Semua pin dihapus",Warna.Merah)
 end,24)
 
--- Anti-AFK
-local tglAFK = rowToggle(3,"👻 Anti-AFK",nil,true,function(v)
+-- Anti-AFK (2 lapis)
+rowToggle(3,"👻 Anti-AFK",nil,true,function(v)
     hudOn.afk=v
     notif(v and "👻 Anti-AFK ON" or "👻 Anti-AFK OFF",v and Warna.Hijau or Warna.Merah)
 end)
+task.spawn(function()
+    while RUNNING do
+        task.wait(240+rnd(0,60))
+        if RUNNING and hudOn.afk then
+            pcall(function()
+                VirtualUser:CaptureController()
+                VirtualUser:ClickButton2(Vector2.new())
+            end)
+        end
+    end
+end)
 
--- Mode bersih & kill
-rowAksi(3,"📸 Mode Bersih (semhudikan semua HUD)",function()
+-- Mode bersih & tombol kill
+rowAksi(3,"📸 Mode Bersih (sembunyikan semua HUD)",function()
     bersihMode=not bersihMode
     hudFrame.Visible=not bersihMode
     notif(bersihMode and "📸 Mode bersih — HUD tersembunyi" or "📸 HUD kembali",Warna.Kuning)
 end,26)
 rowAksi(3,"💥 HAPUS SCRIPT (sama dengan K-K)",function()
-    RUNNING=false
     notif("💥 Menghapus...",Warna.Merah)
-    task.wait(0.5)
-    if _G.silauHubKill then _G.silauHubKill() end
-end,26,orderCounter)
+    task.wait(0.4)
+    killScript()
+end,26)
 
--- [14] LOGIKA MOVEMENT (loop) ----------------------------------------
+-- [14] MOVEMENT LOOP -------------------------------------------------
 local nextSprintRot=0
 local nextJumpRot=0
 
@@ -823,11 +797,11 @@ RunService.Heartbeat:Connect(function()
     local c,hum,hrp=getMy()
     if not hum or not hrp then return end
 
-    -- rotasi nilai acak
     local now=os.clock()
     if mv.sprint and now>nextSprintRot then
         mv.sprintVal=rnd(SPRINT_MIN*100,SPRINT_MAX*100)/100
         nextSprintRot=now+rnd(12,20)
+        lblSprint.Text="🏃 Sprint aktif: "..string.format("%.2f",mv.sprintVal).." stud/s"
     end
     if mv.jump and now>nextJumpRot then
         mv.jumpVal=rnd(JUMP_ON_MIN*100,JUMP_ON_MAX*100)/100
@@ -835,42 +809,29 @@ RunService.Heartbeat:Connect(function()
         pcall(function() hum.JumpPower=mv.jumpVal end)
     end
 
-    -- speed
     local target
     if mv.sprint or mv.shift then target=mv.sprintVal
     elseif mv.walk then target=WALK_ON
     else target=WALK_OFF end
-    local swimming=(hum:GetState()==Enum.HumanoidStateType.Swimming)
-    if swimming and vis.swim==1 then target=target*(1+SWIM_BOOST) end
     if math.abs(hum.WalkSpeed-target)>0.01 then
         pcall(function() hum.WalkSpeed=target end)
-    end
-end)
-
--- label sprint info
-task.spawn(function()
-    while RUNNING do
-        task.wait(1)
-        if mv.sprint then
-            lblSprint.Text="🏃 Sprint aktif: "..string.format("%.2f",mv.sprintVal).." stud/s (berputar acak)"
-        end
     end
 end)
 
 -- Double jump
 UserInputService.JumpRequest:Connect(function()
     if not RUNNING or not mv.dj or not canDouble then return end
-    local c,hum=getMy()
+    local _,hum=getMy()
     if hum and hum.FloorMaterial==Enum.Material.Air
     and hum:GetState()~=Enum.HumanoidStateType.Swimming then
         canDouble=false
+        task.delay(0.15,function() end) -- pemisah biar tidak dobel-pemicu
         pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end)
     end
 end)
 
--- reset double jump saat mendarat
 LocalPlayer.CharacterAdded:Connect(function(c)
-    char=c refreshRay()
+    refreshRay()
     canDouble=true
     task.spawn(function()
         local hum=c:WaitForChild("Humanoid",10)
@@ -882,60 +843,68 @@ LocalPlayer.CharacterAdded:Connect(function(c)
     end)
 end)
 
--- SMART FALL ASSIST
-local falling=false, fallTopY=0, maxVy=0, healthBefore=0
-local dashed=false
-
-local function rayDown(dist)
-    local _,hrp=getMy()
-    if not hrp then return nil end
-    local r=workspace:Raycast(hrp.Position,Vector3.new(0,-dist,0),rayParams)
-    if r then return r,r.Position end
-    return nil,nil
-end
+-- [14B] SMART FALL ASSIST (FIX #5: pantul dideteksi SEBELUM menabrak)
+local falling=false, fallTopY=0, healthBefore=0, bounced=false
 
 RunService.Heartbeat:Connect(function()
     if not RUNNING or not mv.fall then return end
     local c,hum,hrp=getMy()
     if not hum or not hrp then return end
     local st=hum:GetState()
+    local v=hrp.AssemblyLinearVelocity
 
-    if st==Enum.HumanoidStateType.Freefall then
+    if st==Enum.HumanoidStateType.Freefall and v.Y<-5 then
         if not falling then
             falling=true fallTopY=hrp.Position.Y
-            maxVy=0 dashed=false healthBefore=hum.Health
+            healthBefore=hum.Health bounced=false
         end
         fallTopY=math.max(fallTopY,hrp.Position.Y)
-        maxVy=math.min(maxVy,hrp.AssemblyLinearVelocity.Y)
+        local jarakJatuh=fallTopY-hrp.Position.Y
 
-        -- DASH: jatuh sangat dalam → lempar ke arah terbuka
-        if not dashed and hrp.AssemblyLinearVelocity.Y<-60 then
-            local _,gpos=rayDown(500)
-            if gpos and (hrp.Position.Y-gpos.Y)>DASH_FALL then
-                dashed=true
+        -- 🏀 PANTUL: akan menabrak atap/obstacle (bukan tanah) saat jatuh kencang
+        if not bounced and v.Y<-70 and jarakJatuh>30 then
+            local r=workspace:Raycast(hrp.Position,Vector3.new(0,-25,0),rayParams)
+            if r then
+                -- cek: di bawah obstacle ada tanah lagi? kalau ya → r adalah atap
+                local ground=workspace:Raycast(r.Position+Vector3.new(0,-3,0),
+                    Vector3.new(0,-150,0),rayParams)
+                if ground then
+                    bounced=true
+                    hrp.AssemblyLinearVelocity=Vector3.new(v.X*0.8,25,v.Z*0.8)
+                    notif("🏀 PANTUL dari obstacle!",Warna.Kuning)
+                    return
+                end
+            end
+        end
+
+        -- 💫 DASH: jatuh sangat dalam → lempar ke arah terbuka
+        if v.Y<-60 and jarakJatuh>80 then
+            local r=workspace:Raycast(hrp.Position,Vector3.new(0,-500,0),rayParams)
+            if r and (hrp.Position.Y-r.Position.Y)>100 then
                 local best
                 for i=0,7 do
                     local ang=i*math.pi/4
                     local dir=Vector3.new(math.cos(ang),0,math.sin(ang))
-                    local r=workspace:Raycast(hrp.Position,dir*30,rayParams)
-                    if not r then best=dir break end
+                    if not workspace:Raycast(hrp.Position,dir*30,rayParams) then
+                        best=dir break
+                    end
                 end
                 if best then
-                    local v=hrp.AssemblyLinearVelocity
                     hrp.AssemblyLinearVelocity=Vector3.new(best.X*55,v.Y*0.85,best.Z*55)
                     notif("💨 DASH menyelamatkan!",Warna.Biru)
                 end
             end
         end
+
     elseif falling then
         falling=false
         local fallDist=fallTopY-hrp.Position.Y
         if fallDist>15 then
-            local hit,pos=rayDown(8)
+            local hit=workspace:Raycast(hrp.Position,Vector3.new(0,-8,0),rayParams)
             if hit then
                 local n=hit.Normal
                 if n.Y<0.85 and n.Y>0.2 then
-                    -- SLIDE lereng
+                    -- 🌀 SLIDE lereng
                     local h=Vector3.new(n.X,0,n.Z)
                     if h.Magnitude>0.05 then
                         local downhill=(-h.Unit)*22
@@ -943,31 +912,15 @@ RunService.Heartbeat:Connect(function()
                             hrp.AssemblyLinearVelocity.Y,downhill.Z)
                         notif("🌀 Slide lereng",Warna.Hijau)
                     end
-                elseif n.Y>=0.85 then
-                    if fallDist>=ROLL_MIN and fallDist<=90 then
-                        -- ROLL mendarat rata
-                        local look=hrp.CFrame.LookVector
-                        hrp.AssemblyLinearVelocity+=Vector3.new(look.X,0,look.Z)*16
-                        notif("🌀 Roll mendarat!",Warna.Hijau)
-                    elseif fallDist>90 and maxVy<-110 then
-                        -- PANTUL jika mendarat di obstacle tinggi
-                        local hit2,pos2=rayDown(60)
-                        if hit2 and (hrp.Position.Y-pos2.Y)>12 then
-                            pcall(function()
-                                hum:ChangeState(Enum.HumanoidStateType.Freefall)
-                            end)
-                            hrp.AssemblyLinearVelocity=Vector3.new(
-                                hrp.AssemblyLinearVelocity.X,
-                                math.min(45,-maxVy*0.35),
-                                hrp.AssemblyLinearVelocity.Z)
-                            notif("🏀 PANTUL!",Warna.Kuning)
-                            return
-                        end
-                    end
+                elseif n.Y>=0.85 and fallDist>=ROLL_MIN and fallDist<=90 then
+                    -- 🌀 ROLL mendarat rata
+                    local look=hrp.CFrame.LookVector
+                    hrp.AssemblyLinearVelocity+=Vector3.new(look.X,0,look.Z)*16
+                    notif("🌀 Roll mendarat!",Warna.Hijau)
                 end
             end
-            -- NEGATE damage kecil (≤25% darah, jatuh ≤90 stud)
-            if fallDist<=90 then
+            -- NEGATE damage kecil
+            if fallDist<=90 and not bounced then
                 task.delay(0.12,function()
                     local _,hum2=getMy()
                     if hum2 and RUNNING then
@@ -982,20 +935,28 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- [15] LOGIKA VISUAL (loop pemeliharaan) -----------------------------
--- ESP + Tag: pastikan ada untuk semua pemain
+-- [15] VISUAL LOOP ---------------------------------------------------
 task.spawn(function()
     while RUNNING do
         task.wait(1)
         if vis.esp then
             for _,p in ipairs(Players:GetPlayers()) do
-                if p~=LocalPlayer and p.Character and not espFolder[p] then
-                    local h=Instance.new("Highlight")
-                    h.Name="SilauESP" h.FillTransparency=0.75
-                    h.FillColor=warnaUntuk(p) h.OutlineColor=warnaUntuk(p)
-                    h.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
-                    h.Parent=p.Character
-                    espFolder[p]=h
+                if p~=LocalPlayer and p.Character then
+                    local h=espFolder[p]
+                    if h and h.Parent==nil then h=nil espFolder[p]=nil end -- FIX #4
+                    if not h then
+                        local nh=Instance.new("Highlight")
+                        nh.Name="SilauESP" nh.FillTransparency=0.75
+                        nh.FillColor=warnaUntuk(p) nh.OutlineColor=warnaUntuk(p)
+                        nh.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
+                        nh.Parent=p.Character
+                        espFolder[p]=nh
+                    else
+                        pcall(function()
+                            h.FillColor=warnaUntuk(p)
+                            h.OutlineColor=warnaUntuk(p)
+                        end)
+                    end
                 end
             end
         end
@@ -1023,7 +984,7 @@ task.spawn(function()
                         dst.BackgroundTransparency=1 dst.Font=Enum.Font.Gotham
                         dst.TextSize=9 dst.TextColor3=Warna.AbuGelap
                         dst.TextStrokeTransparency=0.4 dst.Text="" dst.Parent=bb
-                        tagFolder[p]=bb
+                        tagFolder[p]={bb=bb,info=inf,dist=dst} -- FIX #3
                     end
                 end
             end
@@ -1031,46 +992,27 @@ task.spawn(function()
     end
 end)
 
--- update isi tag + hide player
 task.spawn(function()
     while RUNNING do
         task.wait(0.3)
-        local _,_,myHrp2=getMy()
-        if vis.tag and myHrp2 then
-            for p,bb in pairs(tagFolder) do
+        local _,_,myHrp=getMy()
+        if vis.tag and myHrp then
+            for p,data in pairs(tagFolder) do
                 if p.Parent and p.Character then
                     local hum2=p.Character:FindFirstChildOfClass("Humanoid")
                     local hrp2=p.Character:FindFirstChild("HumanoidRootPart")
                     if hum2 and hrp2 then
                         local sp=hum2.WalkSpeed
                         local jp=hum2.UseJumpPower and hum2.JumpPower or hum2.JumpHeight
-                        local dist=(hrp2.Position-myHrp2.Position).Magnitude
-                        local curang=(sp>WALK_ON+0.05) or (hum2.UseJumpPower and jp>JUMP_OFF+0.05)
-                        local inf=bb:FindFirstChildOfClass("TextLabel")
-                        for _,l in ipairs(bb:GetChildren()) do
-                            if l:IsA("TextLabel") and l~=inf and l.Text~="" and l.Text~=p.DisplayName then inf=l end
-                        end
-                        for _,l in ipairs(bb:GetChildren()) do
-                            if l:IsA("TextLabel") then
-                                if l.Text=="..." then
-                                    l.Text=string.format("🏃%.1f 🦘%.1f%s",sp,jp,curang and " ⚠️" or "")
-                                    l.TextColor3=curang and Warna.Merah or Warna.HijauMuda
-                                elseif l.Text:find("📏")==1 then
-                                    l.Text=string.format("📏 %d stud",dist)
-                                end
-                            end
-                        end
-                        -- refresh isi tiap update
-                        local labels={}
-                        for _,l in ipairs(bb:GetChildren()) do
-                            if l:IsA("TextLabel") then table.insert(labels,l) end
-                        end
-                        if #labels>=3 then
-                            labels[2].Text=string.format("🏃%.1f 🦘%.1f%s",sp,jp,curang and " ⚠️" or "")
-                            labels[2].TextColor3=curang and Warna.Merah or Warna.HijauMuda
-                            labels[3].Text=string.format("📏 %d stud",dist)
-                        end
+                        local dist=(hrp2.Position-myHrp.Position).Magnitude
+                        local curang=(sp>WALK_ON+0.05)
+                            or (hum2.UseJumpPower and jp>JUMP_OFF+0.05)
+                        data.info.Text=string.format("🏃%.1f 🦘%.1f%s",sp,jp,curang and " ⚠️" or "")
+                        data.info.TextColor3=curang and Warna.Merah or Warna.HijauMuda
+                        data.dist.Text=string.format("📏 %d stud",dist)
                     end
+                else
+                    data.info.Text="..." data.dist.Text=""
                 end
             end
         end
@@ -1089,7 +1031,7 @@ task.spawn(function()
     end
 end)
 
--- Auto brightness
+-- Auto brightness + wall scan
 task.spawn(function()
     while RUNNING do
         task.wait(1)
@@ -1109,7 +1051,7 @@ task.spawn(function()
     end
 end)
 
--- Swim mode gyro
+-- Swim mode
 RunService.Heartbeat:Connect(function()
     if not RUNNING then return end
     local c,hum,hrp=getMy()
@@ -1123,23 +1065,34 @@ RunService.Heartbeat:Connect(function()
             myGyro.Parent=hrp
         end
         local md=hum.MoveDirection
-        if vis.swim==1 then -- katak: badan horizontal
-            local flat=md.Magnitude>0.01 and Vector3.new(md.X,0,md.Z).Unit or hrp.CFrame.LookVector
-            myGyro.CFrame=CFrame.lookAt(Vector3.zero,flat)*CFrame.Angles(math.rad(80),0,0)
-        else -- tegak
-            local flat=md.Magnitude>0.01 and Vector3.new(md.X,0,md.Z).Unit or hrp.CFrame.LookVector
+        local flat=(md.Magnitude>0.01) and Vector3.new(md.X,0,md.Z).Unit
+            or hrp.CFrame.LookVector
+        if vis.swim==1 then -- katak: horizontal
             myGyro.CFrame=CFrame.lookAt(Vector3.zero,flat)
+                *CFrame.Angles(math.rad(80),0,0)
+        else -- tegak
+            myGyro.CFrame=CFrame.lookAt(Vector3.zero,flat)
+        end
+        -- boost +20% saat renang katak
+        if vis.swim==1 then
+            local target=(mv.sprint or mv.shift) and mv.sprintVal
+                or (mv.walk and WALK_ON or WALK_OFF)
+            target=target*(1+SWIM_BOOST)
+            if math.abs(hum.WalkSpeed-target)>0.01 then
+                pcall(function() hum.WalkSpeed=target end)
+            end
         end
     else
         if myGyro then pcall(function() myGyro:Destroy() end) myGyro=nil end
     end
 end)
 
--- Moonwalk
+-- Moonwalk (hanya saat di tanah, biar tidak chaos di udara)
 RunService.RenderStepped:Connect(function()
     if not RUNNING or not vis.moon then return end
     local c,hum,hrp=getMy()
     if not hum or not hrp then return end
+    if hum.FloorMaterial==Enum.Material.Air then return end
     local md=hum.MoveDirection
     if md.Magnitude>0.05 then
         local flat=Vector3.new(md.X,0,md.Z)
@@ -1168,7 +1121,6 @@ task.spawn(function()
     end
 end)
 
--- jam, koordinat, server, status, alarm
 local namaGame="?"
 pcall(function()
     local info=MarketplaceService:GetProductInfo(game.PlaceId)
@@ -1210,7 +1162,7 @@ task.spawn(function()
     end
 end)
 
--- ANTI-AFK
+-- Anti-AFK lapis 1 (event)
 LocalPlayer.Idled:Connect(function()
     if RUNNING and hudOn.afk then
         pcall(function()
@@ -1222,9 +1174,7 @@ end)
 
 -- [16] BUKA/TUTUP + TAB ---------------------------------------------
 local sesi=0
-local tabAktif=1
 local function pilihTab(n)
-    tabAktif=n
     for i=1,3 do
         tabFrames[i].Visible=(i==n)
         tabBtns[i].btn.BackgroundColor3=i==n and Warna.Hitam2 or Warna.AbuItem
@@ -1268,36 +1218,19 @@ buatDraggable(header,root)
 buatDraggable(icon,icon,buka)
 
 -- [17] KEYBIND -------------------------------------------------------
-local angkaAktif=false -- (tidak dipakai, placeholder kompatibilitas)
-
-local function doQ()
-    if mv.sprint then
-        tglSprint.set(false)
-        tglWalk.set(false)
-        notif("⏹ Speed OFF semua",Warna.Merah)
-    else
-        tglWalk.set(not mv.walk)
-    end
-end
-local function doSprint()
-    tglSprint.set(true)
-end
-
-local qCount,qTimer=0,nil
-local kCount,kTimer=0,nil
-
-local function killScript()
+-- FIX #7: kill script pakai nilai asli game
+function killScript()
     RUNNING=false
     pcall(function()
-        local c,hum=getMy()
+        local _,hum=getMy()
         if hum then
-            hum.WalkSpeed=16
+            hum.WalkSpeed=original.walk
             hum.JumpPower=original.jump
             hum.UseJumpPower=original.useJP
         end
     end)
     for _,d in pairs(espFolder) do pcall(function() d:Destroy() end) end
-    for _,t in pairs(tagFolder) do pcall(function() t:Destroy() end) end
+    for _,t in pairs(tagFolder) do pcall(function() t.bb:Destroy() end) end
     for _,p in ipairs(pins) do pcall(function() p:Destroy() end) end
     for d,o in pairs(wallParts) do pcall(function() d.Transparency=o.t d.Color=o.c end) end
     for _,pt in ipairs(hiddenParts) do pcall(function() pt.LocalTransparencyModifier=0 end) end
@@ -1315,7 +1248,19 @@ local function killScript()
     screenGui:Destroy()
     print("[SilauHub] Script dihapus total ✔")
 end
-_G.silauHubKill=killScript
+
+local function doQ()
+    if mv.sprint then
+        tglSprint.set(false,true)
+        tglWalk.set(false,true)
+        notif("⏹ Speed OFF semua",Warna.Merah)
+    else
+        tglWalk.set(not mv.walk)
+    end
+end
+
+local qCount,qTimer=0,nil
+local kCount,kTimer=0,nil
 
 UserInputService.InputBegan:Connect(function(input,gp)
     if not RUNNING then return end
@@ -1331,7 +1276,7 @@ UserInputService.InputBegan:Connect(function(input,gp)
         if qTimer then task.cancel(qTimer) qTimer=nil end
         if qCount>=2 then
             qCount=0
-            doSprint()
+            tglSprint.set(true)
         else
             qTimer=task.delay(0.28,function()
                 if qCount==1 then doQ() end
@@ -1343,12 +1288,7 @@ UserInputService.InputBegan:Connect(function(input,gp)
         tglBright.set(not vis.bright)
 
     elseif k==KEY_C then
-        btnSwim:CallBack and btnSwim:CallBack() or nil
-        -- trigger swim cycle
-        vis.swim=vis.swim%3+1
-        btnSwim.Text="🏊 Swim Mode: "..namaSwim[vis.swim+1].." (C = ganti)"
-        bunyi(SND_PING,0.25,1+vis.swim*0.15)
-        notif("🏊 Swim: "..namaSwim[vis.swim+1],Warna.Biru)
+        siklusSwim() -- FIX #1
 
     elseif k==KEY_X then
         tglWall.set(not vis.wall)
@@ -1387,5 +1327,4 @@ task.delay(1,function()
     notif("⚡ SILAU HUB v"..VERSI.." siap! F = GUI",Warna.Pink)
 end)
 
-print("[SilauHub v"..VERSI.."] SIAP ✔ — F=GUI Q=speed QQ=sprint T=brightness C=swim X=wall Z=info KK=kill")
-print("[SilauHub] Tab: Movement / Visual / HUD — semua toggle ada di GUI")
+print("[SilauHub v"..VERSI.."] SIAP ✔ (audited) — F=GUI Q=speed QQ=sprint T=brightness C=swim X=wall Z=info KK=kill")
