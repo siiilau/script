@@ -38,11 +38,10 @@ local cfg={
  jOff=51.25, jOn=65.50,
  -- FALL ASSIST v2 "OBSTACLE FILTER"
  fMinJatuh=30,    -- tinggi minimal jatuh agar fitur aktif (stud)
- fPosisi=0.50,    -- titik bentur: 0.50 = di 50% perjalanan jatuh
- fCadang=-70,     -- pemicu cadangan: kecepatan lewat ini -> bentur sekarang
+ fPosisi=0.90,    -- titik bentur: 0.90 = di 90% perjalanan (dekat tanah)
+ fCadang=-85,     -- pemicu cadangan: kecepatan lewat ini -> bentur sekarang
  fBenturKe=-10,   -- velocity setelah bentur (kena ranting: kecepatan mati)
  fBounce=0,       -- tanpa pantulan ke atas (anti melayang) - 0 disarankan
- fDurasi=0.02,    -- praktis 1 frame - instan total
 }
 
 -- ================= TEMA KING SILAU =================
@@ -383,7 +382,7 @@ header(1,"Jatuh Cerdas")
 local tgFall=rTgl(1,"Smart Fall Assist",nil,false,function(v)
  mv.fall=v
 end)
-rInfo(1,"Sekali sejatuh: benturan instan ala kena ranting\n(velocity vertikal mati, TANPA pantulan ke atas).\nWASD bebas. Game menghitung damage dari jatuh terakhir.\nDiam-diam, tanpa notif.",40)
+rInfo(1,"Jatuh normal kencang -> SEKALI bentur instan di 90%\n(dekat tanah, velocity vertikal mati, tanpa pantulan).\nWASD bebas. Game menghitung damage dari jatuh terakhir.\nDiam-diam, tanpa notif.",40)
 
 header(1,"Pengaturan Fall Assist")
 rNum(1,"MIN JATUH",cfg.fMinJatuh,function(n) cfg.fMinJatuh=n end)
@@ -669,10 +668,10 @@ LP.CharacterAdded:Connect(function(c)
 end)
 
 -- ================================================================
---  FALL ASSIST v2 "OBSTACLE FILTER" — patch anti-melayang
+--  FALL ASSIST v2 "OBSTACLE FILTER" — benturan SEKALI di 90%
 --  - Jatuh 100% normal, TIDAK dipegang sama sekali
---  - Sekali: benturan INSTAN 1 frame — velocity vertikal
---    langsung "mati" kena ranting, TANPA pantulan ke atas
+--  - Benturan instan 1 frame saat sisa jatuh <= 10% tinggi
+--  - velocity vertikal langsung "mati" (TANPA pantulan)
 --  - Landed-semu: reset persepsi jatuh game (ChangeState)
 --  - Momentum horizontal (WASD) TIDAK disentuh
 --  - Tanpa notif
@@ -708,14 +707,17 @@ RS.Heartbeat:Connect(function(dt)
    tinggiTotal=fApex-r.Position.Y
   end
 
-  -- pemicu benturan (sekali per jatuh, 3 jalur)
+  -- pemicu benturan (SEKALI per jatuh, 3 jalur)
   if not fBentur and sudahTurun>15 and v.Y<-40 then
    local picu=false
+   -- jalur 1: sudah turun >= 90% perjalanan (dekat tanah)
    if tinggiTotal and tinggiTotal>=cfg.fMinJatuh
    and sisaJatuh<=tinggiTotal*(1-cfg.fPosisi) then
     picu=true
    end
+   -- jalur 2: cadangan kecepatan
    if not picu and v.Y<cfg.fCadang then picu=true end
+   -- jalur 3: cadangan waktu (tanah tak terdeteksi)
    if not picu and not tinggiTotal and (now-fSejak)>0.5 and v.Y<-70 then
     picu=true
    end
@@ -731,7 +733,7 @@ RS.Heartbeat:Connect(function(dt)
      local vyBaru=(cfg.fBounce>0) and cfg.fBounce or cfg.fBenturKe
      hp.AssemblyLinearVelocity=Vector3.new(hor.X,vyBaru,hor.Z)
     end)
-    -- 2. landed-semu: reset persepsi jatuh internal game
+    -- landed-semu: reset persepsi jatuh internal game
     task.delay(0.03,function()
      if not RUN then return end
      pcall(function()
