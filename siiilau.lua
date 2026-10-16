@@ -1,5 +1,5 @@
 --========================================================
---  SIIILAU HUB SCRIPTS v1.0.1
+--  SIIILAU HUB SCRIPTS v1.0.1 — TEMA KING SILAU
 --========================================================
 print("[SilauHub] v1.0.1 loading...")
 
@@ -13,7 +13,7 @@ local function fatal(e)
  if not g.Parent then return end
  local t=Instance.new("TextLabel")
  t.Size=UDim2.fromOffset(460,150) t.Position=UDim2.new(0.5,-230,0.5,-75)
- t.BackgroundColor3=Color3.fromRGB(40,0,0) t.TextColor3=Color3.fromRGB(255,120,120)
+ t.BackgroundColor3=Color3.fromRGB(30,10,10) t.TextColor3=Color3.fromRGB(255,120,120)
  t.Font=Enum.Font.Code t.TextSize=13 t.TextWrapped=true
  t.Text="SIIILAU HUB ERROR (screenshot & kirim):\n"..tostring(e)
  t.Parent=g
@@ -30,8 +30,8 @@ local VU=game:GetService("VirtualUser")
 local LP=Players.LocalPlayer
 local RUN=true
 
--- ================= NILAI (bisa diubah lewat GUI) =================
-local SWIM_BOOST=1.15 -- +15% saat renang katak
+-- ================= NILAI =================
+local SWIM_BOOST=1.15 -- +15% renang katak
 local cfg={
  wOff=17.10, wOn=17.25,
  sOff=21.10, sOn=21.25,
@@ -40,24 +40,23 @@ local cfg={
  fBenturKe=-14, fBenturDur=0.15,
 }
 
--- ================= WARNA =================
+-- ================= TEMA KING SILAU =================
 local C={
- bg=Color3.fromRGB(12,10,20), bg2=Color3.fromRGB(22,18,38),
- pink=Color3.fromRGB(236,72,153), pink2=Color3.fromRGB(251,207,232),
- ungu=Color3.fromRGB(124,58,237), ungu2=Color3.fromRGB(167,139,250),
- unguM=Color3.fromRGB(237,233,254),
- biru=Color3.fromRGB(59,130,246), biruM=Color3.fromRGB(219,234,254),
- putih=Color3.new(1,1,1), putihLap=Color3.fromRGB(250,250,255),
- abu=Color3.fromRGB(246,245,252), teks=Color3.fromRGB(28,24,46),
- abuT=Color3.fromRGB(130,125,155), abuG=Color3.fromRGB(200,198,215),
- merah=Color3.fromRGB(239,68,68), merahM=Color3.fromRGB(254,202,202),
- hijau=Color3.fromRGB(34,197,94), hijauM=Color3.fromRGB(187,247,208),
- kuning=Color3.fromRGB(250,204,21),
+ bg=Color3.fromRGB(15,15,23),
+ card=Color3.fromRGB(28,28,44),
+ card2=Color3.fromRGB(40,40,62),
+ ungu=Color3.fromRGB(140,70,255),
+ biru=Color3.fromRGB(45,140,255),
+ putih=Color3.fromRGB(235,235,245),
+ abuT=Color3.fromRGB(150,150,175),
+ hijau=Color3.fromRGB(60,200,110),
+ merah=Color3.fromRGB(235,75,75),
+ abu=Color3.fromRGB(72,72,94),
 }
-local F_TITLE=Enum.Font.Bangers
-local F_BOLD=Enum.Font.GothamBold
-local F_SEMI=Enum.Font.GothamSemibold
-local F_REG=Enum.Font.Gotham
+local F_B=Enum.Font.GothamBold
+local F_M=Enum.Font.GothamMedium
+local F_R=Enum.Font.Gotham
+local F_BLK=Enum.Font.GothamBlack
 
 -- ================= STATE =================
 local mv={walk=false,sprint=false,jump=false,dj=false,fall=false,djOK=true}
@@ -70,7 +69,6 @@ local oLight={B=LG.Brightness,A=LG.Ambient,O=LG.OutdoorAmbient}
 local ray=RaycastParams.new()
 pcall(function() ray.FilterType=Enum.RaycastFilterType.Exclude end)
 local HOK=pcall(function() local t=Instance.new("Highlight") t:Destroy() end)
-print("[SilauHub] Highlight:",HOK)
 
 local function ch()
  local c=LP.Character
@@ -93,38 +91,81 @@ local g=Instance.new("ScreenGui")
 g.Name="SilauHub" g.ResetOnSpawn=false g.DisplayOrder=9997
 local pg=LP:FindFirstChild("PlayerGui") or LP:WaitForChild("PlayerGui",9)
 g.Parent=pg
-print("[SilauHub] GUI di:",pg:GetFullName())
 
 local function mk(cl,pr,par)
  local o=Instance.new(cl)
  for k,v in pairs(pr) do o[k]=v end
  o.Parent=par return o
 end
-local function tw(o,t,p)
- local x=TS:Create(o,TweenInfo.new(t or .25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),p)
- x:Play() return x
-end
 local function corner(p,r) return mk("UICorner",{CornerRadius=UDim.new(0,r or 8)},p) end
-local function stroke(p,c,t,tr) return mk("UIStroke",{Color=c,Thickness=t or 1,Transparency=tr or 0},p) end
 
-local function ledLoop(inst,base,a,b,dur)
- local gr=mk("UIGradient",{Color=ColorSequence.new({
-  ColorSequenceKeypoint.new(0,base),ColorSequenceKeypoint.new(.4,base),
-  ColorSequenceKeypoint.new(.47,a),ColorSequenceKeypoint.new(.54,b),
-  ColorSequenceKeypoint.new(.61,base),ColorSequenceKeypoint.new(1,base)}),
-  Offset=Vector2.new(-1,0)},inst)
- task.spawn(function()
-  while inst.Parent and RUN do
-   local t=TS:Create(gr,TweenInfo.new(dur or 2.4,Enum.EasingStyle.Linear),
-    {Offset=Vector2.new(1,0)})
-   t:Play() t.Completed:Wait()
-   gr.Offset=Vector2.new(-1,0)
-   task.wait(.15)
-  end
+local function snd(v,p)
+ pcall(function()
+  local s=Instance.new("Sound")
+  s.SoundId="rbxasset://sounds/electronicpingshort.wav"
+  s.Volume=v or .2 s.PlaybackSpeed=p or 1
+  s.Parent=g s:Play()
+  task.delay(1.5,function() s:Destroy() end)
  end)
- return gr
 end
 
+-- ================= NOTIF (atas tengah, ala King Silau) =================
+local nf=mk("Frame",{AnchorPoint=Vector2.new(0.5,0),Position=UDim2.new(0.5,0,0,10),
+ Size=UDim2.fromOffset(280,300),BackgroundTransparency=1},g)
+mk("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder,
+ HorizontalAlignment=Enum.HorizontalAlignment.Center},nf)
+local no=0
+local function notif(tx,okNotif)
+ no+=1
+ local n=mk("Frame",{Size=UDim2.fromOffset(250,30),BackgroundColor3=C.card,
+  LayoutOrder=no},nf)
+ corner(n,8)
+ mk("UIStroke",{Color=okNotif and C.hijau or C.ungu,Thickness=1,Transparency=0.5},n)
+ local dot=mk("Frame",{BackgroundColor3=okNotif and C.hijau or C.ungu,
+  Size=UDim2.fromOffset(8,8),Position=UDim2.new(0,10,0.5,-4)},n)
+ corner(dot,4)
+ mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,26,0,0),
+  Size=UDim2.new(1,-34,1,0),Font=F_B,TextSize=11,TextColor3=C.putih,Text=tx,
+  TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},n)
+ task.delay(1.8,function()
+  if n.Parent then n:Destroy() end
+ end)
+ local k=0
+ for _,x in ipairs(nf:GetChildren()) do if x:IsA("Frame") then k+=1 end end
+ if k>5 then
+  for _,x in ipairs(nf:GetChildren()) do if x:IsA("Frame") then x:Destroy() break end end
+ end
+end
+
+-- ================= HUD CHIPS (ala King Silau) =================
+local hudF=mk("Frame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},g)
+
+-- FPS kiri bawah (default ON, gaya King Silau)
+local pFp=mk("Frame",{Position=UDim2.new(0,8,1,-26),Size=UDim2.fromOffset(150,20),
+ BackgroundColor3=C.bg,BackgroundTransparency=0.4,Active=true},hudF)
+corner(pFp,6)
+local fpL=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,6,0,0),
+ Size=UDim2.new(1,-12,1,0),Font=F_R,TextSize=11,TextColor3=C.abuT,
+ Text="FPS: --",TextXAlignment=Enum.TextXAlignment.Left},pFp)
+mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-46,0,0),
+ Size=UDim2.new(0,40,1,0),Font=F_B,TextSize=8,TextColor3=C.abu,
+ Text="HUD",TextXAlignment=Enum.TextXAlignment.Right},pFp)
+
+-- STATUS kiri bawah (default OFF - aktifkan di tab HUD)
+local pSt=mk("Frame",{Position=UDim2.new(0,8,1,-156),Size=UDim2.fromOffset(190,122),
+ BackgroundColor3=C.bg,BackgroundTransparency=0.15,BorderSizePixel=0,Active=true,
+ Visible=false},hudF)
+corner(pSt,10)
+mk("UIStroke",{Color=C.ungu,Thickness=1,Transparency=0.5},pSt)
+mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,9,0,4),
+ Size=UDim2.new(1,-18,0,13),Font=F_B,TextSize=10,TextColor3=C.ungu,
+ Text="STATUS",TextXAlignment=Enum.TextXAlignment.Left},pSt)
+local stL=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,9,0,20),
+ Size=UDim2.new(1,-18,1,-24),Font=F_R,TextSize=10,TextColor3=C.putih,
+ Text="...",TextXAlignment=Enum.TextXAlignment.Left,
+ TextYAlignment=Enum.TextYAlignment.Top},pSt)
+
+-- drag untuk chip & panel
 local function drag(h,t)
  local d,s,p=false,nil,nil
  h.InputBegan:Connect(function(i)
@@ -144,207 +185,125 @@ local function drag(h,t)
   end
  end)
 end
+drag(pFp,pFp)
+drag(pSt,pSt)
 
-local function snd(id,v,p)
- pcall(function()
-  local s=Instance.new("Sound")
-  s.SoundId=id s.Volume=v or .3 s.PlaybackSpeed=p or 1
-  s.Parent=g s:Play()
-  task.delay(1.8,function() s:Destroy() end)
- end)
-end
-local S_PING="rbxasset://sounds/electronicpingshort.wav"
+-- ================= PANEL UTAMA (ala King Silau) =================
+local root=mk("Frame",{Size=UDim2.fromOffset(320,430),
+ Position=UDim2.new(0.5,-160,0.5,-215),BackgroundColor3=C.bg,
+ Active=true,Visible=false,BorderSizePixel=0},g)
+corner(root,12)
+mk("UIStroke",{Color=C.ungu,Thickness=1.5,Transparency=0.4},root)
 
--- ================= HUD =================
-local hudF=mk("Frame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},g)
+mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,14,0,0),
+ Size=UDim2.new(1,-60,0,40),Font=F_BLK,TextSize=17,TextColor3=C.putih,
+ Text="SIIILAU HUB",TextXAlignment=Enum.TextXAlignment.Left},root)
 
-local function mkPanel(pos,size,judul,aksen)
- local p=mk("Frame",{Position=pos,Size=size,BackgroundColor3=C.bg2,
-  BackgroundTransparency=0.08,BorderSizePixel=0,Active=true},hudF)
- corner(p,10)
- local st=stroke(p,aksen,1,0.35)
- task.spawn(function()
-  while p.Parent and RUN do
-   tw(st,.9,{Transparency=0.65}).Completed:Wait()
-   tw(st,.9,{Transparency=0.35}).Completed:Wait()
+-- garis gradasi ungu-biru di bawah judul
+local grad=mk("Frame",{BackgroundColor3=Color3.new(1,1,1),Size=UDim2.new(1,-24,0,2),
+ Position=UDim2.new(0,12,0,40),BorderSizePixel=0},root)
+mk("UIGradient",{Color=ColorSequence.new(C.ungu,C.biru)},grad)
+
+local minB=mk("TextButton",{BackgroundColor3=C.card2,Size=UDim2.fromOffset(26,26),
+ Position=UDim2.new(1,-34,0,7),Font=F_B,TextSize=12,TextColor3=C.putih,Text="X",
+ AutoButtonColor=false},root)
+corner(minB,6)
+
+local titleHit=mk("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,-44,0,40),
+ Active=true},root)
+local function drag(h,t)
+ local d,s,p=false,nil,nil
+ h.InputBegan:Connect(function(i)
+  if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+   d,s,p=true,i.Position,t.Position
   end
  end)
- mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,9,0,3),
-  Size=UDim2.new(1,-18,0,13),Font=F_SEMI,TextSize=9,
-  TextColor3=C.pink2,Text=judul,TextXAlignment=Enum.TextXAlignment.Left},p)
- drag(p,p)
- return p
-end
-
-local pSt=mkPanel(UDim2.new(0,10,1,-176),UDim2.fromOffset(200,120),"STATUS",C.ungu)
-local stL=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,9,0,17),
- Size=UDim2.new(1,-18,1,-20),Font=F_REG,TextSize=10,TextColor3=C.putih,
- Text="...",TextXAlignment=Enum.TextXAlignment.Left,
- TextYAlignment=Enum.TextYAlignment.Top},pSt)
-
-local pFp=mkPanel(UDim2.new(0,10,1,-48),UDim2.fromOffset(200,40),"FPS / PING",C.hijau)
-local fpL=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,9,0,16),
- Size=UDim2.new(1,-18,1,-19),Font=F_BOLD,TextSize=11,
- TextColor3=C.hijauM,Text="FPS ...  |  ... MS",TextXAlignment=Enum.TextXAlignment.Left},pFp)
-
-local nf=mk("Frame",{AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-10,0,10),
- Size=UDim2.fromOffset(220,340),BackgroundTransparency=1},hudF)
-mk("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder,
- HorizontalAlignment=Enum.HorizontalAlignment.Right},nf)
-local no=0
-local function notif(tx,c)
- no+=1
- local n=mk("Frame",{Size=UDim2.new(1,0,0,26),BackgroundColor3=C.bg2,
-  BackgroundTransparency=0.08,LayoutOrder=no},nf)
- corner(n,8) stroke(n,c or C.ungu,1,0.3)
- local lb=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,0,0),
-  Size=UDim2.new(1,-16,1,0),Font=F_SEMI,TextSize=10,TextColor3=C.putih,Text=tx,
-  TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},n)
- lb.TextTransparency=1
- tw(lb,.15,{TextTransparency=0})
- task.delay(1.6,function()
-  if n.Parent then tw(n,.18,{BackgroundTransparency=1}) end
-  task.delay(.2,function() pcall(function() n:Destroy() end) end)
+ h.InputEnded:Connect(function(i)
+  if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+   d=false
+  end
  end)
- local k=0
- for _,x in ipairs(nf:GetChildren()) do if x:IsA("Frame") then k+=1 end end
- if k>5 then
-  for _,x in ipairs(nf:GetChildren()) do if x:IsA("Frame") then x:Destroy() break end end
- end
+ UIS.InputChanged:Connect(function(i)
+  if d and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+   local dl=i.Position-s
+   t.Position=UDim2.new(p.X.Scale,p.X.Offset+dl.X,p.Y.Scale,p.Y.Offset+dl.Y)
+  end
+ end)
 end
+drag(titleHit,root)
 
--- ================= PANEL UTAMA =================
-local root=mk("Frame",{Size=UDim2.fromOffset(350,505),
- Position=UDim2.new(0.5,0,0.08,0),AnchorPoint=Vector2.new(0.5,0),
- BackgroundTransparency=1,Visible=false},g)
-
-local outer=mk("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=C.bg},root)
-corner(outer,16)
-local outSt=stroke(outer,C.pink,3)
-local outGrad=mk("UIGradient",{Color=ColorSequence.new({
- ColorSequenceKeypoint.new(0,C.pink),ColorSequenceKeypoint.new(.25,C.ungu),
- ColorSequenceKeypoint.new(.5,C.biru),ColorSequenceKeypoint.new(.75,C.pink),
- ColorSequenceKeypoint.new(1,C.ungu2)})},outSt)
-task.spawn(function()
- while outGrad.Parent and RUN do
-  local t=tw(outGrad,4.5,{Rotation=360})
-  t.Completed:Wait() outGrad.Rotation=0
- end
-end)
-
-local panel=mk("Frame",{Size=UDim2.new(1,-8,1,-8),Position=UDim2.new(0,4,0,4),
- BackgroundColor3=C.putihLap},outer)
-corner(panel,11) stroke(panel,C.pink2,1,0.35)
-ledLoop(panel,C.putihLap,C.putih,C.pink2,5)
-
-local acc=mk("Frame",{Size=UDim2.new(1,0,0,2),Position=UDim2.new(0,0,0,40),
- BorderSizePixel=0,BackgroundColor3=C.biru},panel)
-ledLoop(acc,C.biru,C.putih,C.pink,2.6)
-
-local hdr=mk("Frame",{Size=UDim2.new(1,0,0,40),BackgroundColor3=C.bg2,Active=true},panel)
-corner(hdr,11)
-local ttl=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,12,0,0),
- Size=UDim2.new(1,-110,1,0),Font=F_TITLE,TextSize=19,TextColor3=C.putih,
- Text="SIIILAU HUB",TextXAlignment=Enum.TextXAlignment.Left},hdr)
-ledLoop(ttl,C.putih,C.pink2,C.biru,2.2)
-local ttlSt=stroke(ttl,C.pink2,1,0.35)
-task.spawn(function()
- while ttlSt.Parent and RUN do
-  tw(ttlSt,.8,{Transparency=.7}).Completed:Wait()
-  tw(ttlSt,.8,{Transparency=.35}).Completed:Wait()
- end
-end)
-
-local helpB=mk("TextButton",{Size=UDim2.fromOffset(26,26),
- Position=UDim2.new(1,-66,0.5,-13),BackgroundColor3=C.bg,
- Font=F_BOLD,TextSize=14,TextColor3=C.pink2,Text="?"},hdr)
-corner(helpB,9) stroke(helpB,C.pink,1,0.3)
-local minB=mk("TextButton",{Size=UDim2.fromOffset(26,26),
- Position=UDim2.new(1,-34,0.5,-13),BackgroundColor3=C.bg,
- Font=F_BOLD,TextSize=14,TextColor3=C.putih,Text="-"},hdr)
-corner(minB,9) stroke(minB,C.ungu,1,0.3)
-drag(hdr,root)
-
-local tbar=mk("Frame",{Position=UDim2.new(0,10,0,46),Size=UDim2.new(1,-20,0,28),
- BackgroundTransparency=1},panel)
+-- TAB BAR
+local tbar=mk("Frame",{Position=UDim2.new(0,10,0,46),Size=UDim2.new(1,-20,0,26),
+ BackgroundTransparency=1},root)
 mk("UIListLayout",{Padding=UDim.new(0,4),FillDirection=Enum.FillDirection.Horizontal},tbar)
 local tb={}
 for i,nm in ipairs({"MOVEMENT","VISUAL","HUD"}) do
  local b=mk("TextButton",{Size=UDim2.new(1/3,-3,1,0),
-  BackgroundColor3=i==1 and C.bg2 or C.abu,Font=F_BOLD,TextSize=10,
-  TextColor3=i==1 and C.putih or C.teks,Text=nm},tbar)
- corner(b,8)
- tb[i]={b=b,s=stroke(b,i==1 and C.pink or C.abuT,1,i==1 and 0 or .6)}
+  BackgroundColor3=i==1 and C.card2 or C.card,Font=F_B,TextSize=10,
+  TextColor3=i==1 and C.putih or C.abuT,Text=nm,AutoButtonColor=false},tbar)
+ corner(b,7)
+ tb[i]={b=b,s=mk("UIStroke",{Color=i==1 and C.ungu or C.abu,Thickness=1,
+  Transparency=i==1 and 0.2 or 0.6},b)}
 end
 
 local tf={}
 for i=1,3 do
- tf[i]=mk("ScrollingFrame",{Position=UDim2.new(0,10,0,80),
-  Size=UDim2.new(1,-20,1,-108),BackgroundTransparency=1,ScrollBarThickness=3,
-  ScrollBarImageColor3=C.pink,AutomaticCanvasSize=Enum.AutomaticSize.Y,
-  CanvasSize=UDim2.new(),Visible=i==1},panel)
- mk("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},tf[i])
+ tf[i]=mk("ScrollingFrame",{Position=UDim2.new(0,10,0,78),
+  Size=UDim2.new(1,-20,1,-88),BackgroundTransparency=1,ScrollBarThickness=3,
+  ScrollBarImageColor3=C.ungu,AutomaticCanvasSize=Enum.AutomaticSize.Y,
+  CanvasSize=UDim2.new(),Visible=i==1,BorderSizePixel=0},root)
+ mk("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},tf[i])
 end
 
-task.spawn(function()
- local cols={C.pink,C.ungu,C.biru}
- while RUN do
-  task.wait(.5)
-  if root.Visible and RUN then
-   local x0=math.random(6,94)/100
-   local d=mk("Frame",{AnchorPoint=Vector2.new(.5,.5),
-    Position=UDim2.new(x0,0,1.05,0),Size=UDim2.fromOffset(math.random(3,5),math.random(3,5)),
-    BackgroundColor3=cols[math.random(1,#cols)],BackgroundTransparency=.4,
-    BorderSizePixel=0},panel)
-   corner(d,10)
-   local dur=math.random(28,44)/10
-   tw(d,dur,{Position=UDim2.new(x0+math.random(-5,5)/100,0,-0.05,0),BackgroundTransparency=1})
-   task.delay(dur+.05,function() pcall(function() d:Destroy() end) end)
-  end
- end
-end)
-
--- ================= FACTORY =================
+-- ================= FACTORY (ala King Silau) =================
 local oc={0,0,0}
-local function rSect(ti,tx)
+local function header(ti,tx)
  oc[ti]+=1
- return mk("TextLabel",{Size=UDim2.new(1,-4,0,20),BackgroundTransparency=1,
-  Font=F_BOLD,TextSize=10,TextColor3=C.ungu,Text="-- "..tx.." --",
-  TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=oc[ti]},tf[ti])
+ return mk("TextLabel",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,16),
+  Font=F_B,TextSize=11,TextColor3=C.ungu,TextXAlignment=Enum.TextXAlignment.Left,
+  Text="▎"..string.upper(tx),LayoutOrder=oc[ti]},tf[ti])
 end
 local function rInfo(ti,tx,h)
  oc[ti]+=1
- return mk("TextLabel",{Size=UDim2.new(1,-4,0,h or 26),BackgroundTransparency=1,
-  Font=F_REG,TextSize=9,TextColor3=C.abuT,Text=tx,TextWrapped=true,
+ return mk("TextLabel",{Size=UDim2.new(1,0,0,h or 24),BackgroundTransparency=1,
+  Font=F_R,TextSize=10,TextColor3=C.abuT,Text=tx,TextWrapped=true,
   TextXAlignment=Enum.TextXAlignment.Left,LayoutOrder=oc[ti]},tf[ti])
 end
-local function mkSwitch(row,initial)
- local sw=mk("TextButton",{Size=UDim2.fromOffset(42,20),
-  Position=UDim2.new(1,-50,0.5,-10),BackgroundColor3=initial and C.hijau or C.merah,
+local function makeSwitch(row,initial)
+ local sw=mk("TextButton",{BackgroundColor3=initial and C.hijau or C.abu,
+  Size=UDim2.fromOffset(40,20),Position=UDim2.new(1,-50,0.5,-10),
   Text="",AutoButtonColor=false},row)
  corner(sw,10)
- stroke(sw,initial and C.hijau or C.merah,1,.35)
- local kn=mk("Frame",{Size=UDim2.fromOffset(14,14),
-  Position=initial and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7),
-  BackgroundColor3=C.putih},sw)
+ local kn=mk("Frame",{BackgroundColor3=Color3.fromRGB(235,235,240),
+  Size=UDim2.fromOffset(14,14),
+  Position=initial and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7)},sw)
  corner(kn,7)
  return sw,kn
 end
-local function rTgl(ti,tx,ini,cb)
+local function rTgl(ti,tx,hint,ini,cb)
  oc[ti]+=1
- local row=mk("Frame",{Size=UDim2.new(1,-4,0,28),BackgroundColor3=C.abu,
+ local row=mk("Frame",{Size=UDim2.new(1,0,0,34),BackgroundColor3=C.card,
   LayoutOrder=oc[ti]},tf[ti])
  corner(row,8)
- mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,0,0),
-  Size=UDim2.new(1,-64,1,0),Font=F_SEMI,TextSize=10,TextColor3=C.teks,Text=tx,
-  TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row)
- local sw,kn=mkSwitch(row,ini)
+ mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,0),
+  Size=UDim2.new(1,-110,1,0),Font=F_M,TextSize=12,TextColor3=C.putih,
+  Text=tx,TextXAlignment=Enum.TextXAlignment.Left,
+  TextTruncate=Enum.TextTruncate.AtEnd},row)
+ if hint then
+  local chip=mk("TextLabel",{BackgroundColor3=C.card2,Size=UDim2.fromOffset(24,20),
+   Position=UDim2.new(1,-80,0.5,-10),Font=F_B,TextSize=10,TextColor3=C.abuT,
+   Text=hint},row)
+  corner(chip,6)
+ end
+ local sw,kn=makeSwitch(row,ini)
  local o={s=ini}
  o.set=function(v,noSnd)
   o.s=v
-  tw(sw,.15,{BackgroundColor3=v and C.hijau or C.merah})
-  tw(kn,.15,{Position=v and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7)})
-  if not noSnd then snd(S_PING,.2,v and 1.15 or .9) end
+  TS:Create(sw,TweenInfo.new(0.15),
+   {BackgroundColor3=v and C.hijau or C.abu}):Play()
+  TS:Create(kn,TweenInfo.new(0.15),
+   {Position=v and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7)}):Play()
+  if not noSnd then snd(.2,v and 1.15 or .9) end
   pcall(function() cb(v) end)
  end
  sw.MouseButton1Click:Connect(function() o.set(not o.s) end)
@@ -352,35 +311,35 @@ local function rTgl(ti,tx,ini,cb)
 end
 local function rAct(ti,tx,cb,h)
  oc[ti]+=1
- local b=mk("TextButton",{Size=UDim2.new(1,-4,0,h or 28),BackgroundColor3=C.ungu,
-  Font=F_BOLD,TextSize=10,TextColor3=C.putih,Text=tx,
+ local b=mk("TextButton",{Size=UDim2.new(1,0,0,h or 30),BackgroundColor3=C.card2,
+  Font=F_B,TextSize=12,TextColor3=C.putih,Text=tx,
   AutoButtonColor=false,LayoutOrder=oc[ti]},tf[ti])
  corner(b,8)
- ledLoop(b,C.ungu,C.putih,C.pink,2.6)
  b.MouseButton1Click:Connect(function()
-  snd(S_PING,.2,1.1)
+  snd(.2,1.1)
   pcall(function() cb(b) end)
  end)
  return b
 end
 local function rNum(ti,label,default,cb)
  oc[ti]+=1
- local row=mk("Frame",{Size=UDim2.new(1,-4,0,26),BackgroundColor3=C.abu,
+ local row=mk("Frame",{Size=UDim2.new(1,0,0,30),BackgroundColor3=C.card,
   LayoutOrder=oc[ti]},tf[ti])
  corner(row,8)
- mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,8,0,0),
-  Size=UDim2.new(1,-84,1,0),Font=F_SEMI,TextSize=10,TextColor3=C.teks,
+ mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,0),
+  Size=UDim2.new(1,-100,1,0),Font=F_M,TextSize=11,TextColor3=C.putih,
   Text=label,TextXAlignment=Enum.TextXAlignment.Left},row)
- local bx=mk("TextBox",{Size=UDim2.fromOffset(64,18),Position=UDim2.new(1,-72,0.5,-9),
-  BackgroundColor3=C.putih,Font=F_BOLD,TextSize=10,Text=string.format("%.2f",default),
-  TextColor3=C.ungu,ClearTextOnFocus=false},row)
- corner(bx,6) stroke(bx,C.ungu,1,.5)
+ local bx=mk("TextBox",{Size=UDim2.fromOffset(70,22),Position=UDim2.new(1,-80,0.5,-11),
+  BackgroundColor3=C.bg,Font=F_R,TextSize=12,Text=string.format("%.2f",default),
+  TextColor3=C.putih,ClearTextOnFocus=false},row)
+ corner(bx,6)
+ mk("UIStroke",{Color=C.abu,Thickness=1,Transparency=0.5},bx)
  bx.FocusLost:Connect(function()
   local n=tonumber((bx.Text:gsub("[^%d%.%-]","")))
   if n then
    if label:find("CADANG") or label:find("BENTUR KE") then n=-math.abs(n) end
    cb(n) bx.Text=string.format("%.2f",n)
-   notif(label.." = "..string.format("%.2f",n),C.biru)
+   notif(label.." = "..string.format("%.2f",n),true)
   else
    bx.Text=string.format("%.2f",default)
   end
@@ -388,6 +347,7 @@ local function rNum(ti,label,default,cb)
 end
 
 -- ================= TAB 1 : MOVEMENT =================
+header(1,"Player")
 local infoSpeed
 infoSpeed=rInfo(1,"")
 local function updInfoSpeed()
@@ -397,41 +357,39 @@ local function updInfoSpeed()
 end
 updInfoSpeed()
 
-local tgW=rTgl(1,"WALK SPEED [Q]",false,function(v)
+local tgW=rTgl(1,"Speed","Q",false,function(v)
  mv.walk=v
- notif(v and ("WALK "..string.format("%.2f",cfg.wOn).." ON")
-  or ("SPEED NORMAL "..string.format("%.2f",cfg.wOff)),C.biru)
+ notif(v and ("SPEED "..string.format("%.2f",cfg.wOn)) or ("NORMAL "..string.format("%.2f",cfg.wOff)),v)
 end)
-local lblS=rInfo(1,"SPRINT OFF - tekan Q dua kali")
-local tgS=rTgl(1,"SPRINT [Q Q]",false,function(v)
+local lblS=rInfo(1,"Sprint OFF - tekan Q dua kali")
+local tgS=rTgl(1,"Sprint","Q Q",false,function(v)
  mv.sprint=v
  if v then
-  lblS.Text="SPRINT AKTIF -> "..string.format("%.2f",cfg.sOn).." stud/s"
-  notif("SPRINT ON "..string.format("%.2f",cfg.sOn),C.pink)
+  lblS.Text="Sprint aktif -> "..string.format("%.2f",cfg.sOn).." stud/s"
  else
-  lblS.Text="SPRINT OFF - melambat halus"
-  notif("SPRINT OFF - transisi "..string.format("%.2f",cfg.sOff),C.pink)
+  lblS.Text="Sprint OFF - melambat halus"
  end
+ notif(v and ("SPRINT "..string.format("%.2f",cfg.sOn)) or "SPRINT OFF",v)
 end)
 
-rSect(1,"LOMPATAN")
-local tgJump=rTgl(1,"JUMP POWER [V] (ON "..string.format("%.2f",cfg.jOn).." / OFF "..string.format("%.2f",cfg.jOff)..")",false,function(v)
+header(1,"Lompatan")
+local tgJump=rTgl(1,"JumpPower","V",false,function(v)
  mv.jump=v
- notif(v and ("JUMP "..string.format("%.2f",cfg.jOn).." ON")
-  or ("JUMP NORMAL "..string.format("%.2f",cfg.jOff)),C.ungu)
+ notif(v and ("JUMP "..string.format("%.2f",cfg.jOn)) or ("NORMAL "..string.format("%.2f",cfg.jOff)),v)
 end)
-rTgl(1,"DOUBLE JUMP (1X EXTRA)",false,function(v)
+rTgl(1,"Double Jump (1x)",nil,false,function(v)
  mv.dj=v mv.djOK=true
- notif(v and "DOUBLE JUMP ON" or "DOUBLE JUMP OFF",C.biru)
+ notif(v and "DOUBLE JUMP ON" or "DOUBLE JUMP OFF",v)
 end)
 
-rSect(1,"JATUH CERDAS")
-local tgFall=rTgl(1,"SMART FALL ASSIST",false,function(v)
+header(1,"Jatuh Cerdas")
+local tgFall=rTgl(1,"Smart Fall Assist",nil,false,function(v)
  mv.fall=v
+ -- diam-diam, tanpa notif
 end)
-rInfo(1,"Jatuh bebas normal -> TERBENTUR sekali di 50% ketinggian\n-> sisa jatuh 100% normal.\nBekerja diam-diam, tanpa notif.",40)
+rInfo(1,"Terbentur sekali di 50% ketinggian, sisa jatuh normal.\nTanpa notif, darah tidak disentuh.",36)
 
-rSect(1,"PENGATURAN NILAI")
+header(1,"Pengaturan Nilai")
 rNum(1,"SPEED OFF",cfg.wOff,function(n) cfg.wOff=n updInfoSpeed() end)
 rNum(1,"SPEED ON",cfg.wOn,function(n) cfg.wOn=n updInfoSpeed() end)
 rNum(1,"SPRINT OFF",cfg.sOff,function(n) cfg.sOff=n updInfoSpeed() end)
@@ -439,7 +397,7 @@ rNum(1,"SPRINT ON",cfg.sOn,function(n) cfg.sOn=n updInfoSpeed() end)
 rNum(1,"JUMP OFF",cfg.jOff,function(n) cfg.jOff=n end)
 rNum(1,"JUMP ON",cfg.jOn,function(n) cfg.jOn=n end)
 
-rSect(1,"PENGATURAN FALL ASSIST")
+header(1,"Fall Assist")
 rNum(1,"MIN JATUH",cfg.fMinJatuh,function(n) cfg.fMinJatuh=n end)
 rNum(1,"POSISI BENTUR (0-1)",cfg.fPosisi,function(n)
  if n>0 and n<1 then cfg.fPosisi=n end
@@ -451,29 +409,29 @@ rNum(1,"BENTUR DURASI",cfg.fBenturDur,function(n)
 end)
 
 -- ================= TAB 2 : VISUAL =================
-rSect(2,"TARGET")
-rTgl(2,"ESP / HIGHLIGHT (WARNA TIM)",false,function(v)
+header(2,"Target")
+rTgl(2,"ESP / Highlight",nil,false,function(v)
  vis.esp=v
- if v and not HOK then notif("HIGHLIGHT TIDAK DIDUKUNG EXECUTOR",C.kuning) end
+ if v and not HOK then notif("HIGHLIGHT TIDAK DIDUKUNG",false) end
  if not v then
   for _,d in pairs(espF) do pcall(function() d:Destroy() end) end
   espF={}
  end
- notif(v and "ESP ON" or "ESP OFF",C.ungu)
+ notif(v and "ESP ON" or "ESP OFF",v)
 end)
-local tglTag=rTgl(2,"NAMETAG + INFO PLAYER [Z]",false,function(v)
+local tglTag=rTgl(2,"Nametag + Info","Z",false,function(v)
  vis.tag=v
  if not v then
   for _,t in pairs(tagF) do pcall(function() t.bb:Destroy() end) end
   tagF={}
  end
- notif(v and "INFO PLAYER ON" or "INFO PLAYER OFF",C.biru)
+ notif(v and "INFO PLAYER ON" or "INFO PLAYER OFF",v)
 end)
-rInfo(2,"Merah otomatis jika speed/jump pemain lain mencurigakan.")
+rInfo(2,"Merah otomatis jika speed/jump lain mencurigakan.")
 
-rSect(2,"GAYA")
+header(2,"Gaya")
 local gayaNama={"OFF","DOT","CROSS","CIRCLE"}
-rAct(2,"CROSSHAIR: OFF (KLIK GANTI)",function(b)
+rAct(2,"Crosshair: OFF (klik ganti)",function(b)
  vis.cross=(vis.cross+1)%4
  for _,x in ipairs(hudF:GetChildren()) do
   if x.Name=="XC" then x:Destroy() end
@@ -484,43 +442,44 @@ rAct(2,"CROSSHAIR: OFF (KLIK GANTI)",function(b)
    BackgroundTransparency=1},hudF)
   if vis.cross==1 then
    local d=mk("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),
-    Size=UDim2.fromOffset(6,6),BackgroundColor3=C.putih},f)
-   corner(d,3) stroke(d,Color3.new(0,0,0),1,.4)
+    Size=UDim2.fromOffset(6,6),BackgroundColor3=Color3.new(1,1,1)},f)
+   corner(d,3)
   elseif vis.cross==2 then
    mk("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),
-    Size=UDim2.fromOffset(20,2),BackgroundColor3=C.putih},f)
+    Size=UDim2.fromOffset(20,2),BackgroundColor3=Color3.new(1,1,1)},f)
    mk("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),
-    Size=UDim2.fromOffset(2,20),BackgroundColor3=C.putih},f)
+    Size=UDim2.fromOffset(2,20),BackgroundColor3=Color3.new(1,1,1)},f)
   else
    local c=mk("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),
     Size=UDim2.fromOffset(22,22),BackgroundTransparency=1},f)
-   corner(c,11) stroke(c,C.putih,2)
+   corner(c,11)
+   mk("UIStroke",{Color=Color3.new(1,1,1),Thickness=2},c)
   end
  end
- b.Text="CROSSHAIR: "..gayaNama[vis.cross+1].." (KLIK GANTI)"
- notif("CROSSHAIR: "..gayaNama[vis.cross+1],C.pink)
+ b.Text="Crosshair: "..gayaNama[vis.cross+1].." (klik ganti)"
+ notif("CROSSHAIR: "..gayaNama[vis.cross+1],vis.cross>0)
 end)
-local tgMoon=rTgl(2,"MOONWALK [G]",false,function(v)
+local tgMoon=rTgl(2,"Moonwalk","G",false,function(v)
  vis.moon=v
- -- SALING KUNCI: moonwalk ON -> renang otomatis OFF
+ -- saling kunci: moonwalk ON -> renang otomatis OFF
  if v and vis.swim then
   vis.swim=false
-  if btnSwim then btnSwim.Text="RENANG: NORMAL [C] (mati: moonwalk)" end
-  notif("RENANG OTOMATIS OFF (MOONWALK AKTIF)",C.kuning)
+  if btnSwim then btnSwim.Text="Renang: NORMAL [C]" end
+  notif("RENANG OTOMATIS OFF (MOONWALK)",false)
  end
- notif(v and "MOONWALK ON" or "MOONWALK OFF",C.pink)
+ notif(v and "MOONWALK ON" or "MOONWALK OFF",v)
 end)
 
-rSect(2,"LAYAR BERSIH")
-local tgHideP=rTgl(2,"SEMBUNYIKAN PEMAIN LAIN [R]",false,function(v)
+header(2,"Layar Bersih")
+local tgHideP=rTgl(2,"Hide Player","R",false,function(v)
  vis.hideP=v
  if not v then
   for _,p in ipairs(hidP) do pcall(function() p.LocalTransparencyModifier=0 end) end
   hidP={}
  end
- notif(v and "PEMAIN DISEMBUNYIKAN (ESP TETAP)" or "PEMAIN TAMPIL",C.ungu)
+ notif(v and "PLAYER DISEMBUNYIKAN" or "PLAYER TAMPIL",v)
 end)
-rTgl(2,"MATIKAN SEMUA EFEK (FPS)",false,function(v)
+rTgl(2,"Matikan Efek (FPS)",nil,false,function(v)
  vis.fx=v
  if v then
   for _,d in ipairs(workspace:GetDescendants()) do
@@ -536,89 +495,88 @@ rTgl(2,"MATIKAN SEMUA EFEK (FPS)",false,function(v)
     if d:IsA("PostEffect") and d.Enabled then d.Enabled=false table.insert(hidFX,d) end
    end)
   end
-  notif("EFEK MATI - FPS NAIK",C.hijau)
+  notif("EFEK MATI - FPS NAIK",true)
  else
   for _,d in ipairs(hidFX) do pcall(function() d.Enabled=true end) end
   hidFX={}
-  notif("EFEK DINYALAKAN",C.hijau)
+  notif("EFEK DINYALAKAN",true)
  end
 end)
 
-rSect(2,"LINGKUNGAN")
-local tglBr=rTgl(2,"AUTO BRIGHTNESS [T]",false,function(v)
+header(2,"Lingkungan")
+local tglBr=rTgl(2,"Auto Brightness","T",false,function(v)
  vis.br=v
  if not v then
   pcall(function()
    LG.Brightness=oLight.B LG.Ambient=oLight.A LG.OutdoorAmbient=oLight.O
   end)
  end
- notif(v and "AUTO BRIGHTNESS ON" or "AUTO BRIGHTNESS OFF",C.kuning)
+ notif(v and "BRIGHTNESS ON" or "BRIGHTNESS OFF",v)
 end)
 local btnSwim
 local function siklusSwim()
  vis.swim=not vis.swim
  if vis.swim and vis.moon then
-  -- SALING KUNCI: renang aktif -> moonwalk otomatis OFF
   vis.moon=false
   if tgMoon then tgMoon.set(false,true) end
-  notif("MOONWALK OTOMATIS OFF (RENANG AKTIF)",C.kuning)
+  notif("MOONWALK OTOMATIS OFF (RENANG)",false)
  end
  if vis.swim then
-  btnSwim.Text="RENANG: KATAK +15% [C]"
-  notif("RENANG: KATAK +15% (HADAP KAMERA)",C.biru)
+  btnSwim.Text="Renang: KATAK +15% [C]"
+  notif("RENANG KATAK +15%",true)
  else
-  btnSwim.Text="RENANG: NORMAL [C]"
-  notif("RENANG: NORMAL",C.biru)
+  btnSwim.Text="Renang: NORMAL [C]"
+  notif("RENANG NORMAL",true)
  end
 end
-btnSwim=rAct(2,"RENANG: NORMAL [C]",function() siklusSwim() end,30)
+btnSwim=rAct(2,"Renang: NORMAL [C]",function() siklusSwim() end)
 local function scanW()
  if not vis.wall then return end
  for _,d in ipairs(workspace:GetDescendants()) do
   pcall(function()
    if d:IsA("BasePart") and not wallP[d] and d.Transparency>0.5 and d.CanCollide then
     wallP[d]={t=d.Transparency,c=d.Color}
-    d.Transparency=0.55 d.Color=C.ungu
+    d.Transparency=0.55 d.Color=Color3.fromRGB(205,205,205)
    end
   end)
  end
 end
-local tglWall=rTgl(2,"DINDING TAK TERLIHAT [X]",false,function(v)
+local tglWall=rTgl(2,"Dinding Tak Terlihat","X",false,function(v)
  vis.wall=v
- if v then scanW() notif("DINDING TERSEMBUNYI DITAMPILKAN",C.ungu)
+ if v then scanW() notif("DINDING DITAMPILKAN",true)
  else
   for d,o in pairs(wallP) do pcall(function() d.Transparency=o.t d.Color=o.c end) end
   wallP={}
-  notif("DINDING DISEMBUNYIKAN",C.ungu)
+  notif("DINDING DISEMBUNYIKAN",true)
  end
 end)
-rAct(2,"SCAN ULANG DINDING",function()
- if vis.wall then scanW() notif("SCAN ULANG SELESAI",C.biru)
- else notif("NYALAKAN DINDING DULU",C.kuning) end
+rAct(2,"Scan Ulang Dinding",function()
+ if vis.wall then scanW() notif("SCAN SELESAI",true)
+ else notif("NYALAKAN DINDING DULU",false) end
 end)
 
 -- ================= TAB 3 : HUD =================
-rInfo(3,"Panel bisa digeser (drag judulnya).")
-rTgl(3,"STATUS (KIRI BAWAH)",true,function(v) pSt.Visible=v end)
-rTgl(3,"FPS / PING (KIRI BAWAH)",true,function(v) pFp.Visible=v end)
+header(3,"Panel")
+rTgl(3,"FPS / Ping",nil,true,function(v) pFp.Visible=v end)
+rTgl(3,"Status",nil,false,function(v) pSt.Visible=v end) -- DEFAULT OFF
+rInfo(3,"Panel bisa digeser (drag).")
 
-rSect(3,"LAINNYA")
-rTgl(3,"ANTI-AFK (TANGKAL KICK 20 MENIT)",true,function(v)
+header(3,"Lainnya")
+rTgl(3,"Anti-AFK (20 menit)",nil,true,function(v)
  hud.afk=v
- notif(v and "ANTI-AFK ON" or "ANTI-AFK OFF",v and C.hijau or C.merah)
+ notif(v and "ANTI-AFK ON" or "ANTI-AFK OFF",v)
 end)
-rAct(3,"MODE BERSIH (SEMBUNYIKAN HUD)",function()
+rAct(3,"Mode Bersih (HUD hilang)",function()
  hudF.Visible=not hudF.Visible
- notif(hudF.Visible and "HUD KEMBALI" or "MODE BERSIH AKTIF",C.kuning)
+ notif(hudF.Visible and "HUD KEMBALI" or "MODE BERSIH",hudF.Visible)
 end)
 rAct(3,"HAPUS SCRIPT TOTAL",function()
- notif("MENGHAPUS...",C.merah)
+ notif("MENGHAPUS...",false)
  task.wait(0.3)
  if kill then kill() end
-end)
+end,32)
 
 -- ================= RENANG RINGAN (TANPA BODYGYRO) =================
--- KATAK: badan tegak, terkunci menghadap kamera (shiftlock) +15% speed
 local swimBound=false
 local SWIM_BIND="SILAU_SWIM"
 
@@ -808,23 +766,23 @@ task.spawn(function()
        b.StudsOffset=Vector3.new(0,3,0) b.AlwaysOnTop=true b.Parent=hd
        local bg=Instance.new("Frame")
        bg.Size=UDim2.new(1,0,1,0) bg.BackgroundColor3=C.bg
-       bg.BackgroundTransparency=0.35 bg.BorderSizePixel=0 bg.Parent=b
+       bg.BackgroundTransparency=0.25 bg.BorderSizePixel=0 bg.Parent=b
        local bc=Instance.new("UICorner") bc.CornerRadius=UDim.new(0,8) bc.Parent=bg
        local bs=Instance.new("UIStroke")
-       bs.Color=C.pink bs.Thickness=1 bs.Transparency=0.4 bs.Parent=bg
+       bs.Color=C.ungu bs.Thickness=1 bs.Transparency=0.5 bs.Parent=bg
        local l1=Instance.new("TextLabel")
        l1.Size=UDim2.new(1,0,0,22) l1.BackgroundTransparency=1
-       l1.Font=F_BOLD l1.TextSize=14 l1.TextColor3=C.putih
+       l1.Font=F_B l1.TextSize=14 l1.TextColor3=C.putih
        l1.TextStrokeTransparency=0.3 l1.Text=p.DisplayName l1.Parent=bg
        local l2=Instance.new("TextLabel")
        l2.Position=UDim2.new(0,0,0,23) l2.Size=UDim2.new(1,0,0,20)
-       l2.BackgroundTransparency=1 l2.Font=F_BOLD l2.TextSize=12
-       l2.TextColor3=C.hijauM l2.TextStrokeTransparency=0.35
+       l2.BackgroundTransparency=1 l2.Font=F_B l2.TextSize=12
+       l2.TextColor3=Color3.fromRGB(140,230,160) l2.TextStrokeTransparency=0.35
        l2.Text="..." l2.Parent=bg
        local l3=Instance.new("TextLabel")
        l3.Position=UDim2.new(0,0,0,44) l3.Size=UDim2.new(1,0,0,17)
-       l3.BackgroundTransparency=1 l3.Font=F_SEMI l3.TextSize=11
-       l3.TextColor3=C.abuG l3.TextStrokeTransparency=0.4 l3.Text="" l3.Parent=bg
+       l3.BackgroundTransparency=1 l3.Font=F_M l3.TextSize=11
+       l3.TextColor3=C.abuT l3.TextStrokeTransparency=0.4 l3.Text="" l3.Parent=bg
        tagF[p]={bb=b,inf=l2,dst=l3}
       end)
      end
@@ -849,7 +807,7 @@ task.spawn(function()
       local ds=(hp2.Position-mh.Position).Magnitude
       local cg=sp>cfg.wOn+0.05 or (h2.UseJumpPower and jp>cfg.jOff+0.05)
       d.inf.Text=string.format("SPD %.1f | JMP %.1f%s",sp,jp,cg and "  !!" or "")
-      d.inf.TextColor3=cg and C.merahM or C.hijauM
+      d.inf.TextColor3=cg and C.merah or Color3.fromRGB(140,230,160)
       d.dst.Text=string.format("%d STUD",ds)
      end
     else
@@ -897,7 +855,7 @@ task.spawn(function()
     pcall(function()
      if d:IsA("BasePart") and not wallP[d] and d.Transparency>0.5 and d.CanCollide then
       wallP[d]={t=d.Transparency,c=d.Color}
-      d.Transparency=0.55 d.Color=C.ungu
+      d.Transparency=0.55 d.Color=Color3.fromRGB(205,205,205)
      end
     end)
    end
@@ -905,8 +863,7 @@ task.spawn(function()
  end
 end)
 
--- ===== MOONWALK: FUNGSI SEMULA (BALIK ARAH HADAP DARI GERAKAN) =====
--- Tidak aktif saat renang katak (sudah saling kunci, tetap dicek sebagai pengaman)
+-- MOONWALK: fungsi semula (balik arah hadap dari gerakan)
 RS.RenderStepped:Connect(function()
  if not RUN or not vis.moon then return end
  if vis.swim then return end
@@ -931,20 +888,25 @@ task.spawn(function()
   local fps=fc fc=0
   local ping=0
   pcall(function() ping=math.floor(LP:GetNetworkPing()*1000) end)
-  fpL.Text=string.format("FPS %d  |  %d MS",fps,ping)
-  fpL.TextColor3=(fps>=50 and C.hijauM) or (fps>=25 and C.kuning) or C.merahM
+  if pFp.Visible then
+   fpL.Text=string.format("FPS: %d  |  %d ms",fps,ping)
+   fpL.TextColor3=(fps>=50 and Color3.fromRGB(140,230,160))
+    or (fps>=25 and Color3.fromRGB(250,204,21)) or C.merah
+  end
  end
 end)
 
 task.spawn(function()
  while RUN do
   task.wait(0.25)
-  local _,h,hp=ch()
-  if h then
-   local jp=h.UseJumpPower and h.JumpPower or h.JumpHeight
-   stL.Text=string.format("SPEED : %.2f stud/s\nJUMP  : %.2f\nHP    : %.0f / %.0f\nMODE  : %s",
-    h.WalkSpeed,jp,h.Health,h.MaxHealth,
-    mv.sprint and "SPRINT" or (mv.walk and "WALK" or "NORMAL"))
+  if pSt.Visible then
+   local _,h,hp=ch()
+   if h then
+    local jp=h.UseJumpPower and h.JumpPower or h.JumpHeight
+    stL.Text=string.format("Speed : %.2f stud/s\nJump  : %.2f\nHP    : %.0f / %.0f\nMode  : %s",
+     h.WalkSpeed,jp,h.Health,h.MaxHealth,
+     mv.sprint and "SPRINT" or (mv.walk and "WALK" or "NORMAL"))
+   end
   end
  end
 end)
@@ -967,12 +929,12 @@ end)
 local function tab(n)
  for i=1,3 do
   tf[i].Visible=i==n
-  tb[i].b.BackgroundColor3=i==n and C.bg2 or C.abu
-  tb[i].b.TextColor3=i==n and C.putih or C.teks
-  tb[i].s.Color=i==n and C.pink or C.abuT
-  tb[i].s.Transparency=i==n and 0 or .6
+  tb[i].b.BackgroundColor3=i==n and C.card2 or C.card
+  tb[i].b.TextColor3=i==n and C.putih or C.abuT
+  tb[i].s.Color=i==n and C.ungu or C.abu
+  tb[i].s.Transparency=i==n and 0.2 or 0.6
  end
- snd(S_PING,.2,1+.1*n)
+ snd(.15,1+.1*n)
 end
 for i,t in ipairs(tb) do
  t.b.MouseButton1Click:Connect(function() tab(i) end)
@@ -980,33 +942,38 @@ end
 
 local function minimize()
  root.Visible=false
- snd(S_PING,.2,.75)
+ snd(.15,.75)
 end
 local function buka()
  root.Visible=true
- local s=mk("UIScale",{Scale=.6},root)
- tw(s,.35,{Scale=1},Enum.EasingStyle.Back)
- task.delay(.4,function() pcall(function() s:Destroy() end) end)
- snd(S_PING,.25,1.15)
+ snd(.2,1.15)
 end
 minB.MouseButton1Click:Connect(minimize)
 
-local helpF=mk("Frame",{Position=UDim2.new(0,6,0,46),Size=UDim2.new(1,-12,1,-88),
- BackgroundColor3=C.bg2,Visible=false,ZIndex=60},panel)
-corner(helpF,10) stroke(helpF,C.pink,1,.4)
+local helpF=mk("Frame",{Position=UDim2.new(0,10,0,78),
+ Size=UDim2.new(1,-20,1,-88),BackgroundColor3=C.card,Visible=false,
+ ZIndex=60,BorderSizePixel=0},root)
+corner(helpF,10)
+mk("UIStroke",{Color=C.ungu,Thickness=1,Transparency=0.4,ZIndex=60},helpF)
 mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,6),
- Size=UDim2.new(1,-20,1,-44),Font=F_REG,TextSize=10,TextColor3=C.unguM,
+ Size=UDim2.new(1,-20,1,-44),Font=F_R,TextSize=10,TextColor3=C.putih,
  TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,
- Text="F      : buka/tutup GUI\nQ      : walk speed ON/OFF\nQ Q    : sprint (Q lagi = OFF)\nV      : jump power ON/OFF\nG      : moonwalk ON/OFF\nR      : sembunyikan pemain lain\nT      : auto brightness\nC      : renang katak +15% ON/OFF\nX      : dinding tak terlihat\nZ      : info player\nK K    : hapus script (konfirmasi)\n\nMoonwalk dan Renang saling kunci:\nyang terakhir dinyalakan yang menang.",
+ Text="F      : buka/tutup GUI\nQ      : speed ON/OFF\nQ Q    : sprint (Q lagi = OFF)\nV      : jump power ON/OFF\nG      : moonwalk ON/OFF\nR      : hide player\nT      : auto brightness\nC      : renang katak +15%\nX      : dinding tak terlihat\nZ      : info player\nK K    : hapus script (konfirmasi)",
  ZIndex=61},helpF)
 local hClose=mk("TextButton",{Size=UDim2.new(1,-20,0,24),Position=UDim2.new(0,10,1,-30),
- BackgroundColor3=C.pink,Font=F_BOLD,TextSize=11,TextColor3=C.putih,
+ BackgroundColor3=C.ungu,Font=F_B,TextSize=11,TextColor3=C.putih,
  Text="X TUTUP",ZIndex=61},helpF)
 corner(hClose,7)
 hClose.MouseButton1Click:Connect(function() helpF.Visible=false end)
+
+-- tombol ? di samping close
+local helpB=mk("TextButton",{BackgroundColor3=C.card2,Size=UDim2.fromOffset(26,26),
+ Position=UDim2.new(1,-64,0,7),Font=F_B,TextSize=12,TextColor3=C.putih,Text="?",
+ AutoButtonColor=false,ZIndex=55},root)
+corner(helpB,6)
 helpB.MouseButton1Click:Connect(function()
  helpF.Visible=not helpF.Visible
- snd(S_PING,.2,helpF.Visible and 1.2 or .9)
+ snd(.15,helpF.Visible and 1.2 or .9)
 end)
 
 -- ================= KILL =================
@@ -1074,12 +1041,12 @@ UIS.InputBegan:Connect(function(inp,gp)
   local now=os.clock()
   if now-kLast<2 then
    kLast=0
-   notif("MENGHAPUS SIIILAU HUB...",C.merah)
+   notif("MENGHAPUS SIIILAU HUB...",false)
    task.wait(0.3)
    kill()
   else
    kLast=now
-   notif("TEKAN K LAGI UNTUK HAPUS!",C.kuning)
+   notif("TEKAN K LAGI UNTUK HAPUS!",true)
    task.delay(2.1,function()
     if kLast~=0 and os.clock()-kLast>=2 then kLast=0 end
    end)
@@ -1087,33 +1054,14 @@ UIS.InputBegan:Connect(function(inp,gp)
  end
 end)
 
--- ================= BADGE + MULAI =================
-do
- local bd=mk("TextLabel",{AnchorPoint=Vector2.new(.5,.5),
-  Position=UDim2.new(0.5,0,0.38,0),Size=UDim2.fromOffset(310,42),
-  BackgroundColor3=C.bg,Font=F_TITLE,TextSize=16,
-  TextColor3=C.pink2,Text="SIIILAU HUB SCRIPTS  v1.0.1",ZIndex=999},g)
- corner(bd,10) stroke(bd,C.pink,2)
- task.delay(1.5,function()
-  pcall(function()
-   tw(bd,.35,{TextTransparency=1,BackgroundTransparency=1})
-   task.delay(.4,function() bd:Destroy() end)
-  end)
- end)
-end
-
-local foot=mk("TextLabel",{Size=UDim2.new(1,0,0,14),
- Position=UDim2.new(0,0,1,-18),BackgroundTransparency=1,
- Font=F_SEMI,TextSize=8,TextColor3=C.abuT,
- Text="SIIILAU HUB SCRIPTS  v1.0.1"},panel)
-
+-- ================= MULAI =================
 tab(1)
-task.delay(0.45,function() buka() end)
+task.delay(0.4,function() buka() end)
 task.delay(1.2,function()
- notif("SIIILAU HUB v1.0.1 SIAP - TEKAN F",C.pink)
+ notif("SIIILAU HUB SIAP - TEKAN F",true)
 end)
 
-print("[SilauHub] v1.0.1 SIAP")
+print("[SilauHub] v1.0.1 SIAP (tema King Silau)")
 
 end)
 
