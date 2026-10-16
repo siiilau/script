@@ -31,17 +31,15 @@ local LP=Players.LocalPlayer
 local RUN=true
 
 -- ================= NILAI =================
-local SWIM_BOOST=1.15 -- +15% renang katak
+local SWIM_BOOST=1.15
 local cfg={
  wOff=17.10, wOn=17.25,
  sOff=21.10, sOn=21.25,
  jOff=51.25, jOn=65.50,
- -- FALL ASSIST v2 "OBSTACLE FILTER"
- fMinJatuh=30,    -- tinggi minimal jatuh agar fitur aktif (stud)
- fPosisi=0.90,    -- titik bentur: 0.90 = di 90% perjalanan (dekat tanah)
- fCadang=-85,     -- pemicu cadangan: kecepatan lewat ini -> bentur sekarang
- fBenturKe=-10,   -- velocity setelah bentur (kena ranting: kecepatan mati)
- fBounce=0,       -- tanpa pantulan ke atas (anti melayang) - 0 disarankan
+ -- FALL ASSIST v3 (SIMPLE)
+ fMinJatuh=50,   -- jatuh harus lebih tinggi dari ini (stud)
+ fPosisi=0.20,   -- nyenggol di 20% perjalanan jatuh
+ fBenturKe=-30,  -- (internal tetap) kecepatan setelah nyenggol
 }
 
 -- ================= TEMA KING SILAU =================
@@ -333,7 +331,6 @@ local function rNum(ti,label,default,cb)
  bx.FocusLost:Connect(function()
   local n=tonumber((bx.Text:gsub("[^%d%.%-]","")))
   if n then
-   if label:find("CADANG") or label:find("BENTUR KE") then n=-math.abs(n) end
    cb(n) bx.Text=string.format("%.2f",n)
    notif(label.." = "..string.format("%.2f",n),true)
   else
@@ -382,17 +379,12 @@ header(1,"Jatuh Cerdas")
 local tgFall=rTgl(1,"Smart Fall Assist",nil,false,function(v)
  mv.fall=v
 end)
-rInfo(1,"Jatuh normal kencang -> SEKALI bentur instan di 90%\n(dekat tanah, velocity vertikal mati, tanpa pantulan).\nWASD bebas. Game menghitung damage dari jatuh terakhir.\nDiam-diam, tanpa notif.",40)
+rInfo(1,"Lompat - jatuh - nyenggol sekali di 20% perjalanan\n- jatuh normal - mendarat. Sekali saja.\nDarah tidak disentuh. Tanpa notif.",40)
 
 header(1,"Pengaturan Fall Assist")
 rNum(1,"MIN JATUH",cfg.fMinJatuh,function(n) cfg.fMinJatuh=n end)
 rNum(1,"POSISI BENTUR (0-1)",cfg.fPosisi,function(n)
  if n>0 and n<1 then cfg.fPosisi=n end
-end)
-rNum(1,"BENTUR CADANG",cfg.fCadang,function(n) cfg.fCadang=n end)
-rNum(1,"BENTUR KE",cfg.fBenturKe,function(n) cfg.fBenturKe=n end)
-rNum(1,"BOUNCE (0=OFF)",cfg.fBounce,function(n)
- if n>=0 and n<=25 then cfg.fBounce=n end
 end)
 
 header(1,"Pengaturan Nilai")
@@ -668,13 +660,12 @@ LP.CharacterAdded:Connect(function(c)
 end)
 
 -- ================================================================
---  FALL ASSIST v2 "OBSTACLE FILTER" — benturan SEKALI di 90%
---  - Jatuh 100% normal, TIDAK dipegang sama sekali
---  - Benturan instan 1 frame saat sisa jatuh <= 10% tinggi
---  - velocity vertikal langsung "mati" (TANPA pantulan)
---  - Landed-semu: reset persepsi jatuh game (ChangeState)
---  - Momentum horizontal (WASD) TIDAK disentuh
---  - Tanpa notif
+--  FALL ASSIST v3 (SIMPLE)
+--  lompat - jatuh - NYENGGOL SEKALI di 20% perjalanan
+--  - jatuh normal - mendarat - selesai
+--  Nyenggol = velocity vertikal langsung mati (internal -30)
+--  + landed-semu (reset persepsi jatuh game)
+--  WASD bebas. Darah tidak disentuh. Tanpa notif.
 -- ================================================================
 local fJatuh=false
 local fApex=0
@@ -700,6 +691,7 @@ RS.Heartbeat:Connect(function(dt)
   fApex=math.max(fApex,hp.Position.Y)
   local sudahTurun=fApex-hp.Position.Y
 
+  -- ukur tinggi total jatuh (dari apex ke tanah)
   local r=workspace:Raycast(hp.Position,Vector3.new(0,-800,0),ray)
   local tinggiTotal,sisaJatuh
   if r then
@@ -707,33 +699,28 @@ RS.Heartbeat:Connect(function(dt)
    tinggiTotal=fApex-r.Position.Y
   end
 
-  -- pemicu benturan (SEKALI per jatuh, 3 jalur)
-  if not fBentur and sudahTurun>15 and v.Y<-40 then
+  -- ===== NYENGGOL SEKALI di POSISI BENTUR =====
+  if not fBentur and sudahTurun>10 and v.Y<-40 then
    local picu=false
-   -- jalur 1: sudah turun >= 90% perjalanan (dekat tanah)
+   -- syarat utama: tinggi jatuh >= MIN JATUH & sudah melewati titik posisi
    if tinggiTotal and tinggiTotal>=cfg.fMinJatuh
    and sisaJatuh<=tinggiTotal*(1-cfg.fPosisi) then
     picu=true
    end
-   -- jalur 2: cadangan kecepatan
-   if not picu and v.Y<cfg.fCadang then picu=true end
-   -- jalur 3: cadangan waktu (tanah tak terdeteksi)
-   if not picu and not tinggiTotal and (now-fSejak)>0.5 and v.Y<-70 then
+   -- jaring pengaman internal: kalau tanah tak terdeteksi
+   -- dan sudah lama jatuh, anggap sudah lewat titik posisi
+   if not picu and not tinggiTotal and (now-fSejak)>0.6 and v.Y<-70 then
     picu=true
    end
    if picu then
     fBentur=true
-
-    -- ===== SIMULASI KENA RANTING (instan, 1 frame) =====
+    -- velocity vertikal mati (ala nyenggol ranting)
+    -- WASD (horizontal) tidak disentuh
     pcall(function()
-     -- velocity vertikal langsung "mati" kena ranting
-     -- TANPA pantulan ke atas (anti melayang)
-     -- momentum horizontal (WASD) utuh
      local hor=Vector3.new(v.X,0,v.Z)
-     local vyBaru=(cfg.fBounce>0) and cfg.fBounce or cfg.fBenturKe
-     hp.AssemblyLinearVelocity=Vector3.new(hor.X,vyBaru,hor.Z)
+     hp.AssemblyLinearVelocity=Vector3.new(hor.X,cfg.fBenturKe,hor.Z)
     end)
-    -- landed-semu: reset persepsi jatuh internal game
+    -- landed-semu: game mengira sudah mendarat sekali
     task.delay(0.03,function()
      if not RUN then return end
      pcall(function()
@@ -756,6 +743,7 @@ RS.Heartbeat:Connect(function(dt)
   end
 
  elseif fJatuh then
+  -- mendarat: reset, siap untuk jatuh berikutnya
   fJatuh=false
   fBentur=false
  end
@@ -891,21 +879,20 @@ task.spawn(function()
  end
 end)
 
--- MOONWALK: fungsi semula (balik arah hadap dari gerakan)
+-- ===== MOONWALK: badan TERKUNCI menghadap kamera/layar =====
+-- apapun tombol: W=melangkah mundur, S=maju, A/D=samping,
+-- lompat pun wajah tetap ke layar (seperti shiftlock terbalik)
 RS.RenderStepped:Connect(function()
  if not RUN or not vis.moon then return end
  if vis.swim then return end
  local c,h,hp=ch()
  if not h or not hp then return end
- local md=h.MoveDirection
- if md.Magnitude>0.05 then
-  local f=Vector3.new(md.X,0,md.Z)
-  if f.Magnitude>0.01 then
-   pcall(function()
-    hp.CFrame=CFrame.lookAt(hp.Position,hp.Position-f.Unit)
-   end)
-  end
- end
+ local cam=workspace.CurrentCamera
+ if not cam then return end
+ local _,yaw=cam.CFrame:ToOrientation()
+ pcall(function()
+  hp.CFrame=CFrame.new(hp.Position)*CFrame.Angles(0,yaw+math.pi,0)
+ end)
 end)
 
 local fc=0
