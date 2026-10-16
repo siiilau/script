@@ -31,7 +31,7 @@ local LP=Players.LocalPlayer
 local RUN=true
 
 -- ================= NILAI =================
-local SWIM_BOOST=1.15
+local SWIM_BOOST=1.15 -- +15% renang katak
 local cfg={
  wOff=17.10, wOn=17.25,
  sOff=21.10, sOn=21.25,
@@ -40,9 +40,9 @@ local cfg={
  fMinJatuh=30,    -- tinggi minimal jatuh agar fitur aktif (stud)
  fPosisi=0.50,    -- titik bentur: 0.50 = di 50% perjalanan jatuh
  fCadang=-70,     -- pemicu cadangan: kecepatan lewat ini -> bentur sekarang
- fBenturKe=-38,   -- velocity setelah bentur (kena ranting: hilang ~60%)
- fBounce=9,       -- micro-bounce kecil ke atas (ala mantul di ranting)
- fDurasi=0.06,    -- durasi bentur: SEKEJAP (instan, seperti fisika)
+ fBenturKe=-10,   -- velocity setelah bentur (kena ranting: kecepatan mati)
+ fBounce=0,       -- tanpa pantulan ke atas (anti melayang) - 0 disarankan
+ fDurasi=0.02,    -- praktis 1 frame - instan total
 }
 
 -- ================= TEMA KING SILAU =================
@@ -383,7 +383,7 @@ header(1,"Jatuh Cerdas")
 local tgFall=rTgl(1,"Smart Fall Assist",nil,false,function(v)
  mv.fall=v
 end)
-rInfo(1,"Sekali sejatuh: micro-benturan ala kena ranting\n(instans + bounce kecil, WASD tetap bebas).\nGame menghitung damage dari jatuh terakhir.\nDiam-diam, tanpa notif.",40)
+rInfo(1,"Sekali sejatuh: benturan instan ala kena ranting\n(velocity vertikal mati, TANPA pantulan ke atas).\nWASD bebas. Game menghitung damage dari jatuh terakhir.\nDiam-diam, tanpa notif.",40)
 
 header(1,"Pengaturan Fall Assist")
 rNum(1,"MIN JATUH",cfg.fMinJatuh,function(n) cfg.fMinJatuh=n end)
@@ -392,11 +392,8 @@ rNum(1,"POSISI BENTUR (0-1)",cfg.fPosisi,function(n)
 end)
 rNum(1,"BENTUR CADANG",cfg.fCadang,function(n) cfg.fCadang=n end)
 rNum(1,"BENTUR KE",cfg.fBenturKe,function(n) cfg.fBenturKe=n end)
-rNum(1,"BOUNCE",cfg.fBounce,function(n)
+rNum(1,"BOUNCE (0=OFF)",cfg.fBounce,function(n)
  if n>=0 and n<=25 then cfg.fBounce=n end
-end)
-rNum(1,"DURASI (SEKEJAP)",cfg.fDurasi,function(n)
- if n>=0.02 and n<=0.15 then cfg.fDurasi=n end
 end)
 
 header(1,"Pengaturan Nilai")
@@ -672,10 +669,11 @@ LP.CharacterAdded:Connect(function(c)
 end)
 
 -- ================================================================
---  FALL ASSIST v2 "OBSTACLE FILTER" — simulasi kena ranting
+--  FALL ASSIST v2 "OBSTACLE FILTER" — patch anti-melayang
 --  - Jatuh 100% normal, TIDAK dipegang sama sekali
---  - Sekali: benturan INSTAN (1 frame) + micro-bounce
---  - Landed-semu: reset persepsi jatuh game (ChangeState Landed)
+--  - Sekali: benturan INSTAN 1 frame — velocity vertikal
+--    langsung "mati" kena ranting, TANPA pantulan ke atas
+--  - Landed-semu: reset persepsi jatuh game (ChangeState)
 --  - Momentum horizontal (WASD) TIDAK disentuh
 --  - Tanpa notif
 -- ================================================================
@@ -724,13 +722,14 @@ RS.Heartbeat:Connect(function(dt)
    if picu then
     fBentur=true
 
-    -- ===== SIMULASI KENA RANTING (semua instan, 1 frame) =====
+    -- ===== SIMULASI KENA RANTING (instan, 1 frame) =====
     pcall(function()
-     -- 1. micro-bounce: velocity vertikal dipantulkan kecil
-     --    (ala mantul di ranting) - horizontal TIDAK disentuh
-     local hor=Vector3.new(v.X,0,v.Z) -- momentum WASD utuh
-     local buncis=cfg.fBounce
-     hp.AssemblyLinearVelocity=Vector3.new(hor.X,buncis,hor.Z)
+     -- velocity vertikal langsung "mati" kena ranting
+     -- TANPA pantulan ke atas (anti melayang)
+     -- momentum horizontal (WASD) utuh
+     local hor=Vector3.new(v.X,0,v.Z)
+     local vyBaru=(cfg.fBounce>0) and cfg.fBounce or cfg.fBenturKe
+     hp.AssemblyLinearVelocity=Vector3.new(hor.X,vyBaru,hor.Z)
     end)
     -- 2. landed-semu: reset persepsi jatuh internal game
     task.delay(0.03,function()
