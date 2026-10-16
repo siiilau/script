@@ -64,7 +64,6 @@ local mv={walk=false,sprint=false,jump=false,dj=false,fall=false,djOK=true}
 local vis={esp=false,tag=false,cross=0,moon=false,hideP=false,fx=false,br=false,swim=0,wall=false}
 local hud={afk=true}
 local espF,tagF,hidP,hidFX,wallP={},{},{},{},{}
-local gyro=nil
 local kill=nil
 local orig={ws=16,jp=50,u=true}
 local oLight={B=LG.Brightness,A=LG.Ambient,O=LG.OutdoorAmbient}
@@ -151,7 +150,7 @@ local function snd(id,v,p)
   local s=Instance.new("Sound")
   s.SoundId=id s.Volume=v or .3 s.PlaybackSpeed=p or 1
   s.Parent=g s:Play()
-  task.delay(2.5,function() s:Destroy() end)
+  task.delay(1.8,function() s:Destroy() end)
  end)
 end
 local S_PING="rbxasset://sounds/electronicpingshort.wav"
@@ -190,7 +189,7 @@ local fpL=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,9,0,16),
  Size=UDim2.new(1,-18,1,-19),Font=F_BOLD,TextSize=11,
  TextColor3=C.hijauM,Text="FPS ...  |  ... MS",TextXAlignment=Enum.TextXAlignment.Left},pFp)
 
--- NOTIF kanan atas
+-- NOTIF kanan atas (durasi pendek 1.6s)
 local nf=mk("Frame",{AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-10,0,10),
  Size=UDim2.fromOffset(220,340),BackgroundTransparency=1},hudF)
 mk("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder,
@@ -205,14 +204,14 @@ local function notif(tx,c)
   Size=UDim2.new(1,-16,1,0),Font=F_SEMI,TextSize=10,TextColor3=C.putih,Text=tx,
   TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},n)
  lb.TextTransparency=1
- tw(lb,.22,{TextTransparency=0})
- task.delay(3,function()
-  if n.Parent then tw(n,.25,{BackgroundTransparency=1}) end
-  task.delay(.3,function() pcall(function() n:Destroy() end) end)
+ tw(lb,.15,{TextTransparency=0})
+ task.delay(1.6,function()
+  if n.Parent then tw(n,.18,{BackgroundTransparency=1}) end
+  task.delay(.2,function() pcall(function() n:Destroy() end) end)
  end)
  local k=0
  for _,x in ipairs(nf:GetChildren()) do if x:IsA("Frame") then k+=1 end end
- if k>6 then
+ if k>5 then
   for _,x in ipairs(nf:GetChildren()) do if x:IsA("Frame") then x:Destroy() break end end
  end
 end
@@ -348,7 +347,7 @@ local function rTgl(ti,tx,ini,cb)
   o.s=v
   tw(sw,.15,{BackgroundColor3=v and C.hijau or C.merah})
   tw(kn,.15,{Position=v and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7)})
-  snd(S_PING,.25,v and 1.15 or .9)
+  snd(S_PING,.2,v and 1.15 or .9)
   pcall(function() cb(v) end)
  end
  sw.MouseButton1Click:Connect(function() o.set(not o.s) end)
@@ -362,7 +361,7 @@ local function rAct(ti,tx,cb,h)
  corner(b,8)
  ledLoop(b,C.ungu,C.putih,C.pink,2.6)
  b.MouseButton1Click:Connect(function()
-  snd(S_PING,.25,1.1)
+  snd(S_PING,.2,1.1)
   pcall(function() cb(b) end)
  end)
  return b
@@ -432,9 +431,9 @@ end)
 rSect(1,"JATUH CERDAS")
 local tgFall=rTgl(1,"SMART FALL ASSIST",false,function(v)
  mv.fall=v
- notif(v and "FALL ASSIST ON" or "FALL ASSIST OFF",C.hijau)
+ -- tanpa notif - bekerja diam-diam
 end)
-rInfo(1,"Jatuh bebas normal -> TERBENTUR sekali di 50% ketinggian\n(kecepatan dipangkas sekejap, seperti nabrak pipa)\n-> sisa jatuh kembali 100% NORMAL.\nDarah tidak disentuh sama sekali.",46)
+rInfo(1,"Jatuh bebas normal -> TERBENTUR sekali di 50% ketinggian\n-> sisa jatuh 100% normal.\nBekerja diam-diam, tanpa notif.",40)
 
 rSect(1,"PENGATURAN NILAI")
 rNum(1,"SPEED OFF",cfg.wOff,function(n) cfg.wOff=n updInfoSpeed() end)
@@ -553,7 +552,7 @@ local tglBr=rTgl(2,"AUTO BRIGHTNESS [T]",false,function(v)
  end
  notif(v and "AUTO BRIGHTNESS ON" or "AUTO BRIGHTNESS OFF",C.kuning)
 end)
-local namaSwim={"KATAK +20% (TEGAK, HADAP KAMERA)","TEGAK (HADAP ARAH GERAK)","NORMAL"}
+local namaSwim={"KATAK +20% (HADAP KAMERA)","TEGAK (HADAP ARAH GERAK)","NORMAL"}
 local btnSwim
 local function siklusSwim()
  vis.swim=vis.swim%3+1
@@ -610,6 +609,61 @@ rAct(3,"HAPUS SCRIPT TOTAL",function()
  if kill then kill() end
 end)
 
+-- ================= RENANG RINGAN (TANPA BODYGYRO) =================
+-- Metode ala KING SILAU: AutoRotate=false + kunci yaw via RenderStep.
+-- Tidak ada objek fisika tambahan yang bisa terdeteksi.
+local swimBound=false
+local SWIM_BIND="SILAU_SWIM"
+
+local function unbindSwim()
+ if swimBound then
+  pcall(function() RS:UnbindFromRenderStep(SWIM_BIND) end)
+  swimBound=false
+ end
+ local _,h=ch()
+ if h then pcall(function() h.AutoRotate=true end) end
+end
+
+RS.Heartbeat:Connect(function()
+ if not RUN then return end
+ local c,h,hp=ch()
+ if not h or not hp then return end
+ local sw=false
+ pcall(function() sw=h:GetState()==Enum.HumanoidStateType.Swimming end)
+ local aktifSwim=sw and (vis.swim==1 or vis.swim==2)
+
+ if aktifSwim and not swimBound then
+  swimBound=true
+  pcall(function() h.AutoRotate=false end)
+  pcall(function()
+   RS:BindToRenderStep(SWIM_BIND,Enum.RenderPriority.Character.Value+1,function()
+    local c2,h2,hp2=ch()
+    if not h2 or not hp2 then return end
+    local st2=false
+    pcall(function() st2=h2:GetState()==Enum.HumanoidStateType.Swimming end)
+    if not (st2 and (vis.swim==1 or vis.swim==2)) then return end
+    local face
+    if vis.swim==1 then
+     -- KATAK: hadap kamera (gaya shiftlock)
+     local cam=workspace.CurrentCamera
+     local cl=cam and cam.CFrame.LookVector
+     face=cl and Vector3.new(cl.X,0,cl.Z)
+    else
+     -- TEGAK: hadap arah gerak
+     local md=h2.MoveDirection
+     face=(md.Magnitude>0.05) and Vector3.new(md.X,0,md.Z)
+    end
+    if face and face.Magnitude>0.01 then
+     local yaw=math.atan2(-face.X,-face.Z)
+     hp2.CFrame=CFrame.new(hp2.Position)*CFrame.Angles(0,yaw,0)
+    end
+   end)
+  end)
+ elseif not aktifSwim and swimBound then
+  unbindSwim()
+ end
+end)
+
 -- ================= LOOPS =================
 local curSpeed=nil
 
@@ -622,7 +676,10 @@ RS.Heartbeat:Connect(function(dt)
  local jpT=mv.jump and cfg.jOn or cfg.jOff
  pcall(function()
   if not h.UseJumpPower then h.UseJumpPower=true end
-  if math.abs(h.JumpPower-jpT)>0.01 then h.JumpPower=jpT end
+  local cur=h.JumpPower
+  local newJp=cur+(jpT-cur)*math.clamp(dt*6,0,1)
+  if math.abs(newJp-jpT)<0.05 then newJp=jpT end
+  if math.abs(h.JumpPower-newJp)>0.01 then h.JumpPower=newJp end
  end)
 
  if curSpeed==nil then curSpeed=h.WalkSpeed end
@@ -630,7 +687,11 @@ RS.Heartbeat:Connect(function(dt)
  if mv.sprint then target=cfg.sOn
  elseif mv.walk then target=cfg.wOn
  else target=cfg.wOff end
- curSpeed=curSpeed+(target-curSpeed)*math.clamp(dt*8,0,1)
+ -- boost renang katak +20% (hanya ubah nilai WalkSpeed, aman)
+ local swimming=false
+ pcall(function() swimming=h:GetState()==Enum.HumanoidStateType.Swimming end)
+ if swimming and vis.swim==1 then target=target*1.2 end
+ curSpeed=curSpeed+(target-curSpeed)*math.clamp(dt*3,0,1)
  if math.abs(target-curSpeed)<0.01 then curSpeed=target end
  if math.abs(h.WalkSpeed-curSpeed)>0.005 then
   pcall(function() h.WalkSpeed=curSpeed end)
@@ -649,13 +710,14 @@ end)
 
 LP.CharacterAdded:Connect(function(c)
  rayUpd() mv.djOK=true curSpeed=nil
+ unbindSwim()
  task.spawn(function()
   local h=c:WaitForChild("Humanoid",10)
   if h then orig={ws=h.WalkSpeed,jp=h.JumpPower,u=h.UseJumpPower} end
  end)
 end)
 
--- ===== SMART FALL ASSIST (BENTURAN SAJA, TANPA PERLAMBATAN) =====
+-- ===== SMART FALL ASSIST (DIAM-DIAM, TANPA NOTIF) =====
 local fJatuh=false
 local fApex=0
 local fBentur=false
@@ -669,7 +731,6 @@ RS.Heartbeat:Connect(function(dt)
  local now=os.clock()
  local v=hp.AssemblyLinearVelocity
 
- -- sentakan benturan (satu-satunya intervensi)
  if now<fBenturSampai then
   local nv=v.Y+(cfg.fBenturKe-v.Y)*math.clamp(dt*12,0,1)
   hp.AssemblyLinearVelocity=Vector3.new(v.X,nv,v.Z)
@@ -694,7 +755,6 @@ RS.Heartbeat:Connect(function(dt)
    tinggiTotal=fApex-r.Position.Y
   end
 
-  -- pemicu benturan (3 jalur)
   if not fBentur and sudahTurun>15 and v.Y<-40 then
    local picu=false
    if tinggiTotal and tinggiTotal>=cfg.fMinJatuh
@@ -708,20 +768,12 @@ RS.Heartbeat:Connect(function(dt)
    if picu then
     fBentur=true
     fBenturSampai=now+cfg.fBenturDur
-    notif("TERBENTUR - kecepatan terpangkas",C.kuning)
    end
   end
 
-  -- TIDAK ADA perlambatan / pagar / pelembut setelah ini.
-  -- Sisa jatuh kembali 100% fisika normal.
-
  elseif fJatuh then
   fJatuh=false
-  local tdah=fBentur
   fBentur=false
-  if tdah then
-   notif("MENDARAT (setelah benturan)",C.hijau)
-  end
  end
 end)
 
@@ -855,56 +907,20 @@ task.spawn(function()
  end
 end)
 
--- RENANG: KATAK = tegak hadap kamera +20% | TEGAK = tegak hadap arah gerak
-RS.Heartbeat:Connect(function()
- if not RUN then return end
- local c,h,hp=ch()
- if not h or not hp then return end
- local sw=false
- pcall(function() sw=h:GetState()==Enum.HumanoidStateType.Swimming end)
- if sw and vis.swim>0 then
-  if not gyro or not gyro.Parent then
-   gyro=Instance.new("BodyGyro")
-   gyro.MaxTorque=Vector3.new(4e5,4e5,4e5)
-   gyro.P=8000 gyro.D=500 gyro.Parent=hp
-  end
-  local md=h.MoveDirection
-  local fl=md.Magnitude>0.01 and Vector3.new(md.X,0,md.Z).Unit or hp.CFrame.LookVector
-  if vis.swim==1 then
-   local cam=workspace.CurrentCamera
-   local cl=cam and cam.CFrame.LookVector or fl
-   local cf=Vector3.new(cl.X,0,cl.Z)
-   if cf.Magnitude<0.01 then cf=fl end
-   gyro.CFrame=CFrame.lookAt(Vector3.zero,cf.Unit)
-  else
-   gyro.CFrame=CFrame.lookAt(Vector3.zero,fl)
-  end
-  if vis.swim==1 then
-   local t=(mv.sprint and cfg.sOn or (mv.walk and cfg.wOn or cfg.wOff))*1.2
-   if math.abs(h.WalkSpeed-t)>0.01 then pcall(function() h.WalkSpeed=t end) end
-  end
- else
-  if gyro then pcall(function() gyro:Destroy() end) gyro=nil end
- end
-end)
-
--- MOONWALK: badan terkunci menghadap kamera (skip saat renang)
+-- MOONWALK: badan terkunci menghadap kamera (skip saat renang aktif)
 RS.RenderStepped:Connect(function()
  if not RUN or not vis.moon then return end
  local c,h,hp=ch()
  if not h or not hp then return end
  local sw=false
  pcall(function() sw=h:GetState()==Enum.HumanoidStateType.Swimming end)
- if sw and vis.swim>0 then return end
+ if sw and (vis.swim==1 or vis.swim==2) then return end
  local cam=workspace.CurrentCamera
  if not cam then return end
- local cl=cam.CFrame.LookVector
- local f=Vector3.new(cl.X,0,cl.Z)
- if f.Magnitude>0.01 then
-  pcall(function()
-   hp.CFrame=CFrame.lookAt(hp.Position,hp.Position-f.Unit)
-  end)
- end
+ local _,yaw=cam.CFrame:ToOrientation()
+ pcall(function()
+  hp.CFrame=CFrame.new(hp.Position)*CFrame.Angles(0,yaw,0)
+ end)
 end)
 
 local fc=0
@@ -964,14 +980,14 @@ end
 
 local function minimize()
  root.Visible=false
- snd(S_PING,.25,.75)
+ snd(S_PING,.2,.75)
 end
 local function buka()
  root.Visible=true
  local s=mk("UIScale",{Scale=.6},root)
  tw(s,.35,{Scale=1},Enum.EasingStyle.Back)
  task.delay(.4,function() pcall(function() s:Destroy() end) end)
- snd(S_PING,.3,1.15)
+ snd(S_PING,.25,1.15)
 end
 minB.MouseButton1Click:Connect(minimize)
 
@@ -990,12 +1006,13 @@ corner(hClose,7)
 hClose.MouseButton1Click:Connect(function() helpF.Visible=false end)
 helpB.MouseButton1Click:Connect(function()
  helpF.Visible=not helpF.Visible
- snd(S_PING,.25,helpF.Visible and 1.2 or .9)
+ snd(S_PING,.2,helpF.Visible and 1.2 or .9)
 end)
 
 -- ================= KILL =================
 kill=function()
  RUN=false
+ unbindSwim()
  pcall(function()
   local _,h=ch()
   if h then
@@ -1010,7 +1027,6 @@ kill=function()
  pcall(function()
   LG.Brightness=oLight.B LG.Ambient=oLight.A LG.OutdoorAmbient=oLight.O
  end)
- if gyro then pcall(function() gyro:Destroy() end) end
  pcall(function() g:Destroy() end)
  print("[SilauHub] dihapus total")
 end
