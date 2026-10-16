@@ -5,11 +5,13 @@
 --  Z=info  K K=hapus
 --
 --  MOONWALK: badan TERKUNCI menghadap kamera/layar
---  FALL ASSIST v3 (SIMPLE - FINAL):
---   lompat - jatuh - NYENGGOL sekali di 80% perjalanan
---   - jatuh sebentar - mendarat - selesai
---   Cuma 2 pengaturan: MIN JATUH (50) & POSISI BENTUR (0.80)
---   Kecepatan setelah nyenggol: -30 (internal)
+--  FALL ASSIST v3.1 "VIRTUAL BRANCH":
+--   Jatuh normal kencang -> sekali di 80% perjalanan:
+--   platform tak terlihat muncul di bawah kaki ->
+--   kamu MENDARAT BENERAN (reset semua penghitung jatuh,
+--   client & server, seperti kena ranting asli) ->
+--   platform hilang -> jatuh sisa pendek -> damage kecil
+--   WASD bebas. Darah tidak disentuh. Tanpa notif.
 --========================================================
 print("[SilauHub] v1.0.1 loading...")
 
@@ -46,10 +48,9 @@ local cfg={
  wOff=17.10, wOn=17.25,
  sOff=21.10, sOn=21.25,
  jOff=51.25, jOn=65.50,
- -- FALL ASSIST v3 (SIMPLE - FINAL)
+ -- FALL ASSIST v3.1 "VIRTUAL BRANCH"
  fMinJatuh=50,   -- jatuh harus lebih tinggi dari ini (stud)
- fPosisi=0.80,   -- nyenggol di 80% perjalanan jatuh (dekat tanah)
- fBenturKe=-30,  -- (internal tetap) kecepatan setelah nyenggol
+ fPosisi=0.80,   -- mendarat virtual di 80% perjalanan (dekat tanah)
 }
 
 -- ================= TEMA KING SILAU =================
@@ -389,7 +390,7 @@ header(1,"Jatuh Cerdas")
 local tgFall=rTgl(1,"Smart Fall Assist",nil,false,function(v)
  mv.fall=v
 end)
-rInfo(1,"Jatuh normal kencang -> nyenggol sekali di 80%\n(menjelang tanah) -> mendarat pelan.\nSekali saja. Darah tidak disentuh. Tanpa notif.",40)
+rInfo(1,"Jatuh normal kencang -> sekali di 80% perjalanan:\nmendarat sesaat di ranting virtual (reset penghitung\njatuh game, client & server) -> jatuh sisa pendek.\nDarah tidak disentuh. Tanpa notif.",46)
 
 header(1,"Pengaturan Fall Assist")
 rNum(1,"MIN JATUH",cfg.fMinJatuh,function(n) cfg.fMinJatuh=n end)
@@ -670,10 +671,15 @@ LP.CharacterAdded:Connect(function(c)
 end)
 
 -- ================================================================
---  FALL ASSIST v3 (SIMPLE - FINAL)
---  Jatuh normal kencang -> NYENGGOL SEKALI di 80% perjalanan
---  (velocity vertikal langsung jadi -30, tanpa pantulan)
---  + landed-semu (reset persepsi jatuh game)
+--  FALL ASSIST v3.1 "VIRTUAL BRANCH"
+--  Jatuh normal kencang -> sekali di 80% perjalanan:
+--  platform tak terlihat muncul 4 stud di bawah kaki ->
+--  karakter MENDARAT BENERAN di atasnya (landing fisika asli:
+--  kecepatan vertikal mati alami, state Landed asli,
+--  penghitung jatuh game client & server ter-reset,
+--  persis seperti kena ranting asli di game) ->
+--  0.15 detik kemudian platform hilang ->
+--  jatuh sisa pendek -> damage kecil.
 --  WASD bebas. Darah tidak disentuh. Tanpa notif.
 -- ================================================================
 local fJatuh=false
@@ -708,51 +714,43 @@ RS.Heartbeat:Connect(function(dt)
    tinggiTotal=fApex-r.Position.Y
   end
 
-  -- ===== NYENGGOL SEKALI di POSISI BENTUR (80%) =====
+  -- ===== VIRTUAL BRANCH: SEKALI per jatuh di POSISI BENTUR =====
   if not fBentur and sudahTurun>10 and v.Y<-40 then
    local picu=false
-   -- syarat utama: tinggi jatuh >= MIN JATUH & sudah melewati titik 80%
+   -- syarat utama: tinggi jatuh >= MIN JATUH & sudah melewati titik posisi
    if tinggiTotal and tinggiTotal>=cfg.fMinJatuh
    and sisaJatuh<=tinggiTotal*(1-cfg.fPosisi) then
     picu=true
    end
-   -- jaring pengaman internal: kalau tanah tak terdeteksi
-   -- dan sudah lama jatuh kencang, lakukan nyenggolan sekarang
+   -- jaring pengaman internal: tanah tak terdeteksi & lama jatuh kencang
    if not picu and not tinggiTotal and (now-fSejak)>0.6 and v.Y<-70 then
     picu=true
    end
    if picu then
     fBentur=true
-    -- velocity vertikal langsung jadi -30 (ala kena tepi)
-    -- WASD (horizontal) tidak disentuh
+    -- RANTING VIRTUAL: platform tak terlihat 4 stud di bawah kaki
     pcall(function()
-     local hor=Vector3.new(v.X,0,v.Z)
-     hp.AssemblyLinearVelocity=Vector3.new(hor.X,cfg.fBenturKe,hor.Z)
-    end)
-    -- landed-semu: game mengira sudah mendarat sekali
-    task.delay(0.03,function()
-     if not RUN then return end
-     pcall(function()
-      local _,h2,_=ch()
-      if h2 and h2:GetState()==Enum.HumanoidStateType.Freefall then
-       h2:ChangeState(Enum.HumanoidStateType.Landed)
-       task.delay(0.03,function()
-        if not RUN then return end
-        pcall(function()
-         local _,h3,_=ch()
-         if h3 and h3:GetState()==Enum.HumanoidStateType.Landed then
-          h3:ChangeState(Enum.HumanoidStateType.Freefall)
-         end
-        end)
-       end)
-      end
+     local plat=Instance.new("Part")
+     plat.Name="Branch"
+     plat.Size=Vector3.new(6,0.4,6)
+     plat.Transparency=1
+     plat.Anchored=true
+     plat.CanCollide=true
+     plat.CanQuery=false
+     plat.CanTouch=false
+     plat.CastShadow=false
+     plat.CFrame=CFrame.new(hp.Position.X,hp.Position.Y-4,hp.Position.Z)
+     plat.Parent=workspace
+     -- cukup 0.15 detik: mendarat tercatat lalu hilang
+     task.delay(0.15,function()
+      pcall(function() plat:Destroy() end)
      end)
     end)
    end
   end
 
  elseif fJatuh then
-  -- mendarat: reset, siap untuk jatuh berikutnya
+  -- mendarat beneran: reset, siap untuk jatuh berikutnya
   fJatuh=false
   fBentur=false
  end
@@ -889,8 +887,6 @@ task.spawn(function()
 end)
 
 -- ===== MOONWALK: badan TERKUNCI menghadap kamera/layar =====
--- apapun tombol: W=melangkah mundur, S=maju, A/D=samping,
--- lompat pun wajah tetap ke layar (seperti shiftlock terbalik)
 RS.RenderStepped:Connect(function()
  if not RUN or not vis.moon then return end
  if vis.swim then return end
