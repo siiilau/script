@@ -504,9 +504,9 @@ rAct(2,"CROSSHAIR: OFF (KLIK GANTI)",function(b)
  b.Text="CROSSHAIR: "..gayaNama[vis.cross+1].." (KLIK GANTI)"
  notif("CROSSHAIR: "..gayaNama[vis.cross+1],C.pink)
 end)
-local tgMoon=rTgl(2,"MOONWALK [G] (BADAN MENGHADAP KAMERA)",false,function(v)
+local tgMoon=rTgl(2,"MOONWALK [G] (WAJAH MENGHADAP LAYAR)",false,function(v)
  vis.moon=v
- notif(v and "MOONWALK ON - HADAP KAMERA" or "MOONWALK OFF",C.pink)
+ notif(v and "MOONWALK ON - WAJAH KE LAYAR" or "MOONWALK OFF",C.pink)
 end)
 
 rSect(2,"LAYAR BERSIH")
@@ -610,8 +610,6 @@ rAct(3,"HAPUS SCRIPT TOTAL",function()
 end)
 
 -- ================= RENANG RINGAN (TANPA BODYGYRO) =================
--- Metode ala KING SILAU: AutoRotate=false + kunci yaw via RenderStep.
--- Tidak ada objek fisika tambahan yang bisa terdeteksi.
 local swimBound=false
 local SWIM_BIND="SILAU_SWIM"
 
@@ -644,12 +642,10 @@ RS.Heartbeat:Connect(function()
     if not (st2 and (vis.swim==1 or vis.swim==2)) then return end
     local face
     if vis.swim==1 then
-     -- KATAK: hadap kamera (gaya shiftlock)
      local cam=workspace.CurrentCamera
      local cl=cam and cam.CFrame.LookVector
      face=cl and Vector3.new(cl.X,0,cl.Z)
     else
-     -- TEGAK: hadap arah gerak
      local md=h2.MoveDirection
      face=(md.Magnitude>0.05) and Vector3.new(md.X,0,md.Z)
     end
@@ -687,7 +683,6 @@ RS.Heartbeat:Connect(function(dt)
  if mv.sprint then target=cfg.sOn
  elseif mv.walk then target=cfg.wOn
  else target=cfg.wOff end
- -- boost renang katak +20% (hanya ubah nilai WalkSpeed, aman)
  local swimming=false
  pcall(function() swimming=h:GetState()==Enum.HumanoidStateType.Swimming end)
  if swimming and vis.swim==1 then target=target*1.2 end
@@ -907,7 +902,9 @@ task.spawn(function()
  end
 end)
 
--- MOONWALK: badan terkunci menghadap kamera (skip saat renang aktif)
+-- MOONWALK: WAJAH MENGHADAP LAYAR/KAMERA
+-- (yaw kamera + 180 derajat - sebelumnya salah arah, itu kenapa
+--  kamu melihat punggung karaktermu sendiri wkwk)
 RS.RenderStepped:Connect(function()
  if not RUN or not vis.moon then return end
  local c,h,hp=ch()
@@ -919,7 +916,7 @@ RS.RenderStepped:Connect(function()
  if not cam then return end
  local _,yaw=cam.CFrame:ToOrientation()
  pcall(function()
-  hp.CFrame=CFrame.new(hp.Position)*CFrame.Angles(0,yaw,0)
+  hp.CFrame=CFrame.new(hp.Position)*CFrame.Angles(0,yaw+math.pi,0)
  end)
 end)
 
