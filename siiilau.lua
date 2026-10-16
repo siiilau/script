@@ -31,11 +31,11 @@ local LP=Players.LocalPlayer
 local RUN=true
 
 -- ================= NILAI (bisa diubah lewat GUI) =================
+local SWIM_BOOST=1.15 -- +15% saat renang katak
 local cfg={
  wOff=17.10, wOn=17.25,
  sOff=21.10, sOn=21.25,
  jOff=51.25, jOn=65.50,
- -- fall assist (cuma benturan, tanpa perlambatan)
  fMinJatuh=30, fPosisi=0.50, fCadang=-70,
  fBenturKe=-14, fBenturDur=0.15,
 }
@@ -61,7 +61,7 @@ local F_REG=Enum.Font.Gotham
 
 -- ================= STATE =================
 local mv={walk=false,sprint=false,jump=false,dj=false,fall=false,djOK=true}
-local vis={esp=false,tag=false,cross=0,moon=false,hideP=false,fx=false,br=false,swim=0,wall=false}
+local vis={esp=false,tag=false,cross=0,moon=false,hideP=false,fx=false,br=false,swim=false,wall=false}
 local hud={afk=true}
 local espF,tagF,hidP,hidFX,wallP={},{},{},{},{}
 local kill=nil
@@ -176,20 +176,17 @@ local function mkPanel(pos,size,judul,aksen)
  return p
 end
 
--- STATUS kiri bawah
 local pSt=mkPanel(UDim2.new(0,10,1,-176),UDim2.fromOffset(200,120),"STATUS",C.ungu)
 local stL=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,9,0,17),
  Size=UDim2.new(1,-18,1,-20),Font=F_REG,TextSize=10,TextColor3=C.putih,
  Text="...",TextXAlignment=Enum.TextXAlignment.Left,
  TextYAlignment=Enum.TextYAlignment.Top},pSt)
 
--- FPS kiri bawah
 local pFp=mkPanel(UDim2.new(0,10,1,-48),UDim2.fromOffset(200,40),"FPS / PING",C.hijau)
 local fpL=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,9,0,16),
  Size=UDim2.new(1,-18,1,-19),Font=F_BOLD,TextSize=11,
  TextColor3=C.hijauM,Text="FPS ...  |  ... MS",TextXAlignment=Enum.TextXAlignment.Left},pFp)
 
--- NOTIF kanan atas (durasi pendek 1.6s)
 local nf=mk("Frame",{AnchorPoint=Vector2.new(1,0),Position=UDim2.new(1,-10,0,10),
  Size=UDim2.fromOffset(220,340),BackgroundTransparency=1},hudF)
 mk("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder,
@@ -343,11 +340,11 @@ local function rTgl(ti,tx,ini,cb)
   TextXAlignment=Enum.TextXAlignment.Left,TextTruncate=Enum.TextTruncate.AtEnd},row)
  local sw,kn=mkSwitch(row,ini)
  local o={s=ini}
- o.set=function(v)
+ o.set=function(v,noSnd)
   o.s=v
   tw(sw,.15,{BackgroundColor3=v and C.hijau or C.merah})
   tw(kn,.15,{Position=v and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7)})
-  snd(S_PING,.2,v and 1.15 or .9)
+  if not noSnd then snd(S_PING,.2,v and 1.15 or .9) end
   pcall(function() cb(v) end)
  end
  sw.MouseButton1Click:Connect(function() o.set(not o.s) end)
@@ -431,7 +428,6 @@ end)
 rSect(1,"JATUH CERDAS")
 local tgFall=rTgl(1,"SMART FALL ASSIST",false,function(v)
  mv.fall=v
- -- tanpa notif - bekerja diam-diam
 end)
 rInfo(1,"Jatuh bebas normal -> TERBENTUR sekali di 50% ketinggian\n-> sisa jatuh 100% normal.\nBekerja diam-diam, tanpa notif.",40)
 
@@ -504,9 +500,15 @@ rAct(2,"CROSSHAIR: OFF (KLIK GANTI)",function(b)
  b.Text="CROSSHAIR: "..gayaNama[vis.cross+1].." (KLIK GANTI)"
  notif("CROSSHAIR: "..gayaNama[vis.cross+1],C.pink)
 end)
-local tgMoon=rTgl(2,"MOONWALK [G] (WAJAH MENGHADAP LAYAR)",false,function(v)
+local tgMoon=rTgl(2,"MOONWALK [G]",false,function(v)
  vis.moon=v
- notif(v and "MOONWALK ON - WAJAH KE LAYAR" or "MOONWALK OFF",C.pink)
+ -- SALING KUNCI: moonwalk ON -> renang otomatis OFF
+ if v and vis.swim then
+  vis.swim=false
+  if btnSwim then btnSwim.Text="RENANG: NORMAL [C] (mati: moonwalk)" end
+  notif("RENANG OTOMATIS OFF (MOONWALK AKTIF)",C.kuning)
+ end
+ notif(v and "MOONWALK ON" or "MOONWALK OFF",C.pink)
 end)
 
 rSect(2,"LAYAR BERSIH")
@@ -552,16 +554,22 @@ local tglBr=rTgl(2,"AUTO BRIGHTNESS [T]",false,function(v)
  end
  notif(v and "AUTO BRIGHTNESS ON" or "AUTO BRIGHTNESS OFF",C.kuning)
 end)
-local namaSwim={"KATAK +20% (HADAP KAMERA)","TEGAK (HADAP ARAH GERAK)","NORMAL"}
 local btnSwim
 local function siklusSwim()
- vis.swim=vis.swim%3+1
- if vis.swim==3 then
-  btnSwim.Text="RENANG: NORMAL [C]"
- else
-  btnSwim.Text="RENANG: "..namaSwim[vis.swim].." [C]"
+ vis.swim=not vis.swim
+ if vis.swim and vis.moon then
+  -- SALING KUNCI: renang aktif -> moonwalk otomatis OFF
+  vis.moon=false
+  if tgMoon then tgMoon.set(false,true) end
+  notif("MOONWALK OTOMATIS OFF (RENANG AKTIF)",C.kuning)
  end
- notif("RENANG: "..(vis.swim==3 and "NORMAL" or namaSwim[vis.swim]),C.biru)
+ if vis.swim then
+  btnSwim.Text="RENANG: KATAK +15% [C]"
+  notif("RENANG: KATAK +15% (HADAP KAMERA)",C.biru)
+ else
+  btnSwim.Text="RENANG: NORMAL [C]"
+  notif("RENANG: NORMAL",C.biru)
+ end
 end
 btnSwim=rAct(2,"RENANG: NORMAL [C]",function() siklusSwim() end,30)
 local function scanW()
@@ -610,6 +618,7 @@ rAct(3,"HAPUS SCRIPT TOTAL",function()
 end)
 
 -- ================= RENANG RINGAN (TANPA BODYGYRO) =================
+-- KATAK: badan tegak, terkunci menghadap kamera (shiftlock) +15% speed
 local swimBound=false
 local SWIM_BIND="SILAU_SWIM"
 
@@ -628,7 +637,7 @@ RS.Heartbeat:Connect(function()
  if not h or not hp then return end
  local sw=false
  pcall(function() sw=h:GetState()==Enum.HumanoidStateType.Swimming end)
- local aktifSwim=sw and (vis.swim==1 or vis.swim==2)
+ local aktifSwim=sw and vis.swim
 
  if aktifSwim and not swimBound then
   swimBound=true
@@ -639,16 +648,10 @@ RS.Heartbeat:Connect(function()
     if not h2 or not hp2 then return end
     local st2=false
     pcall(function() st2=h2:GetState()==Enum.HumanoidStateType.Swimming end)
-    if not (st2 and (vis.swim==1 or vis.swim==2)) then return end
-    local face
-    if vis.swim==1 then
-     local cam=workspace.CurrentCamera
-     local cl=cam and cam.CFrame.LookVector
-     face=cl and Vector3.new(cl.X,0,cl.Z)
-    else
-     local md=h2.MoveDirection
-     face=(md.Magnitude>0.05) and Vector3.new(md.X,0,md.Z)
-    end
+    if not (st2 and vis.swim) then return end
+    local cam=workspace.CurrentCamera
+    local cl=cam and cam.CFrame.LookVector
+    local face=cl and Vector3.new(cl.X,0,cl.Z)
     if face and face.Magnitude>0.01 then
      local yaw=math.atan2(-face.X,-face.Z)
      hp2.CFrame=CFrame.new(hp2.Position)*CFrame.Angles(0,yaw,0)
@@ -685,7 +688,7 @@ RS.Heartbeat:Connect(function(dt)
  else target=cfg.wOff end
  local swimming=false
  pcall(function() swimming=h:GetState()==Enum.HumanoidStateType.Swimming end)
- if swimming and vis.swim==1 then target=target*1.2 end
+ if swimming and vis.swim then target=target*SWIM_BOOST end
  curSpeed=curSpeed+(target-curSpeed)*math.clamp(dt*3,0,1)
  if math.abs(target-curSpeed)<0.01 then curSpeed=target end
  if math.abs(h.WalkSpeed-curSpeed)>0.005 then
@@ -712,7 +715,7 @@ LP.CharacterAdded:Connect(function(c)
  end)
 end)
 
--- ===== SMART FALL ASSIST (DIAM-DIAM, TANPA NOTIF) =====
+-- ===== SMART FALL ASSIST (DIAM-DIAM) =====
 local fJatuh=false
 local fApex=0
 local fBentur=false
@@ -902,22 +905,22 @@ task.spawn(function()
  end
 end)
 
--- MOONWALK: WAJAH MENGHADAP LAYAR/KAMERA
--- (yaw kamera + 180 derajat - sebelumnya salah arah, itu kenapa
---  kamu melihat punggung karaktermu sendiri wkwk)
+-- ===== MOONWALK: FUNGSI SEMULA (BALIK ARAH HADAP DARI GERAKAN) =====
+-- Tidak aktif saat renang katak (sudah saling kunci, tetap dicek sebagai pengaman)
 RS.RenderStepped:Connect(function()
  if not RUN or not vis.moon then return end
+ if vis.swim then return end
  local c,h,hp=ch()
  if not h or not hp then return end
- local sw=false
- pcall(function() sw=h:GetState()==Enum.HumanoidStateType.Swimming end)
- if sw and (vis.swim==1 or vis.swim==2) then return end
- local cam=workspace.CurrentCamera
- if not cam then return end
- local _,yaw=cam.CFrame:ToOrientation()
- pcall(function()
-  hp.CFrame=CFrame.new(hp.Position)*CFrame.Angles(0,yaw+math.pi,0)
- end)
+ local md=h.MoveDirection
+ if md.Magnitude>0.05 then
+  local f=Vector3.new(md.X,0,md.Z)
+  if f.Magnitude>0.01 then
+   pcall(function()
+    hp.CFrame=CFrame.lookAt(hp.Position,hp.Position-f.Unit)
+   end)
+  end
+ end
 end)
 
 local fc=0
@@ -994,7 +997,7 @@ corner(helpF,10) stroke(helpF,C.pink,1,.4)
 mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,6),
  Size=UDim2.new(1,-20,1,-44),Font=F_REG,TextSize=10,TextColor3=C.unguM,
  TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,
- Text="F      : buka/tutup GUI\nQ      : walk speed ON/OFF\nQ Q    : sprint (Q lagi = OFF)\nV      : jump power ON/OFF\nG      : moonwalk ON/OFF\nR      : sembunyikan pemain lain\nT      : auto brightness\nC      : renang (katak/tegak/normal)\nX      : dinding tak terlihat\nZ      : info player\nK K    : hapus script (konfirmasi)",
+ Text="F      : buka/tutup GUI\nQ      : walk speed ON/OFF\nQ Q    : sprint (Q lagi = OFF)\nV      : jump power ON/OFF\nG      : moonwalk ON/OFF\nR      : sembunyikan pemain lain\nT      : auto brightness\nC      : renang katak +15% ON/OFF\nX      : dinding tak terlihat\nZ      : info player\nK K    : hapus script (konfirmasi)\n\nMoonwalk dan Renang saling kunci:\nyang terakhir dinyalakan yang menang.",
  ZIndex=61},helpF)
 local hClose=mk("TextButton",{Size=UDim2.new(1,-20,0,24),Position=UDim2.new(0,10,1,-30),
  BackgroundColor3=C.pink,Font=F_BOLD,TextSize=11,TextColor3=C.putih,
