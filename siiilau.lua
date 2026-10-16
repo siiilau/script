@@ -1,5 +1,5 @@
 --========================================================
---  SIIILAU HUB SCRIPTS v1.0.1 — TEMA KING SILAU
+--  SIIILAU HUB SCRIPTS v1.0.1
 --========================================================
 print("[SilauHub] v1.0.1 loading...")
 
@@ -31,13 +31,18 @@ local LP=Players.LocalPlayer
 local RUN=true
 
 -- ================= NILAI =================
-local SWIM_BOOST=1.15 -- +15% renang katak
+local SWIM_BOOST=1.15
 local cfg={
  wOff=17.10, wOn=17.25,
  sOff=21.10, sOn=21.25,
  jOff=51.25, jOn=65.50,
- fMinJatuh=30, fPosisi=0.50, fCadang=-70,
- fBenturKe=-14, fBenturDur=0.15,
+ -- FALL ASSIST v2 "OBSTACLE FILTER"
+ fMinJatuh=30,    -- tinggi minimal jatuh agar fitur aktif (stud)
+ fPosisi=0.50,    -- titik bentur: 0.50 = di 50% perjalanan jatuh
+ fCadang=-70,     -- pemicu cadangan: kecepatan lewat ini -> bentur sekarang
+ fBenturKe=-38,   -- velocity setelah bentur (kena ranting: hilang ~60%)
+ fBounce=9,       -- micro-bounce kecil ke atas (ala mantul di ranting)
+ fDurasi=0.06,    -- durasi bentur: SEKEJAP (instan, seperti fisika)
 }
 
 -- ================= TEMA KING SILAU =================
@@ -109,7 +114,7 @@ local function snd(v,p)
  end)
 end
 
--- ================= NOTIF (atas tengah, ala King Silau) =================
+-- ================= NOTIF =================
 local nf=mk("Frame",{AnchorPoint=Vector2.new(0.5,0),Position=UDim2.new(0.5,0,0,10),
  Size=UDim2.fromOffset(280,300),BackgroundTransparency=1},g)
 mk("UIListLayout",{Padding=UDim.new(0,6),SortOrder=Enum.SortOrder.LayoutOrder,
@@ -137,21 +142,16 @@ local function notif(tx,okNotif)
  end
 end
 
--- ================= HUD CHIPS (ala King Silau) =================
+-- ================= HUD CHIPS =================
 local hudF=mk("Frame",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1},g)
 
--- FPS kiri bawah (default ON, gaya King Silau)
 local pFp=mk("Frame",{Position=UDim2.new(0,8,1,-26),Size=UDim2.fromOffset(150,20),
  BackgroundColor3=C.bg,BackgroundTransparency=0.4,Active=true},hudF)
 corner(pFp,6)
 local fpL=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,6,0,0),
  Size=UDim2.new(1,-12,1,0),Font=F_R,TextSize=11,TextColor3=C.abuT,
  Text="FPS: --",TextXAlignment=Enum.TextXAlignment.Left},pFp)
-mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(1,-46,0,0),
- Size=UDim2.new(0,40,1,0),Font=F_B,TextSize=8,TextColor3=C.abu,
- Text="HUD",TextXAlignment=Enum.TextXAlignment.Right},pFp)
 
--- STATUS kiri bawah (default OFF - aktifkan di tab HUD)
 local pSt=mk("Frame",{Position=UDim2.new(0,8,1,-156),Size=UDim2.fromOffset(190,122),
  BackgroundColor3=C.bg,BackgroundTransparency=0.15,BorderSizePixel=0,Active=true,
  Visible=false},hudF)
@@ -165,7 +165,6 @@ local stL=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,9,0,20),
  Text="...",TextXAlignment=Enum.TextXAlignment.Left,
  TextYAlignment=Enum.TextYAlignment.Top},pSt)
 
--- drag untuk chip & panel
 local function drag(h,t)
  local d,s,p=false,nil,nil
  h.InputBegan:Connect(function(i)
@@ -188,7 +187,7 @@ end
 drag(pFp,pFp)
 drag(pSt,pSt)
 
--- ================= PANEL UTAMA (ala King Silau) =================
+-- ================= PANEL UTAMA =================
 local root=mk("Frame",{Size=UDim2.fromOffset(320,430),
  Position=UDim2.new(0.5,-160,0.5,-215),BackgroundColor3=C.bg,
  Active=true,Visible=false,BorderSizePixel=0},g)
@@ -199,7 +198,6 @@ mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,14,0,0),
  Size=UDim2.new(1,-60,0,40),Font=F_BLK,TextSize=17,TextColor3=C.putih,
  Text="SIIILAU HUB",TextXAlignment=Enum.TextXAlignment.Left},root)
 
--- garis gradasi ungu-biru di bawah judul
 local grad=mk("Frame",{BackgroundColor3=Color3.new(1,1,1),Size=UDim2.new(1,-24,0,2),
  Position=UDim2.new(0,12,0,40),BorderSizePixel=0},root)
 mk("UIGradient",{Color=ColorSequence.new(C.ungu,C.biru)},grad)
@@ -232,7 +230,6 @@ local function drag(h,t)
 end
 drag(titleHit,root)
 
--- TAB BAR
 local tbar=mk("Frame",{Position=UDim2.new(0,10,0,46),Size=UDim2.new(1,-20,0,26),
  BackgroundTransparency=1},root)
 mk("UIListLayout",{Padding=UDim.new(0,4),FillDirection=Enum.FillDirection.Horizontal},tbar)
@@ -255,7 +252,7 @@ for i=1,3 do
  mk("UIListLayout",{Padding=UDim.new(0,5),SortOrder=Enum.SortOrder.LayoutOrder},tf[i])
 end
 
--- ================= FACTORY (ala King Silau) =================
+-- ================= FACTORY =================
 local oc={0,0,0}
 local function header(ti,tx)
  oc[ti]+=1
@@ -385,9 +382,22 @@ end)
 header(1,"Jatuh Cerdas")
 local tgFall=rTgl(1,"Smart Fall Assist",nil,false,function(v)
  mv.fall=v
- -- diam-diam, tanpa notif
 end)
-rInfo(1,"Terbentur sekali di 50% ketinggian, sisa jatuh normal.\nTanpa notif, darah tidak disentuh.",36)
+rInfo(1,"Sekali sejatuh: micro-benturan ala kena ranting\n(instans + bounce kecil, WASD tetap bebas).\nGame menghitung damage dari jatuh terakhir.\nDiam-diam, tanpa notif.",40)
+
+header(1,"Pengaturan Fall Assist")
+rNum(1,"MIN JATUH",cfg.fMinJatuh,function(n) cfg.fMinJatuh=n end)
+rNum(1,"POSISI BENTUR (0-1)",cfg.fPosisi,function(n)
+ if n>0 and n<1 then cfg.fPosisi=n end
+end)
+rNum(1,"BENTUR CADANG",cfg.fCadang,function(n) cfg.fCadang=n end)
+rNum(1,"BENTUR KE",cfg.fBenturKe,function(n) cfg.fBenturKe=n end)
+rNum(1,"BOUNCE",cfg.fBounce,function(n)
+ if n>=0 and n<=25 then cfg.fBounce=n end
+end)
+rNum(1,"DURASI (SEKEJAP)",cfg.fDurasi,function(n)
+ if n>=0.02 and n<=0.15 then cfg.fDurasi=n end
+end)
 
 header(1,"Pengaturan Nilai")
 rNum(1,"SPEED OFF",cfg.wOff,function(n) cfg.wOff=n updInfoSpeed() end)
@@ -396,17 +406,6 @@ rNum(1,"SPRINT OFF",cfg.sOff,function(n) cfg.sOff=n updInfoSpeed() end)
 rNum(1,"SPRINT ON",cfg.sOn,function(n) cfg.sOn=n updInfoSpeed() end)
 rNum(1,"JUMP OFF",cfg.jOff,function(n) cfg.jOff=n end)
 rNum(1,"JUMP ON",cfg.jOn,function(n) cfg.jOn=n end)
-
-header(1,"Fall Assist")
-rNum(1,"MIN JATUH",cfg.fMinJatuh,function(n) cfg.fMinJatuh=n end)
-rNum(1,"POSISI BENTUR (0-1)",cfg.fPosisi,function(n)
- if n>0 and n<1 then cfg.fPosisi=n end
-end)
-rNum(1,"BENTUR CADANG",cfg.fCadang,function(n) cfg.fCadang=n end)
-rNum(1,"BENTUR KE",cfg.fBenturKe,function(n) cfg.fBenturKe=n end)
-rNum(1,"BENTUR DURASI",cfg.fBenturDur,function(n)
- if n>0.05 and n<=0.5 then cfg.fBenturDur=n end
-end)
 
 -- ================= TAB 2 : VISUAL =================
 header(2,"Target")
@@ -461,7 +460,6 @@ rAct(2,"Crosshair: OFF (klik ganti)",function(b)
 end)
 local tgMoon=rTgl(2,"Moonwalk","G",false,function(v)
  vis.moon=v
- -- saling kunci: moonwalk ON -> renang otomatis OFF
  if v and vis.swim then
   vis.swim=false
   if btnSwim then btnSwim.Text="Renang: NORMAL [C]" end
@@ -558,7 +556,7 @@ end)
 -- ================= TAB 3 : HUD =================
 header(3,"Panel")
 rTgl(3,"FPS / Ping",nil,true,function(v) pFp.Visible=v end)
-rTgl(3,"Status",nil,false,function(v) pSt.Visible=v end) -- DEFAULT OFF
+rTgl(3,"Status",nil,false,function(v) pSt.Visible=v end)
 rInfo(3,"Panel bisa digeser (drag).")
 
 header(3,"Lainnya")
@@ -673,11 +671,17 @@ LP.CharacterAdded:Connect(function(c)
  end)
 end)
 
--- ===== SMART FALL ASSIST (DIAM-DIAM) =====
+-- ================================================================
+--  FALL ASSIST v2 "OBSTACLE FILTER" — simulasi kena ranting
+--  - Jatuh 100% normal, TIDAK dipegang sama sekali
+--  - Sekali: benturan INSTAN (1 frame) + micro-bounce
+--  - Landed-semu: reset persepsi jatuh game (ChangeState Landed)
+--  - Momentum horizontal (WASD) TIDAK disentuh
+--  - Tanpa notif
+-- ================================================================
 local fJatuh=false
 local fApex=0
 local fBentur=false
-local fBenturSampai=0
 local fSejak=0
 
 RS.Heartbeat:Connect(function(dt)
@@ -686,11 +690,6 @@ RS.Heartbeat:Connect(function(dt)
  if not h or not hp then return end
  local now=os.clock()
  local v=hp.AssemblyLinearVelocity
-
- if now<fBenturSampai then
-  local nv=v.Y+(cfg.fBenturKe-v.Y)*math.clamp(dt*12,0,1)
-  hp.AssemblyLinearVelocity=Vector3.new(v.X,nv,v.Z)
- end
 
  local st=h:GetState()
 
@@ -711,6 +710,7 @@ RS.Heartbeat:Connect(function(dt)
    tinggiTotal=fApex-r.Position.Y
   end
 
+  -- pemicu benturan (sekali per jatuh, 3 jalur)
   if not fBentur and sudahTurun>15 and v.Y<-40 then
    local picu=false
    if tinggiTotal and tinggiTotal>=cfg.fMinJatuh
@@ -723,7 +723,34 @@ RS.Heartbeat:Connect(function(dt)
    end
    if picu then
     fBentur=true
-    fBenturSampai=now+cfg.fBenturDur
+
+    -- ===== SIMULASI KENA RANTING (semua instan, 1 frame) =====
+    pcall(function()
+     -- 1. micro-bounce: velocity vertikal dipantulkan kecil
+     --    (ala mantul di ranting) - horizontal TIDAK disentuh
+     local hor=Vector3.new(v.X,0,v.Z) -- momentum WASD utuh
+     local buncis=cfg.fBounce
+     hp.AssemblyLinearVelocity=Vector3.new(hor.X,buncis,hor.Z)
+    end)
+    -- 2. landed-semu: reset persepsi jatuh internal game
+    task.delay(0.03,function()
+     if not RUN then return end
+     pcall(function()
+      local _,h2,_=ch()
+      if h2 and h2:GetState()==Enum.HumanoidStateType.Freefall then
+       h2:ChangeState(Enum.HumanoidStateType.Landed)
+       task.delay(0.03,function()
+        if not RUN then return end
+        pcall(function()
+         local _,h3,_=ch()
+         if h3 and h3:GetState()==Enum.HumanoidStateType.Landed then
+          h3:ChangeState(Enum.HumanoidStateType.Freefall)
+         end
+        end)
+       end)
+      end
+     end)
+    end)
    end
   end
 
@@ -965,8 +992,6 @@ local hClose=mk("TextButton",{Size=UDim2.new(1,-20,0,24),Position=UDim2.new(0,10
  Text="X TUTUP",ZIndex=61},helpF)
 corner(hClose,7)
 hClose.MouseButton1Click:Connect(function() helpF.Visible=false end)
-
--- tombol ? di samping close
 local helpB=mk("TextButton",{BackgroundColor3=C.card2,Size=UDim2.fromOffset(26,26),
  Position=UDim2.new(1,-64,0,7),Font=F_B,TextSize=12,TextColor3=C.putih,Text="?",
  AutoButtonColor=false,ZIndex=55},root)
