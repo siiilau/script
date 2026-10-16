@@ -1,5 +1,15 @@
 --========================================================
 --  SIIILAU HUB SCRIPTS v1.0.1
+--  F=GUI  Q=speed  Q Q=sprint  V=jump  G=moonwalk
+--  R=hide player  T=brightness  C=renang  X=dinding
+--  Z=info  K K=hapus
+--
+--  MOONWALK: badan TERKUNCI menghadap kamera/layar
+--  FALL ASSIST v3 (SIMPLE - FINAL):
+--   lompat - jatuh - NYENGGOL sekali di 80% perjalanan
+--   - jatuh sebentar - mendarat - selesai
+--   Cuma 2 pengaturan: MIN JATUH (50) & POSISI BENTUR (0.80)
+--   Kecepatan setelah nyenggol: -30 (internal)
 --========================================================
 print("[SilauHub] v1.0.1 loading...")
 
@@ -36,9 +46,9 @@ local cfg={
  wOff=17.10, wOn=17.25,
  sOff=21.10, sOn=21.25,
  jOff=51.25, jOn=65.50,
- -- FALL ASSIST v3 (SIMPLE)
+ -- FALL ASSIST v3 (SIMPLE - FINAL)
  fMinJatuh=50,   -- jatuh harus lebih tinggi dari ini (stud)
- fPosisi=0.80,   -- nyenggol di 20% perjalanan jatuh
+ fPosisi=0.80,   -- nyenggol di 80% perjalanan jatuh (dekat tanah)
  fBenturKe=-30,  -- (internal tetap) kecepatan setelah nyenggol
 }
 
@@ -379,7 +389,7 @@ header(1,"Jatuh Cerdas")
 local tgFall=rTgl(1,"Smart Fall Assist",nil,false,function(v)
  mv.fall=v
 end)
-rInfo(1,"Lompat - jatuh - nyenggol sekali di 20% perjalanan\n- jatuh normal - mendarat. Sekali saja.\nDarah tidak disentuh. Tanpa notif.",40)
+rInfo(1,"Jatuh normal kencang -> nyenggol sekali di 80%\n(menjelang tanah) -> mendarat pelan.\nSekali saja. Darah tidak disentuh. Tanpa notif.",40)
 
 header(1,"Pengaturan Fall Assist")
 rNum(1,"MIN JATUH",cfg.fMinJatuh,function(n) cfg.fMinJatuh=n end)
@@ -660,10 +670,9 @@ LP.CharacterAdded:Connect(function(c)
 end)
 
 -- ================================================================
---  FALL ASSIST v3 (SIMPLE)
---  lompat - jatuh - NYENGGOL SEKALI di 20% perjalanan
---  - jatuh normal - mendarat - selesai
---  Nyenggol = velocity vertikal langsung mati (internal -30)
+--  FALL ASSIST v3 (SIMPLE - FINAL)
+--  Jatuh normal kencang -> NYENGGOL SEKALI di 80% perjalanan
+--  (velocity vertikal langsung jadi -30, tanpa pantulan)
 --  + landed-semu (reset persepsi jatuh game)
 --  WASD bebas. Darah tidak disentuh. Tanpa notif.
 -- ================================================================
@@ -699,22 +708,22 @@ RS.Heartbeat:Connect(function(dt)
    tinggiTotal=fApex-r.Position.Y
   end
 
-  -- ===== NYENGGOL SEKALI di POSISI BENTUR =====
+  -- ===== NYENGGOL SEKALI di POSISI BENTUR (80%) =====
   if not fBentur and sudahTurun>10 and v.Y<-40 then
    local picu=false
-   -- syarat utama: tinggi jatuh >= MIN JATUH & sudah melewati titik posisi
+   -- syarat utama: tinggi jatuh >= MIN JATUH & sudah melewati titik 80%
    if tinggiTotal and tinggiTotal>=cfg.fMinJatuh
    and sisaJatuh<=tinggiTotal*(1-cfg.fPosisi) then
     picu=true
    end
    -- jaring pengaman internal: kalau tanah tak terdeteksi
-   -- dan sudah lama jatuh, anggap sudah lewat titik posisi
+   -- dan sudah lama jatuh kencang, lakukan nyenggolan sekarang
    if not picu and not tinggiTotal and (now-fSejak)>0.6 and v.Y<-70 then
     picu=true
    end
    if picu then
     fBentur=true
-    -- velocity vertikal mati (ala nyenggol ranting)
+    -- velocity vertikal langsung jadi -30 (ala kena tepi)
     -- WASD (horizontal) tidak disentuh
     pcall(function()
      local hor=Vector3.new(v.X,0,v.Z)
