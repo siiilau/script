@@ -1,11 +1,12 @@
 --========================================================
---  SILAU NEON MAIN v1.1 — Script Utama Gabungan
---  TELEPORT (v1.0.1) + TIANG PATH (v1.4.3) + KING UTILITY (v1.5)
+--  SILAU NEON MAIN v1.2 — Script Utama Gabungan
+--  TIANG PATH (v1.4.3) + KING UTILITY (v1.5)
 --    + CAHAYA AUTO + FALL ASSIST v3.1 "VIRTUAL BRANCH"
+--  (Tab TELEPORT dihapus v1.2 — fokus ke TIANG/RECORD/KING)
 --
 --  TEMA: SILAU NEON (ungu/biru LED)
 --  Keybind:
---    F = buka/tutup GUI
+--    F = buka/tutup GUI (saat tutup = hilang total)
 --    Y = pasang tiang
 --    G = rekam jalur
 --    Q = Speed      C = Shiftlock Mobile
@@ -14,7 +15,7 @@
 --    K = Rejoin (double-tap)
 --========================================================
 
-local VERSI = "1.1-MAIN"
+local VERSI = "1.2-MAIN"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -70,7 +71,6 @@ local CFG = {
     LED_TEXT        = "⚡ S I L A U ⚡",
     SOUND_ON        = true,
     FX_LEVEL        = 1,
-    NAMA_FILE_TP     = "TeleportGui_Silau.json",
     NAMA_FILE_TIANG  = "TiangPath_Silau.json",
     NAMA_FILE_TIANG_B = "TiangPath_Silau_backup.json",
     DEFAULT_SPEED  = 17.25,
@@ -232,22 +232,19 @@ local Setters, Switches = {}, {}
 local setFeature, togglePanel, resetAll, rejoin, unloadScript
 local applySpeed, applyJump, updateJumpLabel
 local RefreshSpeed, RefreshJump, JumpLabel
-local refreshListTP, refreshListTiang, refreshRekList
+local refreshListTiang, refreshRekList
 local mulaiRekam, stopRekam, toggleRekam
-local toggleAutoTP, autoUpdateTombol, autoSetStatus
 local pasangTiang
 local cfgFall, oLight, fallState, fallRay, lightConn
 
 -- Forward declare untuk part3 (FX/footer/icon) — di-expose via buildFX()
-local konfeti, emojiBurst, pusatDiRoot, pulseIkon, toast
+local konfeti, emojiBurst, pusatDiRoot, toast
 local kumpulkanFade, setFade, fadeVal
-local folderDunia, folderRekaman, icon, iconScale, kotakPutih
+local folderDunia, folderRekaman
 
 -- Forward declare untuk part2 (UI builder) — di-expose via buildUI()
 local tabBtns, kontenTabs, setTab
-local kontenTP, kontenTiang, kontenRekam, kontenKing, scrollKing
-local nameBoxTP, nameStrokeTP, saveBtnTP, searchBoxTP, searchStrokeTP, listLabelTP, scrollTP
-local autoUI, autoState, autoPanel
+local kontenTiang, kontenRekam, kontenKing, scrollKing
 local nameBoxTiang, nameStrokeTiang, saveBtnTiang, searchBoxTiang, searchStrokeTiang
 local btnBersih, btnGaris, btnSambung, btnPutus, btnPulihkan, listLabelTiang, scrollTiang
 local recBtn, statusLabelRek, btnTampilRek, btnGabung, btnSemua, listLabelRek, scrollRek
@@ -556,24 +553,24 @@ local accent = buat("Frame", {
     BorderSizePixel = 0,
 }, panel)
 ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
--- [7b] TAB BAR (4 TAB) ---------------------------------------------
+-- [7b] TAB BAR (3 TAB — TELEPORT DIHAPUS) ---------------------------
 -- Bungkus dengan function untuk hemat local count (Luau limit 200)
 local function buildUI()
 tabBtns = {}
-local tabLabels = {"🚀 TELEPORT", "🗄️ TIANG", "🔴 RECORD", "👑 KING"}
-local tabColors = {Warna.Ungu, Warna.Biru, Warna.Hijau2, Warna.Ungu2}
+local tabLabels = {"🗄️ TIANG", "🔴 RECORD", "👑 KING"}
+local tabColors = {Warna.Biru, Warna.Hijau2, Warna.Ungu2}
 kontenTabs = {}
 
 for i, lbl in ipairs(tabLabels) do
     local tab = buat("TextButton", {
-        Size = UDim2.new(0.25, -3, 0, 24),
-        Position = UDim2.new((i - 1) * 0.25, 6 + (i - 1) * 2, 0, 50),
+        Size = UDim2.new(1/3, -3, 0, 24),
+        Position = UDim2.new((i - 1) / 3, 6 + (i - 1) * 2, 0, 50),
         BackgroundColor3 = (i == 1) and tabColors[i] or Warna.AbuMuda,
         BorderSizePixel = 0,
         FontFace = fnt("bold"),
         Text = lbl,
         TextColor3 = (i == 1) and Warna.Putih or Warna.AbuTeks,
-        TextSize = 9,
+        TextSize = 10,
         AutoButtonColor = false,
     }, panel)
     buat("UICorner", {CornerRadius = UDim.new(0, 6)}, tab)
@@ -590,7 +587,7 @@ setTab = function(n)
     for i, k in ipairs(kontenTabs) do
         k.Visible = (i == n)
     end
-    bunyi(CFG.SND_PING, 0.2, n == 1 and 1.1 or (n == 2 and 1.2 or (n == 3 and 1.3 or 1.4)))
+    bunyi(CFG.SND_PING, 0.2, 1.0 + 0.1 * n)
 end
 
 for i, t in ipairs(tabBtns) do
@@ -600,327 +597,6 @@ for i, t in ipairs(tabBtns) do
         setTab(idx)
     end)
 end
-
--- [7c] KONTEN TAB 1: TELEPORT --------------------------------------
-kontenTP = buat("Frame", {
-    Position = UDim2.new(0, 0, 0, 80),
-    Size = UDim2.new(1, 0, 1, -110),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-}, panel)
-table.insert(kontenTabs, kontenTP)
-
-nameBoxTP = buat("TextBox", {
-    Size = UDim2.new(1, -116, 0, 32),
-    Position = UDim2.new(0, 12, 0, 2),
-    BackgroundColor3 = Warna.AbuMuda,
-    BorderSizePixel = 0,
-    FontFace = fnt("med"),
-    PlaceholderText = "📍 Ketik nama lokasi...",
-    PlaceholderColor3 = Warna.AbuTeks,
-    Text = "",
-    TextColor3 = Warna.TeksGelap,
-    TextSize = 13,
-    ClearTextOnFocus = false,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, kontenTP)
-buat("UICorner", {CornerRadius = UDim.new(0, 9)}, nameBoxTP)
-nameStrokeTP = buat("UIStroke", {Color = Warna.Ungu, Thickness = 1, Transparency = 0.5}, nameBoxTP)
-buat("UIPadding", {PaddingLeft = UDim.new(0, 10)}, nameBoxTP)
-
-saveBtnTP = buat("TextButton", {
-    Size = UDim2.fromOffset(92, 32),
-    Position = UDim2.new(1, -104, 0, 2),
-    BackgroundColor3 = Warna.Putih,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "💾 SIMPAN",
-    TextColor3 = Warna.Putih,
-    TextSize = 12,
-    AutoButtonColor = false,
-}, kontenTP)
-buat("UICorner", {CornerRadius = UDim.new(0, 9)}, saveBtnTP)
-ledSweep(saveBtnTP, Warna.Ungu, Warna.Putih, Warna.Biru2, 2.4)
-
-searchBoxTP = buat("TextBox", {
-    Size = UDim2.new(1, -24, 0, 28),
-    Position = UDim2.new(0, 12, 0, 40),
-    BackgroundColor3 = Warna.AbuMuda,
-    BorderSizePixel = 0,
-    FontFace = fnt("reg"),
-    PlaceholderText = "🔍 Cari lokasi...",
-    PlaceholderColor3 = Warna.AbuTeks,
-    Text = "",
-    TextColor3 = Warna.TeksGelap,
-    TextSize = 12,
-    ClearTextOnFocus = false,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, kontenTP)
-buat("UICorner", {CornerRadius = UDim.new(0, 9)}, searchBoxTP)
-searchStrokeTP = buat("UIStroke", {Color = Warna.Biru, Thickness = 1, Transparency = 0.6}, searchBoxTP)
-buat("UIPadding", {PaddingLeft = UDim.new(0, 10)}, searchBoxTP)
-
-listLabelTP = buat("TextLabel", {
-    Position = UDim2.new(0, 12, 0, 74),
-    Size = UDim2.new(1, -24, 0, 14),
-    BackgroundTransparency = 1,
-    FontFace = fnt("semi"),
-    Text = "📍 LOKASI TERSIMPAN • 0",
-    TextColor3 = Warna.AbuTeks,
-    TextSize = 10,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, kontenTP)
-
-scrollTP = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 92),
-    Size = UDim2.new(1, -24, 1, -272),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ScrollBarThickness = 4,
-    ScrollBarImageColor3 = Warna.Ungu,
-    ScrollingDirection = Enum.ScrollingDirection.Y,
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, kontenTP)
-buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTP)
-
--- [7c-bis] PANEL AUTO TP + RESPAWN + ANTI-AFK (di bawah scroll TP) ---
-autoUI = {}
-autoState = {
-    aktif        = false,
-    indeks       = 1,
-    delay        = 2,
-    loop         = true,
-    respawn      = true,
-    restart      = true,
-    respawnDelay = 3,
-    respawnWait  = 2,
-    gerak        = true,
-}
-
-autoPanel = buat("Frame", {
-    Name = "AutoPanel",
-    Position = UDim2.new(0, 12, 1, -176),
-    Size = UDim2.new(1, -24, 0, 168),
-    BackgroundColor3 = Warna.Hitam2,
-    BorderSizePixel = 0,
-}, kontenTP)
-buat("UICorner", {CornerRadius = UDim.new(0, 10)}, autoPanel)
-buat("UIStroke", {Color = Warna.Ungu, Thickness = 1, Transparency = 0.5}, autoPanel)
-ledSweep(autoPanel, Warna.Hitam2, Warna.Ungu, Warna.Biru, 4)
-
-buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 10, 0, 6),
-    Size = UDim2.new(0, 160, 0, 14),
-    FontFace = fnt("semi"),
-    Text = "🤖 AUTO TP + RESPAWN",
-    TextColor3 = Warna.UnguMuda,
-    TextSize = 11,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, autoPanel)
-
-autoUI.status = buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 10, 0, 22),
-    Size = UDim2.new(1, -118, 0, 12),
-    FontFace = fnt("reg"),
-    Text = "⏹ Nonaktif",
-    TextColor3 = Warna.AbuGelap,
-    TextSize = 10,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    TextTruncate = Enum.TextTruncate.AtEnd,
-}, autoPanel)
-
-autoUI.btn = buat("TextButton", {
-    Size = UDim2.fromOffset(92, 30),
-    Position = UDim2.new(1, -100, 0, 8),
-    BackgroundColor3 = Warna.Hijau,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "▶ MULAI",
-    TextColor3 = Warna.Putih,
-    TextSize = 12,
-    AutoButtonColor = false,
-}, autoPanel)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, autoUI.btn)
-autoUI.btnStroke = buat("UIStroke", {Color = Warna.HijauMuda, Thickness = 1, Transparency = 0.4}, autoUI.btn)
-
-buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 10, 0, 44),
-    Size = UDim2.fromOffset(52, 22),
-    FontFace = fnt("med"),
-    Text = "⏱ Delay",
-    TextColor3 = Warna.Putih,
-    TextSize = 10,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, autoPanel)
-
-autoUI.delayBox = buat("TextBox", {
-    Size = UDim2.fromOffset(44, 22),
-    Position = UDim2.new(0, 62, 0, 44),
-    BackgroundColor3 = Warna.Hitam,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    PlaceholderText = "2",
-    PlaceholderColor3 = Warna.AbuGelap,
-    Text = tostring(autoState.delay),
-    TextColor3 = Warna.HijauMuda,
-    TextSize = 11,
-    ClearTextOnFocus = false,
-}, autoPanel)
-buat("UICorner", {CornerRadius = UDim.new(0, 6)}, autoUI.delayBox)
-local delayGStroke = buat("UIStroke", {Color = Warna.Hijau, Thickness = 1, Transparency = 0.5}, autoUI.delayBox)
-buat("UIPadding", {PaddingLeft = UDim.new(0, 6)}, autoUI.delayBox)
-sorotInput(autoUI.delayBox, delayGStroke, 0.5)
-
-buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 110, 0, 44),
-    Size = UDim2.fromOffset(36, 22),
-    FontFace = fnt("reg"),
-    Text = "detik",
-    TextColor3 = Warna.AbuGelap,
-    TextSize = 10,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, autoPanel)
-
-autoUI.loopBtn = buat("TextButton", {
-    Size = UDim2.fromOffset(94, 22),
-    Position = UDim2.new(1, -104, 0, 44),
-    BackgroundColor3 = Warna.Hijau,
-    BackgroundTransparency = 0.78,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "🔁 Loop: ON",
-    TextColor3 = Warna.HijauMuda,
-    TextSize = 10,
-    AutoButtonColor = false,
-}, autoPanel)
-buat("UICorner", {CornerRadius = UDim.new(0, 6)}, autoUI.loopBtn)
-buat("UIStroke", {Color = Warna.Hijau, Thickness = 1, Transparency = 0.45}, autoUI.loopBtn)
-
-autoUI.respawnBtn = buat("TextButton", {
-    Size = UDim2.fromOffset(122, 22),
-    Position = UDim2.new(0, 10, 0, 68),
-    BackgroundColor3 = Warna.Hijau,
-    BackgroundTransparency = 0.78,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "💀 Respawn: ON",
-    TextColor3 = Warna.HijauMuda,
-    TextSize = 10,
-    AutoButtonColor = false,
-}, autoPanel)
-buat("UICorner", {CornerRadius = UDim.new(0, 6)}, autoUI.respawnBtn)
-buat("UIStroke", {Color = Warna.Hijau, Thickness = 1, Transparency = 0.45}, autoUI.respawnBtn)
-
-buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 136, 0, 68),
-    Size = UDim2.fromOffset(40, 22),
-    FontFace = fnt("reg"),
-    Text = "tunggu",
-    TextColor3 = Warna.AbuGelap,
-    TextSize = 10,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, autoPanel)
-
-autoUI.respawnDelayBox = buat("TextBox", {
-    Size = UDim2.fromOffset(36, 22),
-    Position = UDim2.new(0, 176, 0, 68),
-    BackgroundColor3 = Warna.Hitam,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    PlaceholderText = "3",
-    PlaceholderColor3 = Warna.AbuGelap,
-    Text = tostring(autoState.respawnDelay),
-    TextColor3 = Warna.HijauMuda,
-    TextSize = 11,
-    ClearTextOnFocus = false,
-}, autoPanel)
-buat("UICorner", {CornerRadius = UDim.new(0, 6)}, autoUI.respawnDelayBox)
-local rDelayStroke = buat("UIStroke", {Color = Warna.Hijau, Thickness = 1, Transparency = 0.5}, autoUI.respawnDelayBox)
-buat("UIPadding", {PaddingLeft = UDim.new(0, 6)}, autoUI.respawnDelayBox)
-sorotInput(autoUI.respawnDelayBox, rDelayStroke, 0.5)
-
-buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 214, 0, 68),
-    Size = UDim2.fromOffset(34, 22),
-    FontFace = fnt("reg"),
-    Text = "detik",
-    TextColor3 = Warna.AbuGelap,
-    TextSize = 10,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, autoPanel)
-
-autoUI.restartBtn = buat("TextButton", {
-    Size = UDim2.new(1, -20, 0, 18),
-    Position = UDim2.new(0, 10, 0, 92),
-    BackgroundColor3 = Warna.Hijau,
-    BackgroundTransparency = 0.78,
-    BorderSizePixel = 0,
-    FontFace = fnt("reg"),
-    Text = "⚰ Mati di tengah → mulai lagi titik 1: ON",
-    TextColor3 = Warna.HijauMuda,
-    TextSize = 9,
-    TextTruncate = Enum.TextTruncate.AtEnd,
-    AutoButtonColor = false,
-}, autoPanel)
-buat("UICorner", {CornerRadius = UDim.new(0, 6)}, autoUI.restartBtn)
-buat("UIStroke", {Color = Warna.Hijau, Thickness = 1, Transparency = 0.45}, autoUI.restartBtn)
-
-autoUI.afkBtn = buat("TextButton", {
-    Size = UDim2.fromOffset(118, 22),
-    Position = UDim2.new(0, 10, 0, 114),
-    BackgroundColor3 = Warna.Hijau,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "👻 Anti-AFK: ON",
-    TextColor3 = Warna.HijauMuda,
-    TextSize = 10,
-    AutoButtonColor = false,
-}, autoPanel)
-buat("UICorner", {CornerRadius = UDim.new(0, 6)}, autoUI.afkBtn)
-buat("UIStroke", {Color = Warna.Hijau, Thickness = 1, Transparency = 0.45}, autoUI.afkBtn)
-
-autoUI.afkStatus = buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 134, 0, 114),
-    Size = UDim2.new(1, -144, 0, 22),
-    FontFace = fnt("reg"),
-    Text = "🛡 siaga",
-    TextColor3 = Warna.HijauMuda,
-    TextSize = 9,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, autoPanel)
-
-autoUI.gerakBtn = buat("TextButton", {
-    Size = UDim2.fromOffset(118, 22),
-    Position = UDim2.new(0, 10, 0, 138),
-    BackgroundColor3 = Warna.Hijau,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "🎭 Gerak Summit: ON",
-    TextColor3 = Warna.HijauMuda,
-    TextSize = 10,
-    AutoButtonColor = false,
-}, autoPanel)
-buat("UICorner", {CornerRadius = UDim.new(0, 6)}, autoUI.gerakBtn)
-buat("UIStroke", {Color = Warna.Hijau, Thickness = 1, Transparency = 0.45}, autoUI.gerakBtn)
-
-buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 134, 0, 138),
-    Size = UDim2.new(1, -144, 0, 22),
-    FontFace = fnt("reg"),
-    Text = "jalan • putar • lompat (acak)",
-    TextColor3 = Warna.AbuGelap,
-    TextSize = 9,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, autoPanel)
 
 -- [7d] KONTEN TAB 2: TIANG ------------------------------------------
 kontenTiang = buat("Frame", {
@@ -1279,17 +955,29 @@ local function kingToggleRow(labelText, keyText, featureName)
     return row, label
 end
 
-local function kingStepperRow(getV, setV)
+local function kingStepperRow(labelText, getV, setV)
     local row = buat("Frame", {
         BackgroundColor3 = Warna.AbuItem,
         Size = UDim2.new(1, 0, 0, 30),
         LayoutOrder = nextOrder(),
     }, scrollKing)
     buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
+    if labelText then
+        buat("TextLabel", {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 10, 0, 0),
+            Size = UDim2.new(0, 100, 1, 0),
+            FontFace = fnt("med"),
+            TextSize = 11,
+            TextColor3 = Warna.TeksGelap,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = labelText,
+        }, row)
+    end
     local minus = buat("TextButton", {
         BackgroundColor3 = Warna.Card2,
         Size = UDim2.new(0, 32, 0, 22),
-        Position = UDim2.new(0, 8, 0.5, -11),
+        Position = UDim2.new(0, labelText and 110 or 8, 0.5, -11),
         FontFace = fnt("bold"),
         TextSize = 15,
         TextColor3 = Warna.Putih,
@@ -1300,7 +988,7 @@ local function kingStepperRow(getV, setV)
     local box = buat("TextBox", {
         BackgroundColor3 = Warna.Hitam2,
         Size = UDim2.new(1, -92, 0, 22),
-        Position = UDim2.new(0, 46, 0.5, -11),
+        Position = UDim2.new(0, labelText and 148 or 46, 0.5, -11),
         FontFace = fnt("reg"),
         TextSize = 13,
         TextColor3 = Warna.Putih,
@@ -1320,12 +1008,18 @@ local function kingStepperRow(getV, setV)
     }, row)
     buat("UICorner", {CornerRadius = UDim.new(0, 6)}, plus)
     local function refresh() box.Text = fmtNum(getV()) end
-    minus.MouseButton1Click:Connect(function() setV(clamp2(getV() - 0.25)); refresh() end)
-    plus.MouseButton1Click:Connect(function() setV(clamp2(getV() + 0.25)); refresh() end)
+    local function notifChange()
+        if labelText then
+            toast(labelText .. ": " .. fmtNum(getV()), Warna.Biru)
+        end
+    end
+    minus.MouseButton1Click:Connect(function() setV(clamp2(getV() - 0.25)); refresh(); notifChange() end)
+    plus.MouseButton1Click:Connect(function() setV(clamp2(getV() + 0.25)); refresh(); notifChange() end)
     box.FocusLost:Connect(function()
         local n = tonumber(box.Text)
         if n then setV(clamp2(math.clamp(n, 0, 1000))) end
         refresh()
+        notifChange()
     end)
     return refresh
 end
@@ -1394,6 +1088,7 @@ lightConn = nil
 kingHeader("Player")
 kingToggleRow("Speed", "Q", "Speed")
 RefreshSpeed = kingStepperRow(
+    "Speed",
     function() return State.SpeedValue end,
     function(v)
         State.SpeedValue = v
@@ -1403,6 +1098,7 @@ RefreshSpeed = kingStepperRow(
 local _, jumpLabelRow = kingToggleRow("JumpPower", nil, "Jump")
 JumpLabel = jumpLabelRow
 RefreshJump = kingStepperRow(
+    "Jump",
     function()
         local hum = getHum()
         if hum and hum.UseJumpPower == false then return State.JumpHeightValue end
@@ -1466,6 +1162,7 @@ local function kingNumRow(labelText, default, cb)
         if n then
             cb(n)
             bx.Text = string.format("%.2f", n)
+            toast(labelText .. ": " .. string.format("%.2f", n), Warna.Biru)
         else
             bx.Text = string.format("%.2f", default)
         end
@@ -1546,7 +1243,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(322, 0),
     Size = UDim2.fromOffset(1400, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = GUI   ✦   🚀 TELEPORT: 💾 simpan + 🤖 auto TP + respawn   ✦   🗄️ TIANG: Y pasang + 🔗 sambung   ✦   🔴 RECORD: G rekam + 🎯 solo   ✦   👑 KING: Q Speed / C Shift / R Hide / X Walls / T Cahaya / Fall Assist   ✦   👻 Anti-AFK aktif",
+    Text = "⌨ F = GUI (tutup = hilang)   ✦   🗄️ TIANG: Y pasang + 🔗 sambung   ✦   🔴 RECORD: G rekam + 🎯 solo   ✦   👑 KING: Q Speed / C Shift / R Hide / X Walls / T Cahaya / Fall Assist   ✦   Notif tiap toggle",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1732,63 +1429,6 @@ pusatDiRoot = function(gui)
         0, gui.AbsolutePosition.Y - root.AbsolutePosition.Y + sz.Y / 2)
 end
 
--- [11] IKON MINIMIZE ------------------------------------------------
-icon = buat("Frame", {
-    Name = "Ikon",
-    Size = UDim2.fromOffset(CFG.ICON_SIZE, CFG.ICON_SIZE),
-    Position = UDim2.new(0, 10, 1, -10),
-    AnchorPoint = Vector2.new(0, 1),
-    BackgroundColor3 = Warna.Hitam,
-    BorderSizePixel = 0,
-    Visible = false,
-}, screenGui)
-buat("UICorner", {CornerRadius = UDim.new(0, 10)}, icon)
-local iconStroke = buat("UIStroke", {Color = Warna.Ungu, Thickness = 2}, icon)
-iconScale = buat("UIScale", {Scale = 1}, icon)
-
-kotakPutih = buat("Frame", {
-    Size = UDim2.fromOffset(18, 18),
-    Position = UDim2.new(0.5, -9, 0.5, -9),
-    BackgroundColor3 = Warna.Putih,
-    BorderSizePixel = 0,
-    Rotation = 18,
-}, icon)
-buat("UICorner", {CornerRadius = UDim.new(0, 3)}, kotakPutih)
-local lubang = buat("Frame", {
-    Size = UDim2.fromOffset(8, 8),
-    Position = UDim2.new(0.5, -4, 0.5, -4),
-    BackgroundColor3 = Warna.Hitam,
-    BorderSizePixel = 0,
-}, kotakPutih)
-buat("UICorner", {CornerRadius = UDim.new(0, 2)}, lubang)
-
-cycleColor(kotakPutih, "BackgroundColor3", {Warna.Putih, Warna.UnguMuda, Warna.BiruMuda}, 0.8)
-icon.MouseEnter:Connect(function()
-    tween(iconScale, TweenInfo.new(0.15, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1.18})
-    tween(kotakPutih, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Rotation = 30})
-end)
-icon.MouseLeave:Connect(function()
-    tween(iconScale, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1})
-    tween(kotakPutih, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Rotation = 18})
-end)
-task.spawn(function()
-    while icon.Parent do
-        if icon.Visible then
-            tween(iconStroke, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.5})
-            task.wait(0.8)
-            if not icon.Parent then break end
-            tween(iconStroke, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0})
-            task.wait(0.8)
-        else
-            task.wait(0.5)
-        end
-    end
-end)
-
-pulseIkon = function()
-    if not icon.Visible then return end
-    tween(iconScale, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 1, true), {Scale = 1.35})
-end
 
 -- [12] TOAST --------------------------------------------------------
 toast = function(teks, aksen)
@@ -1897,81 +1537,13 @@ local tampilRekamanGlobal = true
 local recBadge, recBadgeLabel = nil, nil
 local tepiRekam = {}
 
--- [13d] STATE TELEPORT ----------------------------------------------
-local lokasiTersimpan = {}
-local counterNamaTP = 0
--- [14] LOGIKA TELEPORT ----------------------------------------------
+-- [13d] STATE TELEPORT — DIHAPUS (tab teleport dihapus)
+-- lokasiTersimpan & counterNamaTP tidak lagi dipakai
+-- [14] LOGIKA TELEPORT — DIHAPUS (tab teleport dihapus)
 -- Bungkus part4+5+6 dengan function untuk hemat local count (Luau limit 200)
 local function initLogic()
-local function muatLokasiTP()
-    if not fileOk then return end
-    local isi
-    pcall(function() isi = readfile(CFG.NAMA_FILE_TP) end)
-    if type(isi) ~= "string" or #isi == 0 then return end
-    local data
-    pcall(function() data = HttpService:JSONDecode(isi) end)
-    if type(data) ~= "table" or type(data.games) ~= "table" then return end
-    local entri = data.games[tostring(game.PlaceId)]
-    if type(entri) ~= "table" then return end
-    for _, e in ipairs(entri) do
-        if type(e) == "table" and type(e.nama) == "string"
-        and type(e.cf) == "table" and #e.cf >= 12 then
-            local ok, cf = pcall(CFrame.new, table.unpack(e.cf, 1, 12))
-            if ok and cf then
-                table.insert(lokasiTersimpan, {
-                    id     = tostring(e.id or e.nama),
-                    nama   = e.nama,
-                    cframe = cf,
-                    delay  = tonumber(e.delay),
-                })
-            end
-        end
-    end
-end
 
-local function simpanKeFileTP()
-    if not fileOk then return end
-    local data = { games = {} }
-    local isi
-    pcall(function() isi = readfile(CFG.NAMA_FILE_TP) end)
-    if type(isi) == "string" and #isi > 0 then
-        local lama
-        pcall(function() lama = HttpService:JSONDecode(isi) end)
-        if type(lama) == "table" and type(lama.games) == "table" then
-            data.games = lama.games
-        end
-    end
-    local daftar = {}
-    for _, l in ipairs(lokasiTersimpan) do
-        table.insert(daftar, {
-            id    = l.id,
-            nama  = l.nama,
-            delay = l.delay,
-            cf    = { l.cframe:GetComponents() },
-        })
-    end
-    data.games[tostring(game.PlaceId)] = daftar
-    local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
-    if ok and type(json) == "string" then
-        pcall(function() writefile(CFG.NAMA_FILE_TP, json) end)
-    end
-end
-
-muatLokasiTP()
-
-local function nomorUlangTP()
-    local n = 0
-    for _, l in ipairs(lokasiTersimpan) do
-        if l.nama:match("^Lokasi %d+$") then
-            n += 1
-            l.nama = "Lokasi " .. n
-        end
-    end
-    counterNamaTP = n
-end
-nomorUlangTP()
-if fileOk and #lokasiTersimpan > 0 then simpanKeFileTP() end
-
+-- Hanya teleportKe & fxTeleport yang dipertahankan (dipakai TIANG/RECORD)
 local function fxTeleport()
     bunyi(CFG.SND_WHOOSH, 0.4, 1.1)
     local fl = buat("Frame", {
@@ -2009,542 +1581,6 @@ local function teleportKe(cf)
     hrp.AssemblyAngularVelocity = Vector3.zero
 end
 
--- [14b] REFRESH LIST TELEPORT ---------------------------------------
-refreshListTP = function(animasi)
-    for _, c in ipairs(scrollTP:GetChildren()) do
-        if c:IsA("GuiObject") then c:Destroy() end
-    end
-    local q = searchBoxTP.Text:lower():gsub("^%s+", ""):gsub("%s+$", "")
-    local daftar = {}
-    for _, lok in ipairs(lokasiTersimpan) do
-        if q == "" or lok.nama:lower():find(q, 1, true) then
-            table.insert(daftar, lok)
-        end
-    end
-    listLabelTP.Text = (q ~= "" and "🔍 HASIL" or "📍 LOKASI TERSIMPAN")
-        .. string.format(" • %d", #daftar)
-
-    if #daftar == 0 then
-        local kosong = buat("Frame", {
-            Size = UDim2.new(1, -6, 1, 0), BackgroundTransparency = 1,
-        }, scrollTP)
-        local ring = buat("Frame", {
-            Name = "NoFade", AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.5, 0, 0, 40), Size = UDim2.fromOffset(46, 46),
-            BackgroundTransparency = 1, BorderSizePixel = 0,
-        }, kosong)
-        buat("UICorner", {CornerRadius = UDim.new(1, 0)}, ring)
-        local ringS = buat("UIStroke", {Color = Warna.Ungu, Thickness = 2, Transparency = 0.4}, ring)
-        tween(ringS, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Transparency = 0.9})
-        tween(ring, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Size = UDim2.fromOffset(58, 58)})
-        local pin = buat("TextLabel", {
-            Name = "NoFade", AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.5, 0, 0, 40), Size = UDim2.fromOffset(40, 40),
-            BackgroundTransparency = 1, Font = Enum.Font.SourceSans,
-            Text = "📍", TextSize = 30,
-        }, kosong)
-        task.spawn(function()
-            while pin.Parent do
-                tween(pin, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = UDim2.new(0.5, 0, 0, 34)})
-                task.wait(0.9)
-                if not pin.Parent then break end
-                tween(pin, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = UDim2.new(0.5, 0, 0, 40)})
-                task.wait(0.9)
-            end
-        end)
-        buat("TextLabel", {
-            Position = UDim2.new(0, 10, 0, 82),
-            Size = UDim2.new(1, -20, 0, 40),
-            BackgroundTransparency = 1,
-            FontFace = fnt("med"),
-            Text = q ~= "" and ('Tidak ada hasil untuk "' .. q .. '"')
-                or "Belum ada lokasi tersimpan.\nIsi nama lalu klik SIMPAN.",
-            TextColor3 = Warna.AbuTeks,
-            TextSize = 12,
-            TextWrapped = true,
-        }, kosong)
-        kumpulkanFade()
-        return
-    end
-
-    for i, lok in ipairs(daftar) do
-        local item = buat("Frame", {
-            Size = UDim2.new(1, -6, 0, 36),
-            BackgroundColor3 = Warna.AbuItem,
-            BorderSizePixel = 0,
-            LayoutOrder = i,
-        }, scrollTP)
-        buat("UICorner", {CornerRadius = UDim.new(0, 9)}, item)
-
-        if animasi then
-            local sc = buat("UIScale", {Scale = 0.6}, item)
-            task.delay(0.05 * i, function()
-                if item.Parent then
-                    tween(sc, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
-                end
-            end)
-        end
-
-        item.MouseEnter:Connect(function()
-            tween(item, TweenInfo.new(0.12), {BackgroundColor3 = Warna.UnguMuda})
-        end)
-        item.MouseLeave:Connect(function()
-            tween(item, TweenInfo.new(0.12), {BackgroundColor3 = Warna.AbuItem})
-        end)
-
-        local badge = buat("TextLabel", {
-            Position = UDim2.new(0, 8, 0.5, -9),
-            Size = UDim2.fromOffset(18, 18),
-            BackgroundColor3 = Warna.Putih,
-            BorderSizePixel = 0,
-            FontFace = fnt("bold"),
-            Text = tostring(i),
-            TextColor3 = Warna.Putih,
-            TextSize = 11,
-        }, item)
-        buat("UICorner", {CornerRadius = UDim.new(1, 0)}, badge)
-        buat("UIGradient", {Color = ColorSequence.new(Warna.Ungu, Warna.Biru), Rotation = i % 2 == 0 and 25 or -25}, badge)
-
-        local nameEdit = buat("TextBox", {
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 32, 0, 0),
-            Size = UDim2.new(1, -192, 1, 0),
-            FontFace = fnt("med"),
-            Text = lok.nama,
-            TextColor3 = Warna.TeksGelap,
-            TextSize = 13,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ClearTextOnFocus = false,
-        }, item)
-        nameEdit.MouseEnter:Connect(function()
-            tween(nameEdit, TweenInfo.new(0.12), {BackgroundTransparency = 0.85})
-        end)
-        nameEdit.MouseLeave:Connect(function()
-            if not nameEdit:IsFocused() then
-                tween(nameEdit, TweenInfo.new(0.12), {BackgroundTransparency = 1})
-            end
-        end)
-        nameEdit.Focused:Connect(function() nameEdit.BackgroundTransparency = 0.85 end)
-        nameEdit.FocusLost:Connect(function()
-            nameEdit.BackgroundTransparency = 1
-            local baru = nameEdit.Text:gsub("^%s+", ""):gsub("%s+$", "")
-            if baru ~= "" and baru ~= lok.nama then
-                lok.nama = baru
-                nomorUlangTP()
-                nameEdit.Text = lok.nama
-                simpanKeFileTP()
-            elseif baru == "" then
-                nameEdit.Text = lok.nama
-            end
-        end)
-
-        local delayBox = buat("TextBox", {
-            Size = UDim2.fromOffset(38, 24),
-            Position = UDim2.new(1, -152, 0.5, -12),
-            BackgroundColor3 = Warna.Putih,
-            BorderSizePixel = 0,
-            FontFace = fnt("bold"),
-            PlaceholderText = "auto",
-            PlaceholderColor3 = Warna.AbuTeks,
-            Text = lok.delay and tostring(lok.delay) or "",
-            TextColor3 = Warna.Ungu,
-            TextSize = 11,
-            ClearTextOnFocus = false,
-        }, item)
-        buat("UICorner", {CornerRadius = UDim.new(0, 7)}, delayBox)
-        local delayStroke = buat("UIStroke", {Color = Warna.Ungu, Thickness = 1, Transparency = 0.65}, delayBox)
-        buat("UIPadding", {PaddingLeft = UDim.new(0, 5)}, delayBox)
-        sorotInput(delayBox, delayStroke, 0.65)
-        delayBox.FocusLost:Connect(function()
-            local n = angkaDari(delayBox.Text)
-            if n and n > 0 then
-                lok.delay = n
-                delayBox.Text = tostring(n)
-            else
-                lok.delay = nil
-                delayBox.Text = ""
-            end
-            simpanKeFileTP()
-        end)
-
-        local tpBtn = buat("TextButton", {
-            Size = UDim2.fromOffset(46, 26),
-            Position = UDim2.new(1, -110, 0.5, -13),
-            BackgroundColor3 = Warna.Putih,
-            BorderSizePixel = 0,
-            FontFace = fnt("bold"),
-            Text = "🚀 TP",
-            TextColor3 = Warna.Putih,
-            TextSize = 11,
-            AutoButtonColor = false,
-        }, item)
-        buat("UICorner", {CornerRadius = UDim.new(0, 7)}, tpBtn)
-        ledSweep(tpBtn, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.2)
-        tpBtn.MouseButton1Click:Connect(function()
-            ripple(tpBtn, Warna.Putih)
-            teleportKe(lok.cframe)
-            fxTeleport()
-            toast("🚀 Teleport ke " .. lok.nama, Warna.Biru)
-        end)
-
-        local delBtn = buat("TextButton", {
-            Size = UDim2.fromOffset(26, 26),
-            Position = UDim2.new(1, -34, 0.5, -13),
-            BackgroundColor3 = Warna.Merah,
-            BackgroundTransparency = 0.85,
-            BorderSizePixel = 0,
-            FontFace = fnt("reg"),
-            Text = "🗑️",
-            TextSize = 12,
-            AutoButtonColor = false,
-        }, item)
-        buat("UICorner", {CornerRadius = UDim.new(0, 7)}, delBtn)
-        buat("UIStroke", {Color = Warna.Merah, Thickness = 1, Transparency = 0.4}, delBtn)
-        delBtn.MouseButton1Click:Connect(function()
-            ripple(delBtn, Warna.Merah)
-            bunyi(CFG.SND_SNAP, 0.3, 0.7)
-            local sc = item:FindFirstChildOfClass("UIScale")
-            tween(item, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {BackgroundTransparency = 1})
-            if sc then tween(sc, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Scale = 0.6}) end
-            task.delay(0.17, function()
-                local namaHapus = lok.nama
-                for idx, l in ipairs(lokasiTersimpan) do
-                    if l == lok then
-                        table.remove(lokasiTersimpan, idx)
-                        break
-                    end
-                end
-                nomorUlangTP()
-                simpanKeFileTP()
-                toast("🗑️ Dihapus: " .. namaHapus, Warna.Merah)
-                refreshListTP(true)
-            end)
-        end)
-
-        efekTombol(tpBtn)
-        efekTombol(delBtn, 1.1)
-    end
-    kumpulkanFade()
-end
-
-local function simpanLokasi()
-    local _, hrp = getKarakter()
-    if not hrp then
-        toast("⚠️ Karakter belum siap", Warna.Merah)
-        return
-    end
-    local nama = nameBoxTP.Text:gsub("^%s+", ""):gsub("%s+$", "")
-    if nama == "" then
-        counterNamaTP += 1
-        nama = "Lokasi " .. counterNamaTP
-    end
-    table.insert(lokasiTersimpan, {
-        id     = idBaru(),
-        nama   = nama,
-        cframe = hrp.CFrame,
-    })
-    simpanKeFileTP()
-    nameBoxTP.Text = ""
-    nameBoxTP:ReleaseFocus()
-    refreshListTP(true)
-    scrollTP.CanvasPosition = Vector2.new(0, 1e6)
-    bunyi(CFG.SND_SNAP, 0.4)
-    konfeti(root, pusatDiRoot(saveBtnTP), 16)
-    emojiBurst(root, pusatDiRoot(saveBtnTP), {"🎉", "✨", "💾"}, 6)
-    toast(fileOk and ("💾 Tersimpan permanen: " .. nama) or ("💾 Tersimpan: " .. nama), Warna.Ungu)
-    pulseIkon()
-end
-
--- [14c] MESIN AUTO TP + RESPAWN -------------------------------------
-autoSetStatus = function(teks, warna)
-    if autoUI.status then
-        autoUI.status.Text = teks
-        autoUI.status.TextColor3 = warna or Warna.AbuGelap
-    end
-end
-
-autoUpdateTombol = function()
-    if not autoUI.btn then return end
-    if autoState.aktif then
-        autoUI.btn.Text = "⏹ STOP"
-        autoUI.btn.BackgroundColor3 = Warna.Merah
-        autoUI.btnStroke.Color = Warna.MerahMuda
-    else
-        autoUI.btn.Text = "▶ MULAI"
-        autoUI.btn.BackgroundColor3 = Warna.Hijau
-        autoUI.btnStroke.Color = Warna.HijauMuda
-    end
-end
-
-local function matikanKarakter()
-    local char, _, hum = getKarakter()
-    if hum then
-        if hum.SeatPart then hum.Sit = false end
-        hum.Health = 0
-        task.wait(0.4)
-        if hum.Health > 0 and hum.Parent then
-            pcall(function() hum:ChangeState(Enum.HumanoidStateType.Dead) end)
-        end
-    elseif char then
-        pcall(function() char:BreakJoints() end)
-    end
-end
-
-local function tungguRespawn(charLama, timeout)
-    local t0 = os.clock()
-    while os.clock() - t0 < (timeout or 25) do
-        local char = LocalPlayer.Character
-        if char and char ~= charLama then
-            local hrp = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart", 5)
-            if hrp then return char end
-        end
-        task.wait(0.1)
-    end
-    return nil
-end
-
-local function gerakanAcak(durasi)
-    if (durasi or 0) < 0.6 then return end
-    local _, hrp, hum = getKarakter()
-    if not hrp or not hum or hum.Health <= 0 then return end
-    local awalCf = hrp.CFrame
-    local t0 = os.clock()
-    local function jalan(arahFn, dur)
-        local t = os.clock()
-        while autoState.aktif and os.clock() - t < dur do
-            if hum.Health <= 0 then break end
-            hum:Move(arahFn(), false)
-            task.wait(0.08)
-        end
-        hum:Move(Vector3.zero, false)
-    end
-    local function putar(sudut, dur)
-        local langkah = 8
-        for _ = 1, langkah do
-            if not autoState.aktif or hum.Health <= 0 then break end
-            hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(sudut / langkah), 0)
-            task.wait(dur / langkah)
-        end
-    end
-    while autoState.aktif and os.clock() - t0 < durasi do
-        if hum.Health <= 0 then break end
-        local pola    = rnd(1, 5)
-        local langkah = rnd(25, 45) / 100
-        if pola == 1 then
-            jalan(function() return  hrp.CFrame.LookVector end, langkah)
-            jalan(function() return -hrp.CFrame.LookVector end, langkah)
-        elseif pola == 2 then
-            jalan(function() return -hrp.CFrame.LookVector end, langkah)
-            jalan(function() return  hrp.CFrame.LookVector end, langkah)
-        elseif pola == 3 then
-            jalan(function() return -hrp.CFrame.RightVector end, langkah)
-            jalan(function() return  hrp.CFrame.RightVector end, langkah)
-        elseif pola == 4 then
-            local a = rnd(30, 75) * (rnd(0, 1) == 0 and 1 or -1)
-            putar(a, 0.5)
-            putar(-a, 0.5)
-        else
-            pcall(function() hum.Jump = true end)
-            task.wait(0.7)
-        end
-        task.wait(rnd(10, 25) / 100)
-    end
-    pcall(function() hum:Move(Vector3.zero, false) end)
-    pcall(function() hrp.CFrame = awalCf end)
-    hrp.AssemblyLinearVelocity  = Vector3.zero
-    hrp.AssemblyAngularVelocity = Vector3.zero
-end
-
-local function jalankanAutoTP()
-    while autoState.aktif do
-        local _, hrp, hum = getKarakter()
-        if not hrp or (hum and hum.Health <= 0) then
-            autoSetStatus("⏳ Menunggu karakter siap...", Warna.Kuning)
-            task.wait(0.5)
-            local _, hrp2 = getKarakter()
-            if hrp2 then task.wait(autoState.respawnWait) end
-        elseif #lokasiTersimpan == 0 then
-            autoSetStatus("⚠️ Belum ada lokasi tersimpan!", Warna.Merah)
-            task.wait(1.2)
-            autoState.aktif = false
-        else
-            local lok = lokasiTersimpan[autoState.indeks]
-            if lok then
-                teleportKe(lok.cframe)
-                fxTeleport()
-                local d = tonumber(lok.delay) or autoState.delay
-                autoSetStatus(string.format("🚀 Titik %d/%d — %s (%.1fs)",
-                    autoState.indeks, #lokasiTersimpan, lok.nama, d), Warna.HijauMuda)
-                local t0 = os.clock()
-                while autoState.aktif and os.clock() - t0 < d do
-                    local _, _, h2 = getKarakter()
-                    if h2 and h2.Health <= 0 then break end
-                    task.wait(0.1)
-                end
-                if autoState.aktif then
-                    local _, _, hNow = getKarakter()
-                    if not hNow or hNow.Health > 0 then
-                        autoState.indeks += 1
-                    end
-                end
-            else
-                if autoState.respawn then
-                    if autoState.gerak then
-                        autoSetStatus(string.format("🎭 Summit! Gerak bebas %.1fs lalu mati...", autoState.respawnDelay), Warna.Ungu2)
-                        gerakanAcak(autoState.respawnDelay)
-                        if not autoState.aktif then break end
-                    else
-                        autoSetStatus("🏁 SUMMIT! Mati dalam " .. string.format("%.1f", autoState.respawnDelay) .. "s...", Warna.Ungu2)
-                        local t0 = os.clock()
-                        while autoState.aktif and os.clock() - t0 < autoState.respawnDelay do
-                            task.wait(0.1)
-                        end
-                        if not autoState.aktif then break end
-                    end
-                    local charLama = LocalPlayer.Character
-                    matikanKarakter()
-                    autoSetStatus("💀 Mati... menunggu respawn", Warna.Merah)
-                    local charBaru = tungguRespawn(charLama, 25)
-                    if charBaru and autoState.aktif then
-                        task.wait(autoState.respawnWait)
-                        autoState.indeks = 1
-                        autoSetStatus("🔄 Mulai ulang dari titik 1", Warna.Biru2)
-                        toast("🔄 Respawn! Auto TP mulai ulang dari titik 1", Warna.Biru)
-                        task.wait(0.5)
-                    else
-                        autoState.aktif = false
-                        toast("⚠️ Respawn tidak terdeteksi — Auto TP berhenti", Warna.Merah)
-                    end
-                elseif autoState.loop then
-                    autoState.indeks = 1
-                    autoSetStatus("🔁 Loop: balik ke titik 1", Warna.Biru2)
-                    task.wait(0.4)
-                else
-                    autoState.aktif = false
-                    autoSetStatus("✅ Semua titik selesai", Warna.HijauMuda)
-                    toast("✅ Auto TP selesai — semua titik sudah dikunjungi", Warna.Hijau)
-                end
-            end
-        end
-    end
-    autoUpdateTombol()
-end
-
-toggleAutoTP = function()
-    autoState.aktif = not autoState.aktif
-    bunyi(CFG.SND_PING, 0.35, autoState.aktif and 1.2 or 0.8)
-    if autoState.aktif then
-        autoState.indeks = 1
-        autoSetStatus("🚀 Mulai dari titik 1...", Warna.HijauMuda)
-        toast("🤖 Auto TP DIMULAI — dari titik 1", Warna.Hijau)
-        task.spawn(jalankanAutoTP)
-    else
-        autoSetStatus("⏹ Dihentikan", Warna.AbuGelap)
-        toast("⏹ Auto TP dihentikan", Warna.Merah)
-    end
-    autoUpdateTombol()
-end
-
--- [14d] ANTI-AFK ----------------------------------------------------
-local AFK_CFG = {
-    interval     = 240,
-    jitter       = 60,
-    jumpMode     = false,
-    jumpInterval = 45,
-}
-
-local afkState = { aktif = true, jumlah = 0, terakhir = 0, sudahIngatkan = false }
-local inputTerakhir = os.time()
-UserInputService.InputBegan:Connect(function() inputTerakhir = os.time() end)
-
-local function afkStatusUpdate()
-    if not autoUI.afkStatus then return end
-    if afkState.aktif then
-        if afkState.terakhir > 0 then
-            autoUI.afkStatus.Text = string.format("🛡 %dx • %dm lalu",
-                afkState.jumlah, math.floor((os.time() - afkState.terakhir) / 60))
-        else
-            autoUI.afkStatus.Text = string.format("🛡 %dx • siaga", afkState.jumlah)
-        end
-        autoUI.afkStatus.TextColor3 = Warna.HijauMuda
-    else
-        autoUI.afkStatus.Text = "🛡 mati"
-        autoUI.afkStatus.TextColor3 = Warna.AbuGelap
-    end
-end
-
-local function afkIntervensi(alasan)
-    local ok = pcall(function()
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
-    end)
-    if not ok then
-        pcall(function()
-            local vim = game:GetService("VirtualInputManager")
-            vim:SendMouseButtonEvent(5, 5, 1, true, game, 0)
-            vim:SendMouseButtonEvent(5, 5, 1, false, game, 0)
-        end)
-    end
-    afkState.jumlah += 1
-    afkState.terakhir = os.time()
-    afkStatusUpdate()
-end
-
-LocalPlayer.Idled:Connect(function()
-    if afkState.aktif then afkIntervensi("event Idled") end
-end)
-
--- Loop tunggal AFK: gabung scheduled intervention + status update + warning
--- sebelumnya 3 task.spawn terpisah, sekarang 1 loop tick 10s
-task.spawn(function()
-    local lastIntervensi = os.time()
-    local lastStatusUpdate = 0
-    local lastWarning = 0
-    while screenGui.Parent do
-        task.wait(10)
-        local now = os.time()
-        -- scheduled AFK intervention (interval 240s + jitter)
-        if afkState.aktif and (now - lastIntervensi) >= (AFK_CFG.interval + rnd(0, AFK_CFG.jitter)) then
-            lastIntervensi = now
-            if (now - inputTerakhir) >= AFK_CFG.interval then
-                afkIntervensi("jadwal")
-            end
-        end
-        -- status update tiap 30s
-        if (now - lastStatusUpdate) >= 30 then
-            lastStatusUpdate = now
-            afkStatusUpdate()
-        end
-        -- warning auto TP tanpa anti-AFK tiap 10s
-        if autoState.aktif and not afkState.aktif and not afkState.sudahIngatkan then
-            afkState.sudahIngatkan = true
-            toast("⚠️ Auto TP jalan tapi Anti-AFK mati — bisa ke-kick 20 menit!", Warna.Merah)
-        end
-        if afkState.aktif then afkState.sudahIngatkan = false end
-    end
-end)
-
--- jump mode terpisah (jarang dipakai, hanya jika AFK_CFG.jumpMode=true)
-if AFK_CFG.jumpMode then
-    task.spawn(function()
-        while screenGui.Parent do
-            task.wait(AFK_CFG.jumpInterval)
-            if afkState.aktif then
-                local _, _, hum = getKarakter()
-                if hum and hum.Health > 0 then
-                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jump) end)
-                end
-            end
-        end
-    end)
-end
-
--- karakter respawn → restart auto TP dari titik 1
-LocalPlayer.CharacterAdded:Connect(function()
-    if autoState.aktif and autoState.restart then
-        autoState.indeks = 1
-    end
-end)
 -- [15] LOGIKA TIANG: VISUAL TIANG -----------------------------------
 local function buatTiangVisual(basePos, nomor)
     local model = Instance.new("Model")
@@ -2841,7 +1877,6 @@ pasangTiang = function(namaManual)
     konfeti(root, pusatDiRoot(saveBtnTiang), 12)
     emojiBurst(root, pusatDiRoot(saveBtnTiang), {"📍", "⚡", "✨"}, 5)
     toast("➕ " .. nama .. " terpasang • total " .. #daftarTiang, Warna.Ungu)
-    pulseIkon()
 end
 
 local function hapusTiang(idx)
@@ -4144,10 +3179,7 @@ local function minimizeGui()
     sesiAnim += 1
     local id = sesiAnim
     bunyi(CFG.SND_PING, 0.3, 0.75)
-    icon.Visible = true
-    iconScale.Scale = 0.4
-    kotakPutih.Rotation = 18
-    tween(iconScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
+    -- icon minimize DIHAPUS — GUI sembunyi total, buka lewat F
     local ti = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
     tween(panelScale, ti, {Scale = 0.5})
     tween(root, ti, {Rotation = 8})
@@ -4164,7 +3196,6 @@ end
 local function bukaGui()
     sesiAnim += 1
     bunyi(CFG.SND_PING, 0.35, 1.15)
-    icon.Visible = false
     root.Visible = true
     root.Rotation = -8
     panelScale.Scale = 0.6
@@ -4187,94 +3218,6 @@ minBtn.MouseButton1Click:Connect(function()
     minimizeGui()
 end)
 buatDraggable(header, root)
-buatDraggable(icon, icon, bukaGui)
-
--- TAB TELEPORT
-saveBtnTP.MouseButton1Click:Connect(function()
-    ripple(saveBtnTP, Warna.Putih)
-    simpanLokasi()
-end)
-nameBoxTP.FocusLost:Connect(function(enter)
-    if enter then simpanLokasi() end
-end)
-searchBoxTP:GetPropertyChangedSignal("Text"):Connect(function() refreshListTP(false) end)
-sorotInput(nameBoxTP, nameStrokeTP, 0.5)
-sorotInput(searchBoxTP, searchStrokeTP, 0.6)
-efekTombol(saveBtnTP)
-efekTombol(minBtn, 1.1)
-
--- AUTO TP
-autoUI.btn.MouseButton1Click:Connect(function()
-    ripple(autoUI.btn, Warna.Putih)
-    toggleAutoTP()
-end)
-autoUI.delayBox.FocusLost:Connect(function()
-    local n = angkaDari(autoUI.delayBox.Text)
-    if n and n >= 0.2 then
-        autoState.delay = n
-        autoUI.delayBox.Text = tostring(n)
-    else
-        autoUI.delayBox.Text = tostring(autoState.delay)
-    end
-end)
-autoUI.respawnDelayBox.FocusLost:Connect(function()
-    local n = angkaDari(autoUI.respawnDelayBox.Text)
-    if n and n >= 0.5 then
-        autoState.respawnDelay = n
-        autoUI.respawnDelayBox.Text = tostring(n)
-    else
-        autoUI.respawnDelayBox.Text = tostring(autoState.respawnDelay)
-    end
-end)
-autoUI.loopBtn.MouseButton1Click:Connect(function()
-    ripple(autoUI.loopBtn, Warna.HijauMuda)
-    autoState.loop = not autoState.loop
-    gayaToggle(autoUI.loopBtn, autoState.loop)
-    autoUI.loopBtn.Text = autoState.loop and "🔁 Loop: ON" or "🔁 Loop: OFF"
-    bunyi(CFG.SND_PING, 0.3, autoState.loop and 1.1 or 0.9)
-end)
-autoUI.respawnBtn.MouseButton1Click:Connect(function()
-    ripple(autoUI.respawnBtn, Warna.HijauMuda)
-    autoState.respawn = not autoState.respawn
-    gayaToggle(autoUI.respawnBtn, autoState.respawn)
-    autoUI.respawnBtn.Text = autoState.respawn and "💀 Respawn: ON" or "💀 Respawn: OFF"
-    bunyi(CFG.SND_PING, 0.3, autoState.respawn and 1.1 or 0.9)
-end)
-autoUI.restartBtn.MouseButton1Click:Connect(function()
-    ripple(autoUI.restartBtn, Warna.HijauMuda)
-    autoState.restart = not autoState.restart
-    gayaToggle(autoUI.restartBtn, autoState.restart)
-    autoUI.restartBtn.Text = autoState.restart
-        and "⚰ Mati di tengah → mulai lagi titik 1: ON"
-        or  "⚰ Mati di tengah → lanjut titik yang sama: OFF"
-    bunyi(CFG.SND_PING, 0.3, autoState.restart and 1.1 or 0.9)
-end)
-autoUI.gerakBtn.MouseButton1Click:Connect(function()
-    ripple(autoUI.gerakBtn, Warna.HijauMuda)
-    autoState.gerak = not autoState.gerak
-    gayaToggle(autoUI.gerakBtn, autoState.gerak)
-    autoUI.gerakBtn.Text = autoState.gerak and "🎭 Gerak Summit: ON" or "🎭 Gerak Summit: OFF"
-    bunyi(CFG.SND_PING, 0.3, autoState.gerak and 1.15 or 0.9)
-    toast(autoState.gerak and "🎭 Gerak saat tunggu summit: AKTIF"
-        or "🎭 Gerak saat tunggu summit: MATI", autoState.gerak and Warna.Hijau or Warna.Merah)
-end)
-autoUI.afkBtn.MouseButton1Click:Connect(function()
-    ripple(autoUI.afkBtn, Warna.HijauMuda)
-    afkState.aktif = not afkState.aktif
-    gayaToggle(autoUI.afkBtn, afkState.aktif)
-    autoUI.afkBtn.Text = afkState.aktif and "👻 Anti-AFK: ON" or "👻 Anti-AFK: OFF"
-    bunyi(CFG.SND_PING, 0.3, afkState.aktif and 1.15 or 0.85)
-    afkStatusUpdate()
-    toast(afkState.aktif and "👻 Anti-AFK aktif — aman AFK berjam-jam"
-        or "👻 Anti-AFK mati", afkState.aktif and Warna.Hijau or Warna.Merah)
-end)
-efekTombol(autoUI.btn)
-efekTombol(autoUI.loopBtn, 1.05)
-efekTombol(autoUI.respawnBtn, 1.05)
-efekTombol(autoUI.restartBtn, 1.02)
-efekTombol(autoUI.gerakBtn, 1.05)
-efekTombol(autoUI.afkBtn, 1.05)
-afkStatusUpdate()
 
 -- TAB TIANG
 saveBtnTiang.MouseButton1Click:Connect(function()
@@ -4520,18 +3463,13 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end))
 
 -- [22] MULAI --------------------------------------------------------
-refreshListTP(true)
 refreshListTiang(false)
 refreshRekList(false)
 setTab(1)
 task.delay(0.15, bukaGui)
 
 task.delay(1.2, function()
-    local totalTP = #lokasiTersimpan
     local totalTiang = #daftarTiang + #daftarRekaman
-    if totalTP > 0 then
-        toast("📂 Teleport: " .. totalTP .. " lokasi dimuat", Warna.Biru)
-    end
     if totalTiang > 0 then
         toast("📂 Tiang: " .. #daftarTiang .. " • koneksi " .. #koneksiAktif .. " • record " .. #daftarRekaman, Warna.Ungu)
     end
@@ -4540,11 +3478,10 @@ task.delay(1.2, function()
     end
 end)
 
-print("[SilauNeon v" .. VERSI .. "] SIAP ✔ — F = GUI | Y = pasang tiang | G = rekam | Q/C/R/X/T/K = KING | Fall Assist di tab KING")
-print("[SilauNeon] 4 TAB: 🚀 TELEPORT | 🗄️ TIANG | 🔴 RECORD | 👑 KING (Speed/Jump/Shift/Hide/LW/Walls/Cahaya/Fall)")
-print("[SilauNeon] Anti-AFK aktif otomatis (2 lapis) — status di panel Teleport bawah")
+print("[SilauNeon v" .. VERSI .. "] SIAP ✔ — F = GUI | Y = pasang tiang | G = rekam | Q/C/R/X/T/K = KING")
+print("[SilauNeon] 3 TAB: 🗄️ TIANG | 🔴 RECORD | 👑 KING (Speed/Jump/Shift/Hide/LW/Walls/Cahaya/Fall)")
 print("[SilauNeon] Penyimpanan: " .. (fileOk
-    and ("Teleport='" .. CFG.NAMA_FILE_TP .. "' | Tiang='" .. CFG.NAMA_FILE_TIANG .. "' (per game: " .. game.PlaceId .. ")")
+    and ("Tiang='" .. CFG.NAMA_FILE_TIANG .. "' (per game: " .. game.PlaceId .. ")")
     or "TIDAK TERSEDIA"))
 
 end -- akhir initLogic()
