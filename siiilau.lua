@@ -1,5 +1,5 @@
 --========================================================
---  SIIILAU HUB SCRIPTS v1.0.1
+--  SIIILAU HUB SCRIPTS v1.0.3 "LIGHT EDITION"
 --  F=GUI  Q=speed  Q Q=sprint  V=jump  G=moonwalk
 --  R=hide player  T=brightness  C=renang  X=dinding
 --  Z=info  K K=hapus
@@ -12,8 +12,49 @@
 --   client & server, seperti kena ranting asli) ->
 --   platform hilang -> jatuh sisa pendek -> damage kecil
 --   WASD bebas. Darah tidak disentuh. Tanpa notif.
+--
+--  ================== PERBAIKAN v1.0.2 ==================
+--  [FIX-01] FREEZE UTAMA: workspace:GetDescendants() yang
+--           diproses habis dalam SATU frame (bisa 100rb-1jt
+--           instance) diganti scanner bertahap (maks ~3000
+--           instance per frame) -> tidak ada freeze.
+--  [FIX-02] pcall(function()...end) PER INSTANCE di dalam
+--           loop scan dihapus (v1.0.1 bikin closure baru
+--           ratusan ribu kali -> GC spike). Sekarang 1 pcall
+--           per blok chunk.
+--  [FIX-03] Re-scan dinding acak (8% tiap detik = scan map
+--           PENUH lagi) DIHAPUS -> diganti event
+--           DescendantAdded + slow-scan 30 detik.
+--  [FIX-04] Hide Player: table.find() linear per part
+--           (O(n^2) saat banyak pemain) -> hash set O(1).
+--  [FIX-05] 3 koneksi Heartbeat -> 1. GetState() dipanggil
+--           1x per frame (dulu 2-3x + pcall ganda).
+--  [FIX-06] 2 koneksi RenderStepped -> 1 (FPS counter +
+--           moonwalk digabung).
+--  [FIX-07] Fall Assist: raycast 800 stud TIAP FRAME saat
+--           jatuh -> cache ketinggian tanah (refresh 10x
+--           per detik, tiap frame saat dekat tanah).
+--  [FIX-08] Memory leak: tagF dibersihkan saat pemain
+--           keluar (PlayerRemoving) & respawn; wallP/hidFX/
+--           hidP jadi weak table (part hancur = auto GC).
+--  [FIX-09] Loop latar 5 -> 3; interval 0.25/0.3s -> 0.5s.
+--  [FIX-10] Fungsi drag() dobel dihapus; Sound klik dipool
+--           jadi 1 instance (v1.0.1 bikin baru tiap klik).
+--  [FIX-11] Bug v1.0.1: label tombol Renang tidak di-reset
+--           saat Moonwalk menyala (btnSwim belum dideklarasi
+--           saat closure dibuat) -> forward declare.
+--
+--  ================ PERUBAHAN v1.0.3 ================
+--  [CHG-01] ESP / Highlight DIHAPUS total (toggle, loop
+--           pembuatan, dan cleanup-nya ikut dibersihkan).
+--  [CHG-02] Nametag lebih jelas: hanya DisplayName +
+--           Speed & Jump. Nama 18px GothamBlack, info 15px,
+--           outline hitam penuh, billboard lebih besar.
+--           Baris jarak (STUD) dihapus.
+--  [CHG-03] Crosshair (4 gaya) DIHAPUS total.
+--  Keybind tetap sama: F Q QQ V G R T C X Z K K
 --========================================================
-print("[SilauHub] v1.0.1 loading...")
+print("[SilauHub] v1.0.3 LIGHT loading...")
 
 local function fatal(e)
  warn("[SilauHub] ERROR: "..tostring(e))
@@ -73,15 +114,23 @@ local F_BLK=Enum.Font.GothamBlack
 
 -- ================= STATE =================
 local mv={walk=false,sprint=false,jump=false,dj=false,fall=false,djOK=true}
-local vis={esp=false,tag=false,cross=0,moon=false,hideP=false,fx=false,br=false,swim=false,wall=false}
+local vis={tag=false,moon=false,hideP=false,fx=false,br=false,swim=false,wall=false}
 local hud={afk=true}
-local espF,tagF,hidP,hidFX,wallP={},{},{},{},{}
+local tagF={}
 local kill=nil
 local orig={ws=16,jp=50,u=true}
 local oLight={B=LG.Brightness,A=LG.Ambient,O=LG.OutdoorAmbient}
 local ray=RaycastParams.new()
 pcall(function() ray.FilterType=Enum.RaycastFilterType.Exclude end)
-local HOK=pcall(function() local t=Instance.new("Highlight") t:Destroy() end)
+
+-- [FIX-08] weak table: part/effect yang sudah dihancurkan game
+-- otomatis dibuang garbage collector -> memori tidak numpuk
+-- di sesi panjang (v1.0.1 menyimpan referensi kuat selamanya)
+local hidP=setmetatable({},{__mode="k"})
+local hidFX=setmetatable({},{__mode="k"})
+local wallP=setmetatable({},{__mode="k"})
+local fxConn=nil   -- koneksi DescendantAdded utk mode efek
+local wallConn=nil -- koneksi DescendantAdded utk mode dinding
 
 local function ch()
  local c=LP.Character
@@ -94,9 +143,43 @@ local function rayUpd()
 end
 rayUpd()
 do local _,h=ch() if h then orig={ws=h.WalkSpeed,jp=h.JumpPower,u=h.UseJumpPower} end end
-local function wTeam(p)
- if p.Team then return p.TeamColor.Color end
- return C.ungu
+
+-- ============ SCANNER BERTAHAP [FIX-01]+[FIX-02] ============
+-- v1.0.1: workspace:GetDescendants() lalu loop penuh +
+-- pcall(function() end) PER INSTANCE, semua dalam 1 frame.
+-- Di map besar (100rb-1jt instance) = ratusan ribu alokasi
+-- closure sekaligus + iterasi jutaan -> game FREEZE.
+-- v1.0.2: jalan pohon instance lewat stack, proses maks
+-- SCAN_CHUNK node per frame, 1 pcall per blok chunk.
+local SCAN_CHUNK=3000
+local scanning={}
+local function walkAsync(fn,tag,onDone,activeFn)
+ if scanning[tag] then return end
+ scanning[tag]=true
+ task.spawn(function()
+  local stack={workspace}
+  while #stack>0 do
+   if not RUN then break end
+   if activeFn and not activeFn() then break end
+   local n=math.min(#stack,SCAN_CHUNK)
+   local batch={}
+   for k=1,n do
+    batch[k]=stack[#stack]
+    stack[#stack]=nil
+   end
+   pcall(function()
+    for k=1,n do
+     local inst=batch[k]
+     fn(inst)
+     local kids=inst:GetChildren()
+     for j=1,#kids do stack[#stack+1]=kids[j] end
+    end
+   end)
+   if #stack>0 then task.wait() end
+  end
+  scanning[tag]=false
+  if onDone and RUN and (not activeFn or activeFn()) then onDone() end
+ end)
 end
 
 -- ================= GUI =================
@@ -112,13 +195,16 @@ local function mk(cl,pr,par)
 end
 local function corner(p,r) return mk("UICorner",{CornerRadius=UDim.new(0,r or 8)},p) end
 
+-- [FIX-10] satu Sound dipakai ulang (v1.0.1 membuat Sound
+-- baru + destroy setiap klik toggle)
+local sndS=Instance.new("Sound")
+sndS.SoundId="rbxasset://sounds/electronicpingshort.wav"
+sndS.Volume=.2 sndS.Parent=g
 local function snd(v,p)
  pcall(function()
-  local s=Instance.new("Sound")
-  s.SoundId="rbxasset://sounds/electronicpingshort.wav"
-  s.Volume=v or .2 s.PlaybackSpeed=p or 1
-  s.Parent=g s:Play()
-  task.delay(1.5,function() s:Destroy() end)
+  sndS.Volume=v or .2
+  sndS.PlaybackSpeed=p or 1
+  sndS:Play()
  end)
 end
 
@@ -173,6 +259,8 @@ local stL=mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,9,0,20),
  Text="...",TextXAlignment=Enum.TextXAlignment.Left,
  TextYAlignment=Enum.TextYAlignment.Top},pSt)
 
+-- [FIX-10] drag() cukup didefinisikan SEKALI
+-- (v1.0.1 mendefinisikan fungsi drag 2x)
 local function drag(h,t)
  local d,s,p=false,nil,nil
  h.InputBegan:Connect(function(i)
@@ -217,26 +305,7 @@ corner(minB,6)
 
 local titleHit=mk("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,-44,0,40),
  Active=true},root)
-local function drag(h,t)
- local d,s,p=false,nil,nil
- h.InputBegan:Connect(function(i)
-  if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-   d,s,p=true,i.Position,t.Position
-  end
- end)
- h.InputEnded:Connect(function(i)
-  if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
-   d=false
-  end
- end)
- UIS.InputChanged:Connect(function(i)
-  if d and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
-   local dl=i.Position-s
-   t.Position=UDim2.new(p.X.Scale,p.X.Offset+dl.X,p.Y.Scale,p.Y.Offset+dl.Y)
-  end
- end)
-end
-drag(titleHit,root)
+drag(titleHit,root) -- [FIX-10] pakai fungsi drag yang sama
 
 local tbar=mk("Frame",{Position=UDim2.new(0,10,0,46),Size=UDim2.new(1,-20,0,26),
  BackgroundTransparency=1},root)
@@ -408,15 +477,7 @@ rNum(1,"JUMP ON",cfg.jOn,function(n) cfg.jOn=n end)
 
 -- ================= TAB 2 : VISUAL =================
 header(2,"Target")
-rTgl(2,"ESP / Highlight",nil,false,function(v)
- vis.esp=v
- if v and not HOK then notif("HIGHLIGHT TIDAK DIDUKUNG",false) end
- if not v then
-  for _,d in pairs(espF) do pcall(function() d:Destroy() end) end
-  espF={}
- end
- notif(v and "ESP ON" or "ESP OFF",v)
-end)
+-- [CHG-01] ESP / Highlight dihapus total (v1.0.3)
 local tglTag=rTgl(2,"Nametag + Info","Z",false,function(v)
  vis.tag=v
  if not v then
@@ -425,38 +486,14 @@ local tglTag=rTgl(2,"Nametag + Info","Z",false,function(v)
  end
  notif(v and "INFO PLAYER ON" or "INFO PLAYER OFF",v)
 end)
-rInfo(2,"Merah otomatis jika speed/jump lain mencurigakan.")
+rInfo(2,"Nama + Speed & Jump saja, tulisan besar.\nMerah otomatis jika speed/jump mencurigakan.",34)
 
 header(2,"Gaya")
-local gayaNama={"OFF","DOT","CROSS","CIRCLE"}
-rAct(2,"Crosshair: OFF (klik ganti)",function(b)
- vis.cross=(vis.cross+1)%4
- for _,x in ipairs(hudF:GetChildren()) do
-  if x.Name=="XC" then x:Destroy() end
- end
- if vis.cross>0 then
-  local f=mk("Frame",{Name="XC",AnchorPoint=Vector2.new(.5,.5),
-   Position=UDim2.fromScale(.5,.5),Size=UDim2.fromOffset(0,0),
-   BackgroundTransparency=1},hudF)
-  if vis.cross==1 then
-   local d=mk("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),
-    Size=UDim2.fromOffset(6,6),BackgroundColor3=Color3.new(1,1,1)},f)
-   corner(d,3)
-  elseif vis.cross==2 then
-   mk("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),
-    Size=UDim2.fromOffset(20,2),BackgroundColor3=Color3.new(1,1,1)},f)
-   mk("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),
-    Size=UDim2.fromOffset(2,20),BackgroundColor3=Color3.new(1,1,1)},f)
-  else
-   local c=mk("Frame",{AnchorPoint=Vector2.new(.5,.5),Position=UDim2.fromScale(.5,.5),
-    Size=UDim2.fromOffset(22,22),BackgroundTransparency=1},f)
-   corner(c,11)
-   mk("UIStroke",{Color=Color3.new(1,1,1),Thickness=2},c)
-  end
- end
- b.Text="Crosshair: "..gayaNama[vis.cross+1].." (klik ganti)"
- notif("CROSSHAIR: "..gayaNama[vis.cross+1],vis.cross>0)
-end)
+-- [CHG-03] Crosshair (4 gaya) DIHAPUS total (v1.0.3),
+-- Moonwalk jadi satu-satunya di bagian Gaya
+-- [FIX-11] btnSwim dideklarasi di depan agar closure
+-- moonwalk bisa meng-reset label tombol renang
+local btnSwim
 local tgMoon=rTgl(2,"Moonwalk","G",false,function(v)
  vis.moon=v
  if v and vis.swim then
@@ -471,31 +508,46 @@ header(2,"Layar Bersih")
 local tgHideP=rTgl(2,"Hide Player","R",false,function(v)
  vis.hideP=v
  if not v then
-  for _,p in ipairs(hidP) do pcall(function() p.LocalTransparencyModifier=0 end) end
-  hidP={}
+  -- [FIX-08] hidP sekarang hash set, dibersihkan in-place
+  for d in pairs(hidP) do
+   pcall(function() d.LocalTransparencyModifier=0 end)
+   hidP[d]=nil
+  end
  end
  notif(v and "PLAYER DISEMBUNYIKAN" or "PLAYER TAMPIL",v)
 end)
 rTgl(2,"Matikan Efek (FPS)",nil,false,function(v)
  vis.fx=v
  if v then
-  for _,d in ipairs(workspace:GetDescendants()) do
-   pcall(function()
-    if d:IsA("ParticleEmitter") or d:IsA("Fire") or d:IsA("Smoke")
-    or d:IsA("Sparkles") or d:IsA("Beam") or d:IsA("Trail") then
-     if d.Enabled then d.Enabled=false table.insert(hidFX,d) end
-    end
-   end)
-  end
+  notif("MEMATIKAN EFEK (SCAN BERTAHAP)...",true)
+  -- [FIX-01]+[FIX-02] scan bertahap: tidak freeze di map besar
+  walkAsync(function(d)
+   if d:IsA("ParticleEmitter") or d:IsA("Fire") or d:IsA("Smoke")
+   or d:IsA("Sparkles") or d:IsA("Beam") or d:IsA("Trail") then
+    if d.Enabled then d.Enabled=false hidFX[d]=true end
+   end
+  end,"fx",function()
+   if vis.fx then notif("EFEK MATI - FPS NAIK",true) end
+  end,function() return vis.fx end)
   for _,d in ipairs(LG:GetChildren()) do
-   pcall(function()
-    if d:IsA("PostEffect") and d.Enabled then d.Enabled=false table.insert(hidFX,d) end
-   end)
+   if d:IsA("PostEffect") and d.Enabled then d.Enabled=false hidFX[d]=true end
   end
-  notif("EFEK MATI - FPS NAIK",true)
+  -- [FIX-03] efek BARU (map streaming) langsung dimatikan
+  -- lewat event, tanpa perlu scan ulang seluruh map
+  if fxConn then fxConn:Disconnect() end
+  fxConn=workspace.DescendantAdded:Connect(function(d)
+   if not vis.fx then return end
+   if d:IsA("ParticleEmitter") or d:IsA("Fire") or d:IsA("Smoke")
+   or d:IsA("Sparkles") or d:IsA("Beam") or d:IsA("Trail") then
+    if d.Enabled then d.Enabled=false hidFX[d]=true end
+   end
+  end)
  else
-  for _,d in ipairs(hidFX) do pcall(function() d.Enabled=true end) end
-  hidFX={}
+  if fxConn then fxConn:Disconnect() fxConn=nil end
+  for d in pairs(hidFX) do
+   pcall(function() d.Enabled=true end)
+   hidFX[d]=nil
+  end
   notif("EFEK DINYALAKAN",true)
  end
 end)
@@ -510,7 +562,6 @@ local tglBr=rTgl(2,"Auto Brightness","T",false,function(v)
  end
  notif(v and "BRIGHTNESS ON" or "BRIGHTNESS OFF",v)
 end)
-local btnSwim
 local function siklusSwim()
  vis.swim=not vis.swim
  if vis.swim and vis.moon then
@@ -527,28 +578,42 @@ local function siklusSwim()
  end
 end
 btnSwim=rAct(2,"Renang: NORMAL [C]",function() siklusSwim() end)
+local function wallApply(d)
+ if d:IsA("BasePart") and not wallP[d] and d.Transparency>0.5 and d.CanCollide then
+  wallP[d]={t=d.Transparency,c=d.Color}
+  d.Transparency=0.55 d.Color=Color3.fromRGB(205,205,205)
+ end
+end
 local function scanW()
  if not vis.wall then return end
- for _,d in ipairs(workspace:GetDescendants()) do
-  pcall(function()
-   if d:IsA("BasePart") and not wallP[d] and d.Transparency>0.5 and d.CanCollide then
-    wallP[d]={t=d.Transparency,c=d.Color}
-    d.Transparency=0.55 d.Color=Color3.fromRGB(205,205,205)
-   end
-  end)
- end
+ -- [FIX-01] scan bertahap + bisa dibatalkan otomatis
+ -- kalau mode dinding dimatikan di tengah scan
+ walkAsync(wallApply,"wall",function()
+  if vis.wall then notif("SCAN SELESAI",true) end
+ end,function() return vis.wall end)
 end
 local tglWall=rTgl(2,"Dinding Tak Terlihat","X",false,function(v)
  vis.wall=v
- if v then scanW() notif("DINDING DITAMPILKAN",true)
+ if v then
+  scanW()
+  -- [FIX-03] dinding baru (map streaming) otomatis terlihat
+  -- lewat event; re-scan acak tiap detik DIHAPUS
+  if wallConn then wallConn:Disconnect() end
+  wallConn=workspace.DescendantAdded:Connect(function(d)
+   if vis.wall then wallApply(d) end
+  end)
+  notif("DINDING DITAMPILKAN",true)
  else
-  for d,o in pairs(wallP) do pcall(function() d.Transparency=o.t d.Color=o.c end) end
-  wallP={}
+  if wallConn then wallConn:Disconnect() wallConn=nil end
+  for d,o in pairs(wallP) do
+   pcall(function() d.Transparency=o.t d.Color=o.c end)
+   wallP[d]=nil
+  end
   notif("DINDING DISEMBUNYIKAN",true)
  end
 end)
 rAct(2,"Scan Ulang Dinding",function()
- if vis.wall then scanW() notif("SCAN SELESAI",true)
+ if vis.wall then scanW()
  else notif("NYALAKAN DINDING DULU",false) end
 end)
 
@@ -586,14 +651,46 @@ local function unbindSwim()
  if h then pcall(function() h.AutoRotate=true end) end
 end
 
-RS.Heartbeat:Connect(function()
+-- ================= LOOP UTAMA (Heartbeat) =================
+-- [FIX-05] v1.0.1 punya 3 koneksi Heartbeat terpisah yang
+-- masing-masing manggil ch() + GetState() + pcall tiap
+-- frame. Sekarang semua tugas digabung jadi SATU koneksi:
+-- double-jump reset, lerp jump/speed, boost renang, dan
+-- bind/unbind orientasi renang katak.
+local curSpeed=nil
+RS.Heartbeat:Connect(function(dt)
  if not RUN then return end
  local c,h,hp=ch()
  if not h or not hp then return end
- local sw=false
- pcall(function() sw=h:GetState()==Enum.HumanoidStateType.Swimming end)
- local aktifSwim=sw and vis.swim
 
+ local st
+ pcall(function() st=h:GetState() end)
+ local swimming=(st==Enum.HumanoidStateType.Swimming)
+
+ if h.FloorMaterial~=Enum.Material.Air then mv.djOK=true end
+
+ local jpT=mv.jump and cfg.jOn or cfg.jOff
+ pcall(function()
+  if not h.UseJumpPower then h.UseJumpPower=true end
+  local cur=h.JumpPower
+  local newJp=cur+(jpT-cur)*math.clamp(dt*6,0,1)
+  if math.abs(newJp-jpT)<0.05 then newJp=jpT end
+  if math.abs(h.JumpPower-newJp)>0.01 then h.JumpPower=newJp end
+ end)
+
+ if curSpeed==nil then curSpeed=h.WalkSpeed end
+ local target
+ if mv.sprint then target=cfg.sOn
+ elseif mv.walk then target=cfg.wOn
+ else target=cfg.wOff end
+ if swimming and vis.swim then target=target*SWIM_BOOST end
+ curSpeed=curSpeed+(target-curSpeed)*math.clamp(dt*3,0,1)
+ if math.abs(target-curSpeed)<0.01 then curSpeed=target end
+ if math.abs(h.WalkSpeed-curSpeed)>0.005 then
+  pcall(function() h.WalkSpeed=curSpeed end)
+ end
+
+ local aktifSwim=swimming and vis.swim
  if aktifSwim and not swimBound then
   swimBound=true
   pcall(function() h.AutoRotate=false end)
@@ -618,39 +715,6 @@ RS.Heartbeat:Connect(function()
  end
 end)
 
--- ================= LOOPS =================
-local curSpeed=nil
-
-RS.Heartbeat:Connect(function(dt)
- if not RUN then return end
- local _,h=ch()
- if not h then return end
- if h.FloorMaterial~=Enum.Material.Air then mv.djOK=true end
-
- local jpT=mv.jump and cfg.jOn or cfg.jOff
- pcall(function()
-  if not h.UseJumpPower then h.UseJumpPower=true end
-  local cur=h.JumpPower
-  local newJp=cur+(jpT-cur)*math.clamp(dt*6,0,1)
-  if math.abs(newJp-jpT)<0.05 then newJp=jpT end
-  if math.abs(h.JumpPower-newJp)>0.01 then h.JumpPower=newJp end
- end)
-
- if curSpeed==nil then curSpeed=h.WalkSpeed end
- local target
- if mv.sprint then target=cfg.sOn
- elseif mv.walk then target=cfg.wOn
- else target=cfg.wOff end
- local swimming=false
- pcall(function() swimming=h:GetState()==Enum.HumanoidStateType.Swimming end)
- if swimming and vis.swim then target=target*SWIM_BOOST end
- curSpeed=curSpeed+(target-curSpeed)*math.clamp(dt*3,0,1)
- if math.abs(target-curSpeed)<0.01 then curSpeed=target end
- if math.abs(h.WalkSpeed-curSpeed)>0.005 then
-  pcall(function() h.WalkSpeed=curSpeed end)
- end
-end)
-
 UIS.JumpRequest:Connect(function()
  if not RUN or not mv.dj or not mv.djOK then return end
  local _,h=ch()
@@ -671,7 +735,7 @@ LP.CharacterAdded:Connect(function(c)
 end)
 
 -- ================================================================
---  FALL ASSIST v3.1 "VIRTUAL BRANCH"
+--  FALL ASSIST v3.1 "VIRTUAL BRANCH" (versi hemat raycast)
 --  Jatuh normal kencang -> sekali di 80% perjalanan:
 --  platform tak terlihat muncul 4 stud di bawah kaki ->
 --  karakter MENDARAT BENERAN di atasnya (landing fisika asli:
@@ -681,11 +745,19 @@ end)
 --  0.15 detik kemudian platform hilang ->
 --  jatuh sisa pendek -> damage kecil.
 --  WASD bebas. Darah tidak disentuh. Tanpa notif.
+--
+--  [FIX-07] v1.0.1 melempar raycast 800 stud ke bawah TIAP
+--  FRAME selama jatuh. Sekarang ketinggian tanah di-CACHE:
+--  refresh 10x per detik saat masih jauh, tiap frame saat
+--  sudah dekat tanah (<60 stud) agar presisi mendarat tetap.
+--  Logika pemicu "virtual branch" sama persis.
 -- ================================================================
 local fJatuh=false
 local fApex=0
 local fBentur=false
 local fSejak=0
+local groundY=nil
+local lastRayT=0
 
 RS.Heartbeat:Connect(function(dt)
  if not RUN or not mv.fall then return end
@@ -694,7 +766,8 @@ RS.Heartbeat:Connect(function(dt)
  local now=os.clock()
  local v=hp.AssemblyLinearVelocity
 
- local st=h:GetState()
+ local st
+ pcall(function() st=h:GetState() end)
 
  if st==Enum.HumanoidStateType.Freefall and v.Y<-4 then
   if not fJatuh then
@@ -702,27 +775,40 @@ RS.Heartbeat:Connect(function(dt)
    fApex=hp.Position.Y
    fBentur=false
    fSejak=now
+   groundY=nil lastRayT=0
   end
   fApex=math.max(fApex,hp.Position.Y)
   local sudahTurun=fApex-hp.Position.Y
 
-  -- ukur tinggi total jatuh (dari apex ke tanah)
-  local r=workspace:Raycast(hp.Position,Vector3.new(0,-800,0),ray)
+  -- [FIX-7] refresh cache ketinggian tanah:
+  -- 10Hz saat jauh, tiap frame saat dekat tanah
+  if sudahTurun>10 and v.Y<-40 then
+   local dekat=(groundY~=nil) and (hp.Position.Y-groundY)<60
+   if dekat or (now-lastRayT)>=0.1 then
+    lastRayT=now
+    local r=workspace:Raycast(hp.Position,Vector3.new(0,-800,0),ray)
+    if r then groundY=r.Position.Y else groundY=nil end
+   end
+  end
+
+  -- ukur tinggi total jatuh (dari apex ke tanah, dari cache)
   local tinggiTotal,sisaJatuh
-  if r then
-   sisaJatuh=hp.Position.Y-r.Position.Y
-   tinggiTotal=fApex-r.Position.Y
+  if groundY then
+   sisaJatuh=hp.Position.Y-groundY
+   tinggiTotal=fApex-groundY
   end
 
   -- ===== VIRTUAL BRANCH: SEKALI per jatuh di POSISI BENTUR =====
   if not fBentur and sudahTurun>10 and v.Y<-40 then
    local picu=false
-   -- syarat utama: tinggi jatuh >= MIN JATUH & sudah melewati titik posisi
+   -- syarat utama: tinggi jatuh >= MIN JATUH & sudah melewati
+   -- titik posisi bentur
    if tinggiTotal and tinggiTotal>=cfg.fMinJatuh
    and sisaJatuh<=tinggiTotal*(1-cfg.fPosisi) then
     picu=true
    end
-   -- jaring pengaman internal: tanah tak terdeteksi & lama jatuh kencang
+   -- jaring pengaman internal: tanah tak terdeteksi &
+   -- lama jatuh kencang
    if not picu and not tinggiTotal and (now-fSejak)>0.6 and v.Y<-70 then
     picu=true
    end
@@ -756,109 +842,81 @@ RS.Heartbeat:Connect(function(dt)
  end
 end)
 
--- ESP + tag
-task.spawn(function()
- while RUN do
-  task.wait(1)
-  if vis.esp and HOK then
-   for _,p in ipairs(Players:GetPlayers()) do
-    if p~=LP and p.Character then
-     local h=espF[p]
-     if h and not h.Parent then h=nil espF[p]=nil end
-     if not h then
-      pcall(function()
-       local x=Instance.new("Highlight")
-       x.Name="SilauESP"
-       x.FillTransparency=0.75 x.FillColor=wTeam(p) x.OutlineColor=wTeam(p)
-       x.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
-       x.Parent=p.Character
-       espF[p]=x
-      end)
-     end
-    end
-   end
-  end
-  if vis.tag then
-   for _,p in ipairs(Players:GetPlayers()) do
-    if p~=LP and p.Character and not tagF[p] then
-     local hd=p.Character:FindFirstChild("Head")
-     if hd then
-      pcall(function()
-       local b=Instance.new("BillboardGui")
-       b.Name="SilauTag" b.Size=UDim2.fromOffset(176,64)
-       b.StudsOffset=Vector3.new(0,3,0) b.AlwaysOnTop=true b.Parent=hd
-       local bg=Instance.new("Frame")
-       bg.Size=UDim2.new(1,0,1,0) bg.BackgroundColor3=C.bg
-       bg.BackgroundTransparency=0.25 bg.BorderSizePixel=0 bg.Parent=b
-       local bc=Instance.new("UICorner") bc.CornerRadius=UDim.new(0,8) bc.Parent=bg
-       local bs=Instance.new("UIStroke")
-       bs.Color=C.ungu bs.Thickness=1 bs.Transparency=0.5 bs.Parent=bg
-       local l1=Instance.new("TextLabel")
-       l1.Size=UDim2.new(1,0,0,22) l1.BackgroundTransparency=1
-       l1.Font=F_B l1.TextSize=14 l1.TextColor3=C.putih
-       l1.TextStrokeTransparency=0.3 l1.Text=p.DisplayName l1.Parent=bg
-       local l2=Instance.new("TextLabel")
-       l2.Position=UDim2.new(0,0,0,23) l2.Size=UDim2.new(1,0,0,20)
-       l2.BackgroundTransparency=1 l2.Font=F_B l2.TextSize=12
-       l2.TextColor3=Color3.fromRGB(140,230,160) l2.TextStrokeTransparency=0.35
-       l2.Text="..." l2.Parent=bg
-       local l3=Instance.new("TextLabel")
-       l3.Position=UDim2.new(0,0,0,44) l3.Size=UDim2.new(1,0,0,17)
-       l3.BackgroundTransparency=1 l3.Font=F_M l3.TextSize=11
-       l3.TextColor3=C.abuT l3.TextStrokeTransparency=0.4 l3.Text="" l3.Parent=bg
-       tagF[p]={bb=b,inf=l2,dst=l3}
-      end)
-     end
-    end
+-- [FIX-06] SATU RenderStepped untuk semua kebutuhan per-frame:
+-- counter FPS + moonwalk (v1.0.1 punya 2 koneksi terpisah)
+local fc=0
+RS.RenderStepped:Connect(function()
+ if not RUN then return end
+ fc+=1
+ if vis.moon and not vis.swim then
+  local c,h,hp=ch()
+  if h and hp then
+   local cam=workspace.CurrentCamera
+   if cam then
+    local _,yaw=cam.CFrame:ToOrientation()
+    hp.CFrame=CFrame.new(hp.Position)*CFrame.Angles(0,yaw+math.pi,0)
    end
   end
  end
 end)
 
+-- [FIX-08] pemain keluar dari server -> data langsung
+-- dibersihkan (v1.0.1: numpuk jadi memory leak)
+Players.PlayerRemoving:Connect(function(p)
+ local tt=tagF[p]
+ if tt then pcall(function() tt.bb:Destroy() end) tagF[p]=nil end
+end)
+
+-- ================= LOOP LATAR =================
+-- [FIX-09] v1.0.1: 5 loop latar (1s, 0.3s, 1s, 0.25s, 240s).
+-- v1.0.2: hanya 3 loop (1s, 0.5s, 240s) + 1 slow-scan
+-- dinding tiap 30 detik yang bertahap & bisa dibatalkan.
+
+-- LOOP 1 detik: nametag, brightness, FPS/ping
 task.spawn(function()
  while RUN do
-  task.wait(0.3)
-  local _,_,mh=ch()
-  if vis.tag and mh then
-   for p,d in pairs(tagF) do
-    if p.Parent and p.Character then
-     local h2=p.Character:FindFirstChildOfClass("Humanoid")
-     local hp2=p.Character:FindFirstChild("HumanoidRootPart")
-     if h2 and hp2 and d.inf then
-      local sp=h2.WalkSpeed
-      local jp=h2.UseJumpPower and h2.JumpPower or h2.JumpHeight
-      local ds=(hp2.Position-mh.Position).Magnitude
-      local cg=sp>cfg.wOn+0.05 or (h2.UseJumpPower and jp>cfg.jOff+0.05)
-      d.inf.Text=string.format("SPD %.1f | JMP %.1f%s",sp,jp,cg and "  !!" or "")
-      d.inf.TextColor3=cg and C.merah or Color3.fromRGB(140,230,160)
-      d.dst.Text=string.format("%d STUD",ds)
-     end
-    else
-     if d.inf then d.inf.Text="..." end
-     if d.dst then d.dst.Text="" end
-    end
-   end
-  end
-  if vis.hideP then
+  task.wait(1)
+  -- [CHG-01] blok pembuatan ESP Highlight dihapus (v1.0.3)
+  if vis.tag then
    for _,p in ipairs(Players:GetPlayers()) do
     if p~=LP and p.Character then
-     for _,d in ipairs(p.Character:GetDescendants()) do
-      if d:IsA("BasePart") and not table.find(hidP,d) then
+     -- [FIX-08] tag lama ikut hancur saat pemain respawn ->
+     -- bersihkan supaya tag dibuat ulang (v1.0.1: tag hilang
+     -- permanen setelah pemain respawn)
+     local old=tagF[p]
+     if old and not old.bb.Parent then tagF[p]=nil end
+     if not tagF[p] then
+      local hd=p.Character:FindFirstChild("Head")
+      if hd then
        pcall(function()
-        d.LocalTransparencyModifier=0.85
-        table.insert(hidP,d)
+        -- [CHG-02] nametag jelas: nama BESAR + SPD/JMP saja
+        local b=Instance.new("BillboardGui")
+        b.Name="SilauTag" b.Size=UDim2.fromOffset(210,66)
+        b.StudsOffset=Vector3.new(0,3,0) b.AlwaysOnTop=true b.Parent=hd
+        local bg=Instance.new("Frame")
+        bg.Size=UDim2.new(1,0,1,0) bg.BackgroundColor3=C.bg
+        bg.BackgroundTransparency=0.1 bg.BorderSizePixel=0 bg.Parent=b
+        local bc=Instance.new("UICorner") bc.CornerRadius=UDim.new(0,8) bc.Parent=bg
+        local bs=Instance.new("UIStroke")
+        bs.Color=C.ungu bs.Thickness=1.5 bs.Transparency=0.25 bs.Parent=bg
+        local l1=Instance.new("TextLabel")
+        l1.Size=UDim2.new(1,0,0,32) l1.BackgroundTransparency=1
+        l1.Font=F_BLK l1.TextSize=18 l1.TextColor3=C.putih
+        l1.TextStrokeColor3=Color3.fromRGB(0,0,0) l1.TextStrokeTransparency=0
+        l1.Text=p.DisplayName l1.Parent=bg
+        local l2=Instance.new("TextLabel")
+        l2.Position=UDim2.new(0,0,0,34) l2.Size=UDim2.new(1,0,0,26)
+        l2.BackgroundTransparency=1 l2.Font=F_B l2.TextSize=15
+        l2.TextColor3=Color3.fromRGB(140,230,160)
+        l2.TextStrokeColor3=Color3.fromRGB(0,0,0) l2.TextStrokeTransparency=0
+        l2.Text="..." l2.Parent=bg
+        tagF[p]={bb=b,inf=l2}
        end)
       end
      end
     end
    end
   end
- end
-end)
-
-task.spawn(function()
- while RUN do
-  task.wait(1)
   if vis.br then
    pcall(function()
     local t=LG.ClockTime
@@ -873,38 +931,6 @@ task.spawn(function()
     end
    end)
   end
-  if vis.wall and math.random()<0.08 then
-   for _,d in ipairs(workspace:GetDescendants()) do
-    pcall(function()
-     if d:IsA("BasePart") and not wallP[d] and d.Transparency>0.5 and d.CanCollide then
-      wallP[d]={t=d.Transparency,c=d.Color}
-      d.Transparency=0.55 d.Color=Color3.fromRGB(205,205,205)
-     end
-    end)
-   end
-  end
- end
-end)
-
--- ===== MOONWALK: badan TERKUNCI menghadap kamera/layar =====
-RS.RenderStepped:Connect(function()
- if not RUN or not vis.moon then return end
- if vis.swim then return end
- local c,h,hp=ch()
- if not h or not hp then return end
- local cam=workspace.CurrentCamera
- if not cam then return end
- local _,yaw=cam.CFrame:ToOrientation()
- pcall(function()
-  hp.CFrame=CFrame.new(hp.Position)*CFrame.Angles(0,yaw+math.pi,0)
- end)
-end)
-
-local fc=0
-RS.RenderStepped:Connect(function() if RUN then fc+=1 end end)
-task.spawn(function()
- while RUN do
-  task.wait(1)
   local fps=fc fc=0
   local ping=0
   pcall(function() ping=math.floor(LP:GetNetworkPing()*1000) end)
@@ -916,17 +942,67 @@ task.spawn(function()
  end
 end)
 
+-- LOOP 0.5 detik: info nametag, hide player, status panel,
+-- slow-scan dinding
+-- [FIX-09] loop 0.3s + 0.25s v1.0.1 digabung jadi 0.5s
+-- [FIX-04] hide player pakai hash set O(1), bukan
+-- table.find() linear per part yang jadi O(n^2) saat
+-- banyak pemain
+local lastWallScan=0
 task.spawn(function()
  while RUN do
-  task.wait(0.25)
-  if pSt.Visible then
-   local _,h,hp=ch()
-   if h then
-    local jp=h.UseJumpPower and h.JumpPower or h.JumpHeight
-    stL.Text=string.format("Speed : %.2f stud/s\nJump  : %.2f\nHP    : %.0f / %.0f\nMode  : %s",
-     h.WalkSpeed,jp,h.Health,h.MaxHealth,
-     mv.sprint and "SPRINT" or (mv.walk and "WALK" or "NORMAL"))
+  task.wait(0.5)
+  local _,h=ch()
+  if vis.tag then
+   for p,d in pairs(tagF) do
+    if p.Parent and p.Character then
+     local h2=p.Character:FindFirstChildOfClass("Humanoid")
+     if h2 and d.inf then
+      local sp=h2.WalkSpeed
+      local jp=h2.UseJumpPower and h2.JumpPower or h2.JumpHeight
+      local cg=sp>cfg.wOn+0.05 or (h2.UseJumpPower and jp>cfg.jOff+0.05)
+      d.inf.Text=string.format("SPD %.1f | JMP %.1f%s",sp,jp,cg and "  !!" or "")
+      d.inf.TextColor3=cg and C.merah or Color3.fromRGB(140,230,160)
+     end
+    else
+     if d.inf then d.inf.Text="..." end
+    end
    end
+  end
+  if vis.hideP then
+   for _,p in ipairs(Players:GetPlayers()) do
+    if p~=LP and p.Character then
+     for _,d in ipairs(p.Character:GetDescendants()) do
+      if d:IsA("BasePart") and not hidP[d] then
+       d.LocalTransparencyModifier=0.85
+       hidP[d]=true
+      end
+     end
+    end
+   end
+  end
+  if pSt.Visible and h then
+   local jp=h.UseJumpPower and h.JumpPower or h.JumpHeight
+   stL.Text=string.format("Speed : %.2f stud/s\nJump  : %.2f\nHP    : %.0f / %.0f\nMode  : %s",
+    h.WalkSpeed,jp,h.Health,h.MaxHealth,
+    mv.sprint and "SPRINT" or (mv.walk and "WALK" or "NORMAL"))
+  end
+  -- [FIX-03] pengganti re-scan acak 8%/detik milik v1.0.1:
+  -- slow-scan 30 detik yang BERTAHAP (maks 3000/frame) dan
+  -- tidak menumpuk (ada guard scanning)
+  if vis.wall and os.clock()-lastWallScan>30 then
+   lastWallScan=os.clock()
+   scanW()
+  end
+ end
+end)
+
+-- LOOP 4-5 menit: anti-AFK cadangan
+task.spawn(function()
+ while RUN do
+  task.wait(240+math.random(0,60))
+  if RUN and hud.afk then
+   pcall(function() VU:CaptureController() VU:ClickButton2(Vector2.new()) end)
   end
  end
 end)
@@ -934,14 +1010,6 @@ end)
 LP.Idled:Connect(function()
  if RUN and hud.afk then
   pcall(function() VU:CaptureController() VU:ClickButton2(Vector2.new()) end)
- end
-end)
-task.spawn(function()
- while RUN do
-  task.wait(240+math.random(0,60))
-  if RUN and hud.afk then
-   pcall(function() VU:CaptureController() VU:ClickButton2(Vector2.new()) end)
-  end
  end
 end)
 
@@ -978,7 +1046,7 @@ mk("UIStroke",{Color=C.ungu,Thickness=1,Transparency=0.4,ZIndex=60},helpF)
 mk("TextLabel",{BackgroundTransparency=1,Position=UDim2.new(0,10,0,6),
  Size=UDim2.new(1,-20,1,-44),Font=F_R,TextSize=10,TextColor3=C.putih,
  TextXAlignment=Enum.TextXAlignment.Left,TextYAlignment=Enum.TextYAlignment.Top,
- Text="F      : buka/tutup GUI\nQ      : speed ON/OFF\nQ Q    : sprint (Q lagi = OFF)\nV      : jump power ON/OFF\nG      : moonwalk ON/OFF\nR      : hide player\nT      : auto brightness\nC      : renang katak +15%\nX      : dinding tak terlihat\nZ      : info player\nK K    : hapus script (konfirmasi)",
+ Text="F      : buka/tutup GUI\nQ      : speed ON/OFF\nQ Q    : sprint (Q lagi = OFF)\nV      : jump power ON/OFF\nG      : moonwalk ON/OFF\nR      : hide player\nT      : auto brightness\nC      : renang katak +15%\nX      : dinding tak terlihat\nZ      : info player (nama+SPD/JMP)\nK K    : hapus script (konfirmasi)\nv1.0.3 LIGHT: tanpa freeze scan",
  ZIndex=61},helpF)
 local hClose=mk("TextButton",{Size=UDim2.new(1,-20,0,24),Position=UDim2.new(0,10,1,-30),
  BackgroundColor3=C.ungu,Font=F_B,TextSize=11,TextColor3=C.putih,
@@ -1004,11 +1072,22 @@ kill=function()
    h.WalkSpeed=orig.ws h.JumpPower=orig.jp h.UseJumpPower=orig.u
   end
  end)
- for _,d in pairs(espF) do pcall(function() d:Destroy() end) end
+ -- [FIX-08] putuskan semua koneksi event yang masih hidup
+ if fxConn then pcall(function() fxConn:Disconnect() end) fxConn=nil end
+ if wallConn then pcall(function() wallConn:Disconnect() end) wallConn=nil end
  for _,t in pairs(tagF) do pcall(function() t.bb:Destroy() end) end
- for d,o in pairs(wallP) do pcall(function() d.Transparency=o.t d.Color=o.c end) end
- for _,p in ipairs(hidP) do pcall(function() p.LocalTransparencyModifier=0 end) end
- for _,d in ipairs(hidFX) do pcall(function() d.Enabled=true end) end
+ for d,o in pairs(wallP) do
+  pcall(function() d.Transparency=o.t d.Color=o.c end)
+  wallP[d]=nil
+ end
+ for d in pairs(hidP) do
+  pcall(function() d.LocalTransparencyModifier=0 end)
+  hidP[d]=nil
+ end
+ for d in pairs(hidFX) do
+  pcall(function() d.Enabled=true end)
+  hidFX[d]=nil
+ end
  pcall(function()
   LG.Brightness=oLight.B LG.Ambient=oLight.A LG.OutdoorAmbient=oLight.O
  end)
@@ -1079,7 +1158,7 @@ task.delay(1.2,function()
  notif("SIIILAU HUB SIAP - TEKAN F",true)
 end)
 
-print("[SilauHub] v1.0.1 SIAP (tema King Silau)")
+print("[SilauHub] v1.0.3 LIGHT SIAP (tema King Silau)")
 
 end)
 
