@@ -430,7 +430,7 @@ local screenFx = buat("Frame", {
 -- screenFx akan di-akses lintas part (part4 pakai untuk FX overlay)
 
 local root = buat("Frame", {
-    Size = UDim2.fromOffset(322, 690),
+    Size = UDim2.fromOffset(360, 720),
     Position = UDim2.new(0.5, 0, 0.10, 0),
     AnchorPoint = Vector2.new(0.5, 0),
     BackgroundTransparency = 1,
@@ -987,7 +987,7 @@ local function kingStepperRow(labelText, getV, setV)
     buat("UICorner", {CornerRadius = UDim.new(0, 6)}, minus)
     local box = buat("TextBox", {
         BackgroundColor3 = Warna.Hitam2,
-        Size = UDim2.new(1, -92, 0, 22),
+        Size = UDim2.new(1, labelText and -192 or -92, 0, 22),
         Position = UDim2.new(0, labelText and 148 or 46, 0.5, -11),
         FontFace = fnt("reg"),
         TextSize = 13,
@@ -1240,7 +1240,7 @@ local marqueeClip = buat("Frame", {
 }, footer)
 local marquee = buat("TextLabel", {
     BackgroundTransparency = 1,
-    Position = UDim2.fromOffset(322, 0),
+    Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1400, 13),
     FontFace = fnt("med"),
     Text = "⌨ F = GUI (tutup = hilang)   ✦   🗄️ TIANG: Y pasang + 🔗 sambung   ✦   🔴 RECORD: G rekam + 🎯 solo   ✦   👑 KING: Q Speed / C Shift / R Hide / X Walls / T Cahaya / Fall Assist   ✦   Notif tiap toggle",
@@ -1430,44 +1430,86 @@ pusatDiRoot = function(gui)
 end
 
 
--- [12] TOAST --------------------------------------------------------
+-- [12] TOAST — KANAN ATAS LAYAR (stack vertikal) -------------------
+local notifHolder = buat("Frame", {
+    Name = "NotifHolder",
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -10, 0, 10),
+    Size = UDim2.fromOffset(280, 400),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ZIndex = 980,
+}, screenGui)
+buat("UIListLayout", {
+    Padding = UDim.new(0, 6),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    HorizontalAlignment = Enum.HorizontalAlignment.Right,
+    VerticalAlignment = Enum.VerticalAlignment.Top,
+}, notifHolder)
+
+local notifCounter = 0
 toast = function(teks, aksen)
+    notifCounter += 1
     local t = buat("Frame", {
         Name = "NoFade",
-        AnchorPoint = Vector2.new(0.5, 1),
-        Position = UDim2.new(0.5, 0, 1, -44),
-        Size = UDim2.fromOffset(260, 30),
+        AnchorPoint = Vector2.new(1, 0),
+        Size = UDim2.fromOffset(270, 32),
         BackgroundColor3 = Warna.Putih,
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
-        ZIndex = 850,
-    }, root)
+        ZIndex = 981,
+        LayoutOrder = notifCounter,
+    }, notifHolder)
     buat("UICorner", {CornerRadius = UDim.new(0, 10)}, t)
     local st = buat("UIStroke", {Color = aksen or Warna.Ungu, Thickness = 1, Transparency = 1}, t)
+    -- dot indikator warna
+    local dot = buat("Frame", {
+        AnchorPoint = Vector2.new(0, 0.5),
+        Position = UDim2.new(0, 8, 0.5, 0),
+        Size = UDim2.fromOffset(6, 6),
+        BackgroundColor3 = aksen or Warna.Ungu,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+    }, t)
+    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, dot)
     local lb = buat("TextLabel", {
         BackgroundTransparency = 1,
-        Position = UDim2.new(0, 5, 0, 0),
-        Size = UDim2.new(1, -10, 1, 0),
+        Position = UDim2.new(0, 22, 0, 0),
+        Size = UDim2.new(1, -28, 1, 0),
         FontFace = fnt("semi"),
         Text = teks,
         TextColor3 = Warna.TeksGelap,
         TextSize = 12,
         TextTransparency = 1,
         TextTruncate = Enum.TextTruncate.AtEnd,
+        TextXAlignment = Enum.TextXAlignment.Left,
     }, t)
 
-    local ti = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    tween(t,  ti, {BackgroundTransparency = 0.05, Position = UDim2.new(0.5, 0, 1, -36)})
-    tween(st, ti, {Transparency = 0.15})
-    tween(lb, ti, {TextTransparency = 0})
+    -- animasi masuk: slide dari kanan + fade in
+    t.Position = UDim2.new(1, 20, 0, 0)  -- start offset right
+    local ti = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+    tween(t,   ti, {BackgroundTransparency = 0.05, Position = UDim2.new(1, 0, 0, 0)})
+    tween(st,  ti, {Transparency = 0.15})
+    tween(dot, ti, {BackgroundTransparency = 0})
+    tween(lb,  ti, {TextTransparency = 0})
 
-    task.delay(1.4, function()
+    task.delay(1.6, function()
         local to = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-        tween(t,  to, {BackgroundTransparency = 1, Position = UDim2.new(0.5, 0, 1, -28)})
-        tween(st, to, {Transparency = 1})
-        tween(lb, to, {TextTransparency = 1})
+        tween(t,   to, {BackgroundTransparency = 1, Position = UDim2.new(1, 20, 0, 0)})
+        tween(st,  to, {Transparency = 1})
+        tween(dot, to, {BackgroundTransparency = 1})
+        tween(lb,  to, {TextTransparency = 1})
         task.delay(0.3, function() t:Destroy() end)
     end)
+
+    -- batasi max 5 notif tampil
+    local list = {}
+    for _, c in ipairs(notifHolder:GetChildren()) do
+        if c:IsA("Frame") and c.Name == "NoFade" then table.insert(list, c) end
+    end
+    if #list > 5 then
+        list[1]:Destroy()
+    end
 end
 
 -- [13] FADE PER-ELEMEN ----------------------------------------------
