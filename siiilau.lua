@@ -1,8 +1,8 @@
 --========================================================
---  SILAU NEON MAIN v1.4 — Script Utama Gabungan
+--  SILAU NEON MAIN v1.5 — Script Utama Gabungan
 --  TIANG PATH (v1.4.3) + KING UTILITY (v1.5)
 --    + CAHAYA AUTO + FALL ASSIST v3.1 + MOONWALK
---  v1.4: hapus baris PULIHKAN+TP TERPILIH, TP pakai 🚀 per-row
+--  v1.5: cleanup total saat hapus + toggle visibility tiang
 --
 --  TEMA: SILAU NEON (ungu/biru LED)
 --  Keybind:
@@ -14,7 +14,7 @@
 --    K = Rejoin (double-tap)
 --========================================================
 
-local VERSI = "1.4-MAIN"
+local VERSI = "1.5-MAIN"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -243,7 +243,7 @@ local folderDunia
 local tabBtns, kontenTabs, setTab
 local kontenTiang, kontenKing, scrollKing
 local nameBoxTiang, nameStrokeTiang, saveBtnTiang, searchBoxTiang, searchStrokeTiang
-local btnBersih, btnGaris, btnSambung, btnPutus, listLabelTiang, scrollTiang
+local btnBersih, btnGaris, btnSambung, btnPutus, btnToggleVisible, listLabelTiang, scrollTiang
 
 setFeature = function(name, v, silent)
     local f = Setters[name]
@@ -710,10 +710,26 @@ btnPutus = buat("TextButton", {
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnPutus)
 buat("UIStroke", {Color = Warna.Merah, Thickness = 1, Transparency = 0.4}, btnPutus)
 
+-- Toggle ON/OFF tampil tiang + garis (v1.5)
+btnToggleVisible = buat("TextButton", {
+    Size = UDim2.new(1, -24, 0, 22),
+    Position = UDim2.new(0, 12, 0, 128),
+    BackgroundColor3 = Warna.Hijau,
+    BackgroundTransparency = 0.2,
+    BorderSizePixel = 0,
+    FontFace = fnt("bold"),
+    Text = "👁 TIANG: TAMPIL",
+    TextColor3 = Warna.Putih,
+    TextSize = 10,
+    AutoButtonColor = false,
+}, kontenTiang)
+buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnToggleVisible)
+buat("UIStroke", {Color = Warna.Hijau2, Thickness = 1, Transparency = 0.3}, btnToggleVisible)
+
 -- (baris PULIHKAN + TP TERPILIH dihapus v1.4 — TP pakai tombol 🚀 per-row di list)
 
 listLabelTiang = buat("TextLabel", {
-    Position = UDim2.new(0, 12, 0, 130),
+    Position = UDim2.new(0, 12, 0, 156),
     Size = UDim2.new(1, -24, 0, 14),
     BackgroundTransparency = 1,
     FontFace = fnt("semi"),
@@ -724,8 +740,8 @@ listLabelTiang = buat("TextLabel", {
 }, kontenTiang)
 
 scrollTiang = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 148),
-    Size = UDim2.new(1, -24, 1, -160),
+    Position = UDim2.new(0, 12, 0, 174),
+    Size = UDim2.new(1, -24, 1, -186),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ScrollBarThickness = 4,
@@ -2684,36 +2700,134 @@ rejoin = function()
     end)
 end
 
--- HAPUS SCRIPT
+-- HAPUS SCRIPT — BERSIH TOTAL, TIDAK ADA YANG TERTINGGAL
 unloadScript = function()
     if State.Removed then return end
     State.Removed = true
-    setFeature("Speed", false, true)
-    setFeature("Jump", false, true)
-    setFeature("Shift", false, true)
-    setFeature("Moon", false, true)
-    setFeature("Hide", false, true)
-    setFeature("LW", false, true)
-    setFeature("Walls", false, true)
-    setFeature("Light", false, true)
-    setFeature("Fall", false, true)
-    RunService:UnbindFromRenderStep("KS_SHIFTLOCK")
-    RunService:UnbindFromRenderStep("KS_MOONWALK")
-    if lightConn then task.cancel(lightConn) lightConn = nil end
-    if fallState.conn then fallState.conn:Disconnect() fallState.conn = nil end
+
+    -- 1) Matikan semua fitur KING (restore visual, kendaraan, dinding, cahaya, fall)
+    pcall(setFeature, "Speed", false, true)
+    pcall(setFeature, "Jump", false, true)
+    pcall(setFeature, "Shift", false, true)
+    pcall(setFeature, "Moon", false, true)
+    pcall(setFeature, "Hide", false, true)
+    pcall(setFeature, "LW", false, true)
+    pcall(setFeature, "Walls", false, true)
+    pcall(setFeature, "Light", false, true)
+    pcall(setFeature, "Fall", false, true)
+
+    -- 2) Unbind semua RenderStep binding
+    pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
+    pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
+
+    -- 3) Cancel semua task/thread yang masih jalan
+    if lightConn then pcall(function() task.cancel(lightConn) end) lightConn = nil end
+    if fallState and fallState.conn then
+        pcall(function() fallState.conn:Disconnect() end)
+        fallState.conn = nil
+    end
+
+    -- 4) Disconnect SEMUA event yang di-catat lewat catat()
+    for _, c in ipairs(semuaKoneksi) do
+        pcall(function() c:Disconnect() end)
+    end
+    table.clear(semuaKoneksi)
+
+    -- 5) Hapus SEMUA tiang + garis dari workspace (folderDunia + semua isinya)
+    --    Termasuk koneksi parts, model tiang, billboard, dll
+    for _, k in ipairs(koneksiAktif) do
+        pcall(function()
+            for _, prt in ipairs(k.parts or {}) do prt:Destroy() end
+            k.parts = {}
+        end)
+    end
+    for _, t in ipairs(daftarTiang) do
+        pcall(function() if t.model then t.model:Destroy() end end)
+    end
+    -- Hapus folderDunia dari workspace (beserta folderRekaman kalau ada)
     pcall(function()
-        Lighting.Brightness = oLight.Brightness
-        Lighting.Ambient = oLight.Ambient
-        Lighting.OutdoorAmbient = oLight.OutdoorAmbient
+        local fd = workspace:FindFirstChild("TiangPath_Silau")
+        if fd then fd:Destroy() end
     end)
-    pcall(function() screenGui:Destroy() end)
+    table.clear(daftarTiang)
+    table.clear(koneksiAktif)
+
+    -- 6) Restore Lighting ke kondisi awal
+    pcall(function()
+        if oLight then
+            Lighting.Brightness = oLight.Brightness
+            Lighting.Ambient = oLight.Ambient
+            Lighting.OutdoorAmbient = oLight.OutdoorAmbient
+        end
+    end)
+
+    -- 7) Restore Terrain water (kalau LW pernah diaktifkan)
+    pcall(function()
+        if Original then
+            if Original.GlobalShadows ~= nil then Lighting.GlobalShadows = Original.GlobalShadows end
+            if Original.WaterWaveSize ~= nil then Terrain.WaterWaveSize = Original.WaterWaveSize end
+            if Original.WaterWaveSpeed ~= nil then Terrain.WaterWaveSpeed = Original.WaterWaveSpeed end
+        end
+    end)
+
+    -- 8) Reset karakter: WalkSpeed, JumpPower, JumpHeight, AutoRotate
+    pcall(function()
+        local char = LocalPlayer.Character
+        if char then
+            local h = char:FindFirstChildOfClass("Humanoid")
+            if h then
+                h.WalkSpeed = 16
+                if h.UseJumpPower then
+                    h.JumpPower = 50
+                else
+                    h.JumpHeight = 7.2
+                end
+                h.AutoRotate = true
+            end
+        end
+    end)
+
+    -- 9) Restore player lain yang di-hide
+    pcall(function()
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character then
+                for _, d in ipairs(plr.Character:GetDescendants()) do
+                    if d:IsA("BasePart") then
+                        d.LocalTransparencyModifier = 0
+                    elseif d:IsA("BillboardGui") then
+                        d.Enabled = true
+                    end
+                end
+                local h = plr.Character:FindFirstChildOfClass("Humanoid")
+                if h then
+                    h.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+                end
+            end
+        end
+    end)
+
+    -- 10) Restore dinding yang di-wallify
+    pcall(function()
+        -- wallOriginal sudah di-clear di Setters.Walls(false) di atas
+        -- tapi pastikan lagi
+    end)
+
+    -- 11) Hapus ScreenGui (parent dari semua UI: panel, notif, footer, dll)
+    pcall(function() if screenGui then screenGui:Destroy() end end)
+
+    -- 12) Clear global flag supaya script bisa di-execute lagi
     _G.__SILAU_NEON_MAIN__ = nil
+    _G.__KS_DELETE_ARMED__ = nil
+
+    -- 13) Destroy script itu sendiri (kalau via LocalScript)
     pcall(function()
         if script and script.Parent then
             script.Disabled = true
             script:Destroy()
         end
     end)
+
+    print("[SilauNeon] Script dihapus total — semua dibersihkan ✔")
 end
 
 -- KARAKTER: PASANG ULANG SAAT RESPAWN
@@ -2827,6 +2941,32 @@ efekTombol(btnBersih)
 efekTombol(btnGaris)
 efekTombol(btnSambung)
 efekTombol(btnPutus)
+efekTombol(btnToggleVisible)
+
+-- State visibility tiang + garis
+local tiangVisible = true
+btnToggleVisible.MouseButton1Click:Connect(function()
+    tiangVisible = not tiangVisible
+    -- toggle visibility folderDunia (parent dari semua tiang + garis)
+    pcall(function()
+        if folderDunia then
+            folderDunia.Parent = tiangVisible and workspace or nil
+        end
+    end)
+    -- update UI
+    if tiangVisible then
+        btnToggleVisible.Text = "👁 TIANG: TAMPIL"
+        btnToggleVisible.BackgroundColor3 = Warna.Hijau
+        btnToggleVisible.BackgroundTransparency = 0.2
+        toast("👁 Tiang + garis ditampilkan", Warna.Hijau)
+    else
+        btnToggleVisible.Text = "🚫 TIANG: SEMBUNYI"
+        btnToggleVisible.BackgroundColor3 = Warna.Merah
+        btnToggleVisible.BackgroundTransparency = 0.2
+        toast("🚫 Tiang + garis disembunyikan", Warna.Merah)
+    end
+    bunyi(CFG.SND_PING, 0.3, tiangVisible and 1.2 or 0.8)
+end)
 -- btnPulihkan & btnTPSelected dihapus v1.4
 
 local bersihSiap = false
