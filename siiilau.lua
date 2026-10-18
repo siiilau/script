@@ -1489,6 +1489,10 @@ local function teleportKe(cf)
     local _, hrp, hum = getKarakter()
     if not hrp then return end
     if hum and hum.SeatPart then hum.Sit = false end
+    -- Handle both CFrame and Vector3 input
+    if typeof(cf) == "Vector3" then
+        cf = CFrame.new(cf)
+    end
     hrp.CFrame = cf + Vector3.new(0, CFG.TELEPORT_OFFSET, 0)
     hrp.AssemblyLinearVelocity  = Vector3.zero
     hrp.AssemblyAngularVelocity = Vector3.zero
@@ -1641,9 +1645,36 @@ local function bangunGarisKoneksi(k)
         if char then table.insert(filter, char) end
         rayParams.FilterDescendantsInstances = filter
         local dasarA, dasarB = tA.cframe.Position, tB.cframe.Position
+
+        -- ===== DETEKSI AIR di posisi tiang A dan B =====
+        -- Raycast dari atas ke bawah, cek apakah material yang terkena = Water
+        local function cekAir(pos)
+            local dari = pos + Vector3.new(0, 100, 0)
+            local r = workspace:Raycast(dari, Vector3.new(0, -400, 0), rayParams)
+            if r and r.Material == Enum.Material.Water then
+                return true
+            end
+            return false
+        end
+        local airA = cekAir(dasarA)
+        local airB = cekAir(dasarB)
+
+        -- ===== KASUS 1: KEDUA TIANG DI AIR → garis lurus saja =====
+        if airA and airB then
+            local poinLurus = {tA.topPos, tB.topPos}
+            for i = 1, #poinLurus - 1 do
+                local warnaG = (i % 2 == 0) and Warna.Biru2 or Warna.Ungu2
+                local prt = buatSegmen(poinLurus[i], poinLurus[i + 1], warnaG, nil, folderDunia)
+                if prt then table.insert(k.parts, prt) end
+            end
+            return
+        end
+
+        -- ===== KASUS 2: IKUT KONTUR TANAH =====
         local jarak = (Vector3.new(dasarB.X, 0, dasarB.Z)
             - Vector3.new(dasarA.X, 0, dasarA.Z)).Magnitude
-        local jumlahSampel = math.clamp(math.ceil(jarak / CFG.JARAK_SAMPL), 1, 250)
+        -- sampel lebih rapat (2 stud) supaya kontur halus
+        local jumlahSampel = math.clamp(math.ceil(jarak / 2), 2, 400)
         local tinggiAtas = math.max(tA.topPos.Y, tB.topPos.Y) + CFG.TINGGI_SCAN
         local poin = {tA.topPos}
         local yTerakhir = tA.topPos.Y
@@ -1654,7 +1685,13 @@ local function bangunGarisKoneksi(k)
             local ray = workspace:Raycast(dari, Vector3.new(0, -(tinggiAtas + 50), 0), rayParams)
             local y
             if ray then
-                y = ray.Position.Y + CFG.ANGKAT_GARIS
+                -- skip air: kalau kena water, jangan naik ke permukaan air
+                -- (pertahankan yTerakhir supaya garis tidak melompat ke atas)
+                if ray.Material == Enum.Material.Water then
+                    y = yTerakhir
+                else
+                    y = ray.Position.Y + CFG.ANGKAT_GARIS
+                end
             else
                 y = yTerakhir
             end
@@ -1663,7 +1700,8 @@ local function bangunGarisKoneksi(k)
         end
         table.insert(poin, tB.topPos)
         if myGen ~= genPath then return end
-        local poinRapi = sederhanakan(poin, CFG.TOLERANSI_GARIS)
+        -- tolerance kecil = 0.08 stud supaya kontur naik/turun tetap detail
+        local poinRapi = sederhanakan(poin, 0.08)
         for i = 1, #poinRapi - 1 do
             local warnaG = (i % 2 == 0) and Warna.Biru2 or Warna.Ungu2
             local prt = buatSegmen(poinRapi[i], poinRapi[i + 1], warnaG, nil, folderDunia)
