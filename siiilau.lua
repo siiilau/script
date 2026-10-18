@@ -1,21 +1,8 @@
 --========================================================
---  SILAU NEON MAIN v1.2 — Script Utama Gabungan
---  TIANG PATH (v1.4.3) + KING UTILITY (v1.5)
---    + CAHAYA AUTO + FALL ASSIST v3.1 "VIRTUAL BRANCH"
---  (Tab TELEPORT dihapus v1.2 — fokus ke TIANG/RECORD/KING)
---
---  TEMA: SILAU NEON (ungu/biru LED)
---  Keybind:
---    F = buka/tutup GUI (saat tutup = hilang total)
---    Y = pasang tiang
---    G = rekam jalur
---    Q = Speed      C = Shiftlock Mobile
---    R = Hide       X = Dinding Batas
---    T = Cahaya Auto
---    K = Rejoin (double-tap)
+--  SILAU NEON MAIN v1.3 — Script Utama Gabungan
 --========================================================
 
-local VERSI = "1.2-MAIN"
+local VERSI = "1.3-MAIN"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -56,7 +43,6 @@ local CFG = {
     ICON_SIZE       = 36,
     TOGGLE_KEY      = Enum.KeyCode.F,
     PASANG_KEY      = Enum.KeyCode.Y,
-    REC_KEY         = Enum.KeyCode.G,
     TELEPORT_OFFSET = 3.5,
     TIANG_TINGGI    = 4,
     TIANG_TEBAL     = 1.1,
@@ -232,22 +218,20 @@ local Setters, Switches = {}, {}
 local setFeature, togglePanel, resetAll, rejoin, unloadScript
 local applySpeed, applyJump, updateJumpLabel
 local RefreshSpeed, RefreshJump, JumpLabel
-local refreshListTiang, refreshRekList
-local mulaiRekam, stopRekam, toggleRekam
+local refreshListTiang
 local pasangTiang
 local cfgFall, oLight, fallState, fallRay, lightConn
 
 -- Forward declare untuk part3 (FX/footer/icon) — di-expose via buildFX()
 local konfeti, emojiBurst, pusatDiRoot, toast
 local kumpulkanFade, setFade, fadeVal
-local folderDunia, folderRekaman
+local folderDunia
 
 -- Forward declare untuk part2 (UI builder) — di-expose via buildUI()
 local tabBtns, kontenTabs, setTab
-local kontenTiang, kontenRekam, kontenKing, scrollKing
+local kontenTiang, kontenKing, scrollKing
 local nameBoxTiang, nameStrokeTiang, saveBtnTiang, searchBoxTiang, searchStrokeTiang
-local btnBersih, btnGaris, btnSambung, btnPutus, btnPulihkan, listLabelTiang, scrollTiang
-local recBtn, statusLabelRek, btnTampilRek, btnGabung, btnSemua, listLabelRek, scrollRek
+local btnBersih, btnGaris, btnSambung, btnPutus, btnPulihkan, btnTPSelected, listLabelTiang, scrollTiang
 
 setFeature = function(name, v, silent)
     local f = Setters[name]
@@ -553,24 +537,24 @@ local accent = buat("Frame", {
     BorderSizePixel = 0,
 }, panel)
 ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
--- [7b] TAB BAR (3 TAB — TELEPORT DIHAPUS) ---------------------------
+-- [7b] TAB BAR (2 TAB — KING DULU, TIANG KEDUA) ---------------------
 -- Bungkus dengan function untuk hemat local count (Luau limit 200)
 local function buildUI()
 tabBtns = {}
-local tabLabels = {"🗄️ TIANG", "🔴 RECORD", "👑 KING"}
-local tabColors = {Warna.Biru, Warna.Hijau2, Warna.Ungu2}
+local tabLabels = {"👑 KING", "🗄️ TIANG"}
+local tabColors = {Warna.Ungu2, Warna.Biru}
 kontenTabs = {}
 
 for i, lbl in ipairs(tabLabels) do
     local tab = buat("TextButton", {
-        Size = UDim2.new(1/3, -3, 0, 24),
-        Position = UDim2.new((i - 1) / 3, 6 + (i - 1) * 2, 0, 50),
+        Size = UDim2.new(0.5, -3, 0, 24),
+        Position = UDim2.new((i - 1) * 0.5, 6 + (i - 1) * 2, 0, 50),
         BackgroundColor3 = (i == 1) and tabColors[i] or Warna.AbuMuda,
         BorderSizePixel = 0,
         FontFace = fnt("bold"),
         Text = lbl,
         TextColor3 = (i == 1) and Warna.Putih or Warna.AbuTeks,
-        TextSize = 10,
+        TextSize = 11,
         AutoButtonColor = false,
     }, panel)
     buat("UICorner", {CornerRadius = UDim.new(0, 6)}, tab)
@@ -715,18 +699,32 @@ buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnPutus)
 buat("UIStroke", {Color = Warna.Merah, Thickness = 1, Transparency = 0.4}, btnPutus)
 
 btnPulihkan = buat("TextButton", {
-    Size = UDim2.new(1, -24, 0, 22),
+    Size = UDim2.new(0.5, -4, 0, 22),
     Position = UDim2.new(0, 12, 0, 128),
     BackgroundColor3 = Warna.Putih,
     BorderSizePixel = 0,
     FontFace = fnt("bold"),
-    Text = "♻ PULIHKAN BACKUP",
+    Text = "♻ PULIHKAN",
     TextColor3 = Warna.Putih,
     TextSize = 10,
     AutoButtonColor = false,
 }, kontenTiang)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnPulihkan)
 buat("UIStroke", {Color = Warna.Biru, Thickness = 1, Transparency = 0.3}, btnPulihkan)
+
+btnTPSelected = buat("TextButton", {
+    Size = UDim2.new(0.5, -4, 0, 22),
+    Position = UDim2.new(0.5, 4, 0, 128),
+    BackgroundColor3 = Warna.Putih,
+    BorderSizePixel = 0,
+    FontFace = fnt("bold"),
+    Text = "🚀 TP TERPILIH",
+    TextColor3 = Warna.Putih,
+    TextSize = 10,
+    AutoButtonColor = false,
+}, kontenTiang)
+buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnTPSelected)
+ledSweep(btnTPSelected, Warna.Ungu, Warna.Putih, Warna.Biru2, 2.4)
 
 listLabelTiang = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 156),
@@ -751,107 +749,6 @@ scrollTiang = buat("ScrollingFrame", {
     AutomaticCanvasSize = Enum.AutomaticSize.Y,
 }, kontenTiang)
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTiang)
-
--- [7e] KONTEN TAB 3: RECORD -----------------------------------------
-kontenRekam = buat("Frame", {
-    Position = UDim2.new(0, 0, 0, 80),
-    Size = UDim2.new(1, 0, 1, -110),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    Visible = false,
-}, panel)
-table.insert(kontenTabs, kontenRekam)
-
-recBtn = buat("TextButton", {
-    Size = UDim2.new(1, -24, 0, 32),
-    Position = UDim2.new(0, 12, 0, 2),
-    BackgroundColor3 = Warna.Putih,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "⏺ MULAI REKAM  [G]",
-    TextColor3 = Warna.Putih,
-    TextSize = 12,
-    AutoButtonColor = false,
-}, kontenRekam)
-buat("UICorner", {CornerRadius = UDim.new(0, 9)}, recBtn)
-ledSweep(recBtn, Warna.Hijau2, Warna.Putih, Warna.Hijau, 2.4)
-
-statusLabelRek = buat("TextLabel", {
-    Position = UDim2.new(0, 12, 0, 38),
-    Size = UDim2.new(1, -24, 0, 14),
-    BackgroundTransparency = 1,
-    FontFace = fnt("semi"),
-    Text = "Belum merekam • tekan [G] atau tombol di atas",
-    TextColor3 = Warna.AbuTeks,
-    TextSize = 10,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, kontenRekam)
-
-btnTampilRek = buat("TextButton", {
-    Size = UDim2.new(0.5, -4, 0, 22),
-    Position = UDim2.new(0, 12, 0, 56),
-    BackgroundColor3 = Warna.Putih,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "👁 LINE: ON",
-    TextColor3 = Warna.Putih,
-    TextSize = 10,
-    AutoButtonColor = false,
-}, kontenRekam)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnTampilRek)
-ledSweep(btnTampilRek, Warna.Hijau2, Warna.Putih, Warna.Hijau, 2.8)
-
-btnGabung = buat("TextButton", {
-    Size = UDim2.new(0.5, -4, 0, 22),
-    Position = UDim2.new(0.5, 4, 0, 56),
-    BackgroundColor3 = Warna.Putih,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "🔗 GABUNG",
-    TextColor3 = Warna.Putih,
-    TextSize = 10,
-    AutoButtonColor = false,
-}, kontenRekam)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnGabung)
-ledSweep(btnGabung, Warna.Ungu, Warna.Putih, Warna.Biru2, 2.4)
-
-btnSemua = buat("TextButton", {
-    Size = UDim2.new(1, -24, 0, 22),
-    Position = UDim2.new(0, 12, 0, 84),
-    BackgroundColor3 = Warna.Putih,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "👁 TAMPILKAN SEMUA",
-    TextColor3 = Warna.Putih,
-    TextSize = 10,
-    AutoButtonColor = false,
-}, kontenRekam)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnSemua)
-ledSweep(btnSemua, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.8)
-
-listLabelRek = buat("TextLabel", {
-    Position = UDim2.new(0, 12, 0, 112),
-    Size = UDim2.new(1, -24, 0, 14),
-    BackgroundTransparency = 1,
-    FontFace = fnt("semi"),
-    Text = "🎥 RECORD • 0  (🎯 = tampil itu saja)",
-    TextColor3 = Warna.AbuTeks,
-    TextSize = 10,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, kontenRekam)
-
-scrollRek = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 130),
-    Size = UDim2.new(1, -24, 1, -142),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ScrollBarThickness = 4,
-    ScrollBarImageColor3 = Warna.Hijau2,
-    ScrollingDirection = Enum.ScrollingDirection.Y,
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, kontenRekam)
-buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollRek)
 
 -- [7f] KONTEN TAB 4: KING (tanpa Cahaya) ----------------------------
 kontenKing = buat("Frame", {
@@ -1054,6 +951,7 @@ State.LWOn    = false
 State.WallsOn = false
 State.LightOn = false
 State.FallOn  = false
+State.MoonOn  = false  -- Moonwalk (G)
 
 -- Config Fall Assist v3.1 "VIRTUAL BRANCH"
 cfgFall = {
@@ -1111,6 +1009,7 @@ RefreshJump = kingStepperRow(
     end
 )
 kingToggleRow("Shiftlock Mobile", "C", "Shift")
+kingToggleRow("Moonwalk", "G", "Moon")
 
 kingHeader("Visual")
 kingToggleRow("Hide Player + Kendaraan", "R", "Hide")
@@ -1243,7 +1142,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1400, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = GUI (tutup = hilang)   ✦   🗄️ TIANG: Y pasang + 🔗 sambung   ✦   🔴 RECORD: G rekam + 🎯 solo   ✦   👑 KING: Q Speed / C Shift / R Hide / X Walls / T Cahaya / Fall Assist   ✦   Notif tiap toggle",
+    Text = "⌨ F = GUI   ✦   👑 KING: Q Speed / C Shift / G Moonwalk / R Hide / X Walls / T Cahaya / Fall Assist   ✦   🗄️ TIANG: Y pasang + 🔗 sambung + 🚀 TP terpilih   ✦   Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1555,29 +1454,15 @@ folderDunia = Instance.new("Folder")
 folderDunia.Name = "TiangPath_Silau"
 pcall(function() folderDunia.Parent = workspace end)
 
-folderRekaman = Instance.new("Folder")
-folderRekaman.Name = "Rekaman"
-folderRekaman.Parent = folderDunia
-
 end -- akhir buildFX()
 
 -- Eksekusi buildFX() sekarang (panel, root, outer sudah ada dari part1)
 buildFX()
 
--- [13c] STATE TIANG + REKAMAN ---------------------------------------
+-- [13c] STATE TIANG (RECORD dihapus v1.3)
 local daftarTiang    = {}
-local daftarRekaman  = {}
 local koneksiAktif   = {}
 local genPath        = 0
-
-local sedangRekam    = false
-local rekamPoin      = {}
-local rekamMulai     = 0
-local rekamConn      = nil
-local rekamDiedConn  = nil
-local tampilRekamanGlobal = true
-local recBadge, recBadgeLabel = nil, nil
-local tepiRekam = {}
 
 -- [13d] STATE TELEPORT — DIHAPUS (tab teleport dihapus)
 -- lokasiTersimpan & counterNamaTP tidak lagi dipakai
@@ -1847,24 +1732,7 @@ local function simpanKeFileTiang()
         table.insert(daftarK, {a = k.a, b = k.b})
     end
     entri.koneksi = daftarK
-    local daftarR = {}
-    for _, r in ipairs(daftarRekaman) do
-        local poinSimpan = {}
-        for _, p in ipairs(r.poin) do
-            table.insert(poinSimpan, {
-                math.floor(p.X * 100 + 0.5) / 100,
-                math.floor(p.Y * 100 + 0.5) / 100,
-                math.floor(p.Z * 100 + 0.5) / 100
-            })
-        end
-        table.insert(daftarR, {
-            id     = r.id,
-            nama   = r.nama,
-            tampil = r.tampil,
-            poin   = poinSimpan,
-        })
-    end
-    entri.records = daftarR
+    -- records dihapus v1.3 (tab RECORD dihapus)
     data.games[tostring(game.PlaceId)] = entri
     local ok, json = pcall(function() return HttpService:JSONEncode(data) end)
     if ok and type(json) == "string" then
@@ -2179,414 +2047,7 @@ refreshListTiang = function(animasi)
     kumpulkanFade()
 end
 
--- [16] LOGIKA RECORD ------------------------------------------------
-local function buatTepiRekam()
-    tepiRekam = {}
-    local konf = {
-        {UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, 4)},
-        {UDim2.new(0, 0, 1, -4), UDim2.new(1, 0, 0, 4)},
-        {UDim2.new(0, 0, 0, 0), UDim2.new(0, 4, 1, 0)},
-        {UDim2.new(1, -4, 0, 0), UDim2.new(0, 4, 1, 0)},
-    }
-    for _, c in ipairs(konf) do
-        local f = buat("Frame", {
-            Position = c[1], Size = c[2],
-            BackgroundColor3 = Warna.Merah,
-            BackgroundTransparency = 0.3,
-            BorderSizePixel = 0,
-            ZIndex = 960,
-        }, screenGui)
-        table.insert(tepiRekam, f)
-    end
-    task.spawn(function()
-        while #tepiRekam > 0 and tepiRekam[1].Parent do
-            for _, f in ipairs(tepiRekam) do
-                tween(f, TweenInfo.new(0.55, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {BackgroundTransparency = 0.75})
-            end
-            task.wait(0.55)
-            if #tepiRekam == 0 or not tepiRekam[1].Parent then break end
-            for _, f in ipairs(tepiRekam) do
-                tween(f, TweenInfo.new(0.55, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {BackgroundTransparency = 0.3})
-            end
-            task.wait(0.55)
-        end
-    end)
-end
-
-local function hapusTepiRekam()
-    for _, f in ipairs(tepiRekam) do
-        pcall(function() f:Destroy() end)
-    end
-    tepiRekam = {}
-end
-
-local function formatWaktu(det)
-    local m = math.floor(det / 60)
-    local s = math.floor(det % 60)
-    return string.format("%02d:%02d", m, s)
-end
-
-local function resetUIRekam()
-    recBtn.Text = "⏺ MULAI REKAM  [G]"
-    recBtn.BackgroundColor3 = Warna.Putih
-    statusLabelRek.Text = "Belum merekam • tekan [G] atau tombol di atas"
-end
-
-mulaiRekam = function()
-    if sedangRekam then return end
-    local char, hrp, hum = getKarakter()
-    if not hrp then
-        toast("⚠️ Karakter belum siap", Warna.Merah)
-        return
-    end
-    sedangRekam = true
-    rekamPoin = {hrp.Position}
-    rekamMulai = os.clock()
-    recBadge = buat("Frame", {
-        AnchorPoint = Vector2.new(0.5, 0),
-        Position = UDim2.new(0.5, 0, 0, 10),
-        Size = UDim2.fromOffset(210, 32),
-        BackgroundColor3 = Warna.Hitam,
-        BorderSizePixel = 0,
-        ZIndex = 970,
-    }, screenGui)
-    buat("UICorner", {CornerRadius = UDim.new(0, 9)}, recBadge)
-    local bs = buat("UIStroke", {Color = Warna.Merah, Thickness = 2}, recBadge)
-    tween(bs, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Transparency = 0.6})
-    recBadgeLabel = buat("TextLabel", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 1, 0),
-        FontFace = fnt("bold"),
-        Text = "⏺ REC 00:00 • 1 titik",
-        TextColor3 = Warna.Merah,
-        TextSize = 13,
-        ZIndex = 971,
-    }, recBadge)
-    buatTepiRekam()
-    bunyi(CFG.SND_PING, 0.35, 1.35)
-    toast("⏺ MULAI MEREKAM — jalan sesukamu!", Warna.Hijau2)
-    rekamConn = RunService.Heartbeat:Connect(function()
-        local _, h = getKarakter()
-        if not h then return end
-        local pos = h.Position
-        local last = rekamPoin[#rekamPoin]
-        if not last or (pos - last).Magnitude >= CFG.SAMPL_REKAM then
-            if #rekamPoin < CFG.MAX_TITIK then
-                table.insert(rekamPoin, pos)
-            else
-                toast("⚠️ Record penuh (" .. CFG.MAX_TITIK .. " titik) — auto stop", Warna.Merah)
-                stopRekam()
-            end
-        end
-    end)
-    catat(rekamConn)
-    if hum then
-        rekamDiedConn = hum.Died:Connect(function()
-            if rekamConn then putuskan(rekamConn) rekamConn = nil end
-            if rekamDiedConn then putuskan(rekamDiedConn) rekamDiedConn = nil end
-            sedangRekam = false
-            rekamPoin = {}
-            if recBadge then pcall(function() recBadge:Destroy() end) recBadge = nil end
-            recBadgeLabel = nil
-            hapusTepiRekam()
-            resetUIRekam()
-            bunyi(CFG.SND_SNAP, 0.35, 0.5)
-            toast("💀 Kamu mati — record dibatalkan & terhapus", Warna.Merah)
-        end)
-        catat(rekamDiedConn)
-    end
-    recBtn.Text = "⏹ STOP REKAM  [G]"
-    recBtn.BackgroundColor3 = Warna.Merah
-end
-
-stopRekam = function()
-    if not sedangRekam then return end
-    sedangRekam = false
-    if rekamConn then putuskan(rekamConn) rekamConn = nil end
-    if rekamDiedConn then putuskan(rekamDiedConn) rekamDiedConn = nil end
-    if recBadge then pcall(function() recBadge:Destroy() end) recBadge = nil end
-    recBadgeLabel = nil
-    hapusTepiRekam()
-    resetUIRekam()
-    bunyi(CFG.SND_SNAP, 0.35, 0.7)
-    if #rekamPoin < 2 then
-        toast("⚠️ Terlalu pendek — record dibatalkan", Warna.Merah)
-        rekamPoin = {}
-        return
-    end
-    local namaNama = {}
-    for _, r in ipairs(daftarRekaman) do table.insert(namaNama, r.nama) end
-    local namaBaru = "Rekaman " .. nomorBebas("Rekaman", namaNama)
-    local rek = {
-        id     = idBaru(),
-        nama   = namaBaru,
-        poin   = rekamPoin,
-        tampil = true,
-        pilih  = false,
-        folder = Instance.new("Folder"),
-    }
-    rek.folder.Name = "Rek_" .. rek.id
-    rek.folder.Parent = folderRekaman
-    table.insert(daftarRekaman, rek)
-    rekamPoin = {}
-    if tampilRekamanGlobal and rek.tampil then
-        local poinRapi = sederhanakan(rek.poin, CFG.TOLERANSI_REK)
-        for i = 1, #poinRapi - 1 do
-            buatSegmen(poinRapi[i], poinRapi[i + 1], Warna.Hijau, CFG.TEBAL_LINE_REK, rek.folder)
-        end
-    end
-    simpanKeFileTiang()
-    refreshRekList(true)
-    konfeti(root, pusatDiRoot(recBtn), 14)
-    emojiBurst(root, pusatDiRoot(recBtn), {"🎥", "✅", "✨"}, 5)
-    toast("✅ " .. rek.nama .. " tersimpan • " .. #rek.poin .. " titik", Warna.Hijau2)
-end
-
-toggleRekam = function()
-    if sedangRekam then stopRekam() else mulaiRekam() end
-end
-
-task.spawn(function()
-    while screenGui.Parent do
-        task.wait(0.25)
-        if sedangRekam and recBadgeLabel and recBadgeLabel.Parent then
-            local waktu = formatWaktu(os.clock() - rekamMulai)
-            local teks = "⏺ REC " .. waktu .. " • " .. #rekamPoin .. " titik"
-            recBadgeLabel.Text = teks
-            if statusLabelRek.Parent then
-                statusLabelRek.Text = "🔴 Merekam " .. waktu .. " • " .. #rekamPoin .. " titik"
-            end
-        end
-    end
-end)
-
-local function bangunLineRek(rek)
-    rek.folder:ClearAllChildren()
-    if tampilRekamanGlobal and rek.tampil then
-        local poinRapi = sederhanakan(rek.poin, CFG.TOLERANSI_REK)
-        for i = 1, #poinRapi - 1 do
-            buatSegmen(poinRapi[i], poinRapi[i + 1], Warna.Hijau, CFG.TEBAL_LINE_REK, rek.folder)
-        end
-    end
-end
-
-local function hapusRekaman(rek)
-    local i = table.find(daftarRekaman, rek)
-    if not i then return end
-    pcall(function() rek.folder:Destroy() end)
-    table.remove(daftarRekaman, i)
-    simpanKeFileTiang()
-    toast("🗑️ Record dihapus: " .. rek.nama, Warna.Merah)
-    refreshRekList(true)
-end
-
-local function soloRek(target)
-    for _, r in ipairs(daftarRekaman) do
-        r.tampil = (r == target)
-        bangunLineRek(r)
-    end
-    simpanKeFileTiang()
-    refreshRekList(false)
-    bunyi(CFG.SND_PING, 0.3, 1.35)
-    toast("🎯 Solo: hanya '" .. target.nama .. "' yang tampil", Warna.Hijau2)
-end
-
--- [16b] REFRESH LIST REKAMAN ----------------------------------------
-refreshRekList = function(animasi)
-    for _, c in ipairs(scrollRek:GetChildren()) do
-        if c:IsA("GuiObject") then c:Destroy() end
-    end
-    local nTampil = 0
-    for _, r in ipairs(daftarRekaman) do
-        if r.tampil then nTampil += 1 end
-    end
-    listLabelRek.Text = "🎥 RECORD • " .. #daftarRekaman
-        .. "  •  tampil " .. nTampil .. "/" .. #daftarRekaman
-
-    if #daftarRekaman == 0 then
-        local kosong = buat("Frame", {
-            Size = UDim2.new(1, -6, 1, 0), BackgroundTransparency = 1,
-        }, scrollRek)
-        local pin = buat("TextLabel", {
-            Name = "NoFade", AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(0.5, 0, 0, 44), Size = UDim2.fromOffset(40, 40),
-            BackgroundTransparency = 1, Font = Enum.Font.SourceSans,
-            Text = "🎥", TextSize = 30,
-        }, kosong)
-        task.spawn(function()
-            while pin.Parent do
-                tween(pin, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = UDim2.new(0.5, 0, 0, 38)})
-                task.wait(0.9)
-                if not pin.Parent then break end
-                tween(pin, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Position = UDim2.new(0.5, 0, 0, 44)})
-                task.wait(0.9)
-            end
-        end)
-        buat("TextLabel", {
-            Position = UDim2.new(0, 10, 0, 84),
-            Size = UDim2.new(1, -20, 0, 40),
-            BackgroundTransparency = 1,
-            FontFace = fnt("med"),
-            Text = "Belum ada record.\nTekan [G] untuk mulai merekam jalur.",
-            TextColor3 = Warna.AbuTeks,
-            TextSize = 12,
-            TextWrapped = true,
-        }, kosong)
-        kumpulkanFade()
-        return
-    end
-
-    for i, rek in ipairs(daftarRekaman) do
-        local item = buat("Frame", {
-            Size = UDim2.new(1, -6, 0, 36),
-            BackgroundColor3 = rek.tampil and Warna.AbuItem or Color3.fromRGB(240, 238, 248),
-            BorderSizePixel = 0,
-            LayoutOrder = i,
-        }, scrollRek)
-        buat("UICorner", {CornerRadius = UDim.new(0, 9)}, item)
-        if animasi then
-            local sc = buat("UIScale", {Scale = 0.6}, item)
-            task.delay(0.05 * i, function()
-                if item.Parent then
-                    tween(sc, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
-                end
-            end)
-        end
-        item.MouseEnter:Connect(function()
-            tween(item, TweenInfo.new(0.12), {BackgroundColor3 = Warna.BiruMuda})
-        end)
-        item.MouseLeave:Connect(function()
-            tween(item, TweenInfo.new(0.12), {
-                BackgroundColor3 = rek.tampil and Warna.AbuItem or Color3.fromRGB(240, 238, 248),
-            })
-        end)
-        local cekBtn = buat("TextButton", {
-            Size = UDim2.fromOffset(18, 18),
-            Position = UDim2.new(0, 6, 0.5, -9),
-            BackgroundColor3 = rek.pilih and Warna.Hijau2 or Warna.Putih,
-            BorderSizePixel = 0,
-            FontFace = fnt("bold"),
-            Text = rek.pilih and "✓" or "",
-            TextColor3 = Warna.Putih,
-            TextSize = 12,
-            AutoButtonColor = false,
-        }, item)
-        buat("UICorner", {CornerRadius = UDim.new(0, 5)}, cekBtn)
-        buat("UIStroke", {Color = Warna.Hijau2, Thickness = 1, Transparency = 0.3}, cekBtn)
-        cekBtn.MouseButton1Click:Connect(function()
-            rek.pilih = not rek.pilih
-            cekBtn.BackgroundColor3 = rek.pilih and Warna.Hijau2 or Warna.Putih
-            cekBtn.Text = rek.pilih and "✓" or ""
-            bunyi(CFG.SND_PING, 0.2, rek.pilih and 1.3 or 0.9)
-        end)
-        local nameEdit = buat("TextBox", {
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 28, 0, 0),
-            Size = UDim2.new(1, -168, 1, 0),
-            FontFace = fnt("med"),
-            Text = rek.nama,
-            TextColor3 = rek.tampil and Warna.TeksGelap or Warna.AbuTeks,
-            TextSize = 12,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ClearTextOnFocus = false,
-        }, item)
-        nameEdit.Focused:Connect(function() nameEdit.BackgroundTransparency = 0.85 end)
-        nameEdit.FocusLost:Connect(function()
-            nameEdit.BackgroundTransparency = 1
-            local baru = nameEdit.Text:gsub("^%s+", ""):gsub("%s+$", "")
-            if baru ~= "" and baru ~= rek.nama then
-                rek.nama = baru
-                simpanKeFileTiang()
-            elseif baru == "" then
-                nameEdit.Text = rek.nama
-            end
-        end)
-        local soloBtn = buat("TextButton", {
-            Size = UDim2.fromOffset(26, 26),
-            Position = UDim2.new(1, -142, 0.5, -13),
-            BackgroundColor3 = Warna.Putih,
-            BorderSizePixel = 0,
-            FontFace = fnt("reg"),
-            Text = "🎯",
-            TextSize = 12,
-            AutoButtonColor = false,
-        }, item)
-        buat("UICorner", {CornerRadius = UDim.new(0, 7)}, soloBtn)
-        buat("UIStroke", {Color = Warna.Hijau2, Thickness = 1, Transparency = 0.5}, soloBtn)
-        soloBtn.MouseButton1Click:Connect(function()
-            ripple(soloBtn, Warna.Hijau2)
-            soloRek(rek)
-        end)
-        local tpBtn = buat("TextButton", {
-            Size = UDim2.fromOffset(30, 26),
-            Position = UDim2.new(1, -106, 0.5, -13),
-            BackgroundColor3 = Warna.Putih,
-            BorderSizePixel = 0,
-            FontFace = fnt("bold"),
-            Text = "🏁",
-            TextSize = 12,
-            AutoButtonColor = false,
-        }, item)
-        buat("UICorner", {CornerRadius = UDim.new(0, 7)}, tpBtn)
-        ledSweep(tpBtn, Warna.Hijau2, Warna.Putih, Warna.Hijau, 2.2)
-        tpBtn.MouseButton1Click:Connect(function()
-            ripple(tpBtn, Warna.Putih)
-            local akhir = rek.poin[#rek.poin]
-            if akhir then
-                teleportKe(CFrame.new(akhir))
-                fxTeleport()
-                toast("🏁 Ke akhir " .. rek.nama, Warna.Hijau2)
-            end
-        end)
-        local eyeBtn = buat("TextButton", {
-            Size = UDim2.fromOffset(26, 26),
-            Position = UDim2.new(1, -68, 0.5, -13),
-            BackgroundColor3 = Warna.Putih,
-            BorderSizePixel = 0,
-            FontFace = fnt("reg"),
-            Text = rek.tampil and "👁" or "🚫",
-            TextSize = 12,
-            AutoButtonColor = false,
-        }, item)
-        buat("UICorner", {CornerRadius = UDim.new(0, 7)}, eyeBtn)
-        eyeBtn.MouseButton1Click:Connect(function()
-            rek.tampil = not rek.tampil
-            eyeBtn.Text = rek.tampil and "👁" or "🚫"
-            bangunLineRek(rek)
-            simpanKeFileTiang()
-            bunyi(CFG.SND_PING, 0.25, rek.tampil and 1.2 or 0.8)
-            refreshRekList(false)
-        end)
-        local delBtn = buat("TextButton", {
-            Size = UDim2.fromOffset(26, 26),
-            Position = UDim2.new(1, -34, 0.5, -13),
-            BackgroundColor3 = Warna.Merah,
-            BackgroundTransparency = 0.85,
-            BorderSizePixel = 0,
-            FontFace = fnt("reg"),
-            Text = "🗑️",
-            TextSize = 12,
-            AutoButtonColor = false,
-        }, item)
-        buat("UICorner", {CornerRadius = UDim.new(0, 7)}, delBtn)
-        buat("UIStroke", {Color = Warna.Merah, Thickness = 1, Transparency = 0.4}, delBtn)
-        delBtn.MouseButton1Click:Connect(function()
-            ripple(delBtn, Warna.Merah)
-            bunyi(CFG.SND_SNAP, 0.3, 0.7)
-            local sc = item:FindFirstChildOfClass("UIScale")
-            tween(item, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {BackgroundTransparency = 1})
-            if sc then tween(sc, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Scale = 0.6}) end
-            task.delay(0.17, function() hapusRekaman(rek) end)
-        end)
-        efekTombol(tpBtn)
-        efekTombol(soloBtn, 1.1)
-        efekTombol(eyeBtn, 1.1)
-        efekTombol(delBtn, 1.1)
-    end
-    kumpulkanFade()
-end
-
--- [17] MUAT FILE TIANG + REKAMAN ------------------------------------
+-- [17] MUAT FILE TIANG (RECORD dihapus v1.3) -------------------------
 local function muatDariFileTiang()
     if not fileOk then return end
     local isi
@@ -2597,11 +2058,10 @@ local function muatDariFileTiang()
     if type(data) ~= "table" or type(data.games) ~= "table" then return end
     local entri = data.games[tostring(game.PlaceId)]
     if type(entri) ~= "table" then return end
-    local daftarT, daftarK, daftarR = {}, {}, {}
+    local daftarT, daftarK = {}, {}
     if type(entri.tiang) == "table" then
         daftarT = entri.tiang
         if type(entri.koneksi) == "table" then daftarK = entri.koneksi end
-        if type(entri.records) == "table" then daftarR = entri.records end
     else
         daftarT = entri
     end
@@ -2631,39 +2091,6 @@ local function muatDariFileTiang()
         and not koneksiAntara(k.a, k.b) then
             table.insert(koneksiAktif, {a = k.a, b = k.b, parts = {}})
         end
-    end
-    for _, e in ipairs(daftarR) do
-        if type(e) == "table" and type(e.nama) == "string"
-        and type(e.poin) == "table" and #e.poin >= 2 then
-            local poin = {}
-            local valid = true
-            for _, p in ipairs(e.poin) do
-                if type(p) == "table" and #p >= 3
-                and type(p[1]) == "number" and type(p[2]) == "number" and type(p[3]) == "number" then
-                    table.insert(poin, Vector3.new(p[1], p[2], p[3]))
-                    if #poin >= CFG.MAX_TITIK then break end
-                else
-                    valid = false
-                    break
-                end
-            end
-            if valid and #poin >= 2 then
-                local rek = {
-                    id     = tostring(e.id or e.nama),
-                    nama   = e.nama,
-                    poin   = poin,
-                    tampil = (e.tampil ~= false),
-                    pilih  = false,
-                    folder = Instance.new("Folder"),
-                }
-                rek.folder.Name = "Rek_" .. rek.id
-                rek.folder.Parent = folderRekaman
-                table.insert(daftarRekaman, rek)
-            end
-        end
-    end
-    for _, rek in ipairs(daftarRekaman) do
-        bangunLineRek(rek)
     end
     if #koneksiAktif > 0 then rebuildGaris() end
 end
@@ -2770,6 +2197,34 @@ Setters.Shift = function(v, silent)
         applySpeed()
     end
     syncNotify("Shift", v, silent, "Shiftlock Mobile")
+end
+
+-- MOONWALK (G) — badan TERKUNCI menghadap kamera/layar saat jalan
+Setters.Moon = function(v, silent)
+    if State.MoonOn == v then return end
+    State.MoonOn = v
+    if v then
+        local hum = getHum()
+        if hum then hum.AutoRotate = false end
+        RunService:BindToRenderStep("KS_MOONWALK", Enum.RenderPriority.Character.Value + 1, function()
+            local char = getChar()
+            local h = char and char:FindFirstChildOfClass("Humanoid")
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if h and hrp and h.Health > 0 then
+                local cam = Workspace.CurrentCamera
+                if cam then
+                    local _, yaw = cam.CFrame:ToOrientation()
+                    -- putar 180 derajat = badan menghadap kamera
+                    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, yaw + math.pi, 0)
+                end
+            end
+        end)
+    else
+        RunService:UnbindFromRenderStep("KS_MOONWALK")
+        local hum = getHum()
+        if hum then hum.AutoRotate = true end
+    end
+    syncNotify("Moon", v, silent, "Moonwalk")
 end
 
 -- HIDE PLAYER + KENDARAAN
@@ -3121,6 +2576,7 @@ resetAll = function()
     setFeature("Speed", false, true)
     setFeature("Jump", false, true)
     setFeature("Shift", false, true)
+    setFeature("Moon", false, true)
     setFeature("Hide", false, true)
     setFeature("LW", false, true)
     setFeature("Walls", false, true)
@@ -3150,12 +2606,14 @@ unloadScript = function()
     setFeature("Speed", false, true)
     setFeature("Jump", false, true)
     setFeature("Shift", false, true)
+    setFeature("Moon", false, true)
     setFeature("Hide", false, true)
     setFeature("LW", false, true)
     setFeature("Walls", false, true)
     setFeature("Light", false, true)
     setFeature("Fall", false, true)
     RunService:UnbindFromRenderStep("KS_SHIFTLOCK")
+    RunService:UnbindFromRenderStep("KS_MOONWALK")
     if lightConn then task.cancel(lightConn) lightConn = nil end
     if fallState.conn then fallState.conn:Disconnect() fallState.conn = nil end
     pcall(function()
@@ -3285,6 +2743,7 @@ efekTombol(btnGaris)
 efekTombol(btnSambung)
 efekTombol(btnPutus)
 efekTombol(btnPulihkan)
+efekTombol(btnTPSelected)
 
 local bersihSiap = false
 btnBersih.MouseButton1Click:Connect(function()
@@ -3377,13 +2836,13 @@ local pulihkanSiap = false
 btnPulihkan.MouseButton1Click:Connect(function()
     if not pulihkanSiap then
         pulihkanSiap = true
-        btnPulihkan.Text = "❗ TIMPA DENGAN BACKUP? KLIK LAGI"
+        btnPulihkan.Text = "❗ YAKIN?"
         btnPulihkan.BackgroundColor3 = Warna.Merah
         bunyi(CFG.SND_SNAP, 0.3, 0.8)
         task.delay(3, function()
             pulihkanSiap = false
             if btnPulihkan.Parent then
-                btnPulihkan.Text = "♻ PULIHKAN BACKUP"
+                btnPulihkan.Text = "♻ PULIHKAN"
                 btnPulihkan.BackgroundColor3 = Warna.Putih
             end
         end)
@@ -3401,73 +2860,19 @@ btnPulihkan.MouseButton1Click:Connect(function()
     end
 end)
 
--- TAB RECORD
-recBtn.MouseButton1Click:Connect(function()
-    ripple(recBtn, Warna.Putih)
-    toggleRekam()
-end)
-efekTombol(recBtn)
-efekTombol(btnTampilRek)
-efekTombol(btnSemua)
-efekTombol(btnGabung)
-
-btnTampilRek.MouseButton1Click:Connect(function()
-    tampilRekamanGlobal = not tampilRekamanGlobal
-    btnTampilRek.Text = tampilRekamanGlobal and "👁 LINE: ON" or "👁 LINE: OFF"
-    for _, rek in ipairs(daftarRekaman) do
-        bangunLineRek(rek)
-    end
-    bunyi(CFG.SND_PING, 0.3, tampilRekamanGlobal and 1.2 or 0.8)
-    toast(tampilRekamanGlobal and "👁 Semua line record: ON" or "🚫 Semua line record: OFF", Warna.Hijau2)
-end)
-
-btnSemua.MouseButton1Click:Connect(function()
-    for _, r in ipairs(daftarRekaman) do
-        r.tampil = true
-        bangunLineRek(r)
-    end
-    simpanKeFileTiang()
-    refreshRekList(false)
-    bunyi(CFG.SND_PING, 0.3, 1.2)
-    toast("👁 Semua record tampil lagi", Warna.Biru)
-end)
-
-btnGabung.MouseButton1Click:Connect(function()
-    local pilih = {}
-    for _, rek in ipairs(daftarRekaman) do
-        if rek.pilih then table.insert(pilih, rek) end
-    end
-    if #pilih < 2 then
-        toast("⚠️ Pilih minimal 2 record (kotak ✓ hijau)", Warna.Merah)
+-- TP ke tiang terpilih (cyclic — pilih 1 = TP ke sana, pilih >1 = TP urut + next)
+btnTPSelected.MouseButton1Click:Connect(function()
+    local pilih = tiangTerpilih()
+    if #pilih == 0 then
+        toast("⚠️ Klik nomor tiang dulu (jadi hijau)", Warna.Merah)
         return
     end
-    local poinBaru = {}
-    for _, rek in ipairs(pilih) do
-        for _, p in ipairs(rek.poin) do
-            if #poinBaru < CFG.MAX_TITIK then
-                table.insert(poinBaru, p)
-            end
-        end
-    end
-    local namaNama = {}
-    for _, r in ipairs(daftarRekaman) do table.insert(namaNama, r.nama) end
-    local gab = {
-        id     = idBaru(),
-        nama   = "Gabungan " .. nomorBebas("Gabungan", namaNama),
-        poin   = poinBaru,
-        tampil = true,
-        pilih  = false,
-        folder = Instance.new("Folder"),
-    }
-    gab.folder.Name = "Rek_" .. gab.id
-    gab.folder.Parent = folderRekaman
-    table.insert(daftarRekaman, gab)
-    for _, rek in ipairs(pilih) do rek.pilih = false end
-    bangunLineRek(gab)
-    simpanKeFileTiang()
-    refreshRekList(true)
-    konfeti(root, pusatDiRoot(btnGabung), 14)
-    toast("🔗 Digabung " .. #pilih .. " record → '" .. gab.nama .. "'", Warna.Ungu)
+    -- ambil tiang terpilih pertama
+    local t = pilih[1]
+    teleportKe(t.cframe)
+    fxTeleport()
+    bunyi(CFG.SND_PING, 0.35, 1.3)
+    toast("🚀 TP ke " .. t.nama .. " • " .. #pilih .. " terpilih", Warna.Ungu)
 end)
 
 -- [21] KEYBIND ------------------------------------------------------
@@ -3480,8 +2885,8 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
     elseif input.KeyCode == CFG.PASANG_KEY then
         pasangTiang(nameBoxTiang.Text)
         nameBoxTiang.Text = ""
-    elseif input.KeyCode == CFG.REC_KEY then
-        toggleRekam()
+    elseif input.KeyCode == Enum.KeyCode.G then
+        setFeature("Moon", not State.MoonOn)
     elseif input.KeyCode == Enum.KeyCode.Q then
         setFeature("Speed", not State.SpeedOn)
     elseif input.KeyCode == Enum.KeyCode.C then
@@ -3506,22 +2911,20 @@ end))
 
 -- [22] MULAI --------------------------------------------------------
 refreshListTiang(false)
-refreshRekList(false)
-setTab(1)
+setTab(1)  -- KING jadi tab pertama
 task.delay(0.15, bukaGui)
 
 task.delay(1.2, function()
-    local totalTiang = #daftarTiang + #daftarRekaman
-    if totalTiang > 0 then
-        toast("📂 Tiang: " .. #daftarTiang .. " • koneksi " .. #koneksiAktif .. " • record " .. #daftarRekaman, Warna.Ungu)
+    if #daftarTiang > 0 then
+        toast("📂 Tiang: " .. #daftarTiang .. " • koneksi " .. #koneksiAktif, Warna.Ungu)
     end
     if not fileOk then
         toast("⚠️ Penyimpanan file tidak tersedia", Warna.Merah)
     end
 end)
 
-print("[SilauNeon v" .. VERSI .. "] SIAP ✔ — F = GUI | Y = pasang tiang | G = rekam | Q/C/R/X/T/K = KING")
-print("[SilauNeon] 3 TAB: 🗄️ TIANG | 🔴 RECORD | 👑 KING (Speed/Jump/Shift/Hide/LW/Walls/Cahaya/Fall)")
+print("[SilauNeon v" .. VERSI .. "] SIAP ✔ — F = GUI | Y = pasang tiang | Q/C/G/R/X/T/K = KING")
+print("[SilauNeon] 2 TAB: 👑 KING | 🗄️ TIANG (Speed/Jump/Shift/Moonwalk/Hide/LW/Walls/Cahaya/Fall)")
 print("[SilauNeon] Penyimpanan: " .. (fileOk
     and ("Tiang='" .. CFG.NAMA_FILE_TIANG .. "' (per game: " .. game.PlaceId .. ")")
     or "TIDAK TERSEDIA"))
