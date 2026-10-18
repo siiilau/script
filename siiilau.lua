@@ -1665,11 +1665,15 @@ local function bangunGarisKoneksi(k)
         -- ===== KASUS 1: KEDUA TIANG DI AIR → garis lurus saja =====
         if airA and airB then
             local poinLurus = {tA.topPos, tB.topPos}
+            -- simpan poin tersimpan supaya persisten saat reload
+            k.poinTersimpan = poinLurus
             for i = 1, #poinLurus - 1 do
                 local warnaG = (i % 2 == 0) and Warna.Biru2 or Warna.Ungu2
                 local prt = buatSegmen(poinLurus[i], poinLurus[i + 1], warnaG, nil, folderDunia)
                 if prt then table.insert(k.parts, prt) end
             end
+            -- auto-save ke file
+            simpanKeFileTiang()
             return
         end
 
@@ -1704,11 +1708,16 @@ local function bangunGarisKoneksi(k)
         if myGen ~= genPath then return end
         -- tolerance kecil = 0.05 stud supaya kontur naik/turun tetap detail
         local poinRapi = sederhanakan(poin, 0.05)
+        -- SIMPAN titik-titik yang sudah dihitung ke koneksi
+        -- supaya saat masuk sesi lagi, garis 100% sama tanpa re-scan
+        k.poinTersimpan = poinRapi
         for i = 1, #poinRapi - 1 do
             local warnaG = (i % 2 == 0) and Warna.Biru2 or Warna.Ungu2
             local prt = buatSegmen(poinRapi[i], poinRapi[i + 1], warnaG, nil, folderDunia)
             if prt then table.insert(k.parts, prt) end
         end
+        -- auto-save ke file setelah hitung selesai
+        simpanKeFileTiang()
     end)
 end
 
@@ -1731,6 +1740,9 @@ local function rebuildGaris()
 end
 
 -- [15c] PERSISTENSI TIANG -------------------------------------------
+-- r2: round to 2 decimal places (untuk simpan Vector3 ke JSON)
+local function r2(n) return math.floor(n * 100 + 0.5) / 100 end
+
 local function simpanKeFileTiang()
     if not fileOk then return end
     local data = {games = {}}
@@ -1755,7 +1767,18 @@ local function simpanKeFileTiang()
     entri.tiang = daftarT
     local daftarK = {}
     for _, k in ipairs(koneksiAktif) do
-        table.insert(daftarK, {a = k.a, b = k.b})
+        local poinJson = nil
+        -- simpan titik-titik poin yang sudah dihitung (Vector3 → {x,y,z})
+        -- supaya saat masuk sesi lagi, garis 100% sama tanpa re-scan
+        if k.poinTersimpan and #k.poinTersimpan > 0 then
+            poinJson = {}
+            for _, p in ipairs(k.poinTersimpan) do
+                table.insert(poinJson, {
+                    r2(p.X), r2(p.Y), r2(p.Z)
+                })
+            end
+        end
+        table.insert(daftarK, {a = k.a, b = k.b, poin = poinJson})
     end
     entri.koneksi = daftarK
     -- records dihapus v1.3 (tab RECORD dihapus)
@@ -2111,14 +2134,50 @@ local function muatDariFileTiang()
         end
     end
     perbaruiNomor()
+    -- helper: bangun segmen dari array poin Vector3 (tanpa re-scan)
+    local function bangunDariPoin(k, poinVec)
+        if not poinVec or #poinVec < 2 then return false end
+        k.poinTersimpan = poinVec
+        for i = 1, #poinVec - 1 do
+            local warnaG = (i % 2 == 0) and Warna.Biru2 or Warna.Ungu2
+            local prt = buatSegmen(poinVec[i], poinVec[i + 1], warnaG, nil, folderDunia)
+            if prt then table.insert(k.parts, prt) end
+        end
+        return true
+    end
+
     for _, k in ipairs(daftarK) do
         if type(k) == "table" and type(k.a) == "string" and type(k.b) == "string"
         and tiangDariId(k.a) and tiangDariId(k.b)
         and not koneksiAntara(k.a, k.b) then
-            table.insert(koneksiAktif, {a = k.a, b = k.b, parts = {}})
+            local koneksi = {a = k.a, b = k.b, parts = {}, poinTersimpan = nil}
+            -- PRIORITY 1: pakai poin tersimpan jika ada (garis 100% sama, NO re-scan)
+            local pakaiTersimpan = false
+            if type(k.poin) == "table" and #k.poin >= 2 then
+                local poinVec = {}
+                local valid = true
+                for _, p in ipairs(k.poin) do
+                    if type(p) == "table" and #p >= 3
+                    and type(p[1]) == "number" and type(p[2]) == "number" and type(p[3]) == "number" then
+                        table.insert(poinVec, Vector3.new(p[1], p[2], p[3]))
+                    else
+                        valid = false
+                        break
+                    end
+                end
+                if valid and #poinVec >= 2 then
+                    pakaiTersimpan = bangunDariPoin(koneksi, poinVec)
+                end
+            end
+            table.insert(koneksiAktif, koneksi)
+            -- PRIORITY 2: fallback re-scan (data lama tanpa poin)
+            if not pakaiTersimpan then
+                bangunGarisKoneksi(koneksi)
+            end
         end
     end
-    if #koneksiAktif > 0 then rebuildGaris() end
+    -- jika ada koneksi tanpa poin tersimpan (data lama), rebuildGaris akan handle
+    -- (sudah dipanggil via bangunGarisKoneksi di atas)
 end
 
 muatDariFileTiang()
