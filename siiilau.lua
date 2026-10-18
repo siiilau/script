@@ -1,8 +1,20 @@
 --========================================================
---  SILAU NEON MAIN v1.3 — Script Utama Gabungan
+--  SILAU NEON MAIN v1.4 — Script Utama Gabungan
+--  TIANG PATH (v1.4.3) + KING UTILITY (v1.5)
+--    + CAHAYA AUTO + FALL ASSIST v3.1 + MOONWALK
+--  v1.4: hapus baris PULIHKAN+TP TERPILIH, TP pakai 🚀 per-row
+--
+--  TEMA: SILAU NEON (ungu/biru LED)
+--  Keybind:
+--    F = buka/tutup GUI (saat tutup = hilang total)
+--    Y = pasang tiang
+--    Q = Speed      C = Shiftlock Mobile
+--    G = Moonwalk   R = Hide
+--    X = Dinding Batas   T = Cahaya Auto
+--    K = Rejoin (double-tap)
 --========================================================
 
-local VERSI = "1.3-MAIN"
+local VERSI = "1.4-MAIN"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -231,7 +243,7 @@ local folderDunia
 local tabBtns, kontenTabs, setTab
 local kontenTiang, kontenKing, scrollKing
 local nameBoxTiang, nameStrokeTiang, saveBtnTiang, searchBoxTiang, searchStrokeTiang
-local btnBersih, btnGaris, btnSambung, btnPutus, btnPulihkan, btnTPSelected, listLabelTiang, scrollTiang
+local btnBersih, btnGaris, btnSambung, btnPutus, listLabelTiang, scrollTiang
 
 setFeature = function(name, v, silent)
     local f = Setters[name]
@@ -698,48 +710,22 @@ btnPutus = buat("TextButton", {
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnPutus)
 buat("UIStroke", {Color = Warna.Merah, Thickness = 1, Transparency = 0.4}, btnPutus)
 
-btnPulihkan = buat("TextButton", {
-    Size = UDim2.new(0.5, -4, 0, 22),
-    Position = UDim2.new(0, 12, 0, 128),
-    BackgroundColor3 = Warna.Putih,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "♻ PULIHKAN",
-    TextColor3 = Warna.Putih,
-    TextSize = 10,
-    AutoButtonColor = false,
-}, kontenTiang)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnPulihkan)
-buat("UIStroke", {Color = Warna.Biru, Thickness = 1, Transparency = 0.3}, btnPulihkan)
-
-btnTPSelected = buat("TextButton", {
-    Size = UDim2.new(0.5, -4, 0, 22),
-    Position = UDim2.new(0.5, 4, 0, 128),
-    BackgroundColor3 = Warna.Putih,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "🚀 TP TERPILIH",
-    TextColor3 = Warna.Putih,
-    TextSize = 10,
-    AutoButtonColor = false,
-}, kontenTiang)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnTPSelected)
-ledSweep(btnTPSelected, Warna.Ungu, Warna.Putih, Warna.Biru2, 2.4)
+-- (baris PULIHKAN + TP TERPILIH dihapus v1.4 — TP pakai tombol 🚀 per-row di list)
 
 listLabelTiang = buat("TextLabel", {
-    Position = UDim2.new(0, 12, 0, 156),
+    Position = UDim2.new(0, 12, 0, 130),
     Size = UDim2.new(1, -24, 0, 14),
     BackgroundTransparency = 1,
     FontFace = fnt("semi"),
-    Text = "📍 TIANG • 0  (klik nomor = pilih)",
+    Text = "📍 TIANG • 0  (klik nomor = pilih • 🚀 = TP ke tiang)",
     TextColor3 = Warna.AbuTeks,
     TextSize = 10,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, kontenTiang)
 
 scrollTiang = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 174),
-    Size = UDim2.new(1, -24, 1, -186),
+    Position = UDim2.new(0, 12, 0, 148),
+    Size = UDim2.new(1, -24, 1, -160),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ScrollBarThickness = 4,
@@ -1142,7 +1128,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1400, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = GUI   ✦   👑 KING: Q Speed / C Shift / G Moonwalk / R Hide / X Walls / T Cahaya / Fall Assist   ✦   🗄️ TIANG: Y pasang + 🔗 sambung + 🚀 TP terpilih   ✦   Notif kanan atas",
+    Text = "⌨ F = GUI   ✦   👑 KING: Q Speed / C Shift / G Moonwalk / R Hide / X Walls / T Cahaya / Fall Assist   ✦   🗄️ TIANG: Y pasang + 🔗 sambung + 🚀 TP per-row   ✦   Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -2742,8 +2728,7 @@ efekTombol(btnBersih)
 efekTombol(btnGaris)
 efekTombol(btnSambung)
 efekTombol(btnPutus)
-efekTombol(btnPulihkan)
-efekTombol(btnTPSelected)
+-- btnPulihkan & btnTPSelected dihapus v1.4
 
 local bersihSiap = false
 btnBersih.MouseButton1Click:Connect(function()
@@ -2832,48 +2817,7 @@ btnPutus.MouseButton1Click:Connect(function()
     toast("✂️ Koneksi diputus", Warna.Merah)
 end)
 
-local pulihkanSiap = false
-btnPulihkan.MouseButton1Click:Connect(function()
-    if not pulihkanSiap then
-        pulihkanSiap = true
-        btnPulihkan.Text = "❗ YAKIN?"
-        btnPulihkan.BackgroundColor3 = Warna.Merah
-        bunyi(CFG.SND_SNAP, 0.3, 0.8)
-        task.delay(3, function()
-            pulihkanSiap = false
-            if btnPulihkan.Parent then
-                btnPulihkan.Text = "♻ PULIHKAN"
-                btnPulihkan.BackgroundColor3 = Warna.Putih
-            end
-        end)
-    else
-        pulihkanSiap = false
-        local isiBackup
-        pcall(function() isiBackup = readfile(CFG.NAMA_FILE_TIANG_B) end)
-        if type(isiBackup) == "string" and #isiBackup > 0 then
-            pcall(function() writefile(CFG.NAMA_FILE_TIANG, isiBackup) end)
-            bunyi(CFG.SND_PING, 0.35, 1.2)
-            toast("♻ Backup dipulihkan — muat ulang script", Warna.Biru)
-        else
-            toast("⚠️ Tidak ada file backup", Warna.Merah)
-        end
-    end
-end)
-
--- TP ke tiang terpilih (cyclic — pilih 1 = TP ke sana, pilih >1 = TP urut + next)
-btnTPSelected.MouseButton1Click:Connect(function()
-    local pilih = tiangTerpilih()
-    if #pilih == 0 then
-        toast("⚠️ Klik nomor tiang dulu (jadi hijau)", Warna.Merah)
-        return
-    end
-    -- ambil tiang terpilih pertama
-    local t = pilih[1]
-    teleportKe(t.cframe)
-    fxTeleport()
-    bunyi(CFG.SND_PING, 0.35, 1.3)
-    toast("🚀 TP ke " .. t.nama .. " • " .. #pilih .. " terpilih", Warna.Ungu)
-end)
+-- (blok btnPulihkan & btnTPSelected caller dihapus v1.4 — TP pakai tombol 🚀 per-row)
 
 -- [21] KEYBIND ------------------------------------------------------
 local lastK = 0
