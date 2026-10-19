@@ -1,7 +1,7 @@
 --[[
         ═══════════════════════════════════════════════════════════════════
-          SIIILAUxCAMERAPRO  ·  v12 NEON EDITION
-          Cinematic Camera Suite — FREE / PRO / CINEMATIC / FOTO
+          SIIILAU · v1.01 FUSION EDITION
+          CINEMATIC + FOTO (v12)  ·  FREE/PRO CAM + TARGET LOCK (v11)
         ═══════════════════════════════════════════════════════════════════
           KEYBINDS :
             1        = FREE CAM            (tekan lagi = mati)
@@ -10,20 +10,25 @@
             CapsLock = MASTER ON/OFF — mati = SEMUA fitur kamera off
             F        = buka / tutup panel
             M        = buka MODE FOTO (langsung ke tab FOTO)
-            T        = lock target terdekat / unlock
+            T        = lock target TERDEKAT DARI KAMERA / unlock
             C        = teleport ke belakang layar
-            Z        = auto terang (cuma jalan kalau gelap)
+            Z        = PAGI ⇄ MALAM 2 arah (tekan lagi = jam asli kembali)
             H        = sembunyikan semua UI (chip tetap ada)
             K (2x)   = hapus script
             RMB      = lihat sekeliling (FREE / PRO)
             Scroll   = FOV (FREE) / zoom 4-80 (PRO)
-            Space 3x = turbo  ·  Ctrl = slow (FREE)
+            Space    = TAHAN untuk turbo (anti lompat saat FREE)
+            Ctrl     = slow cinematic (FREE)
           MODE FOTO (layer, aktif di mode kamera manapun):
             Filter warna · rasio frame · blur otomatis fokus ke target · ambil foto
           CATATAN :
-            • Target lock 3 cara: T (terdekat) · AUTO LOCK · pilih sendiri (tab TARGET)
+            • Mesin FREE/PRO + target lock dari GALAXY v11 (halus & anti menggeleng)
+            • CINEMATIC auto-director 11 shot + MODE FOTO dari v12 NEON
+            • Target lock 3 cara: T (terdekat dari kamera) · AUTO LOCK · pilih sendiri
+            • Tombol KE KARAKTER UTAMA = kamera terbang mulus balik ke kamu
+            • RESET SCRIPT di tab SISTEM = semua setting balik default
             • PRO & CINE ikut target lock · blur fokus otomatis ke avatar target
-            • Kamera stabil saat karakter lompat — diam = pas di tengah, lompat = agak ke atas
+            • Kamera balik persis ke posisi semula saat mode dimatikan
             • CapsLock mati = semua fitur kamera off (mode, blur, letterbox, filter)
             • Semua efek client-side — cuma terlihat di layar kamu
             • Aman di-execute ulang kapan saja (auto bersihkan versi lama)
@@ -55,11 +60,20 @@ local CFG = {
         CineTempo = 5.5,  -- durasi rata-rata tiap shot sinematik (detik)
         Letterbox = true, -- letterbox otomatis saat mode sinematik
         Anchor    = false, -- karakter bebas gerak/lompat (bisa dinyalakan di tab SISTEM)
-        -- stabilizer kamera: karakter di tengah, tidak memantul saat lompat
-        -- (makin kecil = makin stabil / lambat ikut tinggi lompatan)
-        StabAir   = 2.0,  -- respons Y saat karakter di udara (lompatan)
-        StabMove  = 7,    -- respons Y saat berjalan/lari
-        StabIdle  = 14,   -- respons Y saat diam (cepat → pas di tengah)
+        -- mesin kamera v11 (FREE/PRO): halus, terbang, anti menggeleng
+        Smoothness    = 0.12,  -- kehalusan gerak free cam (makin kecil = makin responsif)
+        TurboMult     = 3,     -- pengali kecepatan turbo (tahan Space)
+        SlowMult      = 0.25,  -- pengali kecepatan slow (Ctrl)
+        MouseSens     = 0.25,  -- sensitivitas RMB look
+        SelfFlyDist   = 8,     -- jarak kamera mendarat di belakang karakter (KE KARAKTER)
+        SelfFlyHeight = 2.4,   -- tinggi kamera di atas kepala (KE KARAKTER)
+        ProYDamp      = 0.9,   -- PRO: damping vertikal pivot (anti ikut lompat target)
+        AimYDamp      = 0.8,   -- FREE: damping aim vertikal saat target lock
+        ProSnap       = 12,    -- PRO: snap kalau subjek pindah jauh (respawn/teleport)
+        -- waktu 2 arah (Z): malam → pagi · siang → malam · tekan lagi = balik
+        PagiJam       = 6.75,  -- 06:45
+        MalamJam      = 0,     -- 00:00
+        TransisiWaktu = 1.8,   -- detik transisi jam
         CineStabG = 9,    -- stabilizer sinematik saat grounded
         CineStabA = 2.4,  -- stabilizer sinematik saat di udara
         -- palet neon
@@ -83,27 +97,27 @@ local S = {
         rmb = false,
         ctrlDown = false,
         turbo = false,
-        spaceTaps = 0,
-        lastSpace = 0,
         lastK = 0,
         -- free cam
         freePos = Vector3.new(0, 0, 0),
         freeVel = Vector3.new(0, 0, 0),
+        aimY = nil,
+        fly = nil,
         yaw = 0,
-        pitch = -8,
-        -- pro cam
+        pitch = -0.14,
+        -- pro cam (sudut dalam radian)
         proYaw = 0,
-        proPitch = 14,
+        proPitch = 0.24,
         proDist = 14,
-        proDistT = 14,
+        proPos = nil,
+        proPivot = nil,
+        proGlide = nil,
         -- target
         locked = false,
         lockPlayer = nil,
         selected = nil,
         lockMode = "TERDEKAT", -- TERDEKAT | AUTO | PILIH
-        -- stabilizer kamera (anti mantul saat lompat)
-        proStabY = nil,
-        proStabChar = nil,
+        -- stabilizer sinematik (anti mantul saat lompat)
         cineStabY = nil,
         cineStabChar = nil,
         fotoFocus = nil,
@@ -128,6 +142,12 @@ local S = {
                 ratio = "FULL",
                 wm = false,
         },
+        -- waktu 2 arah (Z) + restore kamera
+        timeChanged = false,
+        savedClockTime = nil,
+        clockTween = nil,
+        waktuLabel = nil,
+        savedCam = nil,
         shooting = false,
 }
 
@@ -142,7 +162,7 @@ local PHOTO_BLOOM      -- BloomEffect (filter tertentu)
 -- ═══════════════ DEKLARASI MAJU ═══════════════
 local notify, flash, setAnchorState, updateChip, applyLetterbox, applyDof
 local applyUIVisibility, togglePanel, toggleHideUI
-local setMode, toggleLock, doTeleport, autoTerang, unloadAll
+local setMode, toggleLock, doTeleport, toggleWaktu, restoreWaktu, goToSelf, resetScript, unloadAll
 local getSubjectChar, refreshTargetList, refreshModeUI, updateLockBtn
 local setFilter, setRatio, takePhoto, setWatermark, fmtClock
 local updateRatioMasks
@@ -192,13 +212,6 @@ end
 
 local function myChar()
         return LP.Character
-end
-
-local function lookYawPitch(cf)
-        local l = cf.LookVector
-        local yaw = math.deg(math.atan2(-l.X, -l.Z))
-        local pitch = math.deg(math.asin(math.clamp(l.Y, -1, 1)))
-        return yaw, pitch
 end
 
 local function fmtClock(ct)
@@ -270,7 +283,7 @@ end
 
 -- bersihkan GUI versi lama
 do
-        local names = { "SIIILAUxCAMERAPRO", "SIIILAU_GALAXY_CAM" }
+        local names = { "SIIILAU_v1_01", "SIIILAUxCAMERAPRO", "SIIILAU_GALAXY_CAM" }
         local cands = {}
         local okH, hui = pcall(function()
                 if type(gethui) == "function" then
@@ -302,7 +315,7 @@ do
 end
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "SIIILAUxCAMERAPRO"
+gui.Name = "SIIILAU_v1_01"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.DisplayOrder = 999999
@@ -472,7 +485,7 @@ UI.wm = new("TextLabel", {
         BackgroundTransparency = 0.35,
         BorderSizePixel = 0,
         Font = Enum.Font.GothamBold,
-        Text = " SIIILAUxCAMERAPRO ",
+        Text = " SIIILAU v1.01 ",
         TextColor3 = CFG.TXT,
         TextSize = 10,
         Visible = false,
@@ -512,7 +525,7 @@ UI.title = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 8),
         Size = UDim2.new(1, -60, 0, 22),
         Font = Enum.Font.GothamBlack,
-        Text = "SIIILAU<font color=\"#FF2DAA\">x</font>CAMERAPRO",
+        Text = "SIIILAU<font color=\"#FF2DAA\"> v1.01</font>",
         RichText = true,
         TextColor3 = CFG.TXT,
         TextSize = 16,
@@ -525,7 +538,7 @@ UI.sub = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 31),
         Size = UDim2.new(1, -60, 0, 14),
         Font = Enum.Font.GothamMedium,
-        Text = "v12 · NEON EDITION · 1/2/3 = MODE",
+        Text = "v1.01 · FUSION EDITION · 1/2/3 = MODE",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -818,28 +831,32 @@ for i, m in ipairs(modeDefs) do
         UI.modeBtns[m.id] = { btn = b, grad = g, st = st, txt = t }
 end
 
-secLabel(UI.tabCAM, "Pengaturan", 5)
+UI.selfBtn = makePill(UI.tabCAM, "◉  KE KARAKTER UTAMA", 32, 5, function()
+        goToSelf()
+end)
+
+secLabel(UI.tabCAM, "Pengaturan", 6)
 UI.speedSlider = makeSlider(UI.tabCAM, "KECEPATAN", 8, 90, CFG.Speed, function(v)
         return math.floor(v) .. " stud/s"
 end, function(v)
         CFG.Speed = v
-end, 6)
+end, 7)
 UI.fovSlider = makeSlider(UI.tabCAM, "FOV", 30, 105, CFG.FOV, function(v)
         return math.floor(v) .. "°"
 end, function(v)
         CFG.FOV = v
-end, 7)
+end, 8)
 UI.tempoSlider = makeSlider(UI.tabCAM, "CINE TEMPO", 3, 10, CFG.CineTempo, function(v)
         return string.format("%.1f s", v)
 end, function(v)
         CFG.CineTempo = v
-end, 8)
+end, 9)
 
 -- ═══════════════ ISI TAB TARGET ═══════════════
 new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, UI.tabTARGET)
 pad(UI.tabTARGET, 2, 8, 0, 0)
 
-UI.lockBtn = makePill(UI.tabTARGET, "T · LOCK TERDEKAT / UNLOCK", 34, 1, function()
+UI.lockBtn = makePill(UI.tabTARGET, "T · LOCK TERDEKAT DARI KAMERA / UNLOCK", 34, 1, function()
         toggleLock()
 end)
 UI.autoBtn = makePill(UI.tabTARGET, "AUTO LOCK · OFF", 32, 2, function()
@@ -872,7 +889,7 @@ new("TextLabel", {
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 40),
         Font = Enum.Font.GothamMedium,
-        Text = "PRO & SINEMATIK ikut: lock > pilihan > terdekat > diri sendiri.\nAUTO LOCK pindah sendiri kalau target hilang.\nBlur foto fokus otomatis ke avatar target.",
+        Text = "PRO & SINEMATIK ikut: lock > pilihan > terdekat (dari KAMERA) > diri sendiri.\nT = lock pemain terdekat dari KAMERA · AUTO LOCK pindah sendiri kalau target hilang.\nBlur foto fokus otomatis ke avatar target.",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextWrapped = true,
@@ -895,8 +912,8 @@ end, function(v)
 end, 3)
 
 secLabel(UI.tabSISTEM, "Utilitas", 4)
-makePill(UI.tabSISTEM, "Z · AUTO TERANG (GELAP ke SIANG)", 32, 5, function()
-        autoTerang()
+UI.waktuBtn = makePill(UI.tabSISTEM, "Z · PAGI ⇄ MALAM (2 ARAH) · OFF", 32, 5, function()
+        toggleWaktu()
 end)
 makeToggle(UI.tabSISTEM, "ANCHOR KARAKTER (FREE/PRO)", CFG.Anchor, function(state)
         CFG.Anchor = state
@@ -912,7 +929,7 @@ new("TextLabel", {
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 74),
         Font = Enum.Font.GothamMedium,
-        Text = "1/2/3 · mode kamera      CapsLock · semua kamera ON/OFF\nF · panel      M · mode foto      T · lock      C · teleport\nZ · terang      H · sembunyikan      K 2x · hapus script\nRMB · lihat      Scroll · zoom/FOV      Space 3x · turbo",
+        Text = "1/2/3 · mode kamera · CapsLock master ON/OFF\nF panel · M mode foto · T lock (dari kamera)\nZ pagi⇄malam · C teleport · H hide UI · K 2x hapus\nRMB lihat · Scroll zoom/FOV · Space (tahan) turbo\nCtrl slow cinematic (FREE)",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -921,7 +938,11 @@ new("TextLabel", {
         ZIndex = 6,
 }, UI.tabSISTEM)
 
-local dangerBtn = makePill(UI.tabSISTEM, "K 2x · HAPUS SCRIPT", 32, 10, function()
+makePill(UI.tabSISTEM, "↻  RESET SCRIPT (BALIK KE DEFAULT)", 32, 10, function()
+        resetScript()
+end)
+
+local dangerBtn = makePill(UI.tabSISTEM, "K 2x · HAPUS SCRIPT", 32, 11, function()
         unloadAll()
 end)
 dangerBtn.TextColor3 = CFG.DANGER
@@ -1291,6 +1312,9 @@ function updateChip()
         if S.locked and S.lockPlayer and (S.mode == "FREE" or S.mode == "PRO") then
                 txt = txt .. " · LOCK:" .. S.lockPlayer.Name
         end
+        if S.timeChanged and S.waktuLabel then
+                txt = txt .. " · " .. S.waktuLabel
+        end
         UI.chipTxt.Text = "● " .. txt
         UI.chipStroke.Color = col
 end
@@ -1307,8 +1331,8 @@ end
 -- ═══════════════ SUBJEK (TARGET) ═══════════════
 -- cari pemain lain TERDEKAT yang masih hidup
 function findNearestPlayer()
-        local myRoot = getRoot(myChar())
-        local origin = myRoot and myRoot.Position or workspace.CurrentCamera.CFrame.Position
+        -- TERDEKAT DARI KAMERA (gaya v11): yang kamu lihat itu yang ke-lock
+        local origin = workspace.CurrentCamera.CFrame.Position
         local best, bd
         for _, pl in ipairs(Players:GetPlayers()) do
                 if pl ~= LP then
@@ -1382,7 +1406,7 @@ function toggleLock()
         if UI.updateLockBtn then
                 UI.updateLockBtn()
         end
-        notify("Locked (terdekat): " .. best.Name .. " (" .. math.floor(bd) .. " stud)")
+        notify("Locked (terdekat dari kamera): " .. best.Name .. " (" .. math.floor(bd) .. " stud)")
 end
 
 -- AUTO LOCK: kunci terdekat + pindah sendiri kalau target hilang/mati
@@ -1441,7 +1465,7 @@ function updateLockBtn()
                         UI.lockBtn.Text = "T · UNLOCK (" .. S.lockPlayer.Name .. ")"
                         UI.lockBtn.TextColor3 = CFG.Neon2
                 else
-                        UI.lockBtn.Text = "T · LOCK TERDEKAT / UNLOCK"
+                        UI.lockBtn.Text = "T · LOCK TERDEKAT DARI KAMERA / UNLOCK"
                         UI.lockBtn.TextColor3 = CFG.TXT
                 end
         end
@@ -1588,31 +1612,150 @@ function doTeleport()
         notify("Teleport di belakang layar " .. math.floor(d + 0.5) .. " langkah")
 end
 
--- ═══════════════ AUTO TERANG (Z) ═══════════════
-function autoTerang()
-        local ct = Lighting.ClockTime
-        local dark = ct < 6 or ct >= 18
-        if not dark then
-                notify("Sudah terang (" .. fmtClock(ct) .. ") — kondisi siang, tidak diubah")
+-- ═══════════════ WAKTU 2 ARAH (Z) ═══════════════
+-- Z = pintu 2 arah: MALAM → pagi terang (06:45) · SIANG → malam gelap (00:00)
+-- Tekan lagi → jam asli dikembalikan (waktu asli disimpan otomatis)
+local function tweenClockTo(target, duration)
+        if S.clockTween then
+                S.clockTween:Cancel()
+                S.clockTween = nil
+        end
+        local startT = Lighting.ClockTime
+        if target - startT > 12 then
+                target = target - 24
+        elseif startT - target > 12 then
+                target = target + 24
+        end
+        S.clockTween = TweenService:Create(
+                Lighting,
+                TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+                { ClockTime = target }
+        )
+        S.clockTween:Play()
+end
+
+function restoreWaktu(silent)
+        if not S.timeChanged then
                 return
         end
-        local target = 13.5
-        local dFwd = (target - ct) % 24
-        local dBack = dFwd - 24
-        local delta
-        if math.abs(dFwd) <= math.abs(dBack) then
-                delta = dFwd
-        else
-                delta = dBack
+        tweenClockTo(S.savedClockTime or 14, 1.2)
+        S.timeChanged = false
+        S.waktuLabel = nil
+        if UI.waktuBtn then
+                UI.waktuBtn.Text = "Z · PAGI ⇄ MALAM (2 ARAH) · OFF"
         end
-        local goal = ct + delta
-        local tw = TweenService:Create(
-                Lighting,
-                TweenInfo.new(1.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut),
-                { ClockTime = goal, Brightness = math.max(Lighting.Brightness, 3) }
-        )
-        tw:Play()
-        notify("Auto terang: " .. fmtClock(ct) .. " ke " .. fmtClock(goal))
+        if not silent then
+                notify("Waktu dikembalikan: " .. fmtClock(S.savedClockTime or 14))
+        end
+        updateChip()
+end
+
+function toggleWaktu()
+        if S.timeChanged then
+                restoreWaktu(false)
+                return
+        end
+        local ct = Lighting.ClockTime
+        local dark = ct < 6 or ct >= 18
+        S.savedClockTime = ct
+        S.timeChanged = true
+        if dark then
+                tweenClockTo(CFG.PagiJam, CFG.TransisiWaktu)
+                S.waktuLabel = "PAGI"
+                notify("Z: malam → pagi (" .. fmtClock(CFG.PagiJam) .. ") · tekan lagi untuk balik")
+        else
+                tweenClockTo(CFG.MalamJam, CFG.TransisiWaktu)
+                S.waktuLabel = "MALAM"
+                notify("Z: siang → malam (" .. fmtClock(CFG.MalamJam) .. ") · tekan lagi untuk balik")
+        end
+        if UI.waktuBtn then
+                UI.waktuBtn.Text = "Z · PAGI ⇄ MALAM (2 ARAH) · " .. S.waktuLabel
+        end
+        updateChip()
+end
+
+-- ═══════════════ KE KARAKTER UTAMA (kamera terbang balik) ═══════════════
+-- FREE : kamera terbang smooth ke belakang karakter · PRO : pivot glide halus
+function goToSelf()
+        if S.mode ~= "FREE" and S.mode ~= "PRO" then
+                notify("Aktifkan kamera dulu (1 / 2) untuk pindah ke karakter")
+                return
+        end
+        local root = getRoot(myChar())
+        if not root then
+                notify("Karakter belum siap")
+                return
+        end
+        local head = root.Position + Vector3.new(0, 1.5, 0)
+        if S.mode == "FREE" then
+                local look = CFrame.fromOrientation(S.pitch, S.yaw, 0).LookVector
+                local f = Vector3.new(look.X, 0, look.Z)
+                if f.Magnitude > 0.05 then
+                        f = f.Unit
+                else
+                        f = Vector3.new(0, 0, -1)
+                end
+                local destPos = head - f * CFG.SelfFlyDist + Vector3.new(0, CFG.SelfFlyHeight, 0)
+                local dir = head - destPos
+                local toYaw = math.atan2(-dir.X, -dir.Z)
+                local toPitch = math.clamp(math.asin(math.clamp(dir.Unit.Y, -1, 1)), -1.45, 1.45)
+                local dist = (destPos - S.freePos).Magnitude
+                S.fly = {
+                        t = 0,
+                        dur = math.clamp(0.6 + dist / 150, 0.6, 2.4),
+                        fromPos = S.freePos,
+                        toPos = destPos,
+                        fromYaw = S.yaw,
+                        toYaw = toYaw,
+                        fromPitch = S.pitch,
+                        toPitch = toPitch,
+                }
+                S.freeVel = Vector3.new(0, 0, 0)
+                S.aimY = nil
+        else
+                local dist = (head - (S.proPivot or head)).Magnitude
+                S.proGlide = {
+                        t = 0,
+                        dur = math.clamp(0.5 + dist / 120, 0.5, 2.0),
+                        fromPivot = S.proPivot or head,
+                }
+        end
+        flash()
+        notify("Kamera pindah ke karakter utama")
+end
+
+-- ═══════════════ RESET SCRIPT ═══════════════
+-- Semua setting balik default: kamera off, waktu normal, lock lepas,
+-- speed/FOV/teleport default, filter & rasio OFF/FULL
+function resetScript()
+        if S.mode ~= "NONE" then
+                setMode("NONE")
+        end
+        restoreWaktu(true)
+        S.locked = false
+        S.lockPlayer = nil
+        S.selected = nil
+        CFG.Speed = 45
+        CFG.FOV = 70
+        CFG.TeleDist = 7
+        if UI.speedSlider then
+                UI.speedSlider.Set(45)
+        end
+        if UI.fovSlider then
+                UI.fovSlider.Set(70)
+        end
+        if UI.teleSlider then
+                UI.teleSlider.Set(7)
+        end
+        setFilter("OFF")
+        setRatio("FULL")
+        updateChip()
+        refreshTargetList()
+        if UI.updateLockBtn then
+                UI.updateLockBtn()
+        end
+        flash()
+        notify("Script di-RESET ke pengaturan awal")
 end
 
 -- ═══════════════ LAYER FOTO ═══════════════
@@ -1785,74 +1928,131 @@ function takePhoto()
         end)
 end
 
--- ═══════════════ FREE CAM ═══════════════
-local function freeUpdate(dt)
-        local cf = CFrame.fromOrientation(math.rad(S.pitch), math.rad(S.yaw), 0)
-        local f, r = cf.LookVector, cf.RightVector
-        local move = Vector3.new(0, 0, 0)
-        if keys[Enum.KeyCode.W] then
-                move = move + f
+-- ═══════════════ FREE CAM (mesin v11: halus + terbang + anti menggeleng) ═══════════════
+local function lerpAngle(a, b, t)
+        local diff = (b - a) % (2 * math.pi)
+        if diff > math.pi then
+                diff = diff - 2 * math.pi
         end
-        if keys[Enum.KeyCode.S] then
-                move = move - f
-        end
-        if keys[Enum.KeyCode.A] then
-                move = move - r
-        end
-        if keys[Enum.KeyCode.D] then
-                move = move + r
-        end
-        if keys[Enum.KeyCode.E] then
-                move = move + Vector3.new(0, 1, 0)
-        end
-        if keys[Enum.KeyCode.Q] then
-                move = move - Vector3.new(0, 1, 0)
-        end
-        local spd = CFG.Speed * (S.turbo and 2.5 or 1) * (S.ctrlDown and 0.25 or 1)
-        if move.Magnitude > 0.001 then
-                move = move.Unit * spd
-        end
-        S.freeVel = expLerp(S.freeVel, move, dt, 9)
-        S.freePos = S.freePos + S.freeVel * dt
-        Camera.CFrame = CFrame.new(S.freePos) * cf
-        Camera.FieldOfView = expLerp(Camera.FieldOfView, CFG.FOV, dt, 7)
+        return a + diff * t
 end
 
--- ═══════════════ PRO CAM ═══════════════
+local function freeUpdate(dt)
+        local alpha = 1 - math.exp(-dt / CFG.Smoothness)
+        if S.fly then
+                -- terbang smooth ke karakter utama (tombol KE KARAKTER UTAMA)
+                local f = S.fly
+                f.t = math.min(f.t + dt, f.dur)
+                local k0 = math.clamp(f.t / f.dur, 0, 1)
+                local k = k0 * k0 * (3 - 2 * k0)
+                S.freePos = f.fromPos:Lerp(f.toPos, k)
+                S.yaw = lerpAngle(f.fromYaw, f.toYaw, k)
+                S.pitch = f.fromPitch + (f.toPitch - f.fromPitch) * k
+                if f.t >= f.dur then
+                        S.fly = nil
+                end
+        else
+                local cf = CFrame.fromOrientation(S.pitch, S.yaw, 0)
+                local f, r = cf.LookVector, cf.RightVector
+                local move = Vector3.new(0, 0, 0)
+                if keys[Enum.KeyCode.W] then
+                        move = move + f
+                end
+                if keys[Enum.KeyCode.S] then
+                        move = move - f
+                end
+                if keys[Enum.KeyCode.A] then
+                        move = move - r
+                end
+                if keys[Enum.KeyCode.D] then
+                        move = move + r
+                end
+                if keys[Enum.KeyCode.E] then
+                        move = move + Vector3.new(0, 1, 0)
+                end
+                if keys[Enum.KeyCode.Q] then
+                        move = move - Vector3.new(0, 1, 0)
+                end
+                local spd = CFG.Speed * (S.turbo and CFG.TurboMult or 1) * (S.ctrlDown and CFG.SlowMult or 1)
+                if move.Magnitude > 0.001 then
+                        move = move.Unit * spd
+                end
+                S.freeVel = S.freeVel:Lerp(move, alpha)
+                S.freePos = S.freePos + S.freeVel * dt
+                -- TARGET LOCK: aim halus ke target, vertikal ter-damping
+                -- (target lompat-lompat → kamera tetap stabil, tidak ikut menggeleng)
+                if S.locked and S.lockPlayer then
+                        local c = S.lockPlayer.Character
+                        local h = c and getHum(c) or nil
+                        local tr = (c and c.Parent and h and h.Health > 0) and c:FindFirstChild("HumanoidRootPart") or nil
+                        if tr then
+                                local tp = tr.Position + Vector3.new(0, 1.5, 0)
+                                if not S.aimY then
+                                        S.aimY = tp.Y
+                                end
+                                local ay = 1 - math.exp(-dt / CFG.AimYDamp)
+                                S.aimY = S.aimY + (tp.Y - S.aimY) * ay
+                                local dir = Vector3.new(tp.X, S.aimY, tp.Z) - S.freePos
+                                if dir.Magnitude > 0.1 then
+                                        local lv = dir.Unit
+                                        local ty = math.atan2(-lv.X, -lv.Z)
+                                        local tpi = math.clamp(math.asin(math.clamp(lv.Y, -1, 1)), -1.45, 1.45)
+                                        S.yaw = lerpAngle(S.yaw, ty, alpha * 0.55)
+                                        S.pitch = S.pitch + (tpi - S.pitch) * alpha * 0.55
+                                end
+                        end
+                else
+                        S.aimY = nil
+                end
+                Camera.CFrame = CFrame.fromOrientation(S.pitch, S.yaw, 0) + S.freePos
+        end
+        Camera.FieldOfView = Camera.FieldOfView + (CFG.FOV - Camera.FieldOfView) * alpha
+end
+
+-- ═══════════════ PRO CAM (mesin v11: pivot glide + Y damping + snap) ═══════════════
 local function proUpdate(dt)
-        S.proDist = expLerp(S.proDist, S.proDistT, dt, 8)
-        -- TARGET LOCK: ikut avatar target lock; tanpa lock = karakter sendiri
-        local char
-        if S.locked and S.lockPlayer then
-                local c = S.lockPlayer.Character
-                local h = c and getHum(c) or nil
-                if c and c.Parent and h and h.Health > 0 then
-                        char = c
-                end
-        end
-        char = char or myChar()
+        -- TARGET LOCK: ikut avatar target lock (rantai lock > pilihan > terdekat > sendiri)
+        local char = getSubjectChar()
         local root = getRoot(char)
-        if root then
-                local hum = getHum(char)
-                local grounded = (hum == nil) or (hum.FloorMaterial ~= Enum.Material.Air)
-                local moving = (hum ~= nil) and (hum.MoveDirection.Magnitude > 0.05)
-                -- STABILIZER: lompat = kamera tetap tenang (karakter agak ke atas)
-                --              jalan = ikut lunak   ·   diam = presisi pas di tengah
-                local kY = CFG.StabAir
-                if grounded then
-                        kY = moving and CFG.StabMove or CFG.StabIdle
-                end
-                if S.proStabChar ~= root then
-                        S.proStabChar = root
-                        S.proStabY = root.Position.Y
-                end
-                S.proStabY = expLerp(S.proStabY, root.Position.Y, dt, kY)
-                local pivot = Vector3.new(root.Position.X, S.proStabY, root.Position.Z) + Vector3.new(0, 1.5, 0)
-                local cf = CFrame.fromOrientation(math.rad(-S.proPitch), math.rad(S.proYaw), 0)
-                local pos = pivot + (cf * CFrame.new(0, 0, S.proDist)).Position
-                Camera.CFrame = CFrame.lookAt(pos, pivot)
+        if not root then
+                return
         end
-        Camera.FieldOfView = expLerp(Camera.FieldOfView, CFG.FOV, dt, 7)
+        local alpha = 1 - math.exp(-dt / (CFG.Smoothness * 1.6))
+        local targetPivot = root.Position + Vector3.new(0, 1.5, 0)
+        if S.proGlide then
+                -- glide halus ke karakter utama (tombol KE KARAKTER UTAMA)
+                local g = S.proGlide
+                g.t = math.min(g.t + dt, g.dur)
+                local k0 = math.clamp(g.t / g.dur, 0, 1)
+                local k = k0 * k0 * (3 - 2 * k0)
+                S.proPivot = g.fromPivot:Lerp(targetPivot, k)
+                if g.t >= g.dur then
+                        S.proGlide = nil
+                end
+        else
+                if not S.proPivot then
+                        S.proPivot = targetPivot
+                end
+                if (targetPivot - S.proPivot).Magnitude > CFG.ProSnap then
+                        -- snap: subjek pindah jauh (respawn/teleport) → langsung ikut
+                        S.proPivot = targetPivot
+                        S.proPos = nil
+                end
+                -- STABILISASI: horizontal normal, vertikal di-damping berat
+                -- (target lompat → pivot naik pelan, kamera tidak menggeleng)
+                local ax = 1 - math.exp(-dt / (CFG.Smoothness * 1.2))
+                local ay = 1 - math.exp(-dt / CFG.ProYDamp)
+                S.proPivot = Vector3.new(
+                        S.proPivot.X + (targetPivot.X - S.proPivot.X) * ax,
+                        S.proPivot.Y + (targetPivot.Y - S.proPivot.Y) * ay,
+                        S.proPivot.Z + (targetPivot.Z - S.proPivot.Z) * ax
+                )
+        end
+        local rot = CFrame.fromOrientation(S.proPitch, S.proYaw, 0)
+        local desiredPos = S.proPivot + rot:VectorToWorldSpace(Vector3.new(0, 0, S.proDist))
+        S.proPos = S.proPos and S.proPos:Lerp(desiredPos, math.clamp(alpha * 1.5, 0, 1)) or desiredPos
+        Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(S.proPos, S.proPivot), math.clamp(alpha * 1.5, 0, 1))
+        Camera.FieldOfView = Camera.FieldOfView + (CFG.FOV - Camera.FieldOfView) * alpha
 end
 
 -- ═══════════════ SHOT DIRECTOR (CINEMATIC) ═══════════════
@@ -2253,32 +2453,26 @@ local function cineUpdate(dt)
         S.cine.focusDist = (Camera.CFrame.Position - ctx.head).Magnitude
 end
 
--- ═══════════════ SPACE SINK + TURBO (3x TAP) ═══════════════
+-- ═══════════════ SPACE (TAHAN) = TURBO + ANTI LOMPAT ═══════════════
+-- Tahan Space saat FREE CAM = turbo; tombol di-sink supaya karakter
+-- tidak ikut melompat sambil merekam
 local function bindSpace()
         if boundSpace then
                 return
         end
         boundSpace = true
-        ContextActionService:BindAction("SIIILAU_SPACE", function(_, state)
+        ContextActionService:BindAction("SIIILAU_TURBO", function(_, state)
                 if state == Enum.UserInputState.Begin then
-                        local now = os.clock()
-                        if now - S.lastSpace < 0.5 then
-                                S.spaceTaps = S.spaceTaps + 1
-                        else
-                                S.spaceTaps = 1
+                        if S.mode == "FREE" and not UserInputService:GetFocusedTextBox() then
+                                S.turbo = true
+                                updateChip()
+                                return Enum.ContextActionResult.Sink
                         end
-                        S.lastSpace = now
-                        if S.spaceTaps >= 3 then
-                                S.spaceTaps = 0
-                                S.turbo = not S.turbo
-                                if S.turbo then
-                                        notify("TURBO ON — kecepatan x2.5")
-                                else
-                                        notify("TURBO OFF")
-                                end
+                elseif state == Enum.UserInputState.End then
+                        if S.turbo then
+                                S.turbo = false
                                 updateChip()
                         end
-                        return Enum.ContextActionResult.Sink
                 end
                 return Enum.ContextActionResult.Pass
         end, false, Enum.KeyCode.Space)
@@ -2289,8 +2483,9 @@ local function unbindSpace()
                 return
         end
         boundSpace = false
+        S.turbo = false
         pcall(function()
-                ContextActionService:UnbindAction("SIIILAU_SPACE")
+                ContextActionService:UnbindAction("SIIILAU_TURBO")
         end)
 end
 
@@ -2308,38 +2503,73 @@ function setMode(m)
                 end
                 S.lastMode = m
         end
+        if S.mode == "NONE" and m ~= "NONE" then
+                -- simpan kamera agar bisa dikembalikan persis saat mode dimatikan (gaya v11)
+                S.savedCam = { CFrame = workspace.CurrentCamera.CFrame }
+        end
         if S.mode == "FREE" or S.mode == "PRO" then
                 unbindSpace()
         end
         S.mode = m
         if m == "NONE" then
-                Camera.CameraType = Enum.CameraType.Custom
-                local hum = getHum(myChar())
-                if hum then
-                        Camera.CameraSubject = hum
-                end
-                Camera.FieldOfView = CFG.FOV
+                S.fly = nil
+                S.proGlide = nil
+                S.turbo = false
                 setAnchorState()
                 S.cine.def = nil
                 S.cine.dofK = 0
-                S.turbo = false
+                if S.savedCam then
+                        -- kembalikan kamera persis seperti sebelum kamera aktif
+                        local sc = S.savedCam
+                        S.savedCam = nil
+                        Camera.CameraType = Enum.CameraType.Scriptable
+                        Camera.CFrame = sc.CFrame
+                        task.defer(function()
+                                Camera.CameraType = Enum.CameraType.Custom
+                                local hum = getHum(myChar())
+                                if hum then
+                                        Camera.CameraSubject = hum
+                                end
+                                Camera.FieldOfView = CFG.FOV
+                        end)
+                else
+                        Camera.CameraType = Enum.CameraType.Custom
+                        local hum = getHum(myChar())
+                        if hum then
+                                Camera.CameraSubject = hum
+                        end
+                        Camera.FieldOfView = CFG.FOV
+                end
         elseif m == "FREE" then
                 local camCF = workspace.CurrentCamera.CFrame
+                local look = camCF.LookVector
                 S.freePos = camCF.Position
-                S.yaw, S.pitch = lookYawPitch(camCF)
+                S.yaw = math.atan2(-look.X, -look.Z)
+                S.pitch = math.asin(math.clamp(look.Y, -1, 1))
                 S.freeVel = Vector3.new(0, 0, 0)
+                S.aimY = nil
+                S.fly = nil
                 S.turbo = false
                 Camera.CameraType = Enum.CameraType.Scriptable
                 setAnchorState()
                 bindSpace()
                 Camera.FieldOfView = CFG.FOV * 0.8 -- efek zoom-in pembuka
-                notify("FREE CAM — WASD+QE gerak · RMB lihat · Scroll FOV · Space 3x turbo")
+                notify("FREE CAM — WASD+QE gerak · RMB lihat · Scroll FOV · tahan Space turbo")
         elseif m == "PRO" then
-                local py = lookYawPitch(workspace.CurrentCamera.CFrame)
-                S.proYaw = py
-                S.proPitch = 12
-                S.proDist = 14
-                S.proDistT = 14
+                local camCF = workspace.CurrentCamera.CFrame
+                local look = camCF.LookVector
+                S.proYaw = math.atan2(-look.X, -look.Z)
+                S.proPitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)), -1.35, 1.35)
+                local subjRoot = getRoot(getSubjectChar())
+                if subjRoot then
+                        S.proPivot = subjRoot.Position + Vector3.new(0, 1.5, 0)
+                        S.proDist = math.clamp((camCF.Position - S.proPivot).Magnitude, 6, 70)
+                else
+                        S.proPivot = nil
+                        S.proDist = 14
+                end
+                S.proPos = camCF.Position
+                S.proGlide = nil
                 Camera.CameraType = Enum.CameraType.Scriptable
                 setAnchorState()
                 bindSpace()
@@ -2414,6 +2644,10 @@ table.insert(CONNS, UserInputService.InputBegan:Connect(function(input, gp)
         local kc = input.KeyCode
         if input.UserInputType == Enum.UserInputType.Keyboard and kc then
                 keys[kc] = true
+                if kc == Enum.KeyCode.W or kc == Enum.KeyCode.S or kc == Enum.KeyCode.A
+                        or kc == Enum.KeyCode.D or kc == Enum.KeyCode.Q or kc == Enum.KeyCode.E then
+                        S.fly = nil -- gerak manual membatalkan terbang otomatis
+                end
         end
         if kc == Enum.KeyCode.One then
                 setMode("FREE")
@@ -2447,7 +2681,7 @@ table.insert(CONNS, UserInputService.InputBegan:Connect(function(input, gp)
         elseif kc == Enum.KeyCode.C then
                 doTeleport()
         elseif kc == Enum.KeyCode.Z then
-                autoTerang()
+                toggleWaktu()
         elseif kc == Enum.KeyCode.H then
                 toggleHideUI()
         elseif kc == Enum.KeyCode.K then
@@ -2483,12 +2717,14 @@ table.insert(CONNS, UserInputService.InputChanged:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseMovement then
                 if S.rmb and (S.mode == "FREE" or S.mode == "PRO") then
                         local dx, dy = input.Delta.X, input.Delta.Y
+                        local sens = CFG.MouseSens * 0.02
                         if S.mode == "FREE" then
-                                S.yaw = (S.yaw - dx * 0.28) % 360
-                                S.pitch = math.clamp(S.pitch - dy * 0.28, -89, 89)
+                                S.fly = nil
+                                S.yaw = S.yaw - dx * sens
+                                S.pitch = math.clamp(S.pitch - dy * sens, -1.45, 1.45)
                         else
-                                S.proYaw = (S.proYaw - dx * 0.28) % 360
-                                S.proPitch = math.clamp(S.proPitch + dy * 0.25, -78, 78)
+                                S.proYaw = S.proYaw - dx * sens
+                                S.proPitch = math.clamp(S.proPitch - dy * sens, -1.35, 1.35)
                         end
                 end
         elseif input.UserInputType == Enum.UserInputType.MouseWheel then
@@ -2499,7 +2735,7 @@ table.insert(CONNS, UserInputService.InputChanged:Connect(function(input)
                                 UI.fovSlider.Set(CFG.FOV)
                         end
                 elseif S.mode == "PRO" then
-                        S.proDistT = math.clamp(S.proDistT - z * 2.5, 4, 80)
+                        S.proDist = math.clamp(S.proDist - z * 2.5, 4, 80)
                 end
         end
 end))
@@ -2615,6 +2851,18 @@ function unloadAll()
         table.clear(CONNS)
         unbindSpace()
         pcall(function()
+                ContextActionService:UnbindAction("SIIILAU_TURBO")
+                ContextActionService:UnbindAction("SIIILAU_SPACE")
+        end)
+        pcall(function()
+                if S.clockTween then
+                        S.clockTween:Cancel()
+                end
+                if S.timeChanged and S.savedClockTime then
+                        Lighting.ClockTime = S.savedClockTime
+                end
+        end)
+        pcall(function()
                 DOF:Destroy()
                 PHOTO_CC:Destroy()
                 PHOTO_BLOOM:Destroy()
@@ -2638,7 +2886,7 @@ function unloadAll()
                 gui:Destroy()
         end)
         _G.SIIILAU_CAM_UNLOAD = nil
-        print("[SIIILAUxCAMERAPRO] script dihapus — sampai jumpa!")
+        print("[SIIILAU v1.01] script dihapus — sampai jumpa!")
 end
 _G.SIIILAU_CAM_UNLOAD = unloadAll
 
