@@ -7,7 +7,7 @@
             1        = FREE CAM            (tekan lagi = mati)
             2        = PRO CAM             (tekan lagi = mati)
             3        = CINEMATIC MODE      (tekan lagi = mati)
-            CapsLock = nyalakan / matikan kamera bebas (tanpa efek lain)
+            CapsLock = MASTER ON/OFF — mati = SEMUA fitur kamera off
             F        = buka / tutup panel
             M        = buka MODE FOTO (langsung ke tab FOTO)
             T        = lock target terdekat / unlock
@@ -19,8 +19,12 @@
             Scroll   = FOV (FREE) / zoom 4-80 (PRO)
             Space 3x = turbo  ·  Ctrl = slow (FREE)
           MODE FOTO (layer, aktif di mode kamera manapun):
-            Filter warna · rasio frame · fokus/blur manual · ambil foto
+            Filter warna · rasio frame · blur otomatis fokus ke target · ambil foto
           CATATAN :
+            • Target lock 3 cara: T (terdekat) · AUTO LOCK · pilih sendiri (tab TARGET)
+            • PRO & CINE ikut target lock · blur fokus otomatis ke avatar target
+            • Kamera stabil saat karakter lompat — diam = pas di tengah, lompat = agak ke atas
+            • CapsLock mati = semua fitur kamera off (mode, blur, letterbox, filter)
             • Semua efek client-side — cuma terlihat di layar kamu
             • Aman di-execute ulang kapan saja (auto bersihkan versi lama)
         ═══════════════════════════════════════════════════════════════════
@@ -50,7 +54,14 @@ local CFG = {
         TeleDist  = 7,    -- jarak teleport di belakang layar (langkah)
         CineTempo = 5.5,  -- durasi rata-rata tiap shot sinematik (detik)
         Letterbox = true, -- letterbox otomatis saat mode sinematik
-        Anchor    = true, -- anchor karakter saat FREE/PRO aktif
+        Anchor    = false, -- karakter bebas gerak/lompat (bisa dinyalakan di tab SISTEM)
+        -- stabilizer kamera: karakter di tengah, tidak memantul saat lompat
+        -- (makin kecil = makin stabil / lambat ikut tinggi lompatan)
+        StabAir   = 2.0,  -- respons Y saat karakter di udara (lompatan)
+        StabMove  = 7,    -- respons Y saat berjalan/lari
+        StabIdle  = 14,   -- respons Y saat diam (cepat → pas di tengah)
+        CineStabG = 9,    -- stabilizer sinematik saat grounded
+        CineStabA = 2.4,  -- stabilizer sinematik saat di udara
         -- palet neon
         Neon1   = Color3.fromRGB(0, 255, 240),  -- cyan
         Neon2   = Color3.fromRGB(255, 45, 170), -- magenta
@@ -64,6 +75,8 @@ local CFG = {
 -- ═══════════════ STATE ═══════════════
 local S = {
         mode = "NONE", -- NONE | FREE | PRO | CINE
+        master = true,        -- CapsLock master: false = SEMUA fitur kamera off
+        lastMode = "NONE",    -- mode terakhir sebelum master off (dipulihkan saat on)
         panelOpen = true,
         uiHidden = false,
         -- input
@@ -87,6 +100,13 @@ local S = {
         locked = false,
         lockPlayer = nil,
         selected = nil,
+        lockMode = "TERDEKAT", -- TERDEKAT | AUTO | PILIH
+        -- stabilizer kamera (anti mantul saat lompat)
+        proStabY = nil,
+        proStabChar = nil,
+        cineStabY = nil,
+        cineStabChar = nil,
+        fotoFocus = nil,
         -- cinematic director
         cine = {
                 def = nil,
@@ -126,6 +146,7 @@ local setMode, toggleLock, doTeleport, autoTerang, unloadAll
 local getSubjectChar, refreshTargetList, refreshModeUI, updateLockBtn
 local setFilter, setRatio, takePhoto, setWatermark, fmtClock
 local updateRatioMasks
+local findNearestPlayer, lockPick, lockAutoToggle, setMaster
 
 -- ═══════════════ UTIL ═══════════════
 local function flat(v)
@@ -600,7 +621,6 @@ UI.tabFOTO = new("Frame", {
         LayoutOrder = 4,
         ZIndex = 6,
 }, UI.body)
-
 -- ═══════════════ WIDGET UI ═══════════════
 local function secLabel(parent, txt, order)
         return new("TextLabel", {
@@ -819,13 +839,16 @@ end, 8)
 new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, UI.tabTARGET)
 pad(UI.tabTARGET, 2, 8, 0, 0)
 
-UI.lockBtn = makePill(UI.tabTARGET, "T · LOCK TARGET TERDEKAT", 34, 1, function()
+UI.lockBtn = makePill(UI.tabTARGET, "T · LOCK TERDEKAT / UNLOCK", 34, 1, function()
         toggleLock()
 end)
-UI.refreshBtn = makePill(UI.tabTARGET, "SEGARKAN DAFTAR", 28, 2, function()
+UI.autoBtn = makePill(UI.tabTARGET, "AUTO LOCK · OFF", 32, 2, function()
+        lockAutoToggle()
+end)
+UI.refreshBtn = makePill(UI.tabTARGET, "SEGARKAN DAFTAR", 28, 3, function()
         refreshTargetList()
 end)
-secLabel(UI.tabTARGET, "Pilih Manual", 3)
+secLabel(UI.tabTARGET, "Pilih Sendiri (klik pemain)", 4)
 
 UI.tList = new("ScrollingFrame", {
         Size = UDim2.new(1, 0, 0, 170),
@@ -837,7 +860,7 @@ UI.tList = new("ScrollingFrame", {
         ScrollingDirection = Enum.ScrollingDirection.Y,
         ScrollBarThickness = 3,
         ScrollBarImageColor3 = CFG.Neon2,
-        LayoutOrder = 4,
+        LayoutOrder = 5,
         ZIndex = 6,
 }, UI.tabTARGET)
 corner(UI.tList, 12)
@@ -847,13 +870,13 @@ pad(UI.tList, 6, 6, 6, 6)
 
 new("TextLabel", {
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 26),
+        Size = UDim2.new(1, 0, 0, 40),
         Font = Enum.Font.GothamMedium,
-        Text = "Sinematik mengikuti: lock > pilihan > terdekat > diri sendiri",
+        Text = "PRO & SINEMATIK ikut: lock > pilihan > terdekat > diri sendiri.\nAUTO LOCK pindah sendiri kalau target hilang.\nBlur foto fokus otomatis ke avatar target.",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextWrapped = true,
-        LayoutOrder = 5,
+        LayoutOrder = 6,
         ZIndex = 6,
 }, UI.tabTARGET)
 
@@ -889,7 +912,7 @@ new("TextLabel", {
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 74),
         Font = Enum.Font.GothamMedium,
-        Text = "1/2/3 · mode kamera      CapsLock · kamera bebas\nF · panel      M · mode foto      T · lock      C · teleport\nZ · terang      H · sembunyikan      K 2x · hapus script\nRMB · lihat      Scroll · zoom/FOV      Space 3x · turbo",
+        Text = "1/2/3 · mode kamera      CapsLock · semua kamera ON/OFF\nF · panel      M · mode foto      T · lock      C · teleport\nZ · terang      H · sembunyikan      K 2x · hapus script\nRMB · lihat      Scroll · zoom/FOV      Space 3x · turbo",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -1000,24 +1023,38 @@ do
         end
 end
 
-secLabel(UI.tabFOTO, "Fokus Manual (Blur)", 5)
-makeToggle(UI.tabFOTO, "FOKUS / BLUR AKTIF", false, function(state)
+secLabel(UI.tabFOTO, "Blur Otomatis (Fokus Target)", 5)
+makeToggle(UI.tabFOTO, "BLUR OTOMATIS · ON/OFF", false, function(state)
         S.foto.dof = state
+        if state then
+                notify("Blur ON — fokus otomatis ke avatar target lock (T)")
+        end
 end, 6)
-makeSlider(UI.tabFOTO, "JARAK FOKUS", 2, 100, S.foto.focus, function(v)
+new("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 26),
+        Font = Enum.Font.GothamMedium,
+        Text = "Fokus mengikuti avatar target lock (T) / subjek kamera.\nSlider bawah cuma dipakai kalau tidak ada target.",
+        TextColor3 = CFG.TXT_DIM,
+        TextSize = 10,
+        TextWrapped = true,
+        LayoutOrder = 7,
+        ZIndex = 6,
+}, UI.tabFOTO)
+makeSlider(UI.tabFOTO, "FALLBACK FOKUS (TANPA TARGET)", 2, 100, S.foto.focus, function(v)
         return math.floor(v) .. " stud"
 end, function(v)
         S.foto.focus = v
-end, 7)
+end, 8)
 makeSlider(UI.tabFOTO, "KEKUATAN BLUR", 0, 100, S.foto.blur, function(v)
         return math.floor(v) .. "%"
 end, function(v)
         S.foto.blur = v
-end, 8)
+end, 9)
 
-secLabel(UI.tabFOTO, "Ambil Foto", 9)
+secLabel(UI.tabFOTO, "Ambil Foto", 10)
 do
-        local shotBtn = makePill(UI.tabFOTO, "●  AMBIL FOTO  (LAYAR BERSIH 5 DETIK)", 38, 10, function()
+        local shotBtn = makePill(UI.tabFOTO, "●  AMBIL FOTO  (LAYAR BERSIH 5 DETIK)", 38, 11, function()
                 takePhoto()
         end)
         shotBtn.TextSize = 12
@@ -1027,7 +1064,7 @@ do
 end
 makeToggle(UI.tabFOTO, "WATERMARK SIIILAUxCAMERAPRO", false, function(state)
         setWatermark(state)
-end, 11)
+end, 12)
 
 -- ═══════════════ TAB BAR + LOGIKA TAB ═══════════════
 UI.tabBtns = {}
@@ -1224,6 +1261,11 @@ end
 
 -- ═══════════════ CHIP STATUS ═══════════════
 function updateChip()
+        if not S.master then
+                UI.chipTxt.Text = "● KAMERA OFF — CapsLock / 1 / 2 / 3"
+                UI.chipStroke.Color = CFG.DANGER
+                return
+        end
         local txt, col
         if S.mode == "FREE" then
                 txt, col = "FREE CAM", CFG.Neon1
@@ -1246,6 +1288,9 @@ function updateChip()
         if S.turbo then
                 txt = txt .. " · TURBO"
         end
+        if S.locked and S.lockPlayer and (S.mode == "FREE" or S.mode == "PRO") then
+                txt = txt .. " · LOCK:" .. S.lockPlayer.Name
+        end
         UI.chipTxt.Text = "● " .. txt
         UI.chipStroke.Color = col
 end
@@ -1260,27 +1305,17 @@ function setAnchorState()
 end
 
 -- ═══════════════ SUBJEK (TARGET) ═══════════════
-function getSubjectChar()
-        -- prioritas: lock > pilihan manual > terdekat > diri sendiri
-        if S.locked and S.lockPlayer and S.lockPlayer.Parent then
-                local c = S.lockPlayer.Character
-                if c and c.Parent then
-                        return c
-                end
-        end
-        if S.selected and S.selected.Parent then
-                local c = S.selected.Character
-                if c and c.Parent then
-                        return c
-                end
-        end
+-- cari pemain lain TERDEKAT yang masih hidup
+function findNearestPlayer()
         local myRoot = getRoot(myChar())
         local origin = myRoot and myRoot.Position or workspace.CurrentCamera.CFrame.Position
         local best, bd
         for _, pl in ipairs(Players:GetPlayers()) do
                 if pl ~= LP then
-                        local r = getRoot(pl.Character)
-                        if r then
+                        local c = pl.Character
+                        local r = getRoot(c)
+                        local h = c and getHum(c) or nil
+                        if r and h and h.Health > 0 then
                                 local d = (r.Position - origin).Magnitude
                                 if not bd or d < bd then
                                         best, bd = pl, d
@@ -1288,6 +1323,33 @@ function getSubjectChar()
                         end
                 end
         end
+        return best, bd
+end
+
+local function aliveCharOf(pl)
+        if pl and pl.Parent then
+                local c = pl.Character
+                local h = c and getHum(c) or nil
+                if c and c.Parent and h and h.Health > 0 then
+                        return c
+                end
+        end
+        return nil
+end
+
+function getSubjectChar()
+        -- prioritas: lock > pilihan manual > terdekat > diri sendiri
+        if S.locked then
+                local c = aliveCharOf(S.lockPlayer)
+                if c then
+                        return c
+                end
+        end
+        local c = aliveCharOf(S.selected)
+        if c then
+                return c
+        end
+        local best = findNearestPlayer()
         if best then
                 return best.Character
         end
@@ -1306,25 +1368,13 @@ function toggleLock()
                 notify("Target lock: MATI")
                 return
         end
-        local myRoot = getRoot(myChar())
-        local origin = myRoot and myRoot.Position or workspace.CurrentCamera.CFrame.Position
-        local best, bd
-        for _, pl in ipairs(Players:GetPlayers()) do
-                if pl ~= LP then
-                        local r = getRoot(pl.Character)
-                        if r then
-                                local d = (r.Position - origin).Magnitude
-                                if not bd or d < bd then
-                                        best, bd = pl, d
-                                end
-                        end
-                end
-        end
+        local best, bd = findNearestPlayer()
         if not best then
                 notify("Tidak ada pemain lain di server")
                 return
         end
         S.locked = true
+        S.lockMode = "TERDEKAT"
         S.lockPlayer = best
         S.selected = best
         updateChip()
@@ -1332,7 +1382,57 @@ function toggleLock()
         if UI.updateLockBtn then
                 UI.updateLockBtn()
         end
-        notify("Locked: " .. best.Name .. " (" .. math.floor(bd) .. " stud)")
+        notify("Locked (terdekat): " .. best.Name .. " (" .. math.floor(bd) .. " stud)")
+end
+
+-- AUTO LOCK: kunci terdekat + pindah sendiri kalau target hilang/mati
+function lockAutoToggle()
+        if S.locked and S.lockMode == "AUTO" then
+                S.locked = false
+                S.lockPlayer = nil
+                updateChip()
+                refreshTargetList()
+                if UI.updateLockBtn then
+                        UI.updateLockBtn()
+                end
+                notify("AUTO LOCK: OFF")
+                return
+        end
+        local best = findNearestPlayer()
+        if not best then
+                notify("Tidak ada pemain lain di server")
+                return
+        end
+        S.locked = true
+        S.lockMode = "AUTO"
+        S.lockPlayer = best
+        S.selected = best
+        updateChip()
+        refreshTargetList()
+        if UI.updateLockBtn then
+                UI.updateLockBtn()
+        end
+        notify("AUTO LOCK: ON → " .. best.Name .. " (pindah sendiri kalau target hilang)")
+end
+
+-- PILIH SENDIRI: lock pemain dari daftar
+function lockPick(pl)
+        if not pl or pl == LP then
+                S.locked = false
+                S.lockPlayer = nil
+                notify("Lock dilepas")
+        else
+                S.locked = true
+                S.lockMode = "PILIH"
+                S.lockPlayer = pl
+                S.selected = pl
+                notify("Lock (pilih sendiri): " .. pl.Name)
+        end
+        updateChip()
+        refreshTargetList()
+        if UI.updateLockBtn then
+                UI.updateLockBtn()
+        end
 end
 
 function updateLockBtn()
@@ -1341,8 +1441,18 @@ function updateLockBtn()
                         UI.lockBtn.Text = "T · UNLOCK (" .. S.lockPlayer.Name .. ")"
                         UI.lockBtn.TextColor3 = CFG.Neon2
                 else
-                        UI.lockBtn.Text = "T · LOCK TARGET TERDEKAT"
+                        UI.lockBtn.Text = "T · LOCK TERDEKAT / UNLOCK"
                         UI.lockBtn.TextColor3 = CFG.TXT
+                end
+        end
+        if UI.autoBtn then
+                local on = S.locked and S.lockMode == "AUTO"
+                local nm = (on and S.lockPlayer) and S.lockPlayer.Name or ""
+                UI.autoBtn.Text = on and ("AUTO LOCK · ON → " .. nm) or "AUTO LOCK · OFF"
+                UI.autoBtn.TextColor3 = on and CFG.Neon1 or CFG.TXT
+                local st = UI.autoBtn:FindFirstChildOfClass("UIStroke")
+                if st then
+                        st.Transparency = on and 0.1 or 0.55
                 end
         end
 end
@@ -1381,8 +1491,12 @@ function refreshTargetList()
                 return a.d < b.d
         end)
         for i, row in ipairs(rows) do
-                local isSel = (S.selected == row.pl) or (S.locked and S.lockPlayer == row.pl)
+                local isLock = (S.locked and S.lockPlayer == row.pl)
+                local isSel = isLock or (S.selected == row.pl)
                 local label = row.pl == LP and (row.pl.Name .. "  (kamu)") or row.pl.Name
+                if isLock then
+                        label = "● " .. label
+                end
                 local distTxt = row.d >= 0 and (row.d .. "m") or "-"
                 local b = new("TextButton", {
                         Size = UDim2.new(1, 0, 0, 26),
@@ -1423,9 +1537,7 @@ function refreshTargetList()
                         ZIndex = 7,
                 }, b)
                 b.MouseButton1Click:Connect(function()
-                        S.selected = row.pl
-                        updateChip()
-                        refreshTargetList()
+                        lockPick(row.pl)
                 end)
         end
 end
@@ -1557,6 +1669,14 @@ local RATIO_VALUES = {
 
 function updateRatioMasks()
         local id = S.foto.ratio
+        if not S.master then
+                -- master off: mask rasio ikut disembunyikan
+                UI.maskT.Size = UDim2.new(1, 0, 0, 0)
+                UI.maskB.Size = UDim2.new(1, 0, 0, 0)
+                UI.maskL.Size = UDim2.new(0, 0, 1, 0)
+                UI.maskR.Size = UDim2.new(0, 0, 1, 0)
+                return
+        end
         local cam = workspace.CurrentCamera
         local vp = cam.ViewportSize
         if id == "FULL" then
@@ -1610,11 +1730,27 @@ function setWatermark(state)
 end
 
 function applyDof()
+        if not S.master then
+                -- CapsLock off: semua fitur kamera off, blur ikut mati
+                if DOF.Enabled then
+                        DOF.Enabled = false
+                end
+                return
+        end
         if S.foto.dof then
-                -- fokus manual foto = prioritas tertinggi
+                -- BLUR OTOMATIS: fokus selalu ke avatar target lock (fallback: subjek kamera)
                 DOF.Enabled = true
-                DOF.FocusDistance = S.foto.focus
-                DOF.InFocusRadius = 5 + S.foto.blur * 0.05
+                local want = S.foto.focus
+                local r = getRoot(getSubjectChar())
+                if r then
+                        want = (Camera.CFrame.Position - r.Position).Magnitude
+                end
+                if not S.fotoFocus then
+                        S.fotoFocus = want
+                end
+                S.fotoFocus = S.fotoFocus + (want - S.fotoFocus) * 0.3
+                DOF.FocusDistance = S.fotoFocus
+                DOF.InFocusRadius = 6 + S.foto.blur * 0.06
                 DOF.FarIntensity = 0.15 + (S.foto.blur / 100) * 0.65
                 DOF.NearIntensity = (S.foto.blur / 100) * 0.4
         elseif S.mode == "CINE" and (S.cine.dofK or 0) > 0.02 then
@@ -1685,9 +1821,33 @@ end
 -- ═══════════════ PRO CAM ═══════════════
 local function proUpdate(dt)
         S.proDist = expLerp(S.proDist, S.proDistT, dt, 8)
-        local root = getRoot(myChar())
+        -- TARGET LOCK: ikut avatar target lock; tanpa lock = karakter sendiri
+        local char
+        if S.locked and S.lockPlayer then
+                local c = S.lockPlayer.Character
+                local h = c and getHum(c) or nil
+                if c and c.Parent and h and h.Health > 0 then
+                        char = c
+                end
+        end
+        char = char or myChar()
+        local root = getRoot(char)
         if root then
-                local pivot = root.Position + Vector3.new(0, 1.5, 0)
+                local hum = getHum(char)
+                local grounded = (hum == nil) or (hum.FloorMaterial ~= Enum.Material.Air)
+                local moving = (hum ~= nil) and (hum.MoveDirection.Magnitude > 0.05)
+                -- STABILIZER: lompat = kamera tetap tenang (karakter agak ke atas)
+                --              jalan = ikut lunak   ·   diam = presisi pas di tengah
+                local kY = CFG.StabAir
+                if grounded then
+                        kY = moving and CFG.StabMove or CFG.StabIdle
+                end
+                if S.proStabChar ~= root then
+                        S.proStabChar = root
+                        S.proStabY = root.Position.Y
+                end
+                S.proStabY = expLerp(S.proStabY, root.Position.Y, dt, kY)
+                local pivot = Vector3.new(root.Position.X, S.proStabY, root.Position.Z) + Vector3.new(0, 1.5, 0)
                 local cf = CFrame.fromOrientation(math.rad(-S.proPitch), math.rad(S.proYaw), 0)
                 local pos = pivot + (cf * CFrame.new(0, 0, S.proDist)).Position
                 Camera.CFrame = CFrame.lookAt(pos, pivot)
@@ -1733,8 +1893,8 @@ local function smoothDir(P, ctx, dt, k)
         return P.dir
 end
 
--- konteks subjek untuk shot director
-local function cineCtx()
+-- konteks subjek untuk shot director (dt opsional → stabilizer vertikal aktif)
+local function cineCtx(dt)
         local char = getSubjectChar()
         local root = getRoot(char)
         local hum = getHum(char)
@@ -1755,6 +1915,19 @@ local function cineCtx()
                 else
                         moveDir = look
                 end
+                -- STABILIZER VERTIKAL: shot tidak ikut memantul saat subjek lompat
+                if S.cineStabChar ~= root then
+                        S.cineStabChar = root
+                        S.cineStabY = pos.Y
+                end
+                if dt then
+                        local grounded = (hum == nil) or (hum.FloorMaterial ~= Enum.Material.Air)
+                        local kY = grounded and CFG.CineStabG or CFG.CineStabA
+                        S.cineStabY = expLerp(S.cineStabY, pos.Y, dt, kY)
+                else
+                        S.cineStabY = pos.Y
+                end
+                pos = Vector3.new(pos.X, S.cineStabY, pos.Z)
         end
         local seated = (hum ~= nil) and (hum.SeatPart ~= nil)
         local context
@@ -2063,7 +2236,7 @@ local function cineUpdate(dt)
                         return
                 end
         end
-        local ctx = cineCtx()
+        local ctx = cineCtx(dt)
         if not ctx.root then
                 return
         end
@@ -2127,6 +2300,14 @@ function setMode(m)
                 -- tekan tombol mode yang sama = matikan
                 m = "NONE"
         end
+        if m ~= "NONE" then
+                -- mode kamera apapun otomatis menyalakan kembali master yang mati
+                if not S.master then
+                        S.master = true
+                        setFilter(S.foto.filter)
+                end
+                S.lastMode = m
+        end
         if S.mode == "FREE" or S.mode == "PRO" then
                 unbindSpace()
         end
@@ -2176,13 +2357,55 @@ function setMode(m)
         applyUIVisibility()
 end
 
+-- ═══════════════ MASTER SWITCH (CAPSLOCK) ═══════════════
+-- CapsLock MATI  = SEMUA fitur kamera off (mode, blur, letterbox, mask, filter)
+-- CapsLock NYALA = pulihkan mode terakhir / FREE + semua efek kembali
+function setMaster(on)
+        if on == S.master then
+                if not on then
+                        notify("Semua fitur kamera memang sudah OFF")
+                end
+                return
+        end
+        S.master = on
+        if on then
+                local m = S.lastMode
+                if not m or m == "NONE" then
+                        m = "FREE"
+                end
+                setMode(m)
+                setFilter(S.foto.filter) -- filter foto kembali sesuai setting
+                updateRatioMasks()       -- mask rasio kembali
+                notify("Semua fitur kamera: ON")
+        else
+                if S.mode ~= "NONE" then
+                        S.lastMode = S.mode
+                end
+                setMode("NONE")
+                -- matikan filter foto TANPA mereset pilihan user
+                PHOTO_CC.Enabled = false
+                PHOTO_BLOOM.Enabled = false
+                applyLetterbox()
+                updateRatioMasks()
+                S.rmb = false
+                pcall(function()
+                        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+                end)
+                notify("SEMUA FITUR KAMERA OFF — CapsLock untuk nyalakan lagi", 4)
+        end
+        updateChip()
+end
+
 -- ═══════════════ INPUT KEYBIND ═══════════════
 table.insert(CONNS, UserInputService.InputBegan:Connect(function(input, gp)
         if input.UserInputType == Enum.UserInputType.MouseButton2 then
-                S.rmb = true
-                pcall(function()
-                        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-                end)
+                -- RMB look hanya saat kamera aktif (FREE/PRO)
+                if S.master and (S.mode == "FREE" or S.mode == "PRO") then
+                        S.rmb = true
+                        pcall(function()
+                                UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+                        end)
+                end
                 return
         end
         if gp then
@@ -2199,16 +2422,19 @@ table.insert(CONNS, UserInputService.InputBegan:Connect(function(input, gp)
         elseif kc == Enum.KeyCode.Three then
                 setMode("CINE")
         elseif kc == Enum.KeyCode.CapsLock then
-                -- cuma nyalakan/matikan kamera bebas, tanpa efek lain
-                if S.mode == "FREE" then
-                        setMode("NONE")
-                else
-                        setMode("FREE")
-                end
+                -- MASTER: CapsLock mati = semua fitur kamera off
+                setMaster(not S.master)
         elseif kc == Enum.KeyCode.F then
                 togglePanel()
         elseif kc == Enum.KeyCode.M then
                 -- MODE FOTO: buka panel + langsung ke tab FOTO
+                if not S.master then
+                        -- foto butuh efek kamera -> nyalakan master dulu (tanpa paksa mode)
+                        S.master = true
+                        setFilter(S.foto.filter)
+                        updateRatioMasks()
+                        updateChip()
+                end
                 if S.uiHidden then
                         toggleHideUI()
                 end
@@ -2279,8 +2505,39 @@ table.insert(CONNS, UserInputService.InputChanged:Connect(function(input)
 end))
 
 -- ═══════════════ LOOP RENDER ═══════════════
+local lockCheck = 0
 table.insert(CONNS, RunService.RenderStepped:Connect(function(dt)
         Camera = workspace.CurrentCamera
+        -- RAWAT TARGET LOCK: AUTO pindah sendiri, mode lain lepas kalau target hilang/mati
+        if S.locked and os.clock() - lockCheck > 0.5 then
+                lockCheck = os.clock()
+                local c = S.lockPlayer and S.lockPlayer.Parent and S.lockPlayer.Character or nil
+                local h = c and getHum(c) or nil
+                if not (c and h and h.Health > 0) then
+                        if S.lockMode == "AUTO" then
+                                local best = findNearestPlayer()
+                                if best then
+                                        S.lockPlayer = best
+                                        S.selected = best
+                                        notify("AUTO LOCK → " .. best.Name)
+                                        updateChip()
+                                        refreshTargetList()
+                                        if UI.updateLockBtn then
+                                                UI.updateLockBtn()
+                                        end
+                                end
+                        else
+                                S.locked = false
+                                S.lockPlayer = nil
+                                notify("Target hilang — lock dilepas")
+                                updateChip()
+                                refreshTargetList()
+                                if UI.updateLockBtn then
+                                        UI.updateLockBtn()
+                                end
+                        end
+                end
+        end
         if S.mode == "FREE" then
                 freeUpdate(dt)
         elseif S.mode == "PRO" then
@@ -2310,13 +2567,27 @@ end))
 
 table.insert(CONNS, Players.PlayerRemoving:Connect(function(pl)
         if S.lockPlayer == pl then
-                S.locked = false
-                S.lockPlayer = nil
+                if S.lockMode == "AUTO" then
+                        -- auto lock: langsung pindah ke terdekat
+                        local best = findNearestPlayer()
+                        if best then
+                                S.lockPlayer = best
+                                S.selected = best
+                                notify("AUTO LOCK → " .. best.Name)
+                        else
+                                S.locked = false
+                                S.lockPlayer = nil
+                                notify("Target keluar — tidak ada pemain lain")
+                        end
+                else
+                        S.locked = false
+                        S.lockPlayer = nil
+                        notify("Target keluar — lock dilepas")
+                end
                 updateChip()
                 if UI.updateLockBtn then
                         UI.updateLockBtn()
                 end
-                notify("Target keluar — lock dilepas")
         end
         if S.selected == pl then
                 S.selected = nil
@@ -2355,6 +2626,7 @@ function unloadAll()
                         Camera.CameraSubject = hum
                 end
                 Camera.FieldOfView = 70
+                UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         end)
         pcall(function()
                 local hrp = getRoot(myChar())
