@@ -1,11 +1,6 @@
 --========================================================
---  SILAU NEON ALL-IN-ONE v2.0 — Script Final Gabungan
---  Gabungan 5 skrip: TIANG PATH v1.4.3 + KING v1.5
---    + TELEPORT GUI v1.0.1 + TP+TRAINING v3.0.0 + FITUR BARU
---  v2.0: 5 TAB + Cahaya Auto 2 arah + Auto TP suite
---    + Anti-AFK 2 lapis + Rekam Jalur (V) + Speed cycle 3 state
---
---  TEMA: SILAU NEON (ungu/biru LED)
+--  ACxSIIILAU ALL-IN-ONE V1.0.1
+--  TEMA: ACxSIIILAU (ungu/biru LED)
 --
 --  5 TAB:
 --    1 🏃 GERAK    : Speed, Jump, Shiftlock, Moonwalk, Fall Assist, Anti-AFK
@@ -488,7 +483,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ SILAU NEON ⚡",
+    Text = "⚡ ACxSIIILAU ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1349,7 +1344,7 @@ btnRekamGabung = buat("TextButton", {
 }, kontenTiang)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnRekamGabung)
 buat("UIStroke", {Color = Warna.Hijau2, Thickness = 1, Transparency = 0.4}, btnRekamGabung)
--- Toggle sembunyikan/tampilkan jalur rekaman (v2.0 — seperti sembunyikan tiang)
+-- Toggle sembunyikan/tampilkan jalur rekaman (V1.0.1 — seperti sembunyikan tiang)
 btnRekamHide = buat("TextButton", {
     Size = UDim2.new(1, -24, 0, 22),
     Position = UDim2.new(0, 12, 0, 176),
@@ -1451,7 +1446,7 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ SILAU NEON ALL-IN-ONE v2.0 (2.0-ALLINONE)\n"
+    Text = "⚡ ACxSIIILAU ALL-IN-ONE V1.0.1 (2.0-ALLINONE)\n"
         .. "Gabungan: TIANG PATH + KING + TELEPORT + TRAINING\n"
         .. "5 TAB: 🏃 GERAK | 🎨 VISUAL | 🚀 TELEPORT | 📍 TIANG | ⚙️ SISTEM\n"
         .. "Keybind: F panel • Y pasang • Q speed • J jump • C shift • G moon\n"
@@ -1500,9 +1495,9 @@ local infoKredit = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "Tema SILAU NEON (ungu/biru LED) ⚡\n"
+    Text = "Tema ACxSIIILAU (ungu/biru LED) ⚡\n"
         .. "Merge basis MAIN v1.5 + port TELEPORT GUI v1.0.1\n"
-        .. "+ TP+TRAINING v3.0.0 (search/rename) + fitur baru v2.0",
+        .. "+ TP+TRAINING v3.0.0 (search/rename) + fitur baru V1.0.1",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
@@ -4028,7 +4023,7 @@ Setters.Walls = function(v, silent)
     syncNotify("Walls", v, silent, "Dinding Batas")
 end
 
--- CAHAYA AUTO DUA ARAH (baru v2.0 — pengganti Auto Terang lama dari E)
+-- CAHAYA AUTO DUA ARAH (baru V1.0.1 — pengganti Auto Terang lama dari E)
 -- Malam (< 6 atau >= 18) → terangi   : ClockTime ≈ 14, Brightness naik ≈ 2.5, fog gelap dibuka
 -- Siang                  → gelapkan  : ClockTime ≈ 17.5 (senja lembut), Brightness ≈ 1.6 (anti-silau)
 -- Loop penjaga tiap ~2 detik; saat OFF semua nilai asli di-restore.
@@ -4284,7 +4279,7 @@ unloadScript = function()
         pcall(function() fallState.conn:Disconnect() end)
         fallState.conn = nil
     end
-    -- 3b) Stop Auto TP + Rekam jalur (port v2.0)
+    -- 3b) Stop Auto TP + Rekam jalur (port V1.0.1)
     autoState.aktif = false
     if rekam.aktif then
         pcall(function() berhentiRekam(false) end)
