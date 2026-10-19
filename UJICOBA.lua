@@ -30,6 +30,7 @@
             • PRO & CINE ikut target lock · blur fokus otomatis ke avatar target
             • Kamera balik persis ke posisi semula saat mode dimatikan
             • CapsLock mati = semua fitur kamera off (mode, blur, letterbox, filter)
+            • Kamera/CapsLock ON = karakter beku TOTAL di tempat (toggle di SISTEM)
             • Semua efek client-side — cuma terlihat di layar kamu
             • Aman di-execute ulang kapan saja (auto bersihkan versi lama)
         ═══════════════════════════════════════════════════════════════════
@@ -59,7 +60,7 @@ local CFG = {
         TeleDist  = 7,    -- jarak teleport di belakang layar (langkah)
         CineTempo = 5.5,  -- durasi rata-rata tiap shot sinematik (detik)
         Letterbox = true, -- letterbox otomatis saat mode sinematik
-        Anchor    = false, -- karakter bebas gerak/lompat (bisa dinyalakan di tab SISTEM)
+        Anchor    = true,  -- karakter beku TOTAL saat kamera/CapsLock on (toggle SISTEM)
         -- mesin kamera v11 (FREE/PRO): halus, terbang, anti menggeleng
         Smoothness    = 0.12,  -- kehalusan gerak free cam (makin kecil = makin responsif)
         TurboMult     = 3,     -- pengali kecepatan turbo (tahan Space)
@@ -152,6 +153,7 @@ local S = {
 }
 
 local keys = {}        -- status tombol gerak
+local unloadDone = false -- guard anchor: berhenti saat script sudah dihapus
 local CONNS = {}       -- koneksi (dibersihkan saat unload)
 local boundSpace = false
 local UI = {}          -- referensi elemen UI
@@ -915,7 +917,7 @@ secLabel(UI.tabSISTEM, "Utilitas", 4)
 UI.waktuBtn = makePill(UI.tabSISTEM, "Z · PAGI ⇄ MALAM (2 ARAH) · OFF", 32, 5, function()
         toggleWaktu()
 end)
-makeToggle(UI.tabSISTEM, "ANCHOR KARAKTER (FREE/PRO)", CFG.Anchor, function(state)
+makeToggle(UI.tabSISTEM, "BEKUKAN KARAKTER (KAMERA/CAPSLOCK)", CFG.Anchor, function(state)
         CFG.Anchor = state
         setAnchorState()
 end, 6)
@@ -927,9 +929,9 @@ end, 7)
 secLabel(UI.tabSISTEM, "Keybind", 8)
 new("TextLabel", {
         BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 74),
+        Size = UDim2.new(1, 0, 0, 86),
         Font = Enum.Font.GothamMedium,
-        Text = "1/2/3 · mode kamera · CapsLock master ON/OFF\nF panel · M mode foto · T lock (dari kamera)\nZ pagi⇄malam · C teleport · H hide UI · K 2x hapus\nRMB lihat · Scroll zoom/FOV · Space (tahan) turbo\nCtrl slow cinematic (FREE)",
+        Text = "1/2/3 · mode kamera · CapsLock master ON/OFF\nF panel · M mode foto · T lock (dari kamera)\nZ pagi⇄malam · C teleport · H hide UI · K 2x hapus\nRMB lihat · Scroll zoom/FOV · Space (tahan) turbo\nCtrl slow cinematic (FREE)\nKamera/CapsLock ON = karakter beku total",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -1315,16 +1317,29 @@ function updateChip()
         if S.timeChanged and S.waktuLabel then
                 txt = txt .. " · " .. S.waktuLabel
         end
+        if CFG.Anchor and (S.master or S.mode ~= "NONE") then
+                txt = txt .. " · BEKU"
+        end
         UI.chipTxt.Text = "● " .. txt
         UI.chipStroke.Color = col
 end
 
--- ═══════════════ ANCHOR ═══════════════
+-- ═══════════════ KARAKTER BEKU (OTOMATIS) ═══════════════
+-- Mode kamera aktif ATAU CapsLock (master) nyala = karakter diam TOTAL di tempat:
+-- tak bisa jalan, lari, lompat, jatuh, ataupun terdorong. CapsLock OFF = bebas lagi.
 function setAnchorState()
-        local want = CFG.Anchor and (S.mode == "FREE" or S.mode == "PRO")
+        if unloadDone then
+                return
+        end
+        local want = CFG.Anchor and (S.master or S.mode ~= "NONE")
         local hrp = getRoot(myChar())
         if hrp then
-                hrp.Anchored = want
+                if want then
+                        hrp.Anchored = true
+                else
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                        hrp.Anchored = false
+                end
         end
 end
 
@@ -2578,7 +2593,7 @@ function setMode(m)
         elseif m == "CINE" then
                 Camera.CameraType = Enum.CameraType.Scriptable
                 S.cine.def = nil
-                setAnchorState() -- karakter bebas gerak, bisa difilmkan
+                setAnchorState() -- karakter beku total, biar shot tetap rapi
                 notify("CINEMATIC — shot otomatis + cut langsung · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s")
         end
         refreshModeUI()
@@ -2606,7 +2621,7 @@ function setMaster(on)
                 setMode(m)
                 setFilter(S.foto.filter) -- filter foto kembali sesuai setting
                 updateRatioMasks()       -- mask rasio kembali
-                notify("Semua fitur kamera: ON")
+                notify("Semua fitur kamera: ON — karakter beku")
         else
                 if S.mode ~= "NONE" then
                         S.lastMode = S.mode
@@ -2787,12 +2802,7 @@ end))
 -- ═══════════════ RESPAWN & PEMAIN KELUAR ═══════════════
 table.insert(CONNS, LP.CharacterAdded:Connect(function(c)
         task.wait(0.5)
-        if (S.mode == "FREE" or S.mode == "PRO") and CFG.Anchor then
-                local r = getRoot(c)
-                if r then
-                        r.Anchored = true
-                end
-        end
+        setAnchorState() -- respawn: langsung beku lagi kalau kamera masih aktif
         if S.mode == "NONE" then
                 local hum = getHum(c)
                 if hum and workspace.CurrentCamera.CameraSubject ~= hum then
@@ -2843,6 +2853,7 @@ end))
 
 -- ═══════════════ UNLOAD ═══════════════
 function unloadAll()
+        unloadDone = true
         for _, c in ipairs(CONNS) do
                 pcall(function()
                         c:Disconnect()
@@ -2879,6 +2890,7 @@ function unloadAll()
         pcall(function()
                 local hrp = getRoot(myChar())
                 if hrp then
+                        hrp.AssemblyLinearVelocity = Vector3.zero
                         hrp.Anchored = false
                 end
         end)
@@ -2891,6 +2903,7 @@ end
 _G.SIIILAU_CAM_UNLOAD = unloadAll
 
 -- ═══════════════ INISIALISASI ═══════════════
+setAnchorState()
 updateChip()
 refreshTargetList()
 refreshModeUI()
@@ -2898,4 +2911,4 @@ setFilter("OFF")
 setRatio("FULL")
 applyLetterbox()
 applyUIVisibility()
-notify("SIIILAUxCAMERAPRO v12 siap — tekan 1 / 2 / 3 buat pilih mode", 5)
+notify("V.1.01 SIIILAU siap — 1/2/3 mode kamera · karakter beku saat kamera/CapsLock ON", 5)
