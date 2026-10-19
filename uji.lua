@@ -17,7 +17,7 @@
 --  Keybind:
 --    F = buka/tutup GUI (saat tutup = hilang total)
 --    Y = pasang tiang
---    Q = Speed cycle 3 state (17.10 → 17.25 → 21.25 → 17.10)
+--    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
 --    G = Moonwalk    B = Smart Fall Assist    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
@@ -223,7 +223,7 @@ local Original = {}
 local Setters, Switches = {}, {}
 local setFeature, togglePanel, resetAll, rejoin, unloadScript
 local applySpeed, applyJump, updateJumpLabel
-local cycleSpeed3State, toggleRekam
+local toggleRekam
 local RefreshSpeed, RefreshJump, JumpLabel, SpeedLabel, AfkLabel
 local refreshListTiang, refreshListRekam, refreshListLokasi, updateInfoSimpan
 local pasangTiang, simpanKeFileTiang
@@ -240,7 +240,7 @@ local kontenTiang, kontenKing, scrollKing, kontenVisual, scrollVisual
 local kontenTP, kontenSistem, scrollSistem
 local nameBoxTiang, nameStrokeTiang, saveBtnTiang, searchBoxTiang, searchStrokeTiang
 local btnBersih, btnGaris, btnSambung, btnPutus, btnToggleVisible, listLabelTiang, scrollTiang
-local btnRekam, rekamStatusLabel, btnRekamSemua, btnRekamGabung, listLabelRekam, scrollRekam
+local btnRekam, rekamStatusLabel, btnRekamSemua, btnRekamGabung, btnRekamHide, listLabelRekam, scrollRekam
 local nameBoxLokasi, nameStrokeLokasi, saveBtnLokasi, searchBoxLokasi, searchStrokeLokasi
 local listLabelLokasi, scrollLokasi
 local autoUI = {}
@@ -798,12 +798,13 @@ lightConn = nil
 buatHeader(scrollKing, "Player")
 local _, speedLbl = buatToggleRow(scrollKing, "Speed (Q): OFF (17.10)", "Q", "Speed")
 SpeedLabel = speedLbl
+-- Nilai ON dipilih via stepper: rentang 17.25 - 21.25 (Q = ON/OFF saja)
 RefreshSpeed = buatStepperRow(
     scrollKing,
     "Speed",
     function() return State.SpeedValue end,
     function(v)
-        State.SpeedValue = v
+        State.SpeedValue = math.clamp(v, CFG.SPEED_ON_1, CFG.SPEED_ON_2)
         if State.SpeedOn then applySpeed() end
         if SpeedLabel and SpeedLabel.Parent then
             SpeedLabel.Text = "Speed (Q): " .. (State.SpeedOn and fmtNum(State.SpeedValue) or ("OFF (" .. fmtNum(CFG.SPEED_OFF) .. ")"))
@@ -1348,8 +1349,23 @@ btnRekamGabung = buat("TextButton", {
 }, kontenTiang)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnRekamGabung)
 buat("UIStroke", {Color = Warna.Hijau2, Thickness = 1, Transparency = 0.4}, btnRekamGabung)
-rekamStatusLabel = buat("TextLabel", {
+-- Toggle sembunyikan/tampilkan jalur rekaman (v2.0 — seperti sembunyikan tiang)
+btnRekamHide = buat("TextButton", {
+    Size = UDim2.new(1, -24, 0, 22),
     Position = UDim2.new(0, 12, 0, 176),
+    BackgroundColor3 = Warna.Hijau,
+    BackgroundTransparency = 0.2,
+    BorderSizePixel = 0,
+    FontFace = fnt("bold"),
+    Text = "👁 JALUR REKAM: TAMPIL",
+    TextColor3 = Warna.Putih,
+    TextSize = 10,
+    AutoButtonColor = false,
+}, kontenTiang)
+buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnRekamHide)
+buat("UIStroke", {Color = Warna.Biru2, Thickness = 1, Transparency = 0.3}, btnRekamHide)
+rekamStatusLabel = buat("TextLabel", {
+    Position = UDim2.new(0, 12, 0, 202),
     Size = UDim2.new(1, -24, 0, 14),
     BackgroundTransparency = 1,
     FontFace = fnt("semi"),
@@ -1360,7 +1376,7 @@ rekamStatusLabel = buat("TextLabel", {
     TextTruncate = Enum.TextTruncate.AtEnd,
 }, kontenTiang)
 listLabelTiang = buat("TextLabel", {
-    Position = UDim2.new(0, 12, 0, 192),
+    Position = UDim2.new(0, 12, 0, 218),
     Size = UDim2.new(1, -24, 0, 14),
     BackgroundTransparency = 1,
     FontFace = fnt("semi"),
@@ -1370,8 +1386,8 @@ listLabelTiang = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
 }, kontenTiang)
 scrollTiang = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 208),
-    Size = UDim2.new(1, -24, 1, -410),
+    Position = UDim2.new(0, 12, 0, 234),
+    Size = UDim2.new(1, -24, 1, -436),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ScrollBarThickness = 4,
@@ -1382,7 +1398,7 @@ scrollTiang = buat("ScrollingFrame", {
 }, kontenTiang)
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTiang)
 listLabelRekam = buat("TextLabel", {
-    Position = UDim2.new(0, 12, 0, 402),
+    Position = UDim2.new(0, 12, 0, 428),
     Size = UDim2.new(1, -24, 0, 14),
     BackgroundTransparency = 1,
     FontFace = fnt("semi"),
@@ -1392,8 +1408,8 @@ listLabelRekam = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
 }, kontenTiang)
 scrollRekam = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 418),
-    Size = UDim2.new(1, -24, 1, -426),
+    Position = UDim2.new(0, 12, 0, 444),
+    Size = UDim2.new(1, -24, 1, -452),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     ScrollBarThickness = 4,
@@ -3696,7 +3712,7 @@ updateJumpLabel = function()
     if RefreshJump then RefreshJump() end
 end
 
--- label Speed menampilkan nilai state saat ini (cycle 3 state)
+-- label Speed menampilkan nilai state saat ini (ON/OFF, nilai via stepper)
 local function updateSpeedLabel()
     if SpeedLabel and SpeedLabel.Parent then
         SpeedLabel.Text = "Speed (Q): "
@@ -4212,25 +4228,9 @@ Setters.Afk = function(v, silent)
     syncNotify("Afk", v, silent, "Anti-AFK")
 end
 
--- Q — cycle Speed 3 state: 17.10 (OFF) → 17.25 → 21.25 → balik OFF
-cycleSpeed3State = function()
-    if not State.SpeedOn then
-        State.SpeedValue = CFG.SPEED_ON_1
-        if RefreshSpeed then RefreshSpeed() end
-        setFeature("Speed", true, true)
-        updateSpeedLabel()
-        toast("🏃 Speed: " .. fmtNum(CFG.SPEED_ON_1) .. "  [Q]", Warna.Biru)
-    elseif State.SpeedValue < CFG.SPEED_ON_2 then
-        State.SpeedValue = CFG.SPEED_ON_2
-        applySpeed()
-        if RefreshSpeed then RefreshSpeed() end
-        updateSpeedLabel()
-        toast("🏃 Speed: " .. fmtNum(CFG.SPEED_ON_2) .. "  [Q]", Warna.Biru)
-    else
-        setFeature("Speed", false)
-        updateSpeedLabel()
-    end
-end
+-- Q — Speed ON/OFF murni (v2.1)
+-- Nilai ON (17.25 / 21.25, atau di antaranya) dipilih via stepper di Tab GERAK.
+-- Keybind Q langsung panggil setFeature("Speed", ...) dari handler [21].
 
 -- RESET & REJOIN
 resetAll = function()
@@ -4503,6 +4503,7 @@ efekTombol(btnToggleVisible)
 efekTombol(btnRekam)
 efekTombol(btnRekamSemua)
 efekTombol(btnRekamGabung)
+efekTombol(btnRekamHide)
 
 -- State visibility tiang + garis
 local tiangVisible = true
@@ -4527,6 +4528,27 @@ btnToggleVisible.MouseButton1Click:Connect(function()
         toast("🚫 Tiang + garis disembunyikan", Warna.Merah)
     end
     bunyi(CFG.SND_PING, 0.3, tiangVisible and 1.2 or 0.8)
+end)
+
+-- Toggle sembunyikan jalur rekaman (v2.1 — pola sama dengan sembunyikan tiang)
+local rekamJalurVisible = true
+btnRekamHide.MouseButton1Click:Connect(function()
+    rekamJalurVisible = not rekamJalurVisible
+    pcall(function()
+        if folderRekaman then
+            folderRekaman.Parent = rekamJalurVisible and workspace or nil
+        end
+    end)
+    if rekamJalurVisible then
+        btnRekamHide.Text = "👁 JALUR REKAM: TAMPIL"
+        btnRekamHide.BackgroundColor3 = Warna.Hijau
+        toast("👁 Jalur rekaman ditampilkan", Warna.Hijau)
+    else
+        btnRekamHide.Text = "🚫 JALUR REKAM: SEMBUNYI"
+        btnRekamHide.BackgroundColor3 = Warna.Merah
+        toast("🚫 Jalur rekaman disembunyikan", Warna.Merah)
+    end
+    bunyi(CFG.SND_PING, 0.3, rekamJalurVisible and 1.2 or 0.8)
 end)
 
 -- REKAM JALUR
@@ -4725,7 +4747,7 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
         pasangTiang(nameBoxTiang.Text)
         nameBoxTiang.Text = ""
     elseif input.KeyCode == Enum.KeyCode.Q then
-        cycleSpeed3State()
+        setFeature("Speed", not State.SpeedOn)
     elseif input.KeyCode == Enum.KeyCode.J then
         setFeature("Jump", not State.JumpOn)
     elseif input.KeyCode == Enum.KeyCode.C then
@@ -4781,7 +4803,7 @@ task.delay(1.2, function()
 end)
 print("[SilauNeon v" .. VERSI .. "] SIAP ✔ — F = GUI | Y = pasang tiang | V = rekam jalur | K×2 = rejoin")
 print("[SilauNeon] 5 TAB: 🏃 GERAK | 🎨 VISUAL | 🚀 TELEPORT | 📍 TIANG | ⚙️ SISTEM")
-print("[SilauNeon] Keybind: Q speed 3-state (17.10→17.25→21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
+print("[SilauNeon] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
 print("[SilauNeon]           B fall assist • R hide • T cahaya 2-arah • X dinding • V rekam • K×2 rejoin")
 print("[SilauNeon] Auto TP: MULAI/STOP di Tab 3. Delay per titik di kotak kecil tiap baris (kosong = global).")
 print("[SilauNeon] Penyimpanan: " .. (fileOk
