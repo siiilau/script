@@ -1,1593 +1,602 @@
 --[[
-    ╔══════════════════════════════════════════════════╗
-    ║        SIIILAU GALAXY CINEMATIC CAM v12          ║
-    ║  FREE • PRO • CINEMATIC DIRECTOR (auto shot)     ║
-    ║  CapsLock = kamera ON/OFF • 1/2/3 = pilih mode   ║
-    ║  1 = Free Cam • 2 = Pro Cam • 3 = Cinematic      ║
-    ║  + Teleport (C) • Auto Pagi (Z) • Lock (T)       ║
-    ║  RESET script • K = HAPUS script (tekan 2x)      ║
-    ║  Karakter otomatis diam saat kamera aktif        ║
-    ╚══════════════════════════════════════════════════╝
-    CapsLock = kamera ON/OFF | 1 = Free | 2 = Pro | 3 = Cinematic
-    R = Free Cam | G = Cam Pro (shortcut lama tetap aktif)
-    T = target lock | Z = auto pagi | C = teleport | F = panel
-    H = hide UI | K = HAPUS script (tekan 2x)
-    WASD + Q/E = gerak | RMB = lihat/orbit | Scroll = FOV/zoom
-    Space = turbo | Ctrl = slow cinematic
-    Mode 3 (CINEMATIC): shot otomatis adaptif — diam, jalan,
-    lari, naik kendaraan — auto cut 4-7 detik + DoF sinematik
+        ═══════════════════════════════════════════════════════════════════
+          SIIILAUxCAMERAPRO  ·  v12 NEON EDITION
+          Cinematic Camera Suite — FREE / PRO / CINEMATIC / FOTO
+        ═══════════════════════════════════════════════════════════════════
+          KEYBINDS :
+            1        = FREE CAM            (tekan lagi = mati)
+            2        = PRO CAM             (tekan lagi = mati)
+            3        = CINEMATIC MODE      (tekan lagi = mati)
+            CapsLock = nyalakan / matikan kamera bebas (tanpa efek lain)
+            F        = buka / tutup panel
+            M        = buka MODE FOTO (langsung ke tab FOTO)
+            T        = lock target terdekat / unlock
+            C        = teleport ke belakang layar
+            Z        = auto terang (cuma jalan kalau gelap)
+            H        = sembunyikan semua UI (chip tetap ada)
+            K (2x)   = hapus script
+            RMB      = lihat sekeliling (FREE / PRO)
+            Scroll   = FOV (FREE) / zoom 4-80 (PRO)
+            Space 3x = turbo  ·  Ctrl = slow (FREE)
+          MODE FOTO (layer, aktif di mode kamera manapun):
+            Filter warna · rasio frame · fokus/blur manual · ambil foto
+          CATATAN :
+            • Semua efek client-side — cuma terlihat di layar kamu
+            • Aman di-execute ulang kapan saja (auto bersihkan versi lama)
+        ═══════════════════════════════════════════════════════════════════
 ]]
 
---// ================================================== SERVICES
-local Players              = game:GetService("Players")
-local RunService           = game:GetService("RunService")
-local UserInputService     = game:GetService("UserInputService")
-local TweenService         = game:GetService("TweenService")
+-- ═══════════════ ANTI DUPLIKAT ═══════════════
+if _G.SIIILAU_CAM_UNLOAD then
+        pcall(_G.SIIILAU_CAM_UNLOAD)
+end
+task.wait(0.05)
+
+-- ═══════════════ SERVICES ═══════════════
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
-local Lighting             = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
 
-local LocalPlayer = Players.LocalPlayer
-local Camera      = workspace.CurrentCamera
+local LP = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
---// ================================================== KONFIGURASI
-local CAMERA_SPEED               = 32
-local CINEMATIC_SPEED_MULTIPLIER = 0.25
-local TURBO_SPEED_MULTIPLIER     = 3
-local MOUSE_SENSITIVITY          = 0.25
-local SMOOTHNESS                 = 0.12
-
-local FREECAM_KEY     = Enum.KeyCode.R  -- toggle Free Cam
-local PRO_KEY         = Enum.KeyCode.G  -- toggle Professional Camera
-local PANEL_KEY       = Enum.KeyCode.F
-local TARGET_LOCK_KEY = Enum.KeyCode.T  -- target lock ON/OFF (auto terdekat dari kamera)
-local MORNING_KEY     = Enum.KeyCode.Z  -- auto pagi 06:45 (toggle)
-local TURBO_KEY       = Enum.KeyCode.Space
-local SLOW_KEY        = Enum.KeyCode.LeftControl
-local HIDE_UI_KEY     = Enum.KeyCode.H
-local TELEPORT_KEY    = Enum.KeyCode.C
-local UNLOAD_KEY      = Enum.KeyCode.K  -- HAPUS script (tekan 2x = konfirmasi)
-local CAPSLOCK_KEY    = Enum.KeyCode.CapsLock -- kamera ON/OFF (mulai FREE cam)
-local NUM_MODE_KEYS   = { -- pilih mode kamera via angka
-    [Enum.KeyCode.One]   = "FREE",
-    [Enum.KeyCode.Two]   = "PRO",
-    [Enum.KeyCode.Three] = "CINE",
+-- ═══════════════ KONFIG & TEMA NEON ═══════════════
+local CFG = {
+        Speed     = 45,   -- kecepatan free cam (stud/s)
+        FOV       = 70,   -- FOV free/pro cam
+        TeleDist  = 7,    -- jarak teleport di belakang layar (langkah)
+        CineTempo = 5.5,  -- durasi rata-rata tiap shot sinematik (detik)
+        Letterbox = true, -- letterbox otomatis saat mode sinematik
+        Anchor    = true, -- anchor karakter saat FREE/PRO aktif
+        -- palet neon
+        Neon1   = Color3.fromRGB(0, 255, 240),  -- cyan
+        Neon2   = Color3.fromRGB(255, 45, 170), -- magenta
+        BG      = Color3.fromRGB(12, 12, 24),
+        BGCard  = Color3.fromRGB(20, 20, 38),
+        TXT     = Color3.fromRGB(236, 236, 255),
+        TXT_DIM = Color3.fromRGB(132, 134, 168),
+        DANGER  = Color3.fromRGB(255, 72, 96),
 }
 
-local MORNING_TIME                = 6.75 -- 06:45 pagi
-local MORNING_TRANSITION          = 1.8  -- detik transisi waktu (smooth)
-local ENABLE_LETTERBOX            = true -- bar sinematik hitam atas/bawah
-local TELEPORT_BEHIND_DISTANCE    = 5    -- jarak default spawn di belakang kamera (stud) ≈ 3-5 langkah
-local AUTO_ANCHOR                 = true -- karakter otomatis diam saat kamera aktif
+-- ═══════════════ STATE ═══════════════
+local S = {
+        mode = "NONE", -- NONE | FREE | PRO | CINE
+        panelOpen = true,
+        uiHidden = false,
+        -- input
+        rmb = false,
+        ctrlDown = false,
+        turbo = false,
+        spaceTaps = 0,
+        lastSpace = 0,
+        lastK = 0,
+        -- free cam
+        freePos = Vector3.new(0, 0, 0),
+        freeVel = Vector3.new(0, 0, 0),
+        yaw = 0,
+        pitch = -8,
+        -- pro cam
+        proYaw = 0,
+        proPitch = 14,
+        proDist = 14,
+        proDistT = 14,
+        -- target
+        locked = false,
+        lockPlayer = nil,
+        selected = nil,
+        -- cinematic director
+        cine = {
+                def = nil,
+                name = "",
+                P = {},
+                t = 0,
+                dur = 5,
+                lastName = "",
+                char = nil,
+                dofK = 0,
+                focusDist = 10,
+        },
+        -- layer foto
+        foto = {
+                filter = "OFF",
+                dof = false,
+                focus = 14,
+                blur = 65,
+                ratio = "FULL",
+                wm = false,
+        },
+        shooting = false,
+}
 
--- Cinematic Director (mode 3) — shot otomatis adaptif kondisi subjek
-local CINE_CUT_MIN                = 4    -- durasi shot minimal (detik)
-local CINE_CUT_MAX                = 7    -- durasi shot maksimal (detik)
-local CINE_BLEND_DUR              = 0.9  -- durasi transisi smooth blend antar shot (detik)
-local CINE_VARIETY_CHANCE         = 0.2  -- peluang 20% cut ke shot variasi (di luar pool kondisi)
-local CINE_DOF_INTENSITY          = 0.55 -- kekuatan blur latar pada shot close-up
-local CINE_WALK_SPEED             = 18   -- batas kecepatan jalan vs lari (stud/s)
-local CINE_SHOT_LABEL_HOLD        = 2.0  -- lama label shot tampil (detik)
+local keys = {}        -- status tombol gerak
+local CONNS = {}       -- koneksi (dibersihkan saat unload)
+local boundSpace = false
+local UI = {}          -- referensi elemen UI
+local DOF              -- DepthOfFieldEffect (dipakai cine + foto)
+local PHOTO_CC         -- ColorCorrectionEffect (filter foto)
+local PHOTO_BLOOM      -- BloomEffect (filter tertentu)
 
--- Pindah ke karakter utama (tombol panel)
-local SELF_FLY_DIST    = 8    -- jarak kamera mendarat di belakang karakter (FREE)
-local SELF_FLY_HEIGHT  = 2.4  -- ketinggian kamera di atas kepala (FREE)
+-- ═══════════════ DEKLARASI MAJU ═══════════════
+local notify, flash, setAnchorState, updateChip, applyLetterbox, applyDof
+local applyUIVisibility, togglePanel, toggleHideUI
+local setMode, toggleLock, doTeleport, autoTerang, unloadAll
+local getSubjectChar, refreshTargetList, refreshModeUI, updateLockBtn
+local setFilter, setRatio, takePhoto, setWatermark, fmtClock
+local updateRatioMasks
 
--- Stabilisasi vertikal (anti ikut lompat target/karakter)
-local PRO_Y_DAMPING      = 0.9  -- PRO cam: damping pivot vertikal (detik)
-local FREE_AIM_Y_DAMPING = 0.8  -- FREE cam: damping aim vertikal saat target lock (detik)
-local PRO_SNAP_DISTANCE  = 12   -- snap jika subjek pindah jauh (respawn/teleport)
+-- ═══════════════ UTIL ═══════════════
+local function flat(v)
+        return Vector3.new(v.X, 0, v.Z)
+end
 
-local RENDER_STEP_NAME = "SIIILAU_CAM_UPDATE"
+local function flatUnit(v)
+        local f = flat(v)
+        if f.Magnitude < 0.01 then
+                return Vector3.new(0, 0, 0)
+        end
+        return f.Unit
+end
 
--- Nilai default (dipakai fitur RESET)
-local DEFAULT_FOV   = 70
-local DEFAULT_SPEED = CAMERA_SPEED
-local DEFAULT_TP    = TELEPORT_BEHIND_DISTANCE
+local function expLerp(a, b, dt, k)
+        return a + (b - a) * (1 - math.exp(-k * dt))
+end
 
---// ================================================== RE-EXECUTION CLEANUP
-pcall(function() if _G.SIIILAU_CAM_UNLOAD then _G.SIIILAU_CAM_UNLOAD() end end)
-pcall(function() RunService:UnbindFromRenderStep(RENDER_STEP_NAME) end)
-pcall(function() ContextActionService:UnbindAction("SIIILAU_TURBO") end)
-do
-    local containers = {}
-    pcall(function() if gethui then table.insert(containers, gethui()) end end)
-    table.insert(containers, game:FindFirstChildOfClass("CoreGui"))
-    table.insert(containers, LocalPlayer:FindFirstChildOfClass("PlayerGui"))
-    for _, c in ipairs(containers) do
+local function rr(a, b)
+        return a + math.random() * (b - a)
+end
+
+local function getCharOf(p)
+        if p and p.Parent then
+                return p.Character
+        end
+        return nil
+end
+
+local function getRoot(c)
         if c then
-            local old = c:FindFirstChild("SIIILAU_GALAXY_CAM")
-            if old then old:Destroy() end
+                return c:FindFirstChild("HumanoidRootPart")
         end
-    end
+        return nil
 end
 
---// ================================================== TEMA & HELPERS
-local THEME = {
-    BG     = Color3.fromRGB(9, 9, 16),
-    BG2    = Color3.fromRGB(15, 15, 26),
-    BG3    = Color3.fromRGB(24, 24, 40),
-    PURPLE = Color3.fromRGB(168, 85, 247),
-    BLUE   = Color3.fromRGB(79, 124, 255),
-    CYAN   = Color3.fromRGB(125, 211, 252),
-    PINK   = Color3.fromRGB(255, 92, 138),
-    GOLD   = Color3.fromRGB(255, 200, 90),
-    WHITE  = Color3.fromRGB(242, 242, 255),
-    GREY   = Color3.fromRGB(140, 140, 170),
-    LINE   = Color3.fromRGB(45, 45, 70),
-}
-
-local function create(class, props)
-    local inst = Instance.new(class)
-    for k, v in pairs(props or {}) do inst[k] = v end
-    return inst
-end
-local function add(parent, class, props)
-    local inst = create(class, props)
-    inst.Parent = parent
-    return inst
-end
-local function corner(parent, r)
-    return add(parent, "UICorner", {CornerRadius = UDim.new(0, r or 10)})
-end
-
-local function makeStyledButton(parent, pos, size, text, onClick)
-    local btn = add(parent, "TextButton", {Position = pos, Size = size,
-        BackgroundColor3 = THEME.BG2, Text = "", AutoButtonColor = false})
-    corner(btn, 9)
-    local st = add(btn, "UIStroke", {Color = Color3.fromRGB(60,60,95), Thickness = 1, Transparency = 0.45})
-    local grad = add(btn, "UIGradient", {Enabled = false, Rotation = 90,
-        Color = ColorSequence.new(Color3.fromRGB(88,48,180), Color3.fromRGB(40,70,190)),
-        Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0,0.25), NumberSequenceKeypoint.new(1,0.45)})})
-    local lbl = add(btn, "TextLabel", {Position = UDim2.new(0,12,0,0), Size = UDim2.new(1,-24,1,0), BackgroundTransparency = 1,
-        Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = THEME.GREY,
-        TextXAlignment = Enum.TextXAlignment.Left, Text = text})
-    if onClick then btn.MouseButton1Click:Connect(onClick) end
-    btn.MouseEnter:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = THEME.BG3}):Play()
-    end)
-    btn.MouseLeave:Connect(function()
-        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundColor3 = THEME.BG2}):Play()
-    end)
-    return {btn = btn, stroke = st, grad = grad, label = lbl}
-end
-
--- forward declarations
-local setMode, updateStatus, applyTab, resetScript, requestUnload
-
---// ================================================== ROOT GUI
-local gui = create("ScreenGui", {
-    Name = "SIIILAU_GALAXY_CAM", ResetOnSpawn = false,
-    IgnoreGuiInset = true, DisplayOrder = 9999,
-})
-do
-    local ok = pcall(function()
-        local hui = gethui and gethui()
-        gui.Parent = hui or game:GetService("CoreGui")
-    end)
-    if not ok or not gui.Parent then
-        gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    end
-end
-
---// ================================================== LETTERBOX (bar sinematik)
-local lbTop = add(gui, "Frame", {BackgroundColor3 = Color3.new(0,0,0), BorderSizePixel = 0,
-    Size = UDim2.new(1,0,0,0), Position = UDim2.new(0,0,0,0)})
-local lbBottom = add(gui, "Frame", {BackgroundColor3 = Color3.new(0,0,0), BorderSizePixel = 0,
-    AnchorPoint = Vector2.new(0,1), Position = UDim2.new(0,0,1,0), Size = UDim2.new(1,0,0,0)})
-
---// ================================================== FLASH TRANSISI
-local flashFrame = add(gui, "Frame", {BackgroundColor3 = Color3.fromRGB(185,145,255),
-    BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1,1)})
-local function flash(color, peak)
-    flashFrame.BackgroundColor3 = color or Color3.fromRGB(185,145,255)
-    local t1 = TweenService:Create(flashFrame, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {BackgroundTransparency = peak or 0.55})
-    local t2 = TweenService:Create(flashFrame, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-        {BackgroundTransparency = 1})
-    t1:Play()
-    t1.Completed:Once(function() t2:Play() end)
-end
-
---// ================================================== SHOT LABEL (label shot — pojok kanan atas, kecil)
-local shotChip = add(gui, "Frame", {AnchorPoint = Vector2.new(1,0), Position = UDim2.new(1,-296,0,17),
-    Size = UDim2.fromOffset(200,24), BackgroundColor3 = THEME.BG, BackgroundTransparency = 1,
-    BorderSizePixel = 0})
-corner(shotChip, 7)
-local shotChipStroke = add(shotChip, "UIStroke", {Color = THEME.GOLD, Thickness = 1, Transparency = 0.6})
-local shotLabel = add(shotChip, "TextLabel", {Position = UDim2.new(0,10,0,0), Size = UDim2.new(1,-20,1,0),
-    BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = THEME.GOLD,
-    TextXAlignment = Enum.TextXAlignment.Right, Text = "", TextTruncate = Enum.TextTruncate.AtEnd})
-local shotToken = 0
-local function showShotLabel(text)
-    shotToken += 1
-    local tok = shotToken
-    shotLabel.Text = "⬥  " .. text
-    local tin = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    TweenService:Create(shotChip, tin, {BackgroundTransparency = 0.3}):Play()
-    TweenService:Create(shotChipStroke, tin, {Transparency = 0.25}):Play()
-    TweenService:Create(shotLabel, tin, {TextTransparency = 0}):Play()
-    task.delay(CINE_SHOT_LABEL_HOLD, function()
-        if tok ~= shotToken then return end
-        local tout = TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-        TweenService:Create(shotChip, tout, {BackgroundTransparency = 1}):Play()
-        TweenService:Create(shotChipStroke, tout, {Transparency = 1}):Play()
-        TweenService:Create(shotLabel, tout, {TextTransparency = 1}):Play()
-    end)
-end
-local function hideShotLabel()
-    shotToken += 1
-    local tout = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-    TweenService:Create(shotChip, tout, {BackgroundTransparency = 1}):Play()
-    TweenService:Create(shotChipStroke, tout, {Transparency = 1}):Play()
-    TweenService:Create(shotLabel, tout, {TextTransparency = 1}):Play()
-end
-
---// ================================================== STATE
-local state = {
-    cameraActive = false,
-    mode = "FREE", -- "FREE" | "PRO"
-    targetLock = false,
-    target = nil,         -- Player (LocalPlayer = diri sendiri)
-    morning = false,      -- auto pagi aktif
-    -- freecam
-    pos = Vector3.new(), yaw = 0, pitch = 0, vel = Vector3.zero,
-    aimY = nil,           -- tinggi aim ter-damping (stabil anti lompat)
-    fly = nil,            -- animasi terbang ke karakter utama
-    -- pro (dengan stabilisasi vertikal)
-    orbitDist = 14, orbitYaw = 0, orbitPitch = -0.15, proPos = nil, proPivot = nil,
-    proGlide = nil,       -- animasi glide pivot ke karakter utama
-    -- teleport
-    tpDistance = TELEPORT_BEHIND_DISTANCE,
-    -- ui / input
-    panelVisible = true, uiHidden = false,
-    turbo = false, slow = false, rmb = false, keys = {},
-    baseSpeed = CAMERA_SPEED, fov = 70,
-}
-local savedCamera = nil
-local savedClockTime = nil
-local clockTween = nil
-local connections = {}
-local alive = true
-local activeTab = "CAM"
-
---// ================================================== HELPERS MATEMATIKA & KARAKTER
-local function lerpAngle(a, b, t)
-    local diff = (b - a) % (2 * math.pi)
-    if diff > math.pi then diff -= 2 * math.pi end
-    return a + diff * t
-end
-local function smoothstep(t)
-    t = math.clamp(t, 0, 1)
-    return t * t * (3 - 2 * t)
-end
-local function getRootOf(plr)
-    local c = plr and plr.Character
-    return c and c:FindFirstChild("HumanoidRootPart")
-end
--- Subjek kamera: HANYA karakter yang dipilih saat lock aktif.
--- Jika karakter target belum ada (respawn), kembalikan nil → kamera
--- MENAHAN frame terakhir (tidak loncat ke karakter lain).
-local function getSubjectRoot()
-    if state.targetLock and state.target then
-        return getRootOf(state.target)
-    end
-    return getRootOf(LocalPlayer)
-end
--- Pemain terdekat DARI POSISI KAMERA
-local function getNearestPlayerFromCamera()
-    local origin = Camera.CFrame.Position
-    local best, bd = nil, math.huge
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then
-            local r = getRootOf(plr)
-            if r then
-                local d = (r.Position - origin).Magnitude
-                if d < bd then best, bd = plr, d end
-            end
+local function getHum(c)
+        if c then
+                return c:FindFirstChildOfClass("Humanoid")
         end
-    end
-    return best
-end
-local function getMyOrigin()
-    local r = getRootOf(LocalPlayer)
-    return (r and r.Position) or Camera.CFrame.Position
+        return nil
 end
 
---// ================================================== ANCHOR OTOMATIS (kamera aktif = karakter diam)
-local function applyAutoAnchor()
-    local root = getRootOf(LocalPlayer)
-    if root then
-        if state.cameraActive and AUTO_ANCHOR then
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
-            root.Anchored = true
-        else
-            root.Anchored = false
-        end
-    end
+local function myChar()
+        return LP.Character
 end
 
---// ================================================== NOTIFIKASI
-local notifContainer = add(gui, "Frame", {AnchorPoint = Vector2.new(1,0), Position = UDim2.new(1,-14,0,14),
-    Size = UDim2.new(0,270,0,500), BackgroundTransparency = 1})
-add(notifContainer, "UIListLayout", {Padding = UDim.new(0,8), SortOrder = Enum.SortOrder.LayoutOrder,
-    HorizontalAlignment = Enum.HorizontalAlignment.Right})
-local notifOrder = 0
-local function notify(text, kind)
-    notifOrder += 1
-    local color = (kind == "success" and THEME.CYAN) or (kind == "error" and THEME.PINK) or THEME.BLUE
-    local f = add(notifContainer, "Frame", {LayoutOrder = notifOrder, Size = UDim2.new(1,0,0,38),
-        BackgroundColor3 = THEME.BG2, BackgroundTransparency = 1})
-    corner(f, 10)
-    local st = add(f, "UIStroke", {Color = color, Thickness = 1.2, Transparency = 1})
-    local bar = add(f, "Frame", {Size = UDim2.new(0,3,1,-12), Position = UDim2.new(0,8,0,6),
-        BackgroundColor3 = color, BackgroundTransparency = 1, BorderSizePixel = 0})
-    local lbl = add(f, "TextLabel", {Position = UDim2.new(0,20,0,0), Size = UDim2.new(1,-28,1,0), BackgroundTransparency = 1,
-        Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = THEME.WHITE, TextTransparency = 1,
-        TextXAlignment = Enum.TextXAlignment.Left, Text = text, TextTruncate = Enum.TextTruncate.AtEnd})
-    local tin = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    TweenService:Create(f, tin, {BackgroundTransparency = 0.12}):Play()
-    TweenService:Create(st, tin, {Transparency = 0.25}):Play()
-    TweenService:Create(lbl, tin, {TextTransparency = 0}):Play()
-    TweenService:Create(bar, tin, {BackgroundTransparency = 0}):Play()
-    task.delay(2.6, function()
-        if not f.Parent then return end
-        local tout = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-        TweenService:Create(f, tout, {BackgroundTransparency = 1}):Play()
-        TweenService:Create(st, tout, {Transparency = 1}):Play()
-        TweenService:Create(lbl, tout, {TextTransparency = 1}):Play()
-        TweenService:Create(bar, tout, {BackgroundTransparency = 1}):Play()
-        task.delay(0.32, function() f:Destroy() end)
-    end)
+local function lookYawPitch(cf)
+        local l = cf.LookVector
+        local yaw = math.deg(math.atan2(-l.X, -l.Z))
+        local pitch = math.deg(math.asin(math.clamp(l.Y, -1, 1)))
+        return yaw, pitch
 end
 
---// ================================================== AUTO PAGI (Z) — jam 06:45
-local function tweenClockTo(target, duration)
-    if clockTween then clockTween:Cancel() clockTween = nil end
-    local startT = Lighting.ClockTime
-    if target - startT > 12 then target -= 24 elseif startT - target > 12 then target += 24 end
-    clockTween = TweenService:Create(Lighting,
-        TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-        {ClockTime = target})
-    clockTween:Play()
-end
-local function setMorning(on, silent)
-    if on == state.morning then return end
-    state.morning = on
-    if on then
-        savedClockTime = Lighting.ClockTime
-        tweenClockTo(MORNING_TIME, MORNING_TRANSITION)
-        if not silent then notify("Auto Pagi ON — 06:45 ☀", "success") end
-    else
-        tweenClockTo(savedClockTime or 14, 1.2)
-        if not silent then notify("Auto Pagi OFF — waktu dikembalikan", "info") end
-    end
-    if updateStatus then updateStatus() end
+local function fmtClock(ct)
+        local h = math.floor(ct)
+        local m = math.floor((ct - h) * 60)
+        return string.format("%02d:%02d", h, m)
 end
 
---// ================================================== TARGET LOCK
--- T (keybind)  : ON = langsung pilih pemain terdekat dari KAMERA, OFF = lepas
--- Panel (klik) : manual — diri sendiri, auto lock, atau daftar player
-local function targetName(plr)
-    return (plr == LocalPlayer) and "DIRI SENDIRI" or ("@" .. plr.Name)
-end
-local function selectTarget(plr)
-    state.target = plr
-    state.targetLock = true
-    notify("Target lock → " .. targetName(plr), "success")
-    if updateStatus then updateStatus() end
-end
-local function selectAutoTarget()
-    local best = getNearestPlayerFromCamera()
-    if best then
-        selectTarget(best)
-    else
-        notify("Tidak ada pemain lain di sekitar kamera", "error")
-    end
-end
-local function toggleTargetLock()
-    if state.targetLock then
-        state.targetLock = false
-        state.target = nil
-        state.aimY = nil
-        notify("Target lock OFF", "info")
-    else
-        local best = getNearestPlayerFromCamera()
-        if best then
-            state.target = best
-            state.targetLock = true
-            notify("Target lock ON → " .. targetName(best) .. " (terdekat dari kamera)", "success")
-        else
-            notify("Tidak ada pemain lain di sekitar kamera", "error")
-        end
-    end
-    if updateStatus then updateStatus() end
+-- blur sinematik cuma muncul saat jarak dekat (zoom in)
+local function closeDof(d, range)
+        return math.clamp((13 - d) / (range or 4), 0, 1)
 end
 
---// ================================================== CINEMATIC DIRECTOR (mode 3) — shot otomatis
--- Subjek: lock aktif → target terpilih; tanpa lock → auto terdekat dari kamera;
--- tidak ada pemain lain → diri sendiri. Shot dipilih adaptif kondisi subjek:
--- diam / jalan / lari / naik kendaraan, lalu di-cut otomatis 4-7 detik.
+-- ═══════════════ POST EFFECTS (client-side) ═══════════════
+DOF = Instance.new("DepthOfFieldEffect")
+DOF.Name = "SIIILAU_DOF"
+DOF.Enabled = false
+DOF.NearIntensity = 0
+DOF.FarIntensity = 0.35
+DOF.FocusDistance = 12
+DOF.InFocusRadius = 7
+DOF.Parent = Lighting
 
-local cineDof = nil
-local function createCineDof()
-    if cineDof and cineDof.Parent then return cineDof end
-    local d = Instance.new("DepthOfFieldEffect")
-    d.Name = "SIIILAU_CINE_DOF"
-    d.FarIntensity = 0
-    d.InFocusRadius = 9
-    d.NearIntensity = 0
-    d.FocusDistance = 10
-    d.Parent = Lighting
-    cineDof = d
-    return d
-end
-local function destroyCineDof()
-    if cineDof then
-        pcall(function() cineDof:Destroy() end)
-        cineDof = nil
-    end
-end
+PHOTO_CC = Instance.new("ColorCorrectionEffect")
+PHOTO_CC.Name = "SIIILAU_FOTO_CC"
+PHOTO_CC.Enabled = false
+PHOTO_CC.Parent = Lighting
 
--- Library shot: update(ctx, data) -> pos, look, fov [, roll]
--- ctx = {pivot, H (heading arah gerak), R (kanan), speed, cond, t, dur, camPos}
-local SHOT_LIST = {
-    { id = "CHASE_LOW", name = "CHASE LOW", dof = true, breath = true,
-        supports = {walk = true, run = true, vehicle = true},
-        weight = {walk = 1, run = 3, vehicle = 3.5},
-        init = function(c)
-            return {side = (math.random() < 0.5) and 1 or -1, ph = math.random() * math.pi * 2}
-        end,
-        update = function(c, d)
-            local sway = math.sin(c.t * 0.8 + d.ph) * 0.7
-            local pos = c.pivot - c.H * 8 + c.R * (1.6 * d.side + sway) + Vector3.new(0, 2.3, 0)
-            return pos, c.pivot + c.H * 5, 60
-        end },
-    { id = "SIDE_TRACK", name = "SIDE TRACK", dof = true, breath = true,
-        supports = {walk = true, run = true, vehicle = true},
-        weight = {walk = 2.5, run = 3, vehicle = 3},
-        init = function(c)
-            return {side = (math.random() < 0.5) and 1 or -1}
-        end,
-        update = function(c, d)
-            local pos = c.pivot + c.R * (9.5 * d.side) - c.H * 1.5 + Vector3.new(0, 2.7, 0)
-            return pos, c.pivot + c.H * 3.2 + Vector3.new(0, 0.4, 0), 56
-        end },
-    { id = "FRONT_PASS", name = "FRONT PASS", dof = true, breath = false,
-        supports = {walk = true, run = true, vehicle = true},
-        weight = {walk = 0.8, run = 2.5, vehicle = 3},
-        durMin = 3.5, durMax = 5,
-        init = function(c)
-            local dist = 13 + math.clamp(c.speed, 0, 60) * 0.35
-            local side = (math.random() < 0.5) and 2 or -2
-            return {anchor = c.pivot + c.H * dist + c.R * side + Vector3.new(0, 1.9, 0)}
-        end,
-        update = function(c, d)
-            return d.anchor, c.pivot + c.H * 1.5, 57
-        end },
-    { id = "LEAD_AHEAD", name = "LEAD AHEAD", dof = true, breath = true,
-        supports = {run = true, vehicle = true},
-        weight = {run = 2, vehicle = 2.5},
-        init = function(c)
-            return {gap = 9 + math.clamp(c.speed, 0, 60) * 0.12}
-        end,
-        update = function(c, d)
-            local pos = c.pivot + c.H * d.gap + Vector3.new(0, 2.5, 0)
-            return pos, c.pivot, 62
-        end },
-    { id = "ORBIT_360", name = "ORBIT 360", dof = false, breath = true,
-        supports = {idle = true, walk = true},
-        weight = {idle = 3, walk = 1.5},
-        durMin = 5, durMax = 7,
-        init = function(c)
-            local off = c.camPos - c.pivot
-            local flat = Vector3.new(off.X, 0, off.Z)
-            local a0 = (flat.Magnitude > 0.1) and math.atan2(flat.Z, flat.X) or (math.random() * math.pi * 2)
-            return {a0 = a0, dir = (math.random() < 0.5) and 1 or -1,
-                dist = 9 + math.clamp(c.speed, 0, 20) * 0.15}
-        end,
-        update = function(c, d)
-            local a = d.a0 + d.dir * (c.t / math.max(c.dur, 0.1)) * math.rad(130)
-            local pos = c.pivot + Vector3.new(math.cos(a), 0, math.sin(a)) * d.dist + Vector3.new(0, 3, 0)
-            return pos, c.pivot + Vector3.new(0, 0.7, 0), 54
-        end },
-    { id = "CRANE_RISE", name = "CRANE RISE", dof = false, breath = false,
-        supports = {idle = true, walk = true, run = true},
-        weight = {idle = 2, walk = 2, run = 1.5},
-        durMin = 5, durMax = 7,
-        update = function(c, d)
-            local k = smoothstep(c.t / math.max(c.dur, 0.1))
-            local pos = c.pivot - c.H * (9 + 4 * k) + Vector3.new(0, 1.8 + 13.5 * k, 0)
-            return pos, c.pivot, 50 + 10 * k
-        end },
-    { id = "DOLLY_ZOOM", name = "DOLLY ZOOM", dof = true, breath = false,
-        supports = {idle = true, walk = true},
-        weight = {idle = 2, walk = 1.8},
-        durMin = 4.5, durMax = 5.5,
-        update = function(c, d)
-            local k = smoothstep(c.t / math.max(c.dur, 0.1))
-            local pos = c.pivot - c.H * (15 - 6.5 * k) + Vector3.new(0, 2.8, 0)
-            return pos, c.pivot, 40 + 26 * k
-        end },
-    { id = "DUTCH_TILT", name = "DUTCH TILT", dof = true, breath = true,
-        supports = {walk = true, run = true, vehicle = true},
-        weight = {walk = 1, run = 1.5, vehicle = 1.5},
-        init = function(c)
-            return {side = (math.random() < 0.5) and 1 or -1,
-                roll = ((math.random() < 0.5) and -1 or 1) * math.rad(6 + math.random() * 4)}
-        end,
-        update = function(c, d)
-            local pos = c.pivot - c.H * 6.5 + c.R * (2.6 * d.side) + Vector3.new(0, 1.5, 0)
-            return pos, c.pivot + c.H * 2.5, 50, d.roll
-        end },
-    { id = "TOP_DOWN", name = "TOP DOWN", dof = false, breath = false,
-        supports = {idle = true, walk = true, run = true, vehicle = true},
-        weight = {idle = 0.8, walk = 0.6, run = 0.8, vehicle = 1},
-        durMin = 3.2, durMax = 4.2,
-        update = function(c, d)
-            local pos = c.pivot - c.H * 4 + Vector3.new(0, 24, 0)
-            return pos, c.pivot, 48
-        end },
-    { id = "PUSH_IN", name = "PUSH IN", dof = true, breath = true,
-        supports = {idle = true},
-        weight = {idle = 2},
-        durMin = 5, durMax = 7,
-        update = function(c, d)
-            local k = smoothstep(c.t / math.max(c.dur, 0.1))
-            local pos = c.pivot - c.H * (11 - 4.5 * k) + Vector3.new(0, 2.2, 0)
-            return pos, c.pivot, 47 - 5 * k
-        end },
-}
+PHOTO_BLOOM = Instance.new("BloomEffect")
+PHOTO_BLOOM.Name = "SIIILAU_FOTO_BLOOM"
+PHOTO_BLOOM.Enabled = false
+PHOTO_BLOOM.Intensity = 0.3
+PHOTO_BLOOM.Size = 24
+PHOTO_BLOOM.Threshold = 0.85
+PHOTO_BLOOM.Parent = Lighting
 
-local function makeCineCtx(dur)
-    local c = state.cine
-    return {
-        pivot = c.pivot,
-        H = c.heading,
-        R = c.heading:Cross(Vector3.new(0, 1, 0)),
-        speed = c.speed,
-        cond = c.cond,
-        t = c.shotT,
-        dur = dur or 5,
-        camPos = Camera.CFrame.Position,
-    }
-end
-
--- Pilih shot: 80% dari pool sesuai kondisi subjek, 20% shot variasi apa pun.
--- Tidak mengulang 2 shot terakhir agar tidak monoton. Weighted random.
-local function pickShot(cond)
-    local c = state.cine
-    local variety = math.random() < CINE_VARIETY_CHANCE
-    local pool = {}
-    for _, def in ipairs(SHOT_LIST) do
-        local ok = variety or def.supports[cond]
-        if ok and def.id ~= c.lastId and def.id ~= c.lastId2 then
-            table.insert(pool, {def = def, w = (def.weight and def.weight[cond]) or 1})
-        end
-    end
-    if #pool == 0 then
-        for _, def in ipairs(SHOT_LIST) do
-            if def.supports[cond] then
-                table.insert(pool, {def = def, w = (def.weight and def.weight[cond]) or 1})
-            end
-        end
-    end
-    if #pool == 0 then return SHOT_LIST[1] end
-    local total = 0
-    for _, p in ipairs(pool) do total += p.w end
-    local r = math.random() * total
-    for _, p in ipairs(pool) do
-        r -= p.w
-        if r <= 0 then return p.def end
-    end
-    return pool[#pool].def
-end
-
--- Cut ke shot baru (smooth blend dari frame kamera saat ini)
-local function cineCut(blendDur)
-    local c = state.cine
-    if not c then return end
-    c.lastId2 = c.lastId
-    c.lastId = c.shot and c.shot.id or nil
-    local def = pickShot(c.cond or "idle")
-    c.shot = def
-    c.shotT = 0
-    local dmin = def.durMin or CINE_CUT_MIN
-    local dmax = def.durMax or CINE_CUT_MAX
-    c.shotDur = dmin + math.random() * (dmax - dmin)
-    local ctx = makeCineCtx(c.shotDur)
-    c.shotData = def.init and def.init(ctx) or {}
-    c.blend = (blendDur and blendDur > 0) and {
-        fromCf = Camera.CFrame, fromFov = Camera.FieldOfView, t = 0, dur = blendDur,
-    } or nil
-    showShotLabel(def.name)
-    if updateStatus then updateStatus() end
-end
-
--- Pastikan subjek cinematic: lock aktif → pakai target terpilih; tanpa lock →
--- auto terdekat dari kamera; tidak ada pemain lain → diri sendiri.
-local function ensureCineSubject()
-    if state.targetLock and state.target and state.target.Parent then return end
-    local near = getNearestPlayerFromCamera()
-    if near then
-        state.target = near
-        state.targetLock = true
-        notify("Cinematic → target lock @" .. near.Name, "info")
-    else
-        state.target = LocalPlayer
-        state.targetLock = false
-        notify("Cinematic → mengikuti karaktermu", "info")
-    end
-end
-
---// ================================================== TOMBOL — KE KARAKTER UTAMA (panel)
--- FREE : kamera terbang smooth ke belakang karakter, menghadap dia
--- PRO  : orbit di-recenter halus ke karakter utama
-local function goToSelf()
-    if not state.cameraActive then
-        notify("Aktifkan kamera dulu (R / G) untuk pindah ke karakter", "error")
-        return
-    end
-    local root = getRootOf(LocalPlayer)
-    if not root then
-        notify("Karakter belum siap", "error")
-        return
-    end
-    state.target = LocalPlayer
-    state.targetLock = false -- pindah posisi kamera, bukan lock aim
-
-    local head = root.Position + Vector3.new(0, 1.5, 0)
-
-    if state.mode == "FREE" then
-        local lookCf = CFrame.fromOrientation(0, state.yaw, 0)
-        local flat = Vector3.new(lookCf.LookVector.X, 0, lookCf.LookVector.Z)
-        flat = (flat.Magnitude > 0.05) and flat.Unit or Vector3.new(0, 0, -1)
-        local destPos = head - flat * SELF_FLY_DIST + Vector3.new(0, SELF_FLY_HEIGHT, 0)
-        local dir = head - destPos
-        local toYaw = math.atan2(-dir.X, -dir.Z)
-        local toPitch = math.clamp(math.asin(math.clamp(dir.Unit.Y, -1, 1)), -1.45, 1.45)
-        local dist = (destPos - state.pos).Magnitude
-        state.fly = {
-            t = 0,
-            dur = math.clamp(0.6 + dist / 150, 0.6, 2.4),
-            fromPos = state.pos, toPos = destPos,
-            fromYaw = state.yaw, toYaw = toYaw,
-            fromPitch = state.pitch, toPitch = toPitch,
-        }
-        state.vel = Vector3.zero
-        state.aimY = nil
-    elseif state.mode == "PRO" then
-        local dist = (head - (state.proPivot or head)).Magnitude
-        state.proGlide = {
-            t = 0,
-            dur = math.clamp(0.5 + dist / 120, 0.5, 2.0),
-            fromPivot = state.proPivot or head,
-        }
-    end
-
-    flash(THEME.BLUE, 0.5)
-    notify("Kamera pindah ke karakter utama ✓", "success")
-    if updateStatus then updateStatus() end
-end
-
---// ================================================== TELEPORT VIA KAMERA (C)
-local function teleportToCamera()
-    if not state.cameraActive then
-        notify("Aktifkan kamera dulu (R / G) untuk teleport", "error")
-        return
-    end
-    local char = LocalPlayer.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    local hum  = char and char:FindFirstChildOfClass("Humanoid")
-    if not root or not hum or hum.Health <= 0 then
-        notify("Karakter tidak siap untuk teleport", "error")
-        return
-    end
-    local cf = Camera.CFrame
-    local dist = state.tpDistance
-    local spawnPos = cf.Position - cf.LookVector * dist -- di belakang kamera
-
-    local params = RaycastParams.new()
-    params.FilterDescendantsInstances = {char}
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    local hit = workspace:Raycast(spawnPos + Vector3.new(0, 4, 0), Vector3.new(0, -220, 0), params)
-    local lift = (hum.RigType == Enum.HumanoidRigType.R6) and 3 or (hum.HipHeight + root.Size.Y * 0.5)
-    if hit then
-        spawnPos = hit.Position + Vector3.new(0, lift + 0.2, 0)
-    end
-
-    local flat = Vector3.new(cf.LookVector.X, 0, cf.LookVector.Z)
-    flat = (flat.Magnitude > 0.05) and flat.Unit or Vector3.new(0, 0, -1)
-
-    hum.Sit = false
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-    root.CFrame = CFrame.lookAt(spawnPos, spawnPos + flat)
-    -- anchor tidak diubah: saat kamera aktif karakter tetap diam di lokasi baru
-
-    flash(THEME.CYAN, 0.55)
-    notify(("Teleport ✓ %d stud di belakang kamera"):format(math.floor(dist + 0.5)), "success")
-end
-
---// ================================================== PANEL UTAMA
-local panel = add(gui, "Frame", {Position = UDim2.new(0,20,0.5,-241), Size = UDim2.fromOffset(330,481),
-    BackgroundColor3 = THEME.BG, BackgroundTransparency = 1, Active = true})
-corner(panel, 14)
-add(panel, "UIStroke", {Color = THEME.PURPLE, Thickness = 1.5, Transparency = 0.35})
-add(panel, "UIGradient", {Rotation = 115, Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(20,16,38)),
-    ColorSequenceKeypoint.new(0.5, THEME.BG),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(12,14,30))})})
-do
-    local target = panel.Position
-    panel.Position = target + UDim2.fromOffset(0,26)
-    TweenService:Create(panel, TweenInfo.new(0.5, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-        {Position = target, BackgroundTransparency = 0.05}):Play()
-end
-
--- header (drag)
-local header = add(panel, "Frame", {Size = UDim2.new(1,0,0,42), BackgroundTransparency = 1, Active = true})
-local titleGrad = add(header, "TextLabel", {Position = UDim2.new(0,14,0,5), Size = UDim2.new(1,-60,0,20),
-    BackgroundTransparency = 1, Font = Enum.Font.GothamBlack, TextSize = 15, TextColor3 = Color3.new(1,1,1),
-    TextXAlignment = Enum.TextXAlignment.Left, Text = "✦ SIIILAU GALAXY"})
-add(titleGrad, "UIGradient", {Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, THEME.PURPLE), ColorSequenceKeypoint.new(0.35, THEME.BLUE),
-    ColorSequenceKeypoint.new(0.7, THEME.CYAN), ColorSequenceKeypoint.new(1, THEME.PINK)})})
-TweenService:Create(titleGrad.UIGradient, TweenInfo.new(4, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1, true),
-    {Offset = Vector2.new(1,0)}):Play()
-add(header, "TextLabel", {Position = UDim2.new(0,15,0,24), Size = UDim2.new(1,-60,0,14), BackgroundTransparency = 1,
-    Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = THEME.GREY,
-    TextXAlignment = Enum.TextXAlignment.Left, Text = "CINEMATIC CAM • Videography Suite"})
-for i = 1, 7 do
-    add(header, "Frame", {Position = UDim2.new(0, 150 + (i * 21) % 150, 0, 6 + (i * 13) % 28),
-        Size = UDim2.fromOffset(2,2), BackgroundColor3 = (i % 3 == 0) and THEME.CYAN or THEME.WHITE,
-        BackgroundTransparency = 0.4 + (i % 4) * 0.12, BorderSizePixel = 0})
-end
-local minBtn = add(header, "TextButton", {AnchorPoint = Vector2.new(1,0), Position = UDim2.new(1,-10,0,8),
-    Size = UDim2.fromOffset(26,26), BackgroundColor3 = THEME.BG3, Text = "—", Font = Enum.Font.GothamBold,
-    TextSize = 14, TextColor3 = THEME.GREY, AutoButtonColor = true})
-corner(minBtn, 8)
-add(minBtn, "UIStroke", {Color = THEME.LINE, Thickness = 1, Transparency = 0.4})
-
---// ================================================== TAB BAR
-local tabBar = add(panel, "Frame", {Position = UDim2.new(0,0,0,42), Size = UDim2.new(1,0,0,34), BackgroundTransparency = 1})
-local TAB_DEFS = { {id="CAM", text="◧  CAM"}, {id="TARGET", text="⌖  TARGET"}, {id="SISTEM", text="⚙  SISTEM"} }
-local tabButtons = {}
-for i, def in ipairs(TAB_DEFS) do
-    local tb = makeStyledButton(tabBar, UDim2.new(0, 12 + (i-1)*102, 0, 2), UDim2.fromOffset(100,30), def.text)
-    tabButtons[def.id] = tb
-    tb.btn.MouseButton1Click:Connect(function() applyTab(def.id) end)
-end
-
-local function divider(parent, y)
-    add(parent, "Frame", {Position = UDim2.new(0,12,0,y), Size = UDim2.new(1,-24,0,1),
-        BackgroundColor3 = THEME.LINE, BackgroundTransparency = 0.4, BorderSizePixel = 0})
-end
-
-local tab1 = add(panel, "Frame", {Position = UDim2.new(0,0,0,80), Size = UDim2.new(1,0,0,397), BackgroundTransparency = 1})
-local tab2 = add(panel, "Frame", {Position = UDim2.new(0,0,0,80), Size = UDim2.new(1,0,0,397),
-    BackgroundTransparency = 1, Visible = false})
-local tab3 = add(panel, "Frame", {Position = UDim2.new(0,0,0,80), Size = UDim2.new(1,0,0,397),
-    BackgroundTransparency = 1, Visible = false})
-
---// ================================================== TAB 1 — CAMERA
-local MODE_NAMES = { FREE = "FREE CAM", PRO = "PROFESSIONAL CAM", CINE = "CINEMATIC" }
-local MODE_KEYS  = { FREE = "1", PRO = "2", CINE = "3" }
-local MODE_DEFS = {
-    {id="FREE", text="1 ◈ FREE"},
-    {id="PRO",  text="2 ◎ PRO"},
-    {id="CINE", text="3 ✦ CINE"},
-}
-local modeButtons = {}
-for i, def in ipairs(MODE_DEFS) do
-    local mb = makeStyledButton(tab1, UDim2.new(0, 12 + (i-1)*102, 0, 4), UDim2.fromOffset(98,34), def.text,
-        function() setMode(def.id) end)
-    mb.label.TextSize = 12
-    modeButtons[def.id] = mb
-end
-
-divider(tab1, 82)
-local statusDot = add(tab1, "Frame", {Position = UDim2.new(0,16,0,98), Size = UDim2.fromOffset(9,9),
-    BackgroundColor3 = THEME.GREY, BorderSizePixel = 0})
-corner(statusDot, 5)
-TweenService:Create(statusDot, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-    {BackgroundTransparency = 0.55}):Play()
-local statusText = add(tab1, "TextLabel", {Position = UDim2.new(0,32,0,90), Size = UDim2.new(1,-44,0,26),
-    BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = THEME.GREY,
-    TextXAlignment = Enum.TextXAlignment.Left, Text = "○ STANDBY — FREE CAM"})
-
-divider(tab1, 122)
--- pindah ke karakter utama (tombol)
-local selfBtn = makeStyledButton(tab1, UDim2.new(0,12,0,128), UDim2.new(1,-24,0,30), "◉  KE KARAKTER UTAMA",
-    function() goToSelf() end)
-
--- teleport via kamera (C)
-local tpBtn = makeStyledButton(tab1, UDim2.new(0,12,0,162), UDim2.new(1,-24,0,30), "⇱  TELEPORT KE KAMERA  [C]",
-    function() teleportToCamera() end)
-local tpDistLabel = add(tpBtn.btn, "TextLabel", {AnchorPoint = Vector2.new(1,0), Position = UDim2.new(1,-12,0,0),
-    Size = UDim2.fromOffset(80,30), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 12,
-    TextColor3 = THEME.CYAN, TextXAlignment = Enum.TextXAlignment.Right, Text = TELEPORT_BEHIND_DISTANCE .. " stud"})
-
--- auto pagi (Z)
-local morningBtn = makeStyledButton(tab1, UDim2.new(0,12,0,196), UDim2.new(1,-24,0,30), "☀  AUTO PAGI 06:45  [Z]",
-    function() setMorning(not state.morning) end)
-local morningState = add(morningBtn.btn, "TextLabel", {AnchorPoint = Vector2.new(1,0), Position = UDim2.new(1,-12,0,0),
-    Size = UDim2.fromOffset(80,30), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 12,
-    TextColor3 = THEME.PINK, TextXAlignment = Enum.TextXAlignment.Right, Text = "OFF"})
-
-divider(tab1, 232)
---// ================================================== SLIDER
-local activeSliderFn = nil
-local function makeSlider(parent, y, label, min, max, initial, callback)
-    local holder = add(parent, "Frame", {Position = UDim2.new(0,12,0,y), Size = UDim2.new(1,-24,0,34), BackgroundTransparency = 1})
-    add(holder, "TextLabel", {Size = UDim2.new(0.7,0,0,14), BackgroundTransparency = 1, Font = Enum.Font.GothamBold,
-        TextSize = 10, TextColor3 = THEME.GREY, TextXAlignment = Enum.TextXAlignment.Left, Text = label})
-    local valLbl = add(holder, "TextLabel", {AnchorPoint = Vector2.new(1,0), Position = UDim2.new(1,0,0,0),
-        Size = UDim2.new(0.3,0,0,14), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 10,
-        TextColor3 = THEME.CYAN, TextXAlignment = Enum.TextXAlignment.Right, Text = tostring(initial)})
-    local track = add(holder, "Frame", {Position = UDim2.new(0,0,0,20), Size = UDim2.new(1,0,0,6), BackgroundColor3 = THEME.BG3})
-    corner(track, 6)
-    local fill = add(track, "Frame", {Size = UDim2.new(0.5,0,1,0), BackgroundColor3 = THEME.PURPLE, BorderSizePixel = 0})
-    corner(fill, 6)
-    add(fill, "UIGradient", {Color = ColorSequence.new(THEME.PURPLE, THEME.CYAN)})
-    local knob = add(holder, "Frame", {AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.new(0.5,0,0,23),
-        Size = UDim2.fromOffset(12,12), BackgroundColor3 = THEME.WHITE, BorderSizePixel = 0})
-    corner(knob, 6)
-    add(knob, "UIStroke", {Color = THEME.PURPLE, Thickness = 1.5, Transparency = 0.2})
-    local function setVisual(v)
-        local pct = math.clamp((v - min) / (max - min), 0, 1)
-        fill.Size = UDim2.new(pct, 0, 1, 0)
-        knob.Position = UDim2.new(pct, 0, 0, 23)
-        valLbl.Text = tostring(math.floor(v + 0.5))
-    end
-    local function fromX(x)
-        local pct = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
-        local v = min + (max - min) * pct
-        setVisual(v)
-        callback(v)
-    end
-    track.InputBegan:Connect(function(io)
-        if io.UserInputType == Enum.UserInputType.MouseButton1 then
-            activeSliderFn = fromX
-            fromX(io.Position.X)
-        end
-    end)
-    setVisual(initial)
-    return { Set = setVisual }
-end
-local speedSlider = makeSlider(tab1, 238, "KECEPATAN KAMERA", 8, 90, CAMERA_SPEED, function(v) state.baseSpeed = v end)
-local fovSlider = makeSlider(tab1, 276, "FIELD OF VIEW", 30, 105, 70, function(v) state.fov = v end)
-local tpSlider = makeSlider(tab1, 314, "JARAK TELEPORT (BELAKANG KAMERA)", 0, 30, TELEPORT_BEHIND_DISTANCE,
-    function(v)
-        state.tpDistance = v
-        tpDistLabel.Text = math.floor(v + 0.5) .. " stud"
-    end)
-
-divider(tab1, 354)
-add(tab1, "TextLabel", {Position = UDim2.new(0,14,0,360), Size = UDim2.new(1,-28,0,50), BackgroundTransparency = 1,
-    Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = THEME.GREY, TextXAlignment = Enum.TextXAlignment.Left,
-    TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true,
-    Text = "CapsLock = kamera ON/OFF • 1/2/3 = FREE / PRO / CINEMATIC\nR/G shortcut lama • T = target lock • Z = auto pagi • C = teleport\nF = panel • H = hide UI • K 2x = HAPUS script\nWASD+Q/E gerak • RMB lihat/orbit • Scroll FOV/zoom • Space turbo • Ctrl slow"})
-
---// ================================================== TAB 2 — TARGET LOCK
-local lockBtn = makeStyledButton(tab2, UDim2.new(0,12,0,4), UDim2.new(1,-24,0,36), "⌖  TARGET LOCK  [T]  •  OFF",
-    function() toggleTargetLock() end)
-local lockState = add(lockBtn.btn, "TextLabel", {AnchorPoint = Vector2.new(1,0), Position = UDim2.new(1,-12,0,0),
-    Size = UDim2.fromOffset(70,36), BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 12,
-    TextColor3 = THEME.PINK, TextXAlignment = Enum.TextXAlignment.Right, Text = "OFF"})
-
-divider(tab2, 46)
-add(tab2, "TextLabel", {Position = UDim2.new(0,14,0,52), Size = UDim2.new(1,-28,0,12), BackgroundTransparency = 1,
-    Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = THEME.GREY,
-    TextXAlignment = Enum.TextXAlignment.Left, Text = "PILIH MANUAL — klik untuk langsung lock"})
-
--- opsi 1: diri sendiri (manual)
-local selfLockBtn = makeStyledButton(tab2, UDim2.new(0,12,0,68), UDim2.new(1,-24,0,30), "1 ◉  DIRI SENDIRI",
-    function() selectTarget(LocalPlayer) end)
--- opsi 2: auto lock terdekat dari kamera (manual)
-makeStyledButton(tab2, UDim2.new(0,12,0,102), UDim2.new(1,-24,0,30), "2 ◎  AUTO LOCK — TERDEKAT DARI KAMERA",
-    function() selectAutoTarget() end)
-
-divider(tab2, 138)
-add(tab2, "TextLabel", {Position = UDim2.new(0,14,0,144), Size = UDim2.new(1,-28,0,12), BackgroundTransparency = 1,
-    Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = THEME.GREY,
-    TextXAlignment = Enum.TextXAlignment.Left, Text = "3 ▤  DAFTAR PLAYER — URUT TERDEKAT DARI KAMU"})
-local listFrame = add(tab2, "ScrollingFrame", {Position = UDim2.new(0,12,0,160), Size = UDim2.new(1,-24,0,174),
-    BackgroundColor3 = THEME.BG2, BackgroundTransparency = 0.25, BorderSizePixel = 0, ScrollBarThickness = 3,
-    ScrollBarImageColor3 = THEME.PURPLE, CanvasSize = UDim2.new(0,0,0,0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y})
-corner(listFrame, 9)
-add(listFrame, "UIListLayout", {Padding = UDim.new(0,3), SortOrder = Enum.SortOrder.LayoutOrder})
-add(listFrame, "UIPadding", {PaddingTop = UDim.new(0,4), PaddingBottom = UDim.new(0,4),
-    PaddingLeft = UDim.new(0,6), PaddingRight = UDim.new(0,6)})
-
-divider(tab2, 340)
-add(tab2, "TextLabel", {Position = UDim2.new(0,14,0,346), Size = UDim2.new(1,-28,0,46), BackgroundTransparency = 1,
-    Font = Enum.Font.Gotham, TextSize = 10, TextColor3 = THEME.GREY, TextXAlignment = Enum.TextXAlignment.Left,
-    TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true,
-    Text = "T = ON (auto pilih terdekat dari KAMERA) / OFF\nKlik opsi/daftar di atas = lock manual ke pilihan itu\nAim vertikal ter-damping — target lompat-lompat\nkamera tetap stabil, tidak ikut menggeleng"})
-
---// ================================================== TARGET LIST (urut terdekat)
-local listOrder = 0
-local function makeListEntry(text, isSel, onClick)
-    listOrder += 1
-    local btn = add(listFrame, "TextButton", {LayoutOrder = listOrder, Size = UDim2.new(1,0,0,20),
-        BackgroundColor3 = isSel and THEME.BG3 or THEME.BG2, BackgroundTransparency = isSel and 0 or 0.35,
-        Text = "", AutoButtonColor = false})
-    corner(btn, 6)
-    local dot = add(btn, "Frame", {Position = UDim2.new(0,7,0.5,-2.5), Size = UDim2.fromOffset(5,5),
-        BackgroundColor3 = isSel and THEME.CYAN or THEME.GREY, BorderSizePixel = 0})
-    corner(dot, 4)
-    add(btn, "TextLabel", {Position = UDim2.new(0,18,0,0), Size = UDim2.new(1,-24,1,0), BackgroundTransparency = 1,
-        Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = isSel and THEME.CYAN or THEME.WHITE,
-        TextXAlignment = Enum.TextXAlignment.Left, Text = text, TextTruncate = Enum.TextTruncate.AtEnd})
-    btn.MouseButton1Click:Connect(onClick)
-end
-local function refreshTargets()
-    local savedScroll = listFrame.CanvasPosition
-    for _, c in ipairs(listFrame:GetChildren()) do
-        if c:IsA("TextButton") then c:Destroy() end
-    end
-    listOrder = 0
-    local origin = getMyOrigin()
-    local sorted = {}
-    for _, plr in ipairs(Players:GetPlayers()) do
-        local r = getRootOf(plr)
-        local d = r and (r.Position - origin).Magnitude or math.huge
-        table.insert(sorted, {plr = plr, dist = d})
-    end
-    table.sort(sorted, function(a, b)
-        if a.dist == b.dist then return a.plr.Name < b.plr.Name end
-        return a.dist < b.dist
-    end)
-    for _, item in ipairs(sorted) do
-        local plr = item.plr
-        local isSel = (state.targetLock and state.target == plr)
-        local distTxt = (item.dist < math.huge) and ("  •" .. math.floor(item.dist + 0.5) .. "st") or "  •?"
-        makeListEntry(plr.DisplayName .. " (@" .. plr.Name .. ")" .. (plr == LocalPlayer and " •you" or "") .. distTxt,
-            isSel, function() selectTarget(plr) end)
-    end
-    listFrame.CanvasPosition = savedScroll
-end
-
---// ================================================== TAB 3 — SISTEM (RESET / HAPUS SCRIPT)
-local resetBtn = makeStyledButton(tab3, UDim2.new(0,12,0,6), UDim2.new(1,-24,0,44),
-    "↻  RESET SCRIPT", function() resetScript() end)
-resetBtn.label.TextSize = 14
-
-local unloadBtn = makeStyledButton(tab3, UDim2.new(0,12,0,58), UDim2.new(1,-24,0,44),
-    "✕  HAPUS / UNLOAD SCRIPT  [K]", function()
-        if _G.SIIILAU_CAM_UNLOAD then _G.SIIILAU_CAM_UNLOAD() end
-    end)
-unloadBtn.stroke.Color = THEME.PINK
-unloadBtn.stroke.Transparency = 0.15
-unloadBtn.label.TextColor3 = THEME.PINK
-unloadBtn.label.TextSize = 14
-
-divider(tab3, 112)
-add(tab3, "TextLabel", {Position = UDim2.new(0,14,0,120), Size = UDim2.new(1,-28,0,150),
-    BackgroundTransparency = 1, Font = Enum.Font.Gotham, TextSize = 11, TextColor3 = THEME.GREY,
-    TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true,
-    Text = "↻ RESET SCRIPT\n• Matikan kamera & kembalikan kontrol karakter\n• Target lock, auto pagi, FOV, kecepatan,\n  jarak teleport → semua balik ke default\n\n✕ HAPUS SCRIPT [K]\n• Script benar-benar dihapus dari game\n• GUI hilang, kamera & karakter dikembalikan\n• Tekan K 2x untuk konfirmasi (anti salah tekan)"})
-
---// ================================================== CHIP STATUS (muncul saat UI disembunyikan)
-local chip = add(gui, "Frame", {AnchorPoint = Vector2.new(0,1), Position = UDim2.new(0,14,1,-14),
-    Size = UDim2.fromOffset(220,26), BackgroundColor3 = THEME.BG, BackgroundTransparency = 0.25, Visible = false})
-corner(chip, 13)
-add(chip, "UIStroke", {Color = THEME.PURPLE, Thickness = 1, Transparency = 0.4})
-local chipDot = add(chip, "Frame", {Position = UDim2.new(0,10,0.5,-3), Size = UDim2.fromOffset(6,6),
-    BackgroundColor3 = THEME.GREY, BorderSizePixel = 0})
-corner(chipDot, 4)
-local chipLabel = add(chip, "TextLabel", {Position = UDim2.new(0,22,0,0), Size = UDim2.new(1,-30,1,0),
-    BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 11, TextColor3 = THEME.WHITE,
-    TextXAlignment = Enum.TextXAlignment.Left, Text = "✦ SIIILAU", TextTruncate = Enum.TextTruncate.AtEnd})
-
---// ================================================== TAB SWITCH
-applyTab = function(t)
-    activeTab = t
-    tab1.Visible = (t == "CAM")
-    tab2.Visible = (t == "TARGET")
-    tab3.Visible = (t == "SISTEM")
-    for id, tb in pairs(tabButtons) do
-        local sel = (id == t)
-        tb.stroke.Color = sel and THEME.PURPLE or Color3.fromRGB(60,60,95)
-        tb.stroke.Transparency = sel and 0.1 or 0.45
-        tb.stroke.Thickness = sel and 2 or 1
-        tb.grad.Enabled = sel
-        tb.label.TextColor3 = sel and THEME.WHITE or THEME.GREY
-    end
-    if t == "TARGET" then refreshTargets() end
-end
-
---// ================================================== STATUS
-updateStatus = function()
-    local active = state.cameraActive
-    local mn = MODE_NAMES[state.mode]
-    if state.mode == "CINE" and state.cine and state.cine.shot then
-        mn = mn .. " • " .. state.cine.shot.name
-    end
-    statusText.Text = active and ("●  LIVE — " .. mn) or ("○  STANDBY — " .. MODE_NAMES[state.mode])
-    statusText.TextColor3 = active and THEME.CYAN or THEME.GREY
-    statusDot.BackgroundColor3 = active and THEME.CYAN or THEME.GREY
-    for id, mb in pairs(modeButtons) do
-        local sel = state.mode == id
-        mb.stroke.Color = sel and THEME.PURPLE or Color3.fromRGB(60,60,95)
-        mb.stroke.Transparency = sel and 0.1 or 0.45
-        mb.stroke.Thickness = sel and 2 or 1
-        mb.grad.Enabled = sel
-        mb.label.TextColor3 = sel and THEME.WHITE or THEME.GREY
-    end
-    local selName = (state.targetLock and state.target) and targetName(state.target) or "OFF"
-    lockBtn.label.Text = "⌖  TARGET LOCK  [T]  •  " .. selName
-    lockState.Text = state.targetLock and "ON" or "OFF"
-    lockState.TextColor3 = state.targetLock and THEME.CYAN or THEME.PINK
-    local selfSel = state.targetLock and state.target == LocalPlayer
-    selfLockBtn.stroke.Color = selfSel and THEME.PURPLE or Color3.fromRGB(60,60,95)
-    selfLockBtn.stroke.Transparency = selfSel and 0.1 or 0.45
-    selfLockBtn.stroke.Thickness = selfSel and 2 or 1
-    selfLockBtn.grad.Enabled = selfSel
-    selfLockBtn.label.TextColor3 = selfSel and THEME.WHITE or THEME.GREY
-    morningState.Text = state.morning and "ON" or "OFF"
-    morningState.TextColor3 = state.morning and THEME.GOLD or THEME.PINK
-    chipLabel.Text = "✦ SIIILAU • " .. mn
-        .. (active and " • LIVE" or " • STANDBY")
-        .. (state.targetLock and state.target and (" → " .. targetName(state.target)) or "")
-        .. (state.morning and " • PAGI" or "")
-    chipDot.BackgroundColor3 = active and THEME.CYAN or THEME.GREY
-    refreshTargets()
-end
-
---// ================================================== UI VISIBILITY
-local function applyVisibility()
-    panel.Visible = state.panelVisible and not state.uiHidden
-    chip.Visible = state.uiHidden
-    notifContainer.Visible = not state.uiHidden
-    shotChip.Visible = not state.uiHidden
-end
-
--- tombol minimize panel
-minBtn.MouseButton1Click:Connect(function()
-    state.panelVisible = false
-    applyVisibility()
-end)
-
---// ================================================== VISUAL KAMERA (letterbox)
-local function applyCameraVisuals()
-    local lbH = state.cameraActive and ENABLE_LETTERBOX and 62 or 0
-    local info = TweenInfo.new(0.55, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-    TweenService:Create(lbTop, info, {Size = UDim2.new(1,0,0,lbH)}):Play()
-    TweenService:Create(lbBottom, info, {Size = UDim2.new(1,0,0,lbH)}):Play()
-    applyVisibility()
-end
-
---// ================================================== INIT MODE DARI KAMERA SAAT INI
-local function initModeFromCamera()
-    state.fly = nil
-    state.proGlide = nil
-    state.aimY = nil
-    state.cine = nil
-    destroyCineDof()  -- bersihkan efek mode lama (mis. CINE → FREE/PRO)
-    hideShotLabel()
-    local cf = Camera.CFrame
-    local look = cf.LookVector
-    if state.mode == "FREE" then
-        state.pos = cf.Position
-        state.yaw = math.atan2(-look.X, -look.Z)
-        state.pitch = math.asin(math.clamp(look.Y, -1, 1))
-        state.vel = Vector3.zero
-    elseif state.mode == "PRO" then
-        local subj = getSubjectRoot()
-        state.orbitYaw = math.atan2(-look.X, -look.Z)
-        state.orbitPitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)), -1.35, 1.35)
-        if subj then
-            state.proPivot = subj.Position + Vector3.new(0, 1.5, 0)
-            state.orbitDist = math.clamp((cf.Position - state.proPivot).Magnitude, 6, 70)
-        else
-            state.proPivot = nil
-            state.orbitDist = 14
-        end
-        state.proPos = cf.Position
-    elseif state.mode == "CINE" then
-        local subj = getSubjectRoot()
-        local hv = Vector3.zero
-        if subj then
-            local v = subj.AssemblyLinearVelocity
-            hv = Vector3.new(v.X, 0, v.Z)
-        end
-        local hf = Vector3.new(look.X, 0, look.Z)
-        state.cine = {
-            pivot = subj and (subj.Position + Vector3.new(0, 1.5, 0)) or nil,
-            heading = (hv.Magnitude > 2) and hv.Unit
-                or ((hf.Magnitude > 0.05) and hf.Unit or Vector3.new(0, 0, -1)),
-            speed = 0, cond = nil,
-            shot = nil, shotData = nil, shotT = 0, shotDur = 5,
-            blend = nil, lastId = nil, lastId2 = nil,
-        }
-    end
-end
-
---// ================================================== START / STOP KAMERA
-local function startCamera(mode)
-    if state.cameraActive then return end
-    state.mode = mode
-    state.cameraActive = true
-
-    savedCamera = {
-        Type = Camera.CameraType,
-        Subject = Camera.CameraSubject,
-        FOV = Camera.FieldOfView,
-        CFrame = Camera.CFrame,
-    }
-
-    initModeFromCamera()
-    Camera.CameraType = Enum.CameraType.Scriptable
-    Camera.FieldOfView = math.clamp(state.fov * 0.8, 15, 110)
-
-    applyAutoAnchor() -- karakter otomatis diam selama kamera aktif
-    applyCameraVisuals()
-    flash(Color3.fromRGB(185,145,255), 0.5)
-    notify(MODE_NAMES[mode] .. " started — karakter diam", "success")
-    updateStatus()
-end
-
-local function stopCamera()
-    if not state.cameraActive then return end
-    state.cameraActive = false
-    state.turbo = false
-    state.slow = false
-    state.rmb = false
-    state.keys = {}
-    state.fly = nil
-    state.proGlide = nil
-    state.aimY = nil
-    state.cine = nil
-    destroyCineDof()
-    hideShotLabel()
-
-    local saved = savedCamera
-    savedCamera = nil
-    if saved then
-        Camera.CameraType = Enum.CameraType.Scriptable
-        Camera.CFrame = saved.CFrame
-        task.defer(function()
-            Camera.CameraType = saved.Type
-            Camera.CameraSubject = saved.Subject
-            Camera.FieldOfView = saved.FOV
+-- ═══════════════ GUI ROOT ═══════════════
+-- cari induk GUI yang bisa ditulis (executor / CoreGui / PlayerGui)
+local function findGuiParent()
+        local cands = {}
+        local okH, hui = pcall(function()
+                if type(gethui) == "function" then
+                        return gethui()
+                end
+                return nil
         end)
-    end
-
-    applyAutoAnchor() -- karakter bebas bergerak lagi
-    UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-    UserInputService.MouseIconEnabled = true
-
-    applyCameraVisuals()
-    flash(Color3.fromRGB(90,90,140), 0.65)
-    notify("Camera stopped — karakter bebas bergerak", "info")
-    updateStatus()
-end
-
---// ================================================== TOGGLE & SWITCH MODE (R / G)
-local function activateCamera(mode)
-    if state.cameraActive then
-        if state.mode == mode then
-            stopCamera()
-        else
-            if mode == "CINE" then ensureCineSubject() end
-            state.mode = mode
-            initModeFromCamera()
-            applyCameraVisuals()
-            notify("Switched — " .. MODE_NAMES[mode], "info")
-            updateStatus()
+        if okH and hui then
+                table.insert(cands, hui)
         end
-    else
-        if mode == "CINE" then ensureCineSubject() end
-        startCamera(mode)
-    end
-end
-
---// ================================================== SET MODE (panel)
-setMode = function(m)
-    if state.mode == m and state.cameraActive then
-        notify("Mode sudah aktif: " .. MODE_NAMES[m], "info")
-        return
-    end
-    if state.cameraActive then
-        activateCamera(m)
-    else
-        state.mode = m
-        notify("Mode dipilih: " .. MODE_NAMES[m] .. " — tekan [" .. MODE_KEYS[m] .. "]", "info")
-        updateStatus()
-    end
-end
-
---// ================================================== RESET SCRIPT (balik ke default)
-resetScript = function()
-    if state.cameraActive then stopCamera() end
-    if state.morning then setMorning(false, true) end
-    state.targetLock = false
-    state.target = nil
-    state.aimY = nil
-    state.baseSpeed = DEFAULT_SPEED
-    state.fov = DEFAULT_FOV
-    state.tpDistance = DEFAULT_TP
-    state.mode = "FREE"
-    speedSlider.Set(DEFAULT_SPEED)
-    fovSlider.Set(DEFAULT_FOV)
-    tpSlider.Set(DEFAULT_TP)
-    applyAutoAnchor()
-    flash(THEME.GOLD, 0.5)
-    notify("Script di-RESET ke pengaturan awal ✓", "success")
-    updateStatus()
-end
-
---// ================================================== UNLOAD
-local function unload()
-    alive = false
-    pcall(function() if state.cameraActive then stopCamera() end end)
-    pcall(function()
-        if clockTween then clockTween:Cancel() end
-        if state.morning and savedClockTime then Lighting.ClockTime = savedClockTime end
-    end)
-    for _, c in ipairs(connections) do pcall(function() c:Disconnect() end) end
-    pcall(function() RunService:UnbindFromRenderStep(RENDER_STEP_NAME) end)
-    pcall(function() ContextActionService:UnbindAction("SIIILAU_TURBO") end)
-    pcall(destroyCineDof)
-    pcall(function() gui:Destroy() end)
-    _G.SIIILAU_CAM_UNLOAD = nil
-end
-_G.SIIILAU_CAM_UNLOAD = unload
-
---// ================================================== KONFIRMASI UNLOAD (anti salah tekan)
-local unloadArmed = false
-requestUnload = function()
-    if unloadArmed then
-        unload()
-    else
-        unloadArmed = true
-        notify("Tekan [K] LAGI dalam 2 detik utk konfirmasi HAPUS", "error")
-        task.delay(2, function() unloadArmed = false end)
-    end
-end
-
---// ================================================== DRAG PANEL
-local dragging = false
-local dragStartPos, panelStartPos
-table.insert(connections, header.InputBegan:Connect(function(io)
-    if io.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStartPos = io.Position
-        panelStartPos = panel.Position
-    end
-end))
-
---// ================================================== INPUT (dibuat SEKALI saja)
-local MOVE_KEYS = { W = true, A = true, S = true, D = true, Q = true, E = true }
-
-table.insert(connections, UserInputService.InputBegan:Connect(function(input, gpe)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-        state.rmb = true
-        return
-    end
-    if input.UserInputType ~= Enum.UserInputType.Keyboard or gpe then return end
-    local kc = input.KeyCode
-    if kc == PANEL_KEY then
-        if state.uiHidden then
-            state.uiHidden = false
-            state.panelVisible = true
-        else
-            state.panelVisible = not state.panelVisible
+        local okC, cg = pcall(function()
+                return game:GetService("CoreGui")
+        end)
+        if okC and cg then
+                table.insert(cands, cg)
         end
-        applyVisibility()
-    elseif kc == FREECAM_KEY then
-        activateCamera("FREE")
-    elseif kc == PRO_KEY then
-        activateCamera("PRO")
-    elseif kc == CAPSLOCK_KEY then
-        if state.cameraActive then stopCamera() else activateCamera("FREE") end
-    elseif NUM_MODE_KEYS[kc] then
-        activateCamera(NUM_MODE_KEYS[kc])
-    elseif kc == TARGET_LOCK_KEY then
-        toggleTargetLock()
-    elseif kc == MORNING_KEY then
-        setMorning(not state.morning)
-    elseif kc == TELEPORT_KEY then
-        teleportToCamera()
-    elseif kc == UNLOAD_KEY then
-        requestUnload()
-    elseif kc == HIDE_UI_KEY then
-        state.uiHidden = not state.uiHidden
-        applyVisibility()
-    elseif kc == SLOW_KEY then
-        state.slow = true
-    elseif MOVE_KEYS[kc.Name] then
-        state.keys[kc.Name] = true
-        state.fly = nil -- gerak manual membatalkan terbang otomatis
-    end
-end))
-
-table.insert(connections, UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton2 then
-        state.rmb = false
-        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-        UserInputService.MouseIconEnabled = true
-    elseif input.UserInputType == Enum.UserInputType.Keyboard then
-        local kc = input.KeyCode
-        if kc == SLOW_KEY then
-            state.slow = false
-        elseif MOVE_KEYS[kc.Name] then
-            state.keys[kc.Name] = false
-        end
-    elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-        activeSliderFn = nil
-    end
-end))
-
-table.insert(connections, UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement then
-        local pos = input.Position
-        if dragging then
-            local d = pos - dragStartPos
-            panel.Position = UDim2.new(panelStartPos.X.Scale, panelStartPos.X.Offset + d.X,
-                panelStartPos.Y.Scale, panelStartPos.Y.Offset + d.Y)
-        elseif activeSliderFn then
-            activeSliderFn(pos.X)
-        elseif state.rmb and state.cameraActive then
-            local dx, dy = input.Delta.X, input.Delta.Y
-            local sens = MOUSE_SENSITIVITY * 0.02
-            if state.mode == "FREE" then
-                state.fly = nil
-                state.yaw -= dx * sens
-                state.pitch = math.clamp(state.pitch - dy * sens, -1.45, 1.45)
-            elseif state.mode == "PRO" then
-                state.orbitYaw -= dx * sens
-                state.orbitPitch = math.clamp(state.orbitPitch - dy * sens, -1.35, 1.35)
-            end
-        end
-    elseif input.UserInputType == Enum.UserInputType.MouseWheel and state.cameraActive then
-        local scroll = (input.Position.Z ~= 0) and input.Position.Z or input.Delta.Z
-        if state.mode == "FREE" then
-            state.fov = math.clamp(state.fov - scroll * 2, 20, 110)
-            fovSlider.Set(state.fov)
-        elseif state.mode == "PRO" then
-            state.orbitDist = math.clamp(state.orbitDist - scroll * 1.5, 4, 80)
-        end
-    end
-end))
-
---// ================================================== SINK SPACE (turbo + cegah lompat saat FREE aktif)
-ContextActionService:BindAction("SIIILAU_TURBO", function(_, inputState)
-    if inputState == Enum.UserInputState.Begin then
-        if state.cameraActive and state.mode == "FREE" and not UserInputService:GetFocusedTextBox() then
-            state.turbo = true
-            return Enum.ContextActionResult.Sink
-        end
-    elseif inputState == Enum.UserInputState.End then
-        state.turbo = false
-    end
-    return Enum.ContextActionResult.Pass
-end, false, TURBO_KEY)
-
---// ================================================== RENDER LOOP (dibuat SEKALI saja)
-RunService:BindToRenderStep(RENDER_STEP_NAME, Enum.RenderPriority.Camera.Value + 1, function(dt)
-    local wantLock = state.cameraActive and state.rmb
-    if wantLock then
-        UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-        UserInputService.MouseIconEnabled = false
-    end
-
-    if not state.cameraActive then return end
-
-    if state.mode == "FREE" then
-        local alpha = 1 - math.exp(-dt / SMOOTHNESS)
-
-        if state.fly then
-            -- terbang smooth ke karakter utama (tombol panel)
-            local f = state.fly
-            f.t = math.min(f.t + dt, f.dur)
-            local k = smoothstep(f.t / f.dur)
-            state.pos = f.fromPos:Lerp(f.toPos, k)
-            state.yaw = lerpAngle(f.fromYaw, f.toYaw, k)
-            state.pitch = f.fromPitch + (f.toPitch - f.fromPitch) * k
-            if f.t >= f.dur then state.fly = nil end
-        else
-            local speed = state.baseSpeed
-            if state.slow then
-                speed *= CINEMATIC_SPEED_MULTIPLIER
-            elseif state.turbo then
-                speed *= TURBO_SPEED_MULTIPLIER
-            end
-            local cf = CFrame.fromOrientation(state.pitch, state.yaw, 0)
-            local move = Vector3.zero
-            if state.keys.W then move += cf.LookVector end
-            if state.keys.S then move -= cf.LookVector end
-            if state.keys.D then move += cf.RightVector end
-            if state.keys.A then move -= cf.RightVector end
-            if state.keys.E then move += Vector3.new(0,1,0) end
-            if state.keys.Q then move -= Vector3.new(0,1,0) end
-            if move.Magnitude > 0 then move = move.Unit end
-            state.vel = state.vel:Lerp(move * speed, alpha)
-            state.pos += state.vel * dt
-
-            -- ★ target lock: aim halus ke karakter terpilih,
-            --   vertikal DI-DAMPING → target lompat tidak membuat kamera menggeleng
-            if state.targetLock then
-                local r = getRootOf(state.target)
-                if r then
-                    local tp = r.Position + Vector3.new(0, 1.5, 0)
-                    if not state.aimY then state.aimY = tp.Y end
-                    local ay = 1 - math.exp(-dt / FREE_AIM_Y_DAMPING)
-                    state.aimY += (tp.Y - state.aimY) * ay
-                    local dir = Vector3.new(tp.X, state.aimY, tp.Z) - state.pos
-                    if dir.Magnitude > 0.1 then
-                        local lv = dir.Unit
-                        local ty = math.atan2(-lv.X, -lv.Z)
-                        local tpi = math.clamp(math.asin(math.clamp(lv.Y, -1, 1)), -1.45, 1.45)
-                        state.yaw = lerpAngle(state.yaw, ty, alpha * 0.55)
-                        state.pitch += (tpi - state.pitch) * alpha * 0.55
-                    end
+        table.insert(cands, LP:WaitForChild("PlayerGui"))
+        for _, par in ipairs(cands) do
+                local probe = Instance.new("Folder")
+                local ok = pcall(function()
+                        probe.Parent = par
+                end)
+                probe:Destroy()
+                if ok then
+                        return par
                 end
-            else
-                state.aimY = nil
-            end
         end
-        Camera.CFrame = CFrame.fromOrientation(state.pitch, state.yaw, 0) + state.pos
-        Camera.FieldOfView += (state.fov - Camera.FieldOfView) * alpha
+        return LP:WaitForChild("PlayerGui")
+end
 
-    elseif state.mode == "PRO" then
-        local subj = getSubjectRoot()
-        if subj then
-            local alpha = 1 - math.exp(-dt / (SMOOTHNESS * 1.6))
-            local targetPivot = subj.Position + Vector3.new(0, 1.5, 0)
-
-            if state.proGlide then
-                -- glide halus ke karakter utama (bypass snap)
-                local g = state.proGlide
-                g.t = math.min(g.t + dt, g.dur)
-                local k = smoothstep(g.t / g.dur)
-                state.proPivot = g.fromPivot:Lerp(targetPivot, k)
-                if g.t >= g.dur then state.proGlide = nil end
-            else
-                if not state.proPivot then state.proPivot = targetPivot end
-                if (targetPivot - state.proPivot).Magnitude > PRO_SNAP_DISTANCE then
-                    state.proPivot = targetPivot
-                    state.proPos = nil
+-- bersihkan GUI versi lama
+do
+        local names = { "SIIILAUxCAMERAPRO", "SIIILAU_GALAXY_CAM" }
+        local cands = {}
+        local okH, hui = pcall(function()
+                if type(gethui) == "function" then
+                        return gethui()
                 end
-                -- STABILISASI: horizontal normal, vertikal di-damping berat
-                local ax = 1 - math.exp(-dt / (SMOOTHNESS * 1.2))
-                local ay = 1 - math.exp(-dt / PRO_Y_DAMPING)
-                state.proPivot = Vector3.new(
-                    state.proPivot.X + (targetPivot.X - state.proPivot.X) * ax,
-                    state.proPivot.Y + (targetPivot.Y - state.proPivot.Y) * ay,
-                    state.proPivot.Z + (targetPivot.Z - state.proPivot.Z) * ax
-                )
-            end
-
-            local rot = CFrame.fromOrientation(state.orbitPitch, state.orbitYaw, 0)
-            local desiredPos = state.proPivot + rot:VectorToWorldSpace(Vector3.new(0, 0, state.orbitDist))
-            state.proPos = state.proPos and state.proPos:Lerp(desiredPos, math.clamp(alpha * 1.5, 0, 1)) or desiredPos
-            local desiredCf = CFrame.lookAt(state.proPos, state.proPivot)
-            Camera.CFrame = Camera.CFrame:Lerp(desiredCf, math.clamp(alpha * 1.5, 0, 1))
-            Camera.FieldOfView += (state.fov - Camera.FieldOfView) * alpha
+                return nil
+        end)
+        if okH and hui then
+                table.insert(cands, hui)
         end
-
-    elseif state.mode == "CINE" then
-        local c = state.cine
-        local subj = getSubjectRoot()
-        if subj and c then
-            -- pivot: horizontal cepat, vertikal ter-damping (anti ikut lompat)
-            local targetPivot = subj.Position + Vector3.new(0, 1.5, 0)
-            if not c.pivot then c.pivot = targetPivot end
-            local snapped = false
-            if (targetPivot - c.pivot).Magnitude > PRO_SNAP_DISTANCE then
-                c.pivot = targetPivot -- teleport/respawn subjek → hard cut, bukan nyeret
-                snapped = true
-            end
-            local ax = 1 - math.exp(-dt / (SMOOTHNESS * 1.3))
-            local ay = 1 - math.exp(-dt / 0.7)
-            c.pivot = Vector3.new(
-                c.pivot.X + (targetPivot.X - c.pivot.X) * ax,
-                c.pivot.Y + (targetPivot.Y - c.pivot.Y) * ay,
-                c.pivot.Z + (targetPivot.Z - c.pivot.Z) * ax
-            )
-
-            -- heading (arah gerak ter-smooth) & kecepatan subjek
-            local vel = subj.AssemblyLinearVelocity
-            local hv = Vector3.new(vel.X, 0, vel.Z)
-            local spd = hv.Magnitude
-            c.speed += (spd - c.speed) * (1 - math.exp(-dt / 0.45))
-            if spd > 2 then
-                local unit = hv.Unit
-                local ha = 1 - math.exp(-dt / 1.1)
-                local nh = Vector3.new(c.heading.X + (unit.X - c.heading.X) * ha, 0,
-                    c.heading.Z + (unit.Z - c.heading.Z) * ha)
-                c.heading = (nh.Magnitude > 0.01) and nh.Unit or c.heading
-            end
-
-            -- deteksi kondisi: naik kendaraan / diam / jalan / lari
-            local inVehicle = false
-            do
-                local hum = subj.Parent and subj.Parent:FindFirstChildOfClass("Humanoid")
-                inVehicle = (hum and hum.SeatPart and hum.SeatPart:IsA("VehicleSeat")) and true or false
-            end
-            local cond = inVehicle and "vehicle"
-                or (c.speed < 2 and "idle" or (c.speed < CINE_WALK_SPEED and "walk" or "run"))
-            local condChanged = (cond ~= c.cond)
-            c.cond = cond
-
-            -- timer shot + keputusan cut
-            c.shotT += dt
-            if not c.shot then
-                cineCut(CINE_BLEND_DUR)
-            elseif snapped then
-                cineCut(0.12)
-            elseif condChanged and not c.shot.supports[cond] then
-                cineCut(0.5) -- kondisi berubah & shot tak mendukung → cut cepat
-            elseif c.shotT >= c.shotDur then
-                cineCut(CINE_BLEND_DUR)
-            end
-
-            if c.shot then
-                local ctx = makeCineCtx(c.shotDur)
-                local pos, look, fovT, roll = c.shot.update(ctx, c.shotData)
-                fovT = fovT or 55
-                look = look or c.pivot
-                local targetCf = CFrame.lookAt(pos, look)
-                if roll then targetCf = targetCf * CFrame.Angles(0, 0, roll) end
-
-                if c.blend then
-                    local b = c.blend
-                    b.t = math.min(b.t + dt, b.dur)
-                    local k = smoothstep(b.t / b.dur)
-                    Camera.CFrame = b.fromCf:Lerp(targetCf, k)
-                    Camera.FieldOfView = b.fromFov + (fovT - b.fromFov) * k
-                    if b.t >= b.dur then c.blend = nil end
-                else
-                    Camera.CFrame = targetCf
-                    local breath = c.shot.breath and (math.sin(os.clock() * 0.7) * 1.2) or 0
-                    Camera.FieldOfView += ((fovT + breath) - Camera.FieldOfView) * (1 - math.exp(-dt / 0.35))
+        local okC, cg = pcall(function()
+                return game:GetService("CoreGui")
+        end)
+        if okC and cg then
+                table.insert(cands, cg)
+        end
+        local pg = LP:FindFirstChild("PlayerGui")
+        if pg then
+                table.insert(cands, pg)
+        end
+        for _, par in ipairs(cands) do
+                for _, n in ipairs(names) do
+                        local old = par:FindFirstChild(n)
+                        if old then
+                                old:Destroy()
+                        end
                 end
-
-                -- DoF sinematik adaptif: hanya shot close-up yang di-blur
-                local dof = createCineDof()
-                dof.Enabled = true
-                local wantFar = c.shot.dof and CINE_DOF_INTENSITY or 0
-                dof.FarIntensity += (wantFar - dof.FarIntensity) * (1 - math.exp(-dt / 0.4))
-                dof.FocusDistance = math.clamp((Camera.CFrame.Position - c.pivot).Magnitude, 2, 150)
-            end
         end
-    end
-end)
+end
 
---// ================================================== EVENT PLAYERS / CHARACTER / CAMERA
-table.insert(connections, Players.PlayerAdded:Connect(function() task.defer(refreshTargets) end))
-table.insert(connections, Players.PlayerRemoving:Connect(function(plr)
-    if state.targetLock and state.target == plr then
-        state.target = nil
-        state.targetLock = false
-        state.aimY = nil
-        notify("Target keluar game — lock dilepas", "error")
-        updateStatus()
-    end
-    task.defer(refreshTargets)
-end))
+local gui = Instance.new("ScreenGui")
+gui.Name = "SIIILAUxCAMERAPRO"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.DisplayOrder = 999999
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = findGuiParent()
 
--- respawn / karakter baru: anchor ulang jika kamera aktif
-table.insert(connections, LocalPlayer.CharacterAdded:Connect(function()
-    task.defer(function()
-        applyAutoAnchor()
-        refreshTargets()
-    end)
-end))
+-- ═══════════════ HELPER UI NEON ═══════════════
+local function new(cls, props, parent)
+        local o = Instance.new(cls)
+        if props then
+                for k, v in pairs(props) do
+                        o[k] = v
+                end
+        end
+        if parent then
+                o.Parent = parent
+        end
+        return o
+end
 
--- kamera diganti game (cutscene dll): ikuti kamera baru
-table.insert(connections, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-    if workspace.CurrentCamera then
-        Camera = workspace.CurrentCamera
-    end
-end))
+local function corner(o, r)
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, r or 12)
+        c.Parent = o
+        return c
+end
 
---// ================================================== INIT
-applyTab("CAM")
-updateStatus()
-notify("SIIILAU Galaxy Cam siap — tekan [F] untuk panel", "success")
+local function stroke(o, col, th, tr)
+        local s = Instance.new("UIStroke")
+        s.Color = col or CFG.Neon1
+        s.Thickness = th or 1
+        s.Transparency = tr or 0.35
+        s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        s.Parent = o
+        return s
+end
+
+local function grad(o, c1, c2, rot)
+        local g = Instance.new("UIGradient")
+        g.Color = ColorSequence.new(c1 or CFG.Neon1, c2 or CFG.Neon2)
+        g.Rotation = rot or 0
+        g.Parent = o
+        return g
+end
+
+local function pad(o, t, b, l, r)
+        local p = Instance.new("UIPadding")
+        p.PaddingTop = UDim.new(0, t or 0)
+        p.PaddingBottom = UDim.new(0, b or 0)
+        p.PaddingLeft = UDim.new(0, l or 0)
+        p.PaddingRight = UDim.new(0, r or 0)
+        p.Parent = o
+        return p
+end
+
+-- ═══════════════ OVERLAY DASAR ═══════════════
+-- letterbox sinematik (62px, selalu ada tapi tinggi 0 saat mati)
+UI.lbT = new("Frame", {
+        BackgroundColor3 = Color3.new(0, 0, 0),
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        ZIndex = 3,
+}, gui)
+
+UI.lbB = new("Frame", {
+        AnchorPoint = Vector2.new(0, 1),
+        BackgroundColor3 = Color3.new(0, 0, 0),
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 0, 0),
+        Position = UDim2.new(0, 0, 1, 0),
+        ZIndex = 3,
+}, gui)
+
+-- mask rasio foto (4 batang hitam)
+UI.maskT = new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 0), Position = UDim2.new(0, 0, 0, 0), ZIndex = 4 }, gui)
+UI.maskB = new("Frame", { AnchorPoint = Vector2.new(0, 1), BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 0), Position = UDim2.new(0, 0, 1, 0), ZIndex = 4 }, gui)
+UI.maskL = new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, Size = UDim2.new(0, 0, 1, 0), Position = UDim2.new(0, 0, 0, 0), ZIndex = 4 }, gui)
+UI.maskR = new("Frame", { AnchorPoint = Vector2.new(1, 0), BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, Size = UDim2.new(0, 0, 1, 0), Position = UDim2.new(1, 0, 0, 0), ZIndex = 4 }, gui)
+
+-- flash transisi
+UI.flash = new("Frame", {
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Size = UDim2.new(1, 0, 1, 0),
+        ZIndex = 60,
+}, gui)
+
+-- chip status (kiri atas, selalu tampil walau UI hidden)
+UI.chip = new("Frame", {
+        Position = UDim2.new(0, 14, 0, 14),
+        Size = UDim2.new(0, 0, 0, 26),
+        AutomaticSize = Enum.AutomaticSize.X,
+        BackgroundColor3 = CFG.BG,
+        BackgroundTransparency = 0.22,
+        BorderSizePixel = 0,
+        ZIndex = 10,
+}, gui)
+corner(UI.chip, 999)
+UI.chipStroke = stroke(UI.chip, CFG.Neon1, 1, 0.35)
+pad(UI.chip, 0, 0, 12, 12)
+UI.chipTxt = new("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 0, 1, 0),
+        AutomaticSize = Enum.AutomaticSize.X,
+        Font = Enum.Font.GothamBold,
+        Text = "● SIIILAU · SIAP",
+        TextColor3 = CFG.TXT,
+        TextSize = 12,
+        ZIndex = 10,
+}, UI.chip)
+
+-- label shot sinematik (kanan atas, kecil)
+UI.shot = new("Frame", {
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -14, 0, 14),
+        Size = UDim2.new(0, 0, 0, 24),
+        AutomaticSize = Enum.AutomaticSize.X,
+        BackgroundColor3 = CFG.BG,
+        BackgroundTransparency = 0.3,
+        BorderSizePixel = 0,
+        Visible = false,
+        ZIndex = 10,
+}, gui)
+corner(UI.shot, 999)
+stroke(UI.shot, CFG.Neon2, 1, 0.3)
+pad(UI.shot, 0, 0, 10, 10)
+UI.shotTxt = new("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 0, 1, 0),
+        AutomaticSize = Enum.AutomaticSize.X,
+        Font = Enum.Font.GothamBold,
+        Text = "● SHOT",
+        TextColor3 = CFG.TXT,
+        TextSize = 11,
+        ZIndex = 10,
+}, UI.shot)
+do
+        local g = grad(UI.shotTxt, CFG.Neon1, CFG.Neon2, 0)
+        g.Enabled = true
+end
+
+-- kotak notifikasi (kanan, di bawah label shot)
+UI.notifBox = new("Frame", {
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -14, 0, 48),
+        Size = UDim2.new(0, 236, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex = 11,
+}, gui)
+new("UIListLayout", {
+        Padding = UDim.new(0, 6),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        VerticalAlignment = Enum.VerticalAlignment.Top,
+}, UI.notifBox)
+
+-- watermark foto (opsional)
+UI.wm = new("TextLabel", {
+        AnchorPoint = Vector2.new(1, 1),
+        Position = UDim2.new(1, -10, 1, -10),
+        Size = UDim2.new(0, 0, 0, 20),
+        AutomaticSize = Enum.AutomaticSize.X,
+        BackgroundColor3 = CFG.BG,
+        BackgroundTransparency = 0.35,
+        BorderSizePixel = 0,
+        Font = Enum.Font.GothamBold,
+        Text = " SIIILAUxCAMERAPRO ",
+        TextColor3 = CFG.TXT,
+        TextSize = 10,
+        Visible = false,
+        ZIndex = 20,
+}, gui)
+corner(UI.wm, 999)
+stroke(UI.wm, CFG.Neon1, 1, 0.5)
+
+-- ═══════════════ PANEL UTAMA ═══════════════
+UI.panel = new("Frame", {
+        Position = UDim2.new(0, 16, 0.5, -215),
+        Size = UDim2.new(0, 340, 0, 430),
+        BackgroundColor3 = CFG.BG,
+        BackgroundTransparency = 0.16,
+        BorderSizePixel = 0,
+        Active = true,
+        ZIndex = 5,
+}, gui)
+corner(UI.panel, 18)
+UI.panelStroke = stroke(UI.panel, CFG.Neon1, 1.4, 0.22)
+do
+        local g = grad(UI.panelStroke, CFG.Neon1, CFG.Neon2, 35)
+        g.Enabled = true
+end
+
+-- header (judul + tombol lipat) — area drag
+UI.head = new("Frame", {
+        Position = UDim2.new(0, 0, 0, 0),
+        Size = UDim2.new(1, 0, 0, 54),
+        BackgroundTransparency = 1,
+        Active = true,
+        ZIndex = 6,
+}, UI.panel)
+
+UI.title = new("TextLabel", {
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 16, 0, 8),
+        Size = UDim2.new(1, -60, 0, 22),
+        Font = Enum.Font.GothamBlack,
+        Text = "SIIILAU<font color=\"#FF2DAA\">x</font>CAMERAPRO",
+        RichText = true,
+        TextColor3 = CFG.TXT,
+        TextSize = 16,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 6,
+}, UI.head)
+
+UI.sub = new("TextLabel", {
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 16, 0, 31),
+        Size = UDim2.new(1, -60, 0, 14),
+        Font = Enum.Font.GothamMedium,
+        Text = "v12 · NEON EDITION · 1/2/3 = MODE",
+        TextColor3 = CFG.TXT_DIM,
+        TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 6,
+}, UI.head)
+
+UI.minBtn = new("TextButton", {
+        AnchorPoint = Vector2.new(1, 0),
+        Position = UDim2.new(1, -12, 0, 12),
+        Size = UDim2.new(0, 30, 0, 30),
+        BackgroundColor3 = CFG.BGCard,
+        BackgroundTransparency = 0.2,
+        BorderSizePixel = 0,
+        Font = Enum.Font.GothamBold,
+        Text = "–",
+        TextColor3 = CFG.TXT,
+        TextSize = 16,
+        ZIndex = 7,
+}, UI.head)
+corner(UI.minBtn, 999)
+stroke(UI.minBtn, CFG.Neon2, 1, 0.4)
+
+-- baris tab
+UI.tabs = new("Frame", {
+        Position = UDim2.new(0, 12, 0, 56),
+        Size = UDim2.new(1, -24, 0, 28),
+        BackgroundTransparency = 1,
+        ZIndex = 6,
+}, UI.panel)
+new("UIListLayout", {
+        Padding = UDim.new(0, 5),
+        FillDirection = Enum.FillDirection.Horizontal,
+        SortOrder = Enum.SortOrder.LayoutOrder,
+}, UI.tabs)
+
+-- badan panel (scrollable)
+UI.body = new("ScrollingFrame", {
+        Position = UDim2.new(0, 0, 0, 92),
+        Size = UDim2.new(1, 0, 1, -92),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+        AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        ScrollingDirection = Enum.ScrollingDirection.Y,
+        ScrollBarThickness = 3,
+        ScrollBarImageColor3 = CFG.Neon1,
+        ZIndex = 6,
+}, UI.panel)
+
+-- footer hint
+UI.foot = new("TextLabel", {
+        AnchorPoint = Vector2.new(0, 1),
+        Position = UDim2.new(0, 0, 1, -6),
+        Size = UDim2.new(1, 0, 0, 14),
+        BackgroundTransparency = 1,
+        Font = Enum.Font.GothamMedium,
+        Text = "F panel · H sembunyikan · K 2x hapus",
+        TextColor3 = CFG.TXT_DIM,
+        TextSize = 9,
+        TextTransparency = 0.15,
+        ZIndex = 6,
+}, UI.panel)
+
+-- frame tab (dibuat di part 3, direferensikan di sini)
+UI.tabCAM = new("Frame", {
+        Size = UDim2.new(1, -20, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        LayoutOrder = 1,
+        ZIndex = 6,
+}, UI.body)
+UI.tabTARGET = new("Frame", {
+        Size = UDim2.new(1, -20, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        Visible = false,
+        LayoutOrder = 2,
+        ZIndex = 6,
+}, UI.body)
+UI.tabSISTEM = new("Frame", {
+        Size = UDim2.new(1, -20, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        Visible = false,
+        LayoutOrder = 3,
+        ZIndex = 6,
+}, UI.body)
+UI.tabFOTO = new("Frame", {
+        Size = UDim2.new(1, -20, 0, 0),
+        AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1,
+        Visible = false,
+        LayoutOrder = 4,
+        ZIndex = 6,
+}, UI.body)
