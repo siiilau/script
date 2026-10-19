@@ -12,7 +12,7 @@
             M        = buka MODE FOTO (langsung ke tab FOTO)
             T        = lock target TERDEKAT DARI KAMERA / unlock
             C        = teleport ke belakang layar
-            Z        = PAGI ⇄ MALAM 2 arah (tekan lagi = jam asli kembali)
+            Z        = CAHAYA AUTO 2 arah (malam diterangi · siang dilembutkan)
             H        = sembunyikan semua UI (chip tetap ada)
             K (2x)   = hapus script
             RMB      = lihat sekeliling (FREE / PRO)
@@ -71,10 +71,16 @@ local CFG = {
         ProYDamp      = 0.9,   -- PRO: damping vertikal pivot (anti ikut lompat target)
         AimYDamp      = 0.8,   -- FREE: damping aim vertikal saat target lock
         ProSnap       = 12,    -- PRO: snap kalau subjek pindah jauh (respawn/teleport)
-        -- waktu 2 arah (Z): malam → pagi · siang → malam · tekan lagi = balik
-        PagiJam       = 6.75,  -- 06:45
-        MalamJam      = 0,     -- 00:00
-        TransisiWaktu = 1.8,   -- detik transisi jam
+        -- cahaya auto 2 arah (Z): malam → diterangi · siang → dilembutkan (anti silau)
+        JamMalamMulai   = 18,     -- jam mulai malam
+        JamMalamAkhir   = 6,      -- jam akhir malam
+        ClockTerangi    = 14,     -- ClockTime target saat malam diterangi
+        BrightTerangi   = 2.5,    -- Brightness target saat malam
+        AmbientTerangi  = Color3.fromRGB(140, 140, 165),
+        ClockAntiSilau  = 17.5,   -- ClockTime target saat siang (senja lembut)
+        BrightAntiSilau = 1.6,    -- Brightness target saat siang (anti silau)
+        AmbientLembut   = Color3.fromRGB(110, 110, 120),
+        FogBuka         = 100000, -- buka fog gelap saat cahaya auto nyala
         CineStabG = 9,    -- stabilizer sinematik saat grounded
         CineStabA = 2.4,  -- stabilizer sinematik saat di udara
         -- palet neon
@@ -143,11 +149,11 @@ local S = {
                 ratio = "FULL",
                 wm = false,
         },
-        -- waktu 2 arah (Z) + restore kamera
-        timeChanged = false,
-        savedClockTime = nil,
-        clockTween = nil,
-        waktuLabel = nil,
+        -- cahaya auto 2 arah (Z) + restore kamera
+        lightOn = false,
+        lightPernahAktif = false,
+        lightConn = nil,   -- loop penjaga cahaya
+        oLight = nil,      -- nilai lighting asli (disimpan saat ON)
         savedCam = nil,
         shooting = false,
 }
@@ -164,9 +170,9 @@ local PHOTO_BLOOM      -- BloomEffect (filter tertentu)
 -- ═══════════════ DEKLARASI MAJU ═══════════════
 local notify, flash, setAnchorState, updateChip, applyLetterbox, applyDof
 local applyUIVisibility, togglePanel, toggleHideUI
-local setMode, toggleLock, doTeleport, toggleWaktu, restoreWaktu, goToSelf, resetScript, unloadAll
+local setMode, toggleLock, doTeleport, toggleCahaya, matikanCahaya, goToSelf, resetScript, unloadAll
 local getSubjectChar, refreshTargetList, refreshModeUI, updateLockBtn
-local setFilter, setRatio, takePhoto, setWatermark, fmtClock
+local setFilter, setRatio, takePhoto, setWatermark
 local updateRatioMasks
 local findNearestPlayer, lockPick, lockAutoToggle, setMaster
 
@@ -214,12 +220,6 @@ end
 
 local function myChar()
         return LP.Character
-end
-
-local function fmtClock(ct)
-        local h = math.floor(ct)
-        local m = math.floor((ct - h) * 60)
-        return string.format("%02d:%02d", h, m)
 end
 
 -- blur sinematik cuma muncul saat jarak dekat (zoom in)
@@ -914,8 +914,8 @@ end, function(v)
 end, 3)
 
 secLabel(UI.tabSISTEM, "Utilitas", 4)
-UI.waktuBtn = makePill(UI.tabSISTEM, "Z · PAGI ⇄ MALAM (2 ARAH) · OFF", 32, 5, function()
-        toggleWaktu()
+UI.waktuBtn = makePill(UI.tabSISTEM, "Z · CAHAYA AUTO (2 ARAH) · OFF", 32, 5, function()
+        toggleCahaya()
 end)
 makeToggle(UI.tabSISTEM, "BEKUKAN KARAKTER (KAMERA/CAPSLOCK)", CFG.Anchor, function(state)
         CFG.Anchor = state
@@ -931,7 +931,7 @@ new("TextLabel", {
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 86),
         Font = Enum.Font.GothamMedium,
-        Text = "1/2/3 · mode kamera · CapsLock master ON/OFF\nF panel · M mode foto · T lock (dari kamera)\nZ pagi⇄malam · C teleport · H hide UI · K 2x hapus\nRMB lihat · Scroll zoom/FOV · Space (tahan) turbo\nCtrl slow cinematic (FREE)\nKamera/CapsLock ON = karakter beku total",
+        Text = "1/2/3 · mode kamera · CapsLock master ON/OFF\nF panel · M mode foto · T lock (dari kamera)\nZ cahaya auto · C teleport · H hide UI · K 2x hapus\nRMB lihat · Scroll zoom/FOV · Space (tahan) turbo\nCtrl slow cinematic (FREE)\nKamera/CapsLock ON = karakter beku total",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -1314,8 +1314,8 @@ function updateChip()
         if S.locked and S.lockPlayer and (S.mode == "FREE" or S.mode == "PRO") then
                 txt = txt .. " · LOCK:" .. S.lockPlayer.Name
         end
-        if S.timeChanged and S.waktuLabel then
-                txt = txt .. " · " .. S.waktuLabel
+        if S.lightOn then
+                txt = txt .. " · CAHAYA AUTO"
         end
         if CFG.Anchor and (S.master or S.mode ~= "NONE") then
                 txt = txt .. " · BEKU"
@@ -1627,65 +1627,120 @@ function doTeleport()
         notify("Teleport di belakang layar " .. math.floor(d + 0.5) .. " langkah")
 end
 
--- ═══════════════ WAKTU 2 ARAH (Z) ═══════════════
--- Z = pintu 2 arah: MALAM → pagi terang (06:45) · SIANG → malam gelap (00:00)
--- Tekan lagi → jam asli dikembalikan (waktu asli disimpan otomatis)
-local function tweenClockTo(target, duration)
-        if S.clockTween then
-                S.clockTween:Cancel()
-                S.clockTween = nil
-        end
-        local startT = Lighting.ClockTime
-        if target - startT > 12 then
-                target = target - 24
-        elseif startT - target > 12 then
-                target = target + 24
-        end
-        S.clockTween = TweenService:Create(
-                Lighting,
-                TweenInfo.new(duration, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                { ClockTime = target }
-        )
-        S.clockTween:Play()
+-- ═══════════════ CAHAYA AUTO 2 ARAH (Z) ═══════════════
+-- Dipinjam dari SILAU BALAPAN v1.1 (pengganti fitur pagi/malam lama):
+-- Malam (< 6 atau >= 18) → DITERANGI   : ClockTime ≈ 14, Brightness ≈ 2.5, fog gelap dibuka
+-- Siang                  → DILEMBUTKAN : ClockTime ≈ 17.5 (senja lembut), Brightness ≈ 1.6 (anti silau)
+-- Loop penjaga tiap ~2 detik; saat OFF semua nilai asli di-restore.
+local function apakahMalam()
+        local t = Lighting.ClockTime
+        return t >= CFG.JamMalamMulai or t < CFG.JamMalamAkhir
 end
 
-function restoreWaktu(silent)
-        if not S.timeChanged then
+local function targetCahaya()
+        if apakahMalam() then
+                return CFG.ClockTerangi, CFG.BrightTerangi, CFG.AmbientTerangi
+        end
+        return CFG.ClockAntiSilau, CFG.BrightAntiSilau, CFG.AmbientLembut
+end
+
+-- ClockTime wrap 0-24: jangan di-tween mentah — step bertahap via loop task.wait
+local function langkahCahaya()
+        local jamTarget, brightTarget, ambientTarget = targetCahaya()
+        local jam0 = Lighting.ClockTime
+        local delta = jamTarget - jam0
+        if delta > 12 then delta = delta - 24 elseif delta < -12 then delta = delta + 24 end
+        local bright0 = Lighting.Brightness
+        local ambient0 = Lighting.Ambient
+        local out0 = Lighting.OutdoorAmbient
+        local jumlah = 22
+        for i = 1, jumlah do
+                if not S.lightOn or unloadDone then return end
+                local a = i / jumlah
+                pcall(function()
+                        Lighting.ClockTime = (jam0 + delta * a) % 24
+                        Lighting.Brightness = bright0 + (brightTarget - bright0) * a
+                        Lighting.Ambient = ambient0:Lerp(ambientTarget, a)
+                        Lighting.OutdoorAmbient = out0:Lerp(ambientTarget, a)
+                end)
+                task.wait(0.05)
+        end
+        pcall(function()
+                Lighting.ClockTime = jamTarget % 24
+                Lighting.Brightness = brightTarget
+                Lighting.Ambient = ambientTarget
+                Lighting.OutdoorAmbient = ambientTarget
+        end)
+end
+
+function matikanCahaya(silent)
+        if not S.lightOn then
                 return
         end
-        tweenClockTo(S.savedClockTime or 14, 1.2)
-        S.timeChanged = false
-        S.waktuLabel = nil
+        S.lightOn = false
+        if S.lightConn then
+                task.cancel(S.lightConn)
+                S.lightConn = nil
+        end
+        pcall(function()
+                if S.oLight then
+                        Lighting.ClockTime = S.oLight.ClockTime
+                        Lighting.Brightness = S.oLight.Brightness
+                        Lighting.Ambient = S.oLight.Ambient
+                        Lighting.OutdoorAmbient = S.oLight.OutdoorAmbient
+                        Lighting.ExposureCompensation = S.oLight.ExposureCompensation
+                        Lighting.FogEnd = S.oLight.FogEnd
+                end
+        end)
         if UI.waktuBtn then
-                UI.waktuBtn.Text = "Z · PAGI ⇄ MALAM (2 ARAH) · OFF"
+                UI.waktuBtn.Text = "Z · CAHAYA AUTO (2 ARAH) · OFF"
         end
         if not silent then
-                notify("Waktu dikembalikan: " .. fmtClock(S.savedClockTime or 14))
+                notify("CAHAYA AUTO OFF — lighting asli dikembalikan")
         end
         updateChip()
 end
 
-function toggleWaktu()
-        if S.timeChanged then
-                restoreWaktu(false)
+function toggleCahaya()
+        if S.lightOn then
+                matikanCahaya(false)
                 return
         end
-        local ct = Lighting.ClockTime
-        local dark = ct < 6 or ct >= 18
-        S.savedClockTime = ct
-        S.timeChanged = true
-        if dark then
-                tweenClockTo(CFG.PagiJam, CFG.TransisiWaktu)
-                S.waktuLabel = "PAGI"
-                notify("Z: malam → pagi (" .. fmtClock(CFG.PagiJam) .. ") · tekan lagi untuk balik")
-        else
-                tweenClockTo(CFG.MalamJam, CFG.TransisiWaktu)
-                S.waktuLabel = "MALAM"
-                notify("Z: siang → malam (" .. fmtClock(CFG.MalamJam) .. ") · tekan lagi untuk balik")
+        S.lightOn = true
+        S.lightPernahAktif = true
+        -- simpan nilai asli dulu (semua properti yang diubah ikut disimpan)
+        S.oLight = {
+                Brightness = Lighting.Brightness,
+                Ambient = Lighting.Ambient,
+                OutdoorAmbient = Lighting.OutdoorAmbient,
+                ClockTime = Lighting.ClockTime,
+                ExposureCompensation = Lighting.ExposureCompensation,
+                FogEnd = Lighting.FogEnd,
+        }
+        -- buka fog gelap biar malam yang diterangi tidak berkabut
+        if Lighting.FogEnd < 5000 then
+                Lighting.FogEnd = CFG.FogBuka
         end
+        if S.lightConn then
+                task.cancel(S.lightConn)
+        end
+        S.lightConn = task.spawn(function()
+                while S.lightOn and not unloadDone do
+                        langkahCahaya()
+                        -- loop penjaga: tiap ~2 detik cek ClockTime lagi
+                        -- (game ubah jam ke malam saat ON → diterangi lagi,
+                        --  ke siang terik → dilembutkan lagi)
+                        local tunggu = 0
+                        while tunggu < 2 and S.lightOn and not unloadDone do
+                                task.wait(0.25)
+                                tunggu = tunggu + 0.25
+                        end
+                end
+        end)
         if UI.waktuBtn then
-                UI.waktuBtn.Text = "Z · PAGI ⇄ MALAM (2 ARAH) · " .. S.waktuLabel
+                UI.waktuBtn.Text = "Z · CAHAYA AUTO (2 ARAH) · ON"
         end
+        notify("CAHAYA AUTO ON — malam diterangi · siang dilembutkan")
         updateChip()
 end
 
@@ -1740,13 +1795,13 @@ function goToSelf()
 end
 
 -- ═══════════════ RESET SCRIPT ═══════════════
--- Semua setting balik default: kamera off, waktu normal, lock lepas,
+-- Semua setting balik default: kamera off, cahaya normal, lock lepas,
 -- speed/FOV/teleport default, filter & rasio OFF/FULL
 function resetScript()
         if S.mode ~= "NONE" then
                 setMode("NONE")
         end
-        restoreWaktu(true)
+        matikanCahaya(true)
         S.locked = false
         S.lockPlayer = nil
         S.selected = nil
@@ -2696,7 +2751,7 @@ table.insert(CONNS, UserInputService.InputBegan:Connect(function(input, gp)
         elseif kc == Enum.KeyCode.C then
                 doTeleport()
         elseif kc == Enum.KeyCode.Z then
-                toggleWaktu()
+                toggleCahaya()
         elseif kc == Enum.KeyCode.H then
                 toggleHideUI()
         elseif kc == Enum.KeyCode.K then
@@ -2866,11 +2921,17 @@ function unloadAll()
                 ContextActionService:UnbindAction("SIIILAU_SPACE")
         end)
         pcall(function()
-                if S.clockTween then
-                        S.clockTween:Cancel()
+                if S.lightConn then
+                        task.cancel(S.lightConn)
+                        S.lightConn = nil
                 end
-                if S.timeChanged and S.savedClockTime then
-                        Lighting.ClockTime = S.savedClockTime
+                if S.lightPernahAktif and S.oLight then
+                        Lighting.ClockTime = S.oLight.ClockTime
+                        Lighting.Brightness = S.oLight.Brightness
+                        Lighting.Ambient = S.oLight.Ambient
+                        Lighting.OutdoorAmbient = S.oLight.OutdoorAmbient
+                        Lighting.ExposureCompensation = S.oLight.ExposureCompensation
+                        Lighting.FogEnd = S.oLight.FogEnd
                 end
         end)
         pcall(function()
