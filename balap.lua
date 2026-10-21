@@ -1,19 +1,12 @@
 --========================================================
---  SILAU BALAPAN v1.1 — Script Balapan (fokus race)
---  Turunan SILAU NEON ALL-IN-ONE (Tab Teleport & Tiang dihapus)
---
---  v1.1: rebranding fokus balapan + 3 TAB
---    + Hide Pemain Lain (Tab VISUAL, loop penjaga 0.3s)
---    + Speed Q murni ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
---    + toggle sembunyikan jalur rekaman: DIHAPUS (ikut fitur tiang)
---    + Cahaya Auto 2 arah + Smart Fall Assist + Anti-AFK 2 lapis
+--  BALAP v1.0.1 — Script Balapan Gabungan
 --
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  3 TAB:
---    1 🏃 GERAK   : Speed, Jump, Shiftlock, Moonwalk, Fall Assist, Anti-AFK
---    2 🎨 VISUAL  : Hide, Hide Pemain Lain, Cahaya Auto 2 arah, Lightweight, Dinding Batas
---    3 ⚙️ SISTEM  : reset, rejoin, hapus script
+--    1 🏃 GERAK  : Speed, Jump, Shiftlock, Moonwalk, Fall Assist, Anti-AFK
+--    2 🎨 VISUAL : Hide, Hide Pemain Lain, Cahaya Auto 2 arah, Lightweight, Dinding Batas
+--    3 ⚙️ SISTEM : reset, rejoin, hapus script
 --
 --  Keybind:
 --    F = buka/tutup GUI (saat tutup = hilang total)
@@ -23,12 +16,12 @@
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    K = Rejoin (double-tap)
 --========================================================
-local VERSI = "1.1-BALAPAN"
+local VERSI = "1.0.1"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
 if not RunService:IsClient() then
-    warn("[SilauBalapan] GAGAL: harus jalan di CLIENT (executor / LocalScript), bukan server!")
+    warn("[BALAP] GAGAL: harus jalan di CLIENT (executor / LocalScript), bukan server!")
     return
 end
 if not game:IsLoaded() then
@@ -44,24 +37,25 @@ local Workspace        = game:GetService("Workspace")
 local VirtualUser      = game:GetService("VirtualUser")
 local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
 if not LocalPlayer then
-    warn("[SilauBalapan] GAGAL: LocalPlayer belum ada.")
+    warn("[BALAP] GAGAL: LocalPlayer belum ada.")
     return
 end
 local Terrain = Workspace:WaitForChild("Terrain")
 
 -- anti double-run
-if _G.__SILAU_BALAPAN_MAIN__ then return end
-_G.__SILAU_BALAPAN_MAIN__ = true
+if _G.__BALAP_MAIN__ then return end
+_G.__BALAP_MAIN__ = true
 
 -- [2] KONFIGURASI ---------------------------------------------------
 -- Semua konstanta digabung ke dalam 1 table CFG untuk hemat local count
 -- (Luau limit 200 local per function)
 local CFG = {
+    ICON_SIZE       = 36,
     TOGGLE_KEY      = Enum.KeyCode.F,
-    LED_TEXT        = "⚡ S I L A U  B A L A P A N ⚡",
+    LED_TEXT        = "⚡ B A L A P ⚡",
     SOUND_ON        = true,
     FX_LEVEL        = 1,
-    -- Speed: OFF 17.10 ⇄ ON (nilai ON dipilih via panel: 17.25 / 21.25)
+    -- Speed cycle 3 state (17.10 → 17.25 → 21.25 → balik OFF)
     SPEED_OFF   = 17.10,
     SPEED_ON_1  = 17.25,
     SPEED_ON_2  = 21.25,
@@ -72,7 +66,6 @@ local CFG = {
     ON_JUMP_H   = 8.50,
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
-    SND_WHOOSH = "rbxasset://sounds/unsheath.wav",
 }
 -- shorthand alias untuk konstanta yang dipakai banyak (tetap hemat local)
 local Warna = {
@@ -337,7 +330,7 @@ end
 
 -- [6] SCREENGUI -----------------------------------------------------
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "SilauNeonMain"
+screenGui.Name = "BalapMain"
 screenGui.ResetOnSpawn = false
 screenGui.DisplayOrder = 9999
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -348,7 +341,7 @@ pcall(function() table.insert(kandidatParent, game:GetService("CoreGui")) end)
 pcall(function() table.insert(kandidatParent, LocalPlayer:WaitForChild("PlayerGui")) end)
 for _, t in ipairs(kandidatParent) do
     pcall(function()
-        local lama = t:FindFirstChild("SilauNeonMain")
+        local lama = t:FindFirstChild("BalapMain")
         if lama then lama:Destroy() end
     end)
 end
@@ -361,7 +354,7 @@ for _, t in ipairs(kandidatParent) do
     end
 end
 if not terpasang then
-    warn("[SilauBalapan] GAGAL: tidak bisa memasang GUI.")
+    warn("[BALAP] GAGAL: tidak bisa memasang GUI.")
     return
 end
 local function bunyi(id, vol, pitch)
@@ -461,7 +454,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ SILAU NEON ⚡",
+    Text = "⚡ BALAP v1.0.1 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -506,8 +499,8 @@ local tabColors = {Warna.Ungu2, Warna.Biru, Warna.AbuGelap}
 kontenTabs = {}
 for i, lbl in ipairs(tabLabels) do
     local tab = buat("TextButton", {
-        Size = UDim2.new(0.333, -3.4, 0, 24),
-        Position = UDim2.new((i - 1) * 0.333, 3.5 + (i - 1) * 2, 0, 50),
+        Size = UDim2.new(1 / 3, -3.4, 0, 24),
+        Position = UDim2.new((i - 1) * (1 / 3), 3.5 + (i - 1) * 2, 0, 50),
         BackgroundColor3 = (i == 1) and tabColors[i] or Warna.AbuMuda,
         BorderSizePixel = 0,
         FontFace = fnt("bold"),
@@ -916,8 +909,8 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ SILAU BALAPAN v1.1\n"
-        .. "Fokus balapan: GERAK + VISUAL + SISTEM\n"
+    Text = "⚡ BALAP v1.0.1\n"
+        .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
         .. "B fall • R hide • T cahaya • X dinding • K×2 rejoin",
@@ -950,8 +943,8 @@ local infoKredit = buat("TextLabel", {
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
     Text = "Tema SILAU NEON (ungu/biru LED) ⚡\n"
-        .. "Turunan: SILAU NEON ALL-IN-ONE v2.2\n"
-        .. "Difokuskan khusus balapan (v1.1)",
+        .. "Basis: SILAU BALAPAN v1.1 (5 skrip digabung)\n"
+        .. "v1.0.1: rename BALAP — 3 tab fokus balapan",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
@@ -1011,7 +1004,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1600, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = GUI   ✦   🏃 Q Speed ON/OFF (17.10 ⇄ 17.25-21.25) • J Jump (51.25/65.25) • C Shift • G Moonwalk • B FallAssist   ✦   🎨 R Hide • Hide Pemain Lain • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+    Text = "⌨ F = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • G Moonwalk • B FallAssist   ✦   🎨 R Hide • Hide Pemain Lain • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1310,6 +1303,7 @@ buildFX()
 -- Bungkus part logika dengan function untuk hemat local count (Luau limit 200)
 local function initLogic()
 
+
 -- [17C] MESIN ANTI-AFK 2 LAPIS — port dari A ------------------------
 -- Lapis 1: VirtualUser CaptureController + ClickButton2 (event Idled + jadwal)
 -- Lapis 2: gerakan mikro (opsional, jumpMode)
@@ -1350,7 +1344,7 @@ local function afkIntervensi(alasan)
     end
     afkState.jumlah += 1
     afkState.terakhir = os.time()
-    print("[SilauBalapan][Anti-AFK] intervensi #" .. afkState.jumlah .. " (" .. tostring(alasan) .. ")")
+    print("[BALAP][Anti-AFK] intervensi #" .. afkState.jumlah .. " (" .. tostring(alasan) .. ")")
     afkStatusUpdate()
 end
 catat(LocalPlayer.Idled:Connect(function()
@@ -1395,8 +1389,6 @@ task.spawn(function()
         afkStatusUpdate()
     end
 end)
-
--- (peringatan Auto TP dihapus — fitur Auto TP tidak ada di v1.1)
 
 -- [18] LOGIKA KING ---------------------------------------------------
 -- SPEED & JUMP
@@ -1743,12 +1735,18 @@ Setters.LW = function(v, silent)
     syncNotify("LW", v, silent, "Lightweight")
 end
 
--- DINDING BATAS
+-- DINDING BATAS (upgrade: lihat dinding tak terlihat -> jalur tipis gampang dicari)
+-- Dinding invisible (CanCollide + nyaris transparan) dibikin kelihatan:
+--   isi abu gelap tembus pandang (60%) + garis tepi, jadi dinding se tipis
+--   apa pun tetap kebaca dari jauh. Tanpa bikin part baru -> tetap ringan.
 local wallOriginal = {}
+local wallBoxes = {}   -- part -> SelectionBox (garis tepi)
 local wallConn
+local WALL_ISI  = Color3.fromRGB(70, 70, 70)    -- isi abu gelap
+local WALL_TEPI = Color3.fromRGB(150, 150, 150) -- garis tepi abu sedang
 local function isWallCandidate(part)
     if not part:IsA("BasePart") or part == Terrain then return false end
-    if part.Transparency < 1 then return false end
+    if part.Transparency < 0.95 then return false end  -- tangkap juga yang "hampir" tak terlihat
     if not part.CanCollide then return false end
     local m = part:FindFirstAncestorOfClass("Model")
     if m and Players:GetPlayerFromCharacter(m) then return false end
@@ -1757,8 +1755,18 @@ end
 local function wallify(part)
     if wallOriginal[part] then return end
     wallOriginal[part] = {Transparency = part.Transparency, Color = part.Color}
-    part.Transparency = 0.35
-    part.Color = Color3.fromRGB(205, 205, 205)
+    part.Transparency = 0.6
+    part.Color = WALL_ISI
+    pcall(function()
+        local box = Instance.new("SelectionBox")
+        box.Adornee = part
+        box.LineThickness = 0.05
+        box.Color3 = WALL_TEPI
+        box.SurfaceTransparency = 1
+        box.Visible = true
+        box.Parent = part   -- ikut terhapus otomatis kalau part-nya dihancurkan game
+        wallBoxes[part] = box
+    end)
 end
 Setters.Walls = function(v, silent)
     if State.WallsOn == v then return end
@@ -1782,7 +1790,11 @@ Setters.Walls = function(v, silent)
                 end
             end)
         end
+        for _, box in pairs(wallBoxes) do
+            pcall(function() box:Destroy() end)
+        end
         table.clear(wallOriginal)
+        table.clear(wallBoxes)
     end
     syncNotify("Walls", v, silent, "Dinding Batas")
 end
@@ -1920,9 +1932,7 @@ Setters.Fall = function(v, silent)
                     local dekat = (fallState.groundY ~= nil) and (hrp.Position.Y - fallState.groundY) < 60
                     if dekat or (now - fallState.lastRay) >= 0.1 then
                         fallState.lastRay = now
-                        local filter = {workspace:FindFirstChild("TiangPath_Silau")}
-                        if char then table.insert(filter, char) end
-                        fallRay.FilterDescendantsInstances = filter
+                        fallRay.FilterDescendantsInstances = char and {char} or {}
                         local r = workspace:Raycast(hrp.Position, Vector3.new(0, -800, 0), fallRay)
                         if r then fallState.groundY = r.Position.Y else fallState.groundY = nil end
                     end
@@ -1998,6 +2008,7 @@ resetAll = function()
     setFeature("Shift", false, true)
     setFeature("Moon", false, true)
     setFeature("Hide", false, true)
+    setFeature("Players", false, true)
     setFeature("LW", false, true)
     setFeature("Walls", false, true)
     setFeature("Light", false, true)
@@ -2024,7 +2035,7 @@ end
 unloadScript = function()
     if State.Removed then return end
     State.Removed = true
-    -- 1) Matikan semua fitur KING (restore visual, kendaraan, dinding, cahaya, fall)
+    -- 1) Matikan semua fitur (restore visual, kendaraan, dinding, cahaya, fall)
     pcall(setFeature, "Speed", false, true)
     pcall(setFeature, "Jump", false, true)
     pcall(setFeature, "Shift", false, true)
@@ -2044,12 +2055,12 @@ unloadScript = function()
         pcall(function() fallState.conn:Disconnect() end)
         fallState.conn = nil
     end
-    -- 4) Disconnect SEMUA event yang di-catat lewat catat()
+    -- 3) Disconnect SEMUA event yang di-catat lewat catat()
     for _, c in ipairs(semuaKoneksi) do
         pcall(function() c:Disconnect() end)
     end
     table.clear(semuaKoneksi)
-    -- 6) Restore Lighting ke kondisi awal (hanya kalau Cahaya pernah ON)
+    -- 4) Restore Lighting ke kondisi awal (hanya kalau Cahaya pernah ON)
     pcall(function()
         if lightPernahAktif and oLight then
             Lighting.ClockTime = oLight.ClockTime
@@ -2060,7 +2071,7 @@ unloadScript = function()
             Lighting.FogEnd = oLight.FogEnd
         end
     end)
-    -- 7) Restore Terrain water (kalau LW pernah diaktifkan)
+    -- 5) Restore Terrain water (kalau LW pernah diaktifkan)
     pcall(function()
         if Original then
             if Original.GlobalShadows ~= nil then Lighting.GlobalShadows = Original.GlobalShadows end
@@ -2068,7 +2079,7 @@ unloadScript = function()
             if Original.WaterWaveSpeed ~= nil then Terrain.WaterWaveSpeed = Original.WaterWaveSpeed end
         end
     end)
-    -- 8) Reset karakter: WalkSpeed, JumpPower, JumpHeight, AutoRotate
+    -- 6) Reset karakter: WalkSpeed, JumpPower, JumpHeight, AutoRotate
     pcall(function()
         local char = LocalPlayer.Character
         if char then
@@ -2084,7 +2095,7 @@ unloadScript = function()
             end
         end
     end)
-    -- 9) Restore player lain yang di-hide
+    -- 7) Restore player lain yang di-hide
     pcall(function()
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LocalPlayer and plr.Character then
@@ -2102,20 +2113,20 @@ unloadScript = function()
             end
         end
     end)
-    -- 10) Status label ikut ScreenGui dihancurkan (tidak perlu reset manual)
-    -- 11) Hapus ScreenGui (parent dari semua UI: panel, notif, footer, dll)
+    -- 8) Reset status label
+    -- 9) Hapus ScreenGui (parent dari semua UI: panel, notif, footer, dll)
     pcall(function() if screenGui then screenGui:Destroy() end end)
-    -- 12) Clear global flag supaya script bisa di-execute lagi
-    _G.__SILAU_BALAPAN_MAIN__ = nil
+    -- 10) Clear global flag supaya script bisa di-execute lagi
+    _G.__BALAP_MAIN__ = nil
     _G.__KS_DELETE_ARMED__ = nil
-    -- 13) Destroy script itu sendiri (kalau via LocalScript)
+    -- 11) Destroy script itu sendiri (kalau via LocalScript)
     pcall(function()
         if script and script.Parent then
             script.Disabled = true
             script:Destroy()
         end
     end)
-    print("[SilauBalapan] Script dihapus total — semua dibersihkan ✔")
+    print("[BALAP] Script dihapus total — semua dibersihkan ✔")
 end
 
 -- KARAKTER: PASANG ULANG SAAT RESPAWN
@@ -2202,6 +2213,7 @@ minBtn.MouseButton1Click:Connect(function()
 end)
 buatDraggable(header, root)
 
+
 -- [21] KEYBIND -------------------------------------------------------
 local lastK = 0
 catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -2242,14 +2254,11 @@ afkStatusUpdate()
 updateSpeedLabel()
 setTab(1)  -- 🏃 GERAK jadi tab pertama
 task.delay(0.15, bukaGui)
-task.delay(1.0, function()
-    toast("🏁 SILAU BALAPAN siap — F buka panel • Q speed • K×2 rejoin", Warna.Biru)
-end)
-print("[SilauBalapan v" .. VERSI .. "] SIAP ✔ — F = GUI | Q = speed ON/OFF | K×2 = rejoin")
-print("[SilauBalapan] 3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM")
-print("[SilauBalapan] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
-print("[SilauBalapan]           B fall assist • R hide • T cahaya 2-arah • X dinding • K×2 rejoin")
-print("[SilauBalapan] Hide Pemain Lain: toggle di Tab VISUAL — tanpa keybind")
+print("[BALAP v" .. VERSI .. "] SIAP ✔ — F = GUI | K×2 = rejoin")
+print("[BALAP] 3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM")
+print("[BALAP] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
+print("[BALAP]           B fall assist • R hide • T cahaya 2-arah • X dinding • K×2 rejoin")
+print("[BALAP] Fitur dinding (X) dari skrip lain sudah jadi 1 dengan script balapan")
 end -- akhir initLogic()
 
 -- Eksekusi initLogic() sekarang (UI + helpers sudah siap dari part1-4)
