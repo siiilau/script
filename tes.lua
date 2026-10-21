@@ -1,7 +1,7 @@
 --[[
         ═══════════════════════════════════════════════════════════════════
-          SIIILAU · v1.01 FUSION EDITION
-          CINEMATIC + FOTO (v12)  ·  FREE/PRO CAM + TARGET LOCK (v11)
+          CAMERA · v1.0.1  —  ALL-IN-ONE CINEMATIC CAMERA
+          CINEMATIC + FOTO (v12)  ·  FREE/PRO CAM + TARGET LOCK (v11)  ·  RACE CAM
         ═══════════════════════════════════════════════════════════════════
           KEYBINDS :
             1        = FREE CAM            (tekan lagi = mati)
@@ -25,7 +25,9 @@
           CATATAN :
             • Mesin FREE/PRO + target lock dari GALAXY v11 (halus & anti menggeleng)
             • CINEMATIC 12 shot · 2 kategori: CLOSE (1 objek) / WIDE (kerumunan, jarak otomatis)
-            • RACE CAM 10 shot balap (tombol 4): mobil, heli, perahu — ikut target lock
+            • Transisi antar shot di-BLEND mulus (anti kaget) + koreksi dinding lembut
+            • RACE CAM 10 shot balap (tombol 4): kamera jauh & tinggi
+              (depan kanan atas / kiri depan atas / belakang atas) — tanpa shot dari dalam kabin
             • Target lock 3 cara: T (terdekat dari kamera) · AUTO LOCK · pilih sendiri
             • Tombol KE KARAKTER UTAMA = kamera terbang mulus balik ke kamu
             • RESET SCRIPT di tab SISTEM = semua setting balik default
@@ -41,8 +43,11 @@
 ]]
 
 -- ═══════════════ ANTI DUPLIKAT ═══════════════
+if _G.CAMERA_V101_UNLOAD then
+        pcall(_G.CAMERA_V101_UNLOAD)
+end
 if _G.SIIILAU_CAM_UNLOAD then
-        pcall(_G.SIIILAU_CAM_UNLOAD)
+        pcall(_G.SIIILAU_CAM_UNLOAD) -- bersihkan sisa versi lama (SIIILAU)
 end
 task.wait(0.05)
 
@@ -63,6 +68,8 @@ local CFG = {
         FOV       = 70,   -- FOV free/pro cam
         TeleDist  = 7,    -- jarak teleport di belakang layar (langkah)
         CineTempo = 5.5,  -- durasi rata-rata tiap shot sinematik (detik)
+        CineBlend = 0.9,  -- durasi larut transisi antar shot (detik) — perpindahan shot mulus anti kaget
+        CineSoft  = 20,   -- kelembutan koreksi anti-temboss: kamera menyusul posisi aman tanpa menyentak
         CrowdRadius = 24, -- radius deteksi kerumunan → pilih shot WIDE & kamera mundur otomatis
         Letterbox = true, -- letterbox bioskop otomatis di SEMUA mode kamera
         AntiClip  = true, -- kamera anti-temboss: tak masuk dinding/tanah & tak terhalang
@@ -145,6 +152,11 @@ local S = {
                 char = nil,
                 dofK = 0,
                 focusDist = 10,
+                blendFrom = nil, -- pose kamera lama (transisi antar shot dilarutkan mulus)
+                blendFov = 70,
+                blendDof = 0,
+                blendT = 0,
+                smCf = nil,      -- pose terhalus terakhir (koreksi dinding tak menyentak)
         },
         -- race director (RACE CAM — mode 4, kendaraan)
         race = {
@@ -159,6 +171,11 @@ local S = {
                 focusDist = 10,
                 lastFwd = nil,
                 turn = 0,
+                blendFrom = nil, -- transisi antar shot balap juga dilarutkan mulus
+                blendFov = 70,
+                blendDof = 0,
+                blendT = 0,
+                smCf = nil,
         },
         -- layer foto
         foto = {
@@ -256,7 +273,7 @@ end
 
 -- ═══════════════ POST EFFECTS (client-side) ═══════════════
 DOF = Instance.new("DepthOfFieldEffect")
-DOF.Name = "SIIILAU_DOF"
+DOF.Name = "CAMERA_DOF"
 DOF.Enabled = false
 DOF.NearIntensity = 0
 DOF.FarIntensity = 0.35
@@ -265,12 +282,12 @@ DOF.InFocusRadius = 7
 DOF.Parent = Lighting
 
 PHOTO_CC = Instance.new("ColorCorrectionEffect")
-PHOTO_CC.Name = "SIIILAU_FOTO_CC"
+PHOTO_CC.Name = "CAMERA_FOTO_CC"
 PHOTO_CC.Enabled = false
 PHOTO_CC.Parent = Lighting
 
 PHOTO_BLOOM = Instance.new("BloomEffect")
-PHOTO_BLOOM.Name = "SIIILAU_FOTO_BLOOM"
+PHOTO_BLOOM.Name = "CAMERA_FOTO_BLOOM"
 PHOTO_BLOOM.Enabled = false
 PHOTO_BLOOM.Intensity = 0.3
 PHOTO_BLOOM.Size = 24
@@ -312,7 +329,7 @@ end
 
 -- bersihkan GUI versi lama
 do
-        local names = { "SIIILAU_v1_01", "SIIILAUxCAMERAPRO", "SIIILAU_GALAXY_CAM" }
+        local names = { "CAMERA_v1_0_1", "SIIILAU_v1_01", "SIIILAUxCAMERAPRO", "SIIILAU_GALAXY_CAM" }
         local cands = {}
         local okH, hui = pcall(function()
                 if type(gethui) == "function" then
@@ -344,7 +361,7 @@ do
 end
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "SIIILAU_v1_01"
+gui.Name = "CAMERA_v1_0_1"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.DisplayOrder = 999999
@@ -463,7 +480,7 @@ UI.wm = new("TextLabel", {
         BackgroundTransparency = 0.35,
         BorderSizePixel = 0,
         Font = Enum.Font.GothamBold,
-        Text = " SIIILAU v1.01 ",
+        Text = " CAMERA v1.0.1 ",
         TextColor3 = CFG.TXT,
         TextSize = 10,
         Visible = false,
@@ -503,7 +520,7 @@ UI.title = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 8),
         Size = UDim2.new(1, -60, 0, 22),
         Font = Enum.Font.GothamBlack,
-        Text = "SIIILAU<font color=\"#FF2DAA\"> v1.01</font>",
+        Text = "CAMERA<font color=\"#FF2DAA\"> v1.0.1</font>",
         RichText = true,
         TextColor3 = CFG.TXT,
         TextSize = 16,
@@ -516,7 +533,7 @@ UI.sub = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 31),
         Size = UDim2.new(1, -60, 0, 14),
         Font = Enum.Font.GothamMedium,
-        Text = "v1.01 · FUSION EDITION · 1/2/3 = MODE",
+        Text = "v1.0.1 · 1/2/3/4 = MODE",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -1065,7 +1082,7 @@ do
         g.Enabled = true
         shotBtn.TextColor3 = Color3.fromRGB(10, 10, 18)
 end
-makeToggle(UI.tabFOTO, "WATERMARK SIIILAUxCAMERAPRO", false, function(state)
+makeToggle(UI.tabFOTO, "WATERMARK CAMERA", false, function(state)
         setWatermark(state)
 end, 12)
 
@@ -1992,7 +2009,7 @@ function refreshCamFilter()
         local subj = getSubjectChar()
         if subj and subj.Parent then
                 table.insert(list, subj)
-                -- kendaraan yang ditunggangi target juga dikecualikan (RACE CAM / cockpit)
+                -- kendaraan yang ditunggangi target juga dikecualikan (RACE CAM)
                 local shum = subj:FindFirstChildOfClass("Humanoid")
                 local sseat = shum and shum.SeatPart or nil
                 if sseat then
@@ -2626,6 +2643,7 @@ local function startShot()
         local cat = (crowd >= 2) and "WIDE" or "CLOSE"
         local name = pickShot(cat)
         local def = SHOTS[name]
+        local gantiSubjek = (S.cine.char ~= nil) and (ctx.char ~= S.cine.char)
         S.cine.name = name
         S.cine.lastName = name
         S.cine.def = def
@@ -2635,6 +2653,18 @@ local function startShot()
         S.cine.crowd = crowd
         -- makin ramai → jarak kamera makin jauh (dm sampai ~1.7x)
         S.cine.P = { crowd = crowd, dm = 1 + math.min(crowd, 6) * 0.12, wide = (cat == "WIDE") }
+        -- TRANSISI MULUS: simpan pose kamera sekarang sebagai titik awal larutan
+        -- (perpindahan antar shot tidak lagi menyentak — anti kaget)
+        if gantiSubjek then
+                -- ganti subjek: snap bersih + reset penghalus (hindari swoop lintas map)
+                S.cine.blendFrom = nil
+                S.cine.smCf = nil
+        else
+                S.cine.blendFrom = Camera.CFrame
+                S.cine.blendFov = Camera.FieldOfView
+                S.cine.blendDof = S.cine.dofK or 0
+                S.cine.blendT = 0
+        end
         if def and def.enter then
                 def.enter(ctx, S.cine.P)
         end
@@ -2658,11 +2688,28 @@ local function cineUpdate(dt)
         local cf, fov, dofK = S.cine.def.update(S.cine.P, S.cine.t, dt, ctx)
         -- breathing FOV halus biar hidup
         fov = fov + math.sin(os.clock() * 1.2) * 1.2
+        -- BLEND TRANSISI ANTAR SHOT: pose lama dilarutkan halus ke shot baru (anti kaget)
+        if S.cine.blendFrom then
+                S.cine.blendT = S.cine.blendT + dt
+                local a = smoothstep(S.cine.blendT / math.max(CFG.CineBlend, 0.1))
+                if a >= 1 then
+                        S.cine.blendFrom = nil
+                else
+                        cf = S.cine.blendFrom:Lerp(cf, a)
+                        fov = S.cine.blendFov + (fov - S.cine.blendFov) * a
+                        dofK = S.cine.blendDof + ((dofK or 0) - S.cine.blendDof) * a
+                end
+        end
         -- ANTI-TEMBOSS: shot tidak menembus dinding/tanah & tidak terhalang
         local p = safeOrbit(ctx.head, cf.Position)
         if p ~= cf.Position then
                 cf = CFrame.new(p) * cf.Rotation
         end
+        -- PENGHALUS AKHIR: koreksi dinding/obstacle disusul lembut, tidak menyentak
+        if S.cine.smCf then
+                cf = S.cine.smCf:Lerp(cf, 1 - math.exp(-CFG.CineSoft * dt))
+        end
+        S.cine.smCf = cf
         Camera.CFrame = cf
         Camera.FieldOfView = fov
         S.cine.dofK = dofK or 0
@@ -2680,7 +2727,7 @@ RSHOTS["LOW REAR CHASE"] = {
         pick = function(ctx) return 3 + ctx.spk * 4 end,
         enter = function(ctx, P)
                 P.dir = ctx.fwd
-                P.d = rr(10, 15)
+                P.d = rr(13, 18)
                 P.h = rr(-0.6, 0.6)
                 P.fov = rr(58, 66)
                 seedSway(P, 1.3)
@@ -2688,7 +2735,7 @@ RSHOTS["LOW REAR CHASE"] = {
         update = function(P, t, dt, ctx)
                 local dir = smoothDir(P, ctx, dt, 2.8)
                 local fov = P.fov + ctx.spk * 18
-                local p = ctx.pos - dir * (P.d + ctx.spk * 4) + Vector3.new(0, P.h, 0) + sway(P, t, 0.18)
+                local p = ctx.pos - dir * (P.d + ctx.spk * 5) + Vector3.new(0, P.h, 0) + sway(P, t, 0.16)
                 return CFrame.lookAt(p, ctx.pos + dir * 6), fov, closeDof(P.d, 5)
         end,
 }
@@ -2698,7 +2745,7 @@ RSHOTS["FRONT LEAD SHOT"] = {
         pick = function(ctx) return 2.5 + ctx.spk * 2 end,
         enter = function(ctx, P)
                 P.dir = ctx.fwd
-                P.d = rr(10, 15)
+                P.d = rr(13, 18)
                 P.h = rr(0.6, 1.6)
                 P.fov = rr(52, 60)
                 seedSway(P, 1)
@@ -2715,7 +2762,7 @@ RSHOTS["SIDE-BY-SIDE TRACK"] = {
         pick = function(ctx) return 3 + ctx.spk * 2 end,
         enter = function(ctx, P)
                 P.dir = ctx.fwd
-                P.side = (math.random() < 0.5 and -1 or 1) * rr(8, 13)
+                P.side = (math.random() < 0.5 and -1 or 1) * rr(11, 16)
                 P.lead = rr(2, 5)
                 P.h = rr(0.4, 1.4)
                 P.fov = rr(56, 64)
@@ -2736,7 +2783,7 @@ RSHOTS["LOW FRONT THREE-QUARTER"] = {
                 P.dir = ctx.fwd
                 P.ang = rr(0.45, 0.9) -- 26°-52° dari depan
                 P.side = (math.random() < 0.5 and -1 or 1)
-                P.d0 = rr(7, 11)
+                P.d0 = rr(9, 13)
                 P.h = rr(-0.4, 0.4)
                 P.fov = rr(44, 54)
                 seedSway(P, 0.9)
@@ -2757,7 +2804,7 @@ RSHOTS["PASS-BY SHOT"] = {
         enter = function(ctx, P)
                 local vdir = (ctx.speed > 1) and flatUnit(ctx.vel) or ctx.fwd
                 local right = Vector3.new(-vdir.Z, 0, vdir.X)
-                P.spot = ctx.pos + vdir * ctx.speed * rr(1.1, 1.8) + right * (math.random() < 0.5 and -1 or 1) * rr(4, 8) + Vector3.new(0, rr(0.8, 2), 0)
+                P.spot = ctx.pos + vdir * ctx.speed * rr(1.1, 1.8) + right * (math.random() < 0.5 and -1 or 1) * rr(6, 10) + Vector3.new(0, rr(1.2, 2.6), 0)
                 P.fov = rr(50, 58)
                 P.cut = false
                 seedSway(P, 0.5)
@@ -2779,7 +2826,7 @@ RSHOTS["PANNING CORNER SHOT"] = {
         pick = function(ctx) return (math.abs(ctx.turn) > 0.3) and 4.5 or 0.4 end,
         enter = function(ctx, P)
                 local side = (ctx.turn > 0 and 1 or -1) -- sisi luar tikungan
-                P.spot = ctx.pos + ctx.right * side * rr(9, 14) + ctx.fwd * rr(2, 6) + Vector3.new(0, rr(1.5, 3), 0)
+                P.spot = ctx.pos + ctx.right * side * rr(11, 16) + ctx.fwd * rr(2, 6) + Vector3.new(0, rr(1.5, 3), 0)
                 P.fov = rr(48, 58)
                 seedSway(P, 0.5)
         end,
@@ -2794,7 +2841,7 @@ RSHOTS["OVERTAKE SHOT"] = {
         pick = function(ctx) return 2 + ctx.spk * 2.5 end,
         enter = function(ctx, P)
                 P.dir = ctx.fwd
-                P.side = (math.random() < 0.5 and -1 or 1) * rr(3.5, 6)
+                P.side = (math.random() < 0.5 and -1 or 1) * rr(5, 8)
                 P.h = rr(0.6, 1.6)
                 P.fov = rr(60, 68)
                 seedSway(P, 1.2)
@@ -2803,7 +2850,7 @@ RSHOTS["OVERTAKE SHOT"] = {
                 local dir = smoothDir(P, ctx, dt, 2.4)
                 local perp = Vector3.new(-dir.Z, 0, dir.X)
                 local k = smoothstep(t / math.max(S.race.dur, 0.1))
-                local along = -12 + 25 * k -- dari belakang → depan
+                local along = -15 + 30 * k -- dari belakang → depan (sapuan lebih lebar)
                 local p = ctx.pos + dir * along + perp * P.side + Vector3.new(0, P.h, 0) + sway(P, t, 0.12)
                 return CFrame.lookAt(p, ctx.pos + dir * 2), P.fov + ctx.spk * 6, closeDof(math.abs(along), 6)
         end,
@@ -2816,7 +2863,7 @@ RSHOTS["WHEEL & TIRE CLOSE-UP"] = {
                 P.dir = ctx.fwd
                 P.ang = rr(0.6, 1.1)
                 P.side = (math.random() < 0.5 and -1 or 1)
-                P.d = rr(3.2, 4.6)
+                P.d = rr(4.2, 5.6)
                 P.h = rr(-1.3, -0.7) -- setinggi roda
                 P.fov = rr(34, 44)
                 seedSway(P, 0.8)
@@ -2829,19 +2876,38 @@ RSHOTS["WHEEL & TIRE CLOSE-UP"] = {
         end,
 }
 
--- 9. COCKPIT POV — sudut pandang pengemudi dari dalam kabin
-RSHOTS["COCKPIT POV"] = {
-        pick = function(ctx) return 2 end,
+-- 9. HIGH MOUNT TRACK — kamera jauh & tinggi menempel arah kendaraan:
+--    depan kanan atas / kiri depan atas / belakang atas (pengganti COCKPIT POV
+--    — tidak ada lagi shot dari dalam kabin/badan karakter)
+RSHOTS["HIGH MOUNT TRACK"] = {
+        pick = function(ctx) return 3.2 end,
         enter = function(ctx, P)
-                P.dirMode = "look"
                 P.dir = ctx.fwd
-                P.fov = rr(66, 76)
-                seedSway(P, 1.4)
+                local mode = math.random(1, 3)
+                if mode == 1 then
+                        -- depan kanan atas
+                        P.along = rr(6, 10)
+                        P.side = rr(6, 9)
+                        P.h = rr(3.5, 5.5)
+                elseif mode == 2 then
+                        -- kiri depan atas
+                        P.along = rr(6, 10)
+                        P.side = -rr(6, 9)
+                        P.h = rr(3.5, 5.5)
+                else
+                        -- belakang atas
+                        P.along = -rr(8, 13)
+                        P.side = rr(-2, 2)
+                        P.h = rr(4, 6)
+                end
+                P.fov = rr(48, 58)
+                seedSway(P, 0.9)
         end,
         update = function(P, t, dt, ctx)
-                local dir = smoothDir(P, ctx, dt, 3)
-                local p = ctx.pos + ctx.fwd * 0.4 + Vector3.new(0, 0.5, 0) + sway(P, t, 0.04)
-                return CFrame.lookAt(p, p + dir), P.fov, 0
+                local dir = smoothDir(P, ctx, dt, 2.2)
+                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                local p = ctx.pos + dir * P.along + perp * P.side + Vector3.new(0, P.h, 0) + sway(P, t, 0.1)
+                return CFrame.lookAt(p, ctx.pos + dir * 3), P.fov, 0
         end,
 }
 
@@ -2849,7 +2915,7 @@ RSHOTS["COCKPIT POV"] = {
 RSHOTS["DRIFT ARC SHOT"] = {
         pick = function(ctx) return ctx.drift and 6 or ((math.abs(ctx.turn) > 0.25) and 2.5 or 0.5) end,
         enter = function(ctx, P)
-                P.r = rr(8, 12)
+                P.r = rr(11, 15)
                 P.ang = math.atan2(ctx.fwd.Z, ctx.fwd.X) -- mulai searah kendaraan
                 P.spin = (ctx.turn >= 0 and 1 or -1) * math.rad(rr(24, 40))
                 P.h = rr(0.8, 1.8)
@@ -2978,6 +3044,7 @@ local function startRaceShot()
         local ctx = raceCtx()
         local name = racePick(ctx)
         local def = RSHOTS[name]
+        local gantiSubjek = (S.race.char ~= nil) and (ctx.char ~= S.race.char)
         S.race.name = name
         S.race.lastName = name
         S.race.def = def
@@ -2985,6 +3052,16 @@ local function startRaceShot()
         S.race.dur = math.clamp(CFG.CineTempo + rr(-1, 1.2), 2.5, 9)
         S.race.char = ctx.char
         S.race.P = {}
+        -- TRANSISI MULUS (sama dengan cinematic): larutkan pose lama ke shot baru
+        if gantiSubjek then
+                S.race.blendFrom = nil
+                S.race.smCf = nil
+        else
+                S.race.blendFrom = Camera.CFrame
+                S.race.blendFov = Camera.FieldOfView
+                S.race.blendDof = S.race.dofK or 0
+                S.race.blendT = 0
+        end
         if def and def.enter then
                 def.enter(ctx, S.race.P)
         end
@@ -3011,11 +3088,28 @@ local function raceUpdate(dt)
         local cf, fov, dofK = S.race.def.update(S.race.P, S.race.t, dt, ctx)
         -- breathing FOV halus biar hidup
         fov = fov + math.sin(os.clock() * 1.2) * 1.2
+        -- BLEND TRANSISI ANTAR SHOT BALAP: pose lama dilarutkan halus (anti kaget)
+        if S.race.blendFrom then
+                S.race.blendT = S.race.blendT + dt
+                local a = smoothstep(S.race.blendT / math.max(CFG.CineBlend, 0.1))
+                if a >= 1 then
+                        S.race.blendFrom = nil
+                else
+                        cf = S.race.blendFrom:Lerp(cf, a)
+                        fov = S.race.blendFov + (fov - S.race.blendFov) * a
+                        dofK = S.race.blendDof + ((dofK or 0) - S.race.blendDof) * a
+                end
+        end
         -- ANTI-TEMBOSS: shot balap juga tak menembus dinding/tanah
         local p = safeOrbit(ctx.pos, cf.Position)
         if p ~= cf.Position then
                 cf = CFrame.new(p) * cf.Rotation
         end
+        -- PENGHALUS AKHIR: koreksi dinding disusul lembut, tidak menyentak
+        if S.race.smCf then
+                cf = S.race.smCf:Lerp(cf, 1 - math.exp(-CFG.CineSoft * dt))
+        end
+        S.race.smCf = cf
         Camera.CFrame = cf
         Camera.FieldOfView = fov
         S.race.dofK = dofK or 0
@@ -3030,7 +3124,7 @@ local function bindSpace()
                 return
         end
         boundSpace = true
-        ContextActionService:BindAction("SIIILAU_TURBO", function(_, state)
+        ContextActionService:BindAction("CAMERA_TURBO", function(_, state)
                 if state == Enum.UserInputState.Begin then
                         if S.mode == "FREE" and not UserInputService:GetFocusedTextBox() then
                                 S.turbo = true
@@ -3054,7 +3148,7 @@ local function unbindSpace()
         boundSpace = false
         S.turbo = false
         pcall(function()
-                ContextActionService:UnbindAction("SIIILAU_TURBO")
+                ContextActionService:UnbindAction("CAMERA_TURBO")
         end)
 end
 
@@ -3161,16 +3255,20 @@ function setMode(m)
         elseif m == "CINE" then
                 Camera.CameraType = Enum.CameraType.Scriptable
                 S.cine.def = nil
+                S.cine.smCf = nil
+                S.cine.blendFrom = nil
                 setAnchorState() -- karakter beku total, biar shot tetap rapi
-                notify("CINEMATIC — shot otomatis + cut langsung · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s", 1.4)
+                notify("CINEMATIC — 12 shot · transisi antar shot mulus (anti kaget) · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s", 1.4)
         elseif m == "RACE" then
                 Camera.CameraType = Enum.CameraType.Scriptable
                 S.race.def = nil
                 S.race.lastName = ""
                 S.race.turn = 0
                 S.race.lastFwd = nil
+                S.race.smCf = nil
+                S.race.blendFrom = nil
                 setAnchorState() -- RACE tidak beku: kamu tetap menyetir selagi kamera merekam
-                notify("RACE CAM — 10 shot balap otomatis · keluar kendaraan = mati sendiri", 1.4)
+                notify("RACE CAM — 10 shot balap · kamera jauh & tinggi · keluar kendaraan = mati sendiri", 1.4)
         end
         refreshModeUI()
         updateChip()
@@ -3463,8 +3561,9 @@ function unloadAll()
         table.clear(CONNS)
         unbindSpace()
         pcall(function()
-                ContextActionService:UnbindAction("SIIILAU_TURBO")
-                ContextActionService:UnbindAction("SIIILAU_SPACE")
+                ContextActionService:UnbindAction("CAMERA_TURBO")
+                ContextActionService:UnbindAction("CAMERA_SPACE")
+                ContextActionService:UnbindAction("SIIILAU_TURBO") -- sisa versi lama
         end)
         pcall(function()
                 if S.lightConn then
@@ -3504,10 +3603,11 @@ function unloadAll()
         pcall(function()
                 gui:Destroy()
         end)
+        _G.CAMERA_V101_UNLOAD = nil
         _G.SIIILAU_CAM_UNLOAD = nil
-        print("[SIIILAU v1.01] script dihapus — sampai jumpa!")
+        print("[CAMERA v1.0.1] script dihapus — sampai jumpa!")
 end
-_G.SIIILAU_CAM_UNLOAD = unloadAll
+_G.CAMERA_V101_UNLOAD = unloadAll
 
 -- ═══════════════ INISIALISASI ═══════════════
 setAnchorState()
@@ -3518,4 +3618,4 @@ setFilter("OFF")
 setRatio("FULL")
 applyLetterbox()
 applyUIVisibility()
-notify("V.1.01 SIIILAU siap — 1/2/3 mode kamera · karakter beku saat kamera/CapsLock ON", 5)
+notify("CAMERA v1.0.1 siap — 1/2/3/4 mode kamera · transisi shot mulus · karakter beku saat kamera/CapsLock ON", 5)
