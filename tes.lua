@@ -8,12 +8,13 @@
             2        = PRO CAM             (tekan lagi = mati)
             3        = CINEMATIC MODE      (tekan lagi = mati)
             4        = RACE CAM            (kamera balap — naik kendaraan dulu)
-            CapsLock = MASTER kamera ON/OFF (OFF = semua keybind mati, Z tetap hidup)
+            CapsLock = MASTER fitur kamera ON/OFF (F · Z · K · J tetap hidup)
             F        = buka / tutup panel
             M        = MODE FOTO on/off (letterbox + layer foto)
             T        = lock target TERDEKAT DARI KAMERA / unlock
             C        = teleport ke belakang layar
             Z        = CAHAYA AUTO 2 arah (malam diterangi · siang dilembutkan)
+            J        = GERAK ⇄ BEKU karakter (tekan J gerak · J lagi diam total)
             H        = sembunyikan semua UI (layar bersih)
             K (2x)   = hapus script
             RMB      = lihat sekeliling (FREE / PRO)
@@ -38,8 +39,9 @@
             • ANTI-TEMBOSS: CINE/RACE penuh (dinding+tanah) · FREE/PRO tanah saja
             • Dinding boleh ditembus di FREE/PRO — benturan dinding tidak bikin kamera getar
             • Letterbox bioskop otomatis di SEMUA mode kamera (FREE/PRO/CINE/FOTO)
-            • CapsLock = MASTER semua fitur kamera: OFF (default saat dibuka) = keybind MATI
-              total (anti salah tekan 1/2 pas ambil item) · hanya Z cahaya yang berdiri sendiri
+            • CapsLock = MASTER fitur kamera: OFF (default saat dibuka) = keybind kamera MATI
+              (anti salah tekan 1/2 pas ambil item) · F · Z · K · J berdiri sendiri (mandiri)
+            • Tombol J: tekan = karakter bisa gerak · tekan lagi = beku diam TOTAL (tanpa analog)
             • Semua efek client-side — cuma terlihat di layar kamu
             • Aman di-execute ulang kapan saja (auto bersihkan versi lama)
         ═══════════════════════════════════════════════════════════════════
@@ -114,7 +116,8 @@ local CFG = {
 -- ═══════════════ STATE ═══════════════
 local S = {
         mode = "NONE", -- NONE | FREE | PRO | CINE
-        master = false,       -- CapsLock MASTER: false = semua fitur kamera mati (kecuali Z) · true = semua keybind hidup
+        master = false,       -- CapsLock MASTER fitur kamera: false = keybind kamera mati (F/Z/K/J tetap hidup)
+        gerakMode = nil,      -- tombol J: nil = otomatis · "GERAK" = boleh jalan · "BEKU" = diam total
         lastMode = "NONE",    -- mode terakhir yang dipakai
         panelOpen = true,
         uiHidden = false,
@@ -219,7 +222,7 @@ local setMode, toggleLock, doTeleport, toggleCahaya, matikanCahaya, goToSelf, re
 local getSubjectChar, refreshTargetList, refreshModeUI, updateLockBtn
 local setFilter, setRatio, takePhoto, setWatermark
 local updateRatioMasks
-local findNearestPlayer, lockPick, lockAutoToggle, setMaster
+local findNearestPlayer, lockPick, lockAutoToggle, setMaster, toggleGerak
 
 -- ═══════════════ UTIL ═══════════════
 local function flat(v)
@@ -918,37 +921,40 @@ secLabel(UI.tabSISTEM, "Utilitas", 4)
 UI.waktuBtn = makePill(UI.tabSISTEM, "Z · CAHAYA AUTO (2 ARAH) · OFF", 32, 5, function()
         toggleCahaya()
 end)
-makeToggle(UI.tabSISTEM, "BEKUKAN KARAKTER (KAMERA/CAPSLOCK)", CFG.Anchor, function(state)
+UI.gerakBtn = makePill(UI.tabSISTEM, "J · GERAK ⇄ BEKU KARAKTER", 32, 6, function()
+        toggleGerak()
+end)
+makeToggle(UI.tabSISTEM, "BEKUKAN KARAKTER (KAMERA/MASTER)", CFG.Anchor, function(state)
         CFG.Anchor = state
         setAnchorState()
-end, 6)
+end, 7)
 makeToggle(UI.tabSISTEM, "LETTERBOX SINEMATIK (SEMUA MODE)", CFG.Letterbox, function(state)
         CFG.Letterbox = state
         applyLetterbox()
-end, 7)
+end, 8)
 makeToggle(UI.tabSISTEM, "KAMERA ANTI-TEMBOSS (FREE/PRO TANAH SAJA)", CFG.AntiClip, function(state)
         CFG.AntiClip = state
-end, 8)
+end, 9)
 
-secLabel(UI.tabSISTEM, "Keybind", 8)
+secLabel(UI.tabSISTEM, "Keybind", 10)
 new("TextLabel", {
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 86),
         Font = Enum.Font.GothamMedium,
-        Text = "CapsLock · MASTER kamera (OFF = semua keybind mati)\n1/2/3/4 mode · F panel · M foto · T lock · C teleport\nZ cahaya auto (SELALU HIDUP, tanpa CapsLock)\nH hide UI · K 2x hapus · RMB lihat · Scroll zoom/FOV\nSpace (tahan) turbo · Ctrl slow cinematic (FREE)",
+        Text = "CapsLock · MASTER kamera (OFF = keybind kamera mati)\n1/2/3/4 mode · M foto · T lock · C teleport · H hide UI\nF panel · Z cahaya · K 2x hapus · J gerak⇄beku (mandiri)\nRMB lihat · Scroll zoom/FOV · Space (tahan) turbo\nCtrl slow cinematic (FREE)",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
         TextYAlignment = Enum.TextYAlignment.Top,
-        LayoutOrder = 9,
+        LayoutOrder = 11,
         ZIndex = 6,
 }, UI.tabSISTEM)
 
-makePill(UI.tabSISTEM, "↻  RESET SCRIPT (BALIK KE DEFAULT)", 32, 10, function()
+makePill(UI.tabSISTEM, "↻  RESET SCRIPT (BALIK KE DEFAULT)", 32, 12, function()
         resetScript()
 end)
 
-local dangerBtn = makePill(UI.tabSISTEM, "K 2x · HAPUS SCRIPT", 32, 11, function()
+local dangerBtn = makePill(UI.tabSISTEM, "K 2x · HAPUS SCRIPT", 32, 13, function()
         unloadAll()
 end)
 dangerBtn.TextColor3 = CFG.DANGER
@@ -1255,8 +1261,7 @@ end
 -- ═══════════════ VISIBILITAS UI ═══════════════
 function applyUIVisibility()
         local vis = not S.uiHidden
-        -- panel cuma tampil saat CapsLock MASTER nyala (master off = panel ikut tersembunyi)
-        UI.panel.Visible = vis and S.panelOpen and S.master == true
+        UI.panel.Visible = vis and S.panelOpen
         UI.notifBox.Visible = vis
 end
 
@@ -1294,15 +1299,30 @@ function updateChip()
         return
 end
 
--- ═══════════════ KARAKTER BEKU (OTOMATIS) ═══════════════
--- Mode kamera aktif ATAU CapsLock MASTER nyala = karakter diam TOTAL di tempat:
--- tak bisa jalan, lari, lompat, jatuh, ataupun terdorong (bisa dimatikan di toggle SISTEM).
+-- ═══════════════ KARAKTER BEKU (OTOMATIS + TOMBOL J) ═══════════════
+-- OTOMATIS: mode kamera aktif ATAU CapsLock MASTER nyala = karakter diam TOTAL
+-- (tak bisa jalan, lari, lompat, jatuh, ataupun terdorong; RACE tetap bebas menyetir).
+-- TOMBOL J (mandiri, tanpa master): tekan J = bisa gerak · J lagi = beku total
+-- (diam seperti tidak ada analog/pergerakan) — bisa ditekan kapan saja.
+local function hitungBeku()
+        if not CFG.Anchor then
+                return false -- sistem beku dimatikan lewat toggle SISTEM
+        end
+        if S.gerakMode == "GERAK" then
+                return false -- J: boleh jalan walau kamera/master aktif
+        end
+        if S.gerakMode == "BEKU" then
+                return S.mode ~= "RACE" -- J: beku total walau master off
+        end
+        -- otomatis: kamera aktif / master nyala = beku (RACE dikecualikan biar tetap bisa menyetir)
+        return (S.master or S.mode ~= "NONE") and S.mode ~= "RACE"
+end
+
 function setAnchorState()
         if unloadDone then
                 return
         end
-        -- RACE CAM tidak membekukan karakter: kamu tetap menyetir selagi kamera merekam
-        local want = CFG.Anchor and (S.master or S.mode ~= "NONE") and S.mode ~= "RACE"
+        local want = hitungBeku()
         local hrp = getRoot(myChar())
         if hrp then
                 if want then
@@ -1311,6 +1331,18 @@ function setAnchorState()
                         hrp.AssemblyLinearVelocity = Vector3.zero
                         hrp.Anchored = false
                 end
+        end
+end
+
+-- J = GERAK ⇄ BEKU (mandiri): flip antara boleh jalan & diam total.
+-- Arah dideteksi otomatis: lagi beku → J melepas (bisa gerak), lagi bebas → J membekukan.
+function toggleGerak()
+        S.gerakMode = hitungBeku() and "GERAK" or "BEKU"
+        setAnchorState()
+        if S.gerakMode == "GERAK" then
+                notify("GERAK — karakter bisa jalan lagi (J lagi = bekukan)", 1.8)
+        else
+                notify("BEKU — karakter diam total, seperti tanpa analog (J lagi = gerak)", 1.8)
         end
 end
 
@@ -1781,9 +1813,11 @@ end
 -- Semua setting balik default: kamera off, cahaya normal, lock lepas,
 -- speed/FOV/teleport default, filter & rasio OFF/FULL
 function resetScript()
+        S.gerakMode = nil -- J balik ke aturan otomatis
         if S.mode ~= "NONE" then
                 setMode("NONE")
         end
+        setAnchorState() -- pastikan status beku sesuai aturan terbaru
         matikanCahaya(true)
         S.locked = false
         S.lockPlayer = nil
@@ -3339,18 +3373,19 @@ function setMode(m)
 end
 
 -- ═══════════════ CAPSLOCK = MASTER SEMUA FITUR KAMERA ═══════════════
--- CapsLock OFF (default saat script dibuka) = SEMUA fitur & keybind kamera MATI:
--- 1/2/3/4, F, M, T, C, H, K, RMB, Scroll — tekan 1/2 pas ambil item tidak akan
--- sengaja memindahkan mode kamera lagi. Hanya Z (cahaya auto) yang berdiri
--- sendiri tanpa master. CapsLock ON = semua keybind & fitur hidup seperti biasa.
+-- CapsLock OFF (default saat script dibuka) = keybind kamera MATI:
+-- 1/2/3/4, M, T, C, H, RMB, Scroll — tekan 1/2 pas ambil item tidak akan
+-- sengaja memindahkan mode kamera lagi. Yang BERDIRI SENDIRI (tanpa master):
+-- F buka/tutup panel · Z cahaya auto · K hapus script · J gerak/beku karakter.
+-- CapsLock ON = semua keybind & fitur kamera hidup seperti biasa.
 function setMaster(on)
         S.master = on and true or false
         S.uiHidden = false
         if S.master then
-                S.panelOpen = true -- panel langsung tampil biar jelas fitur sudah aktif
+                S.gerakMode = nil -- sesi filming baru: kembali ke aturan otomatis (beku)
                 setAnchorState()
                 applyUIVisibility()
-                notify("CAPSLOCK ON — semua keybind kamera AKTIF (1/2/3/4 · F · M · T · C)", 2.2)
+                notify("CAPSLOCK ON — keybind kamera AKTIF (1/2/3/4 · M · T · C)", 2.2)
         else
                 if S.mode ~= "NONE" then
                         setMode("NONE") -- matikan mode kamera + kembalikan kamera semula
@@ -3374,13 +3409,13 @@ function setMaster(on)
                 S.rmb = false
                 S.turbo = false
                 S.ctrlDown = false
-                S.panelOpen = false
+                S.gerakMode = nil -- balik ke aturan otomatis (master off = bebas gerak)
                 setAnchorState()
                 applyUIVisibility()
                 pcall(function()
                         UserInputService.MouseBehavior = Enum.MouseBehavior.Default
                 end)
-                notify("CAPSLOCK OFF — semua fitur kamera MATI (hanya Z cahaya yang tetap hidup)", 2.4)
+                notify("CAPSLOCK OFF — keybind kamera MATI (F · Z · K · J tetap hidup)", 2.4)
         end
 end
 
@@ -3417,6 +3452,27 @@ table.insert(CONNS, UserInputService.InputBegan:Connect(function(input, gp)
                 toggleCahaya()
                 return
         end
+        if kc == Enum.KeyCode.F then
+                -- F = buka/tutup panel: BERDIRI SENDIRI (bisa dipakai tanpa master)
+                togglePanel()
+                return
+        end
+        if kc == Enum.KeyCode.J then
+                -- J = gerak ⇄ beku: BERDIRI SENDIRI (J = gerak · J lagi = diam total)
+                toggleGerak()
+                return
+        end
+        if kc == Enum.KeyCode.K then
+                -- K 2x = hapus script: BERDIRI SENDIRI (biar bisa dihapus tanpa master)
+                local now = os.clock()
+                if now - S.lastK < 2 then
+                        unloadAll()
+                else
+                        S.lastK = now
+                        notify("Tekan K sekali lagi untuk hapus script")
+                end
+                return
+        end
         if not S.master then
                 -- CapsLock OFF: keybind kamera MATI — tekan 1/2 pas ambil item tidak
                 -- akan sengaja memindahkan mode kamera lagi
@@ -3430,8 +3486,6 @@ table.insert(CONNS, UserInputService.InputBegan:Connect(function(input, gp)
                 setMode("CINE")
         elseif kc == Enum.KeyCode.Four then
                 setMode("RACE")
-        elseif kc == Enum.KeyCode.F then
-                togglePanel()
         elseif kc == Enum.KeyCode.M then
                 -- MODE FOTO on/off: layer foto + letterbox bioskop (bisa dipakai tanpa mode kamera)
                 S.fotoAktif = not S.fotoAktif
@@ -3451,14 +3505,6 @@ table.insert(CONNS, UserInputService.InputBegan:Connect(function(input, gp)
                 doTeleport()
         elseif kc == Enum.KeyCode.H then
                 toggleHideUI()
-        elseif kc == Enum.KeyCode.K then
-                local now = os.clock()
-                if now - S.lastK < 2 then
-                        unloadAll()
-                else
-                        S.lastK = now
-                        notify("Tekan K sekali lagi untuk hapus script")
-                end
         elseif kc == Enum.KeyCode.LeftControl then
                 S.ctrlDown = true
         end
@@ -3679,4 +3725,4 @@ setFilter("OFF")
 setRatio("FULL")
 applyLetterbox()
 applyUIVisibility()
-notify("CAMERA v1.0.1 siap — CapsLock OFF: keybind kamera MATI · tekan CAPSLOCK untuk aktifkan semua fitur (Z cahaya selalu hidup)", 6)
+notify("CAMERA v1.0.1 siap — CapsLock OFF: keybind kamera MATI · tekan CAPSLOCK untuk aktifkan (F panel · Z cahaya · K hapus · J gerak/beku selalu hidup)", 6)
