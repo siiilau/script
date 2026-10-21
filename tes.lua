@@ -28,7 +28,8 @@
             • Lompat/jatuh = kamera tetap lembut & halus (boleh sedikit terlambat, lebih realistis)
             • CINEMATIC 12 shot · 2 kategori: CLOSE (1 objek) / WIDE (kerumunan, jarak otomatis)
             • Jarak shot ADAPTIF: diam = kamera mendekat · lari/ngebut = kamera menjauh (sesuai kondisi)
-            • Transisi antar shot di-BLEND mulus (anti kaget) + koreksi dinding lembut
+            • Perpindahan shot CUT LANGSUNG gaya film · di dalam shot tetap halus (koreksi dinding lembut)
+            • Mesin SUPER HALUS: mouse/zoom/follow/lompatan semua dilarutkan — PRO & FREE tanpa hentakan
             • RACE CAM 10 shot balap (tombol 4): kamera jauh & tinggi
               (depan kanan atas / kiri depan atas / belakang atas) — tanpa shot dari dalam kabin
             • Target lock 3 cara: T (terdekat dari kamera) · AUTO LOCK · pilih sendiri
@@ -73,16 +74,21 @@ local CFG = {
         FOV       = 70,   -- FOV free/pro cam
         TeleDist  = 7,    -- jarak teleport di belakang layar (langkah)
         CineTempo = 5.5,  -- durasi rata-rata tiap shot sinematik (detik)
-        CineBlend = 0.9,  -- durasi larut transisi antar shot (detik) — perpindahan shot mulus anti kaget
-        CineSoft  = 20,   -- kelembutan koreksi anti-temboss: kamera menyusul posisi aman tanpa menyentak
+        CineSoft  = 14,   -- kelembutan koreksi anti-temboss DALAM shot: kamera menyusul posisi aman tanpa menyentak
         DistDekat = 0.8,  -- pengali jarak shot saat subjek diam/pelan (kamera mendekat — sinematik)
         DistJauh  = 1.45, -- pengali jarak shot saat lari/ngebut (kamera menjauh otomatis — lega)
         CrowdRadius = 24, -- radius deteksi kerumunan → pilih shot WIDE & kamera mundur otomatis
         Letterbox = true, -- letterbox bioskop otomatis di SEMUA mode kamera
         AntiClip  = true, -- anti-temboss: CINE/RACE penuh (dinding+tanah) · FREE/PRO tanah saja (dinding bebas, anti getar)
         Anchor    = true,  -- karakter beku TOTAL saat kamera/CapsLock on (toggle SISTEM)
-        -- mesin kamera v11 (FREE/PRO): halus, terbang, anti menggeleng
+        -- MESIN SUPER HALUS (anti hentakan segala kondisi): SEMUA input & gerakan dihaluskan dulu
         Smoothness    = 0.12,  -- kehalusan gerak free cam (makin kecil = makin responsif)
+        FreeLook      = 0.045, -- FREE: kelembutan gerakan mouse RMB (putaran larut, anti sentak)
+        ProFollow     = 0.11,  -- PRO: kelembutan ikut subjek horizontal (dilarutkan ekstra saat subjek ngebut)
+        ProLook       = 0.05,  -- PRO: kelembutan gerakan mouse RMB (putaran kamera anti sentak)
+        ProZoom       = 0.14,  -- PRO: kelembutan scroll zoom (jarak berubah larut, tidak melompat)
+        ProPos        = 0.08,  -- PRO: kelembutan posisi kamera akhir (koreksi tanah ikut larut, tak terlihat)
+        ProFinal      = 0.035, -- PRO: penghalus rotasi terakhir (jaring pengaman anti getar 1 frame)
         TurboMult     = 3,     -- pengali kecepatan turbo (tahan Space)
         SlowMult      = 0.25,  -- pengali kecepatan slow (Ctrl)
         MouseSens     = 0.25,  -- sensitivitas RMB look
@@ -90,7 +96,7 @@ local CFG = {
         SelfFlyHeight = 2.4,   -- tinggi kamera di atas kepala (KE KARAKTER)
         ProYDamp      = 1.4,   -- PRO: damping vertikal pivot (makin besar = makin lembut ikut lompat/jatuh target)
         AimYDamp      = 1.3,   -- FREE: damping aim vertikal (makin besar = makin lembut, boleh sedikit terlambat)
-        ProSnap       = 12,    -- PRO: snap kalau subjek pindah jauh (respawn/teleport)
+        ProSnap       = 12,    -- PRO: batas tangkap cepat kalau subjek pindah jauh (>40 = teleport, langsung ikut)
         -- cahaya auto 2 arah (Z): malam → diterangi · siang → dilembutkan (anti silau)
         JamMalamMulai   = 18,     -- jam mulai malam
         JamMalamAkhir   = 6,      -- jam akhir malam
@@ -101,8 +107,8 @@ local CFG = {
         BrightAntiSilau = 1.6,    -- Brightness target saat siang (anti silau)
         AmbientLembut   = Color3.fromRGB(110, 110, 120),
         FogBuka         = 100000, -- buka fog gelap saat cahaya auto nyala
-        CineStabG = 6,    -- stabilizer vertikal sinematik saat grounded (makin kecil = makin lembut)
-        CineStabA = 1.4,  -- stabilizer saat di udara (lompat/jatuh → kamera mengikuti pelan & halus)
+        CineStabG = 4.5,  -- stabilizer vertikal sinematik saat grounded (makin kecil = makin lembut)
+        CineStabA = 1.1,  -- stabilizer saat di udara (lompat/jatuh → kamera mengikuti pelan & halus)
         -- palet neon
         Neon1   = Color3.fromRGB(0, 255, 240),  -- cyan
         Neon2   = Color3.fromRGB(255, 45, 170), -- magenta
@@ -133,6 +139,8 @@ local S = {
         fly = nil,
         yaw = 0,
         pitch = -0.14,
+        yawT = 0,            -- TARGET yaw dari mouse (dihaluskan ke yaw aktual — anti sentak)
+        pitchT = -0.14,      -- TARGET pitch dari mouse
         -- pro cam (sudut dalam radian)
         proYaw = 0,
         proPitch = 0.24,
@@ -140,6 +148,12 @@ local S = {
         proPos = nil,
         proPivot = nil,
         proGlide = nil,
+        proYawT = 0,         -- TARGET yaw dari mouse RMB (dihaluskan — sumber hentakan dicabut)
+        proPitchT = 0.24,    -- TARGET pitch dari mouse RMB
+        proDistT = 14,       -- TARGET jarak dari scroll zoom (dihaluskan — zoom larut)
+        proSpeed = nil,      -- kecepatan subjek tersimulasi → damping adaptif
+        proCatch = false,    -- mode kejar cepat (subjek pindah jauh, tanpa lompatan)
+        proCF = nil,         -- CFrame terakhir → penghalus rotasi terakhir
         -- target
         locked = false,
         lockPlayer = nil,
@@ -160,11 +174,7 @@ local S = {
                 char = nil,
                 dofK = 0,
                 focusDist = 10,
-                blendFrom = nil, -- pose kamera lama (transisi antar shot dilarutkan mulus)
-                blendFov = 70,
-                blendDof = 0,
-                blendT = 0,
-                smCf = nil,      -- pose terhalus terakhir (koreksi dinding tak menyentak)
+                smCf = nil,      -- pose terhalus terakhir (koreksi dinding tak menyentak DALAM shot)
                 distK = nil,     -- pengali jarak adaptif (diam = dekat · ngebut = jauh), dihaluskan
         },
         -- race director (RACE CAM — mode 4, kendaraan)
@@ -180,11 +190,7 @@ local S = {
                 focusDist = 10,
                 lastFwd = nil,
                 turn = 0,
-                blendFrom = nil, -- transisi antar shot balap juga dilarutkan mulus
-                blendFov = 70,
-                blendDof = 0,
-                blendT = 0,
-                smCf = nil,
+                smCf = nil,      -- koreksi dinding lembut DALAM shot balap
                 distK = nil,     -- pengali jarak adaptif balap (pelan = dekat · ngebut = jauh)
         },
         -- layer foto
@@ -2122,6 +2128,29 @@ local function groundOnly(prevPos, pos)
         return pos
 end
 
+-- ANTI MASUK TANAH (segala kondisi): kamera diangkat halus kalau terlalu menempel
+-- atau berada DI BAWAH permukaan lantai (misal orbit rendah / pivot dekat tanah)
+local function floorGuard(pos)
+        if not CFG.AntiClip then
+                return pos
+        end
+        local clr = 0.3
+        -- cek ke bawah: lantai terlalu dekat → angkat ke ambang aman
+        local hit = workspace:Raycast(pos, Vector3.new(0, -2.5, 0), camRay)
+        if hit and hit.Instance.CanCollide and hit.Normal.Y > 0.55 then
+                if pos.Y - hit.Position.Y < clr then
+                        pos = Vector3.new(pos.X, hit.Position.Y + clr, pos.Z)
+                end
+                return pos
+        end
+        -- cek ke atas: posisi berada di bawah lantai (ray bawah tak kena karena mulai di dalam)
+        hit = workspace:Raycast(pos, Vector3.new(0, 3, 0), camRay)
+        if hit and hit.Instance.CanCollide and hit.Normal.Y < -0.55 then
+                pos = Vector3.new(pos.X, hit.Position.Y + clr, pos.Z)
+        end
+        return pos
+end
+
 -- kamera orbit (CINE/RACE): tarik mendekat ke fokus kalau garis pandang terhalang
 local function safeOrbit(focusPos, wantPos)
         if not CFG.AntiClip then
@@ -2157,6 +2186,10 @@ end
 
 local function freeUpdate(dt)
         local alpha = 1 - math.exp(-dt / CFG.Smoothness)
+        -- PENGHALUS MOUSE: target → aktual (putaran kamera larut, tidak menyentak walau mouse digeser cepat)
+        local la = 1 - math.exp(-dt / CFG.FreeLook)
+        S.yaw = lerpAngle(S.yaw, S.yawT, la)
+        S.pitch = S.pitch + (S.pitchT - S.pitch) * la
         if S.fly then
                 -- terbang smooth ke karakter utama (tombol KE KARAKTER UTAMA)
                 local f = S.fly
@@ -2167,6 +2200,9 @@ local function freeUpdate(dt)
                 lastFreePos = S.freePos -- penerbangan disengaja: lewati clip, lanjutkan setelah mendarat
                 S.yaw = lerpAngle(f.fromYaw, f.toYaw, k)
                 S.pitch = f.fromPitch + (f.toPitch - f.fromPitch) * k
+                S.yawT = S.yaw   -- sinkron target: saat mendarat tidak ada sentakan sisa
+                S.pitchT = S.pitch
+                Camera.CFrame = CFrame.fromOrientation(S.pitch, S.yaw, 0) + S.freePos
                 if f.t >= f.dur then
                         S.fly = nil
                 end
@@ -2197,7 +2233,7 @@ local function freeUpdate(dt)
                         move = move.Unit * spd
                 end
                 S.freeVel = S.freeVel:Lerp(move, alpha)
-                S.freePos = freeClip(S.freePos + S.freeVel * dt) -- ANTI-TEMBOSS TANAH: dinding bebas (anti getar), tanah ditahan
+                S.freePos = floorGuard(freeClip(S.freePos + S.freeVel * dt)) -- dinding bebas · tanah ditahan + dijaga tak masuk lantai
                 -- TARGET LOCK: aim halus ke target, vertikal ter-damping
                 -- (target lompat-lompat → kamera tetap stabil, tidak ikut menggeleng)
                 if S.locked and S.lockPlayer then
@@ -2216,8 +2252,8 @@ local function freeUpdate(dt)
                                         local lv = dir.Unit
                                         local ty = math.atan2(-lv.X, -lv.Z)
                                         local tpi = math.clamp(math.asin(math.clamp(lv.Y, -1, 1)), -1.45, 1.45)
-                                        S.yaw = lerpAngle(S.yaw, ty, alpha * 0.55)
-                                        S.pitch = S.pitch + (tpi - S.pitch) * alpha * 0.55
+                                        S.yawT = lerpAngle(S.yawT, ty, alpha * 0.55)
+                                        S.pitchT = S.pitchT + (tpi - S.pitchT) * alpha * 0.55
                                 end
                         end
                 else
@@ -2228,7 +2264,7 @@ local function freeUpdate(dt)
         Camera.FieldOfView = Camera.FieldOfView + (CFG.FOV - Camera.FieldOfView) * alpha
 end
 
--- ═══════════════ PRO CAM (mesin v11: pivot glide + Y damping + snap) ═══════════════
+-- ═══════════════ PRO CAM (mesin super halus: input → pivot → posisi → rotasi, semua dihaluskan) ═══════════════
 local function proUpdate(dt)
         -- TARGET LOCK: ikut avatar target lock (rantai lock > pilihan > terdekat > sendiri)
         local char = getSubjectChar()
@@ -2236,7 +2272,18 @@ local function proUpdate(dt)
         if not root then
                 return
         end
-        local alpha = 1 - math.exp(-dt / (CFG.Smoothness * 1.6))
+        -- 1) PENGHALUS INPUT: mouse RMB & scroll zoom dilarutkan dulu
+        --    (sumber hentakan terbesar: mouse digeser cepat / scroll melompat)
+        local la = 1 - math.exp(-dt / CFG.ProLook)
+        S.proYaw = lerpAngle(S.proYaw, S.proYawT, la)
+        S.proPitch = S.proPitch + (S.proPitchT - S.proPitch) * la
+        local za = 1 - math.exp(-dt / CFG.ProZoom)
+        S.proDist = S.proDist + (S.proDistT - S.proDist) * za
+        -- 2) PIVOT: damping adaptif — subjek ngebut → ikutan makin larut (glide, tidak getar);
+        --    lompat/jatuh/mandat → vertikal makin pelan (tidak ikut memantul)
+        local vel = root.AssemblyLinearVelocity
+        local spd = flat(vel).Magnitude
+        S.proSpeed = expLerp(S.proSpeed or 0, spd, dt, 3)
         local targetPivot = root.Position + Vector3.new(0, 1.5, 0)
         if S.proGlide then
                 -- glide halus ke karakter utama (tombol KE KARAKTER UTAMA)
@@ -2252,28 +2299,56 @@ local function proUpdate(dt)
                 if not S.proPivot then
                         S.proPivot = targetPivot
                 end
-                if (targetPivot - S.proPivot).Magnitude > CFG.ProSnap then
-                        -- snap: subjek pindah jauh (respawn/teleport) → langsung ikut
+                local gap = (targetPivot - S.proPivot).Magnitude
+                if gap > 40 then
+                        -- teleport sungguhan lintas map (respawn): langsung ikut
                         S.proPivot = targetPivot
                         S.proPos = nil
+                        S.proCF = nil
+                        S.proCatch = false
+                elseif gap > CFG.ProSnap then
+                        S.proCatch = true -- kejar cepat TANPA lompatan (anti hentakan)
                 end
-                -- STABILISASI: horizontal normal, vertikal di-damping berat
-                -- (target lompat → pivot naik pelan, kamera tidak menggeleng)
-                local ax = 1 - math.exp(-dt / (CFG.Smoothness * 1.2))
-                local ay = 1 - math.exp(-dt / CFG.ProYDamp)
+                local speedK = math.clamp(S.proSpeed / 32, 0, 1)
+                local fallK = math.clamp(math.abs(vel.Y) / 60, 0, 1)
+                local tauX = CFG.ProFollow * (1 + speedK * 0.9)
+                local tauY = CFG.ProYDamp * (1 + fallK * 1.3)
+                if S.proCatch then
+                        if gap < 1.5 then
+                                S.proCatch = false
+                        end
+                        tauX = tauX * 0.22 -- kejar cepat tapi tetap larut
+                        tauY = tauY * 0.5
+                end
+                local ax = 1 - math.exp(-dt / tauX)
+                local ay = 1 - math.exp(-dt / tauY)
                 S.proPivot = Vector3.new(
                         S.proPivot.X + (targetPivot.X - S.proPivot.X) * ax,
                         S.proPivot.Y + (targetPivot.Y - S.proPivot.Y) * ay,
                         S.proPivot.Z + (targetPivot.Z - S.proPivot.Z) * ax
                 )
         end
+        -- 3) POSISI: tanah ditahan SEBELUM penghalusan → koreksi tak pernah terlihat sebagai sentakan
+        --    (dinding bebas ditembus: benturan dinding tidak bikin getar)
         local rot = CFrame.fromOrientation(S.proPitch, S.proYaw, 0)
         local desiredPos = S.proPivot + rot:VectorToWorldSpace(Vector3.new(0, 0, S.proDist))
-        local prevPro = S.proPos
-        S.proPos = S.proPos and S.proPos:Lerp(desiredPos, math.clamp(alpha * 1.5, 0, 1)) or desiredPos
-        S.proPos = groundOnly(prevPro, S.proPos) -- ANTI-TEMBOSS TANAH: dinding bebas ditembus, tanah ditahan
-        Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(S.proPos, S.proPivot), math.clamp(alpha * 1.5, 0, 1))
-        Camera.FieldOfView = Camera.FieldOfView + (CFG.FOV - Camera.FieldOfView) * alpha
+        desiredPos = groundOnly(S.proPos or desiredPos, desiredPos) -- ANTI-TEMBOSS TANAH
+        desiredPos = floorGuard(desiredPos)
+        if S.proPos then
+                S.proPos = expLerp(S.proPos, desiredPos, dt, 1 / CFG.ProPos)
+                S.proPos = floorGuard(S.proPos)
+        else
+                S.proPos = desiredPos
+        end
+        -- 4) ROTASI: penghalus terakhir — jaring pengaman getaran 1 frame (rot & posisi larut serentak)
+        local wantCF = CFrame.lookAt(S.proPos, S.proPivot)
+        if S.proCF then
+                Camera.CFrame = S.proCF:Lerp(wantCF, 1 - math.exp(-dt / CFG.ProFinal))
+        else
+                Camera.CFrame = wantCF
+        end
+        S.proCF = Camera.CFrame
+        Camera.FieldOfView = Camera.FieldOfView + (CFG.FOV - Camera.FieldOfView) * (1 - math.exp(-dt / 0.25))
 end
 
 -- ═══════════════ SHOT DIRECTOR (CINEMATIC) ═══════════════
@@ -2724,7 +2799,6 @@ local function startShot()
         local cat = (crowd >= 2) and "WIDE" or "CLOSE"
         local name = pickShot(cat)
         local def = SHOTS[name]
-        local gantiSubjek = (S.cine.char ~= nil) and (ctx.char ~= S.cine.char)
         S.cine.name = name
         S.cine.lastName = name
         S.cine.def = def
@@ -2736,18 +2810,9 @@ local function startShot()
         -- shot close-up (def.dmK < 1) dijaga tetap dekat. Raw di-cap 2.1 biar tidak berlebihan.
         local raw = math.min((ctx.distK or 1) * (1 + math.min(crowd, 6) * 0.12), 2.1)
         S.cine.P = { crowd = crowd, dm = 1 + (raw - 1) * (def.dmK or 1), wide = (cat == "WIDE") }
-        -- TRANSISI MULUS: simpan pose kamera sekarang sebagai titik awal larutan
-        -- (perpindahan antar shot tidak lagi menyentak — anti kaget)
-        if gantiSubjek then
-                -- ganti subjek: snap bersih + reset penghalus (hindari swoop lintas map)
-                S.cine.blendFrom = nil
-                S.cine.smCf = nil
-        else
-                S.cine.blendFrom = Camera.CFrame
-                S.cine.blendFov = Camera.FieldOfView
-                S.cine.blendDof = S.cine.dofK or 0
-                S.cine.blendT = 0
-        end
+        -- CUT GAYA FILM: perpindahan shot langsung POTONG ke pose baru (tanpa larutan) —
+        -- penghalus di-reset supaya frame pertama langsung menampilkan shot baru yang sudah aman
+        S.cine.smCf = nil
         if def and def.enter then
                 def.enter(ctx, S.cine.P)
         end
@@ -2771,24 +2836,14 @@ local function cineUpdate(dt)
         local cf, fov, dofK = S.cine.def.update(S.cine.P, S.cine.t, dt, ctx)
         -- breathing FOV halus biar hidup
         fov = fov + math.sin(os.clock() * 1.2) * 1.2
-        -- BLEND TRANSISI ANTAR SHOT: pose lama dilarutkan halus ke shot baru (anti kaget)
-        if S.cine.blendFrom then
-                S.cine.blendT = S.cine.blendT + dt
-                local a = smoothstep(S.cine.blendT / math.max(CFG.CineBlend, 0.1))
-                if a >= 1 then
-                        S.cine.blendFrom = nil
-                else
-                        cf = S.cine.blendFrom:Lerp(cf, a)
-                        fov = S.cine.blendFov + (fov - S.cine.blendFov) * a
-                        dofK = S.cine.blendDof + ((dofK or 0) - S.cine.blendDof) * a
-                end
-        end
         -- ANTI-TEMBOSS: shot tidak menembus dinding/tanah & tidak terhalang
         local p = safeOrbit(ctx.head, cf.Position)
+        p = floorGuard(p) -- jaga tak menempel / masuk lantai (segala kondisi)
         if p ~= cf.Position then
                 cf = CFrame.new(p) * cf.Rotation
         end
-        -- PENGHALUS AKHIR: koreksi dinding/obstacle disusul lembut, tidak menyentak
+        -- PENGHALUS AKHIR (DALAM shot): koreksi dinding/obstacle disusul lembut, tidak menyentak.
+        -- Perpindahan shot = CUT langsung (smCf di-reset di startShot), gerakan di dalam shot tetap halus.
         if S.cine.smCf then
                 cf = S.cine.smCf:Lerp(cf, 1 - math.exp(-CFG.CineSoft * dt))
         end
@@ -3139,7 +3194,6 @@ local function startRaceShot()
         local ctx = raceCtx()
         local name = racePick(ctx)
         local def = RSHOTS[name]
-        local gantiSubjek = (S.race.char ~= nil) and (ctx.char ~= S.race.char)
         S.race.name = name
         S.race.lastName = name
         S.race.def = def
@@ -3148,16 +3202,8 @@ local function startRaceShot()
         S.race.char = ctx.char
         -- JARAK ADAPTIF: jarak shot balap ikut kecepatan (distK), close-up dijaga tetap dekat (dmK)
         S.race.P = { dm = 1 + ((ctx.distK or 1) - 1) * (def.dmK or 1) }
-        -- TRANSISI MULUS (sama dengan cinematic): larutkan pose lama ke shot baru
-        if gantiSubjek then
-                S.race.blendFrom = nil
-                S.race.smCf = nil
-        else
-                S.race.blendFrom = Camera.CFrame
-                S.race.blendFov = Camera.FieldOfView
-                S.race.blendDof = S.race.dofK or 0
-                S.race.blendT = 0
-        end
+        -- CUT GAYA FILM: langsung potong ke shot baru (penghalus di-reset, frame pertama sudah aman)
+        S.race.smCf = nil
         if def and def.enter then
                 def.enter(ctx, S.race.P)
         end
@@ -3184,24 +3230,14 @@ local function raceUpdate(dt)
         local cf, fov, dofK = S.race.def.update(S.race.P, S.race.t, dt, ctx)
         -- breathing FOV halus biar hidup
         fov = fov + math.sin(os.clock() * 1.2) * 1.2
-        -- BLEND TRANSISI ANTAR SHOT BALAP: pose lama dilarutkan halus (anti kaget)
-        if S.race.blendFrom then
-                S.race.blendT = S.race.blendT + dt
-                local a = smoothstep(S.race.blendT / math.max(CFG.CineBlend, 0.1))
-                if a >= 1 then
-                        S.race.blendFrom = nil
-                else
-                        cf = S.race.blendFrom:Lerp(cf, a)
-                        fov = S.race.blendFov + (fov - S.race.blendFov) * a
-                        dofK = S.race.blendDof + ((dofK or 0) - S.race.blendDof) * a
-                end
-        end
         -- ANTI-TEMBOSS: shot balap juga tak menembus dinding/tanah
         local p = safeOrbit(ctx.pos, cf.Position)
+        p = floorGuard(p) -- jaga tak menempel / masuk lantai
         if p ~= cf.Position then
                 cf = CFrame.new(p) * cf.Rotation
         end
-        -- PENGHALUS AKHIR: koreksi dinding disusul lembut, tidak menyentak
+        -- PENGHALUS AKHIR (DALAM shot): koreksi dinding disusul lembut.
+        -- Perpindahan shot = CUT langsung gaya film (smCf di-reset di startRaceShot).
         if S.race.smCf then
                 cf = S.race.smCf:Lerp(cf, 1 - math.exp(-CFG.CineSoft * dt))
         end
@@ -3319,6 +3355,8 @@ function setMode(m)
                 S.freePos = camCF.Position
                 S.yaw = math.atan2(-look.X, -look.Z)
                 S.pitch = math.asin(math.clamp(look.Y, -1, 1))
+                S.yawT = S.yaw     -- sinkron target mouse: tidak ada putaran sisa
+                S.pitchT = S.pitch
                 S.freeVel = Vector3.new(0, 0, 0)
                 S.aimY = nil
                 S.fly = nil
@@ -3326,13 +3364,14 @@ function setMode(m)
                 Camera.CameraType = Enum.CameraType.Scriptable
                 setAnchorState()
                 bindSpace()
-                Camera.FieldOfView = CFG.FOV * 0.8 -- efek zoom-in pembuka
                 notify("FREE CAM — WASD+QE gerak · RMB lihat · Scroll FOV · tahan Space turbo", 1.4)
         elseif m == "PRO" then
                 local camCF = workspace.CurrentCamera.CFrame
                 local look = camCF.LookVector
                 S.proYaw = math.atan2(-look.X, -look.Z)
                 S.proPitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)), -1.35, 1.35)
+                S.proYawT = S.proYaw  -- sinkron target mouse & zoom: tanpa sentakan awal
+                S.proPitchT = S.proPitch
                 local subjRoot = getRoot(getSubjectChar())
                 if subjRoot then
                         S.proPivot = subjRoot.Position + Vector3.new(0, 1.5, 0)
@@ -3341,20 +3380,22 @@ function setMode(m)
                         S.proPivot = nil
                         S.proDist = 14
                 end
+                S.proDistT = S.proDist
                 S.proPos = camCF.Position
+                S.proCF = nil
+                S.proSpeed = nil
+                S.proCatch = false
                 S.proGlide = nil
                 Camera.CameraType = Enum.CameraType.Scriptable
                 setAnchorState()
                 bindSpace()
-                Camera.FieldOfView = CFG.FOV * 0.8
-                notify("PRO CAM — RMB putar · Scroll zoom 4–80 stud", 1.4)
+                notify("PRO CAM — RMB putar (halus) · Scroll zoom 4–80 (larut)", 1.4)
         elseif m == "CINE" then
                 Camera.CameraType = Enum.CameraType.Scriptable
                 S.cine.def = nil
                 S.cine.smCf = nil
-                S.cine.blendFrom = nil
                 setAnchorState() -- karakter beku total, biar shot tetap rapi
-                notify("CINEMATIC — 12 shot · transisi antar shot mulus (anti kaget) · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s", 1.4)
+                notify("CINEMATIC — 12 shot · cut antar shot gaya film · dalam shot halus · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s", 1.4)
         elseif m == "RACE" then
                 Camera.CameraType = Enum.CameraType.Scriptable
                 S.race.def = nil
@@ -3362,9 +3403,8 @@ function setMode(m)
                 S.race.turn = 0
                 S.race.lastFwd = nil
                 S.race.smCf = nil
-                S.race.blendFrom = nil
                 setAnchorState() -- RACE tidak beku: kamu tetap menyetir selagi kamera merekam
-                notify("RACE CAM — 10 shot balap · jarak menyesuaikan kecepatan · keluar kendaraan = mati sendiri", 1.4)
+                notify("RACE CAM — 10 shot balap · cut gaya film · jarak ikut kecepatan · keluar kendaraan = mati sendiri", 1.4)
         end
         refreshModeUI()
         updateChip()
@@ -3533,11 +3573,11 @@ table.insert(CONNS, UserInputService.InputChanged:Connect(function(input)
                         local sens = CFG.MouseSens * 0.02
                         if S.mode == "FREE" then
                                 S.fly = nil
-                                S.yaw = S.yaw - dx * sens
-                                S.pitch = math.clamp(S.pitch - dy * sens, -1.45, 1.45)
+                                S.yawT = S.yawT - dx * sens -- TARGET saja: aktual dihaluskan di freeUpdate (anti sentak)
+                                S.pitchT = math.clamp(S.pitchT - dy * sens, -1.45, 1.45)
                         else
-                                S.proYaw = S.proYaw - dx * sens
-                                S.proPitch = math.clamp(S.proPitch - dy * sens, -1.35, 1.35)
+                                S.proYawT = S.proYawT - dx * sens -- TARGET: dihaluskan proUpdate (anti hentakan)
+                                S.proPitchT = math.clamp(S.proPitchT - dy * sens, -1.35, 1.35)
                         end
                 end
         elseif input.UserInputType == Enum.UserInputType.MouseWheel then
@@ -3548,7 +3588,7 @@ table.insert(CONNS, UserInputService.InputChanged:Connect(function(input)
                                 UI.fovSlider.Set(CFG.FOV)
                         end
                 elseif S.mode == "PRO" then
-                        S.proDist = math.clamp(S.proDist - z * 2.5, 4, 80)
+                        S.proDistT = math.clamp(S.proDistT - z * 2.5, 4, 80) -- TARGET: zoom larut di proUpdate
                 end
         end
 end))
@@ -3557,6 +3597,7 @@ end))
 local lockCheck = 0
 local camFilterCheck = 0
 table.insert(CONNS, RunService.RenderStepped:Connect(function(dt)
+        dt = math.min(dt, 0.066) -- PENTING: dt dipatok — kamera tidak melompat setelah lag/spike
         Camera = workspace.CurrentCamera
         -- segarkan filter anti-temboss tiap 0.5 detik (respawn/kendaraan baru ikut tercakup)
         if os.clock() - camFilterCheck > 0.5 then
