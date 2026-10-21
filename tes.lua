@@ -7,13 +7,14 @@
             1        = FREE CAM            (tekan lagi = mati)
             2        = PRO CAM             (tekan lagi = mati)
             3        = CINEMATIC MODE      (tekan lagi = mati)
+            4        = RACE CAM            (kamera balap — naik kendaraan dulu)
             CapsLock = MASTER ON/OFF — mati = SEMUA fitur kamera off
             F        = buka / tutup panel
-            M        = buka MODE FOTO (langsung ke tab FOTO)
+            M        = MODE FOTO on/off (letterbox + layer foto)
             T        = lock target TERDEKAT DARI KAMERA / unlock
             C        = teleport ke belakang layar
             Z        = CAHAYA AUTO 2 arah (malam diterangi · siang dilembutkan)
-            H        = sembunyikan semua UI (chip tetap ada)
+            H        = sembunyikan semua UI (layar bersih)
             K (2x)   = hapus script
             RMB      = lihat sekeliling (FREE / PRO)
             Scroll   = FOV (FREE) / zoom 4-80 (PRO)
@@ -23,12 +24,15 @@
             Filter warna · rasio frame · blur otomatis fokus ke target · ambil foto
           CATATAN :
             • Mesin FREE/PRO + target lock dari GALAXY v11 (halus & anti menggeleng)
-            • CINEMATIC auto-director 11 shot + MODE FOTO dari v12 NEON
+            • CINEMATIC 12 shot · 2 kategori: CLOSE (1 objek) / WIDE (kerumunan, jarak otomatis)
+            • RACE CAM 10 shot balap (tombol 4): mobil, heli, perahu — ikut target lock
             • Target lock 3 cara: T (terdekat dari kamera) · AUTO LOCK · pilih sendiri
             • Tombol KE KARAKTER UTAMA = kamera terbang mulus balik ke kamu
             • RESET SCRIPT di tab SISTEM = semua setting balik default
             • PRO & CINE ikut target lock · blur fokus otomatis ke avatar target
             • Kamera balik persis ke posisi semula saat mode dimatikan
+            • Kamera ANTI-TEMBOSS: tak masuk dinding/tanah & tak terhalang (SISTEM)
+            • Letterbox bioskop otomatis di SEMUA mode kamera (FREE/PRO/CINE/FOTO)
             • CapsLock mati = semua fitur kamera off (mode, blur, letterbox, filter)
             • Kamera/CapsLock ON = karakter beku TOTAL di tempat (toggle di SISTEM)
             • Semua efek client-side — cuma terlihat di layar kamu
@@ -59,7 +63,9 @@ local CFG = {
         FOV       = 70,   -- FOV free/pro cam
         TeleDist  = 7,    -- jarak teleport di belakang layar (langkah)
         CineTempo = 5.5,  -- durasi rata-rata tiap shot sinematik (detik)
-        Letterbox = true, -- letterbox otomatis saat mode sinematik
+        CrowdRadius = 24, -- radius deteksi kerumunan → pilih shot WIDE & kamera mundur otomatis
+        Letterbox = true, -- letterbox bioskop otomatis di SEMUA mode kamera
+        AntiClip  = true, -- kamera anti-temboss: tak masuk dinding/tanah & tak terhalang
         Anchor    = true,  -- karakter beku TOTAL saat kamera/CapsLock on (toggle SISTEM)
         -- mesin kamera v11 (FREE/PRO): halus, terbang, anti menggeleng
         Smoothness    = 0.12,  -- kehalusan gerak free cam (makin kecil = makin responsif)
@@ -140,6 +146,20 @@ local S = {
                 dofK = 0,
                 focusDist = 10,
         },
+        -- race director (RACE CAM — mode 4, kendaraan)
+        race = {
+                def = nil,
+                name = "",
+                P = {},
+                t = 0,
+                dur = 5,
+                lastName = "",
+                char = nil,
+                dofK = 0,
+                focusDist = 10,
+                lastFwd = nil,
+                turn = 0,
+        },
         -- layer foto
         foto = {
                 filter = "OFF",
@@ -149,6 +169,7 @@ local S = {
                 ratio = "FULL",
                 wm = false,
         },
+        fotoAktif = false, -- layer MODE FOTO (M) aktif → letterbox ikut tampil
         -- cahaya auto 2 arah (Z) + restore kamera
         lightOn = false,
         lightPernahAktif = false,
@@ -187,6 +208,12 @@ local function flatUnit(v)
                 return Vector3.new(0, 0, 0)
         end
         return f.Unit
+end
+
+-- putar vektor datar di bidang XZ sebesar a radian (untuk sudut 3/4 dll.)
+local function rotY(v, a)
+        local c, s = math.cos(a), math.sin(a)
+        return Vector3.new(v.X * c + v.Z * s, 0, -v.X * s + v.Z * c)
 end
 
 local function expLerp(a, b, dt, k)
@@ -407,64 +434,13 @@ UI.flash = new("Frame", {
         ZIndex = 60,
 }, gui)
 
--- chip status (kiri atas, selalu tampil walau UI hidden)
-UI.chip = new("Frame", {
-        Position = UDim2.new(0, 14, 0, 14),
-        Size = UDim2.new(0, 0, 0, 26),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundColor3 = CFG.BG,
-        BackgroundTransparency = 0.22,
-        BorderSizePixel = 0,
-        ZIndex = 10,
-}, gui)
-corner(UI.chip, 999)
-UI.chipStroke = stroke(UI.chip, CFG.Neon1, 1, 0.35)
-pad(UI.chip, 0, 0, 12, 12)
-UI.chipTxt = new("TextLabel", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, 0, 1, 0),
-        AutomaticSize = Enum.AutomaticSize.X,
-        Font = Enum.Font.GothamBold,
-        Text = "● SIIILAU · SIAP",
-        TextColor3 = CFG.TXT,
-        TextSize = 12,
-        ZIndex = 10,
-}, UI.chip)
+-- TAMPILAN BERSIH: chip kiri atas & label shot kanan atas DIHAPUS.
+-- Info mode/target cukup lewat notifikasi singkat (cepat muncul, cepat hilang).
 
--- label shot sinematik (kanan atas, kecil)
-UI.shot = new("Frame", {
-        AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.new(1, -14, 0, 14),
-        Size = UDim2.new(0, 0, 0, 24),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundColor3 = CFG.BG,
-        BackgroundTransparency = 0.3,
-        BorderSizePixel = 0,
-        Visible = false,
-        ZIndex = 10,
-}, gui)
-corner(UI.shot, 999)
-stroke(UI.shot, CFG.Neon2, 1, 0.3)
-pad(UI.shot, 0, 0, 10, 10)
-UI.shotTxt = new("TextLabel", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(0, 0, 1, 0),
-        AutomaticSize = Enum.AutomaticSize.X,
-        Font = Enum.Font.GothamBold,
-        Text = "● SHOT",
-        TextColor3 = CFG.TXT,
-        TextSize = 11,
-        ZIndex = 10,
-}, UI.shot)
-do
-        local g = grad(UI.shotTxt, CFG.Neon1, CFG.Neon2, 0)
-        g.Enabled = true
-end
-
--- kotak notifikasi (kanan, di bawah label shot)
+-- kotak notifikasi (kanan atas)
 UI.notifBox = new("Frame", {
         AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.new(1, -14, 0, 48),
+        Position = UDim2.new(1, -14, 0, 14),
         Size = UDim2.new(0, 236, 0, 0),
         AutomaticSize = Enum.AutomaticSize.Y,
         BackgroundTransparency = 1,
@@ -798,6 +774,7 @@ local modeDefs = {
         { id = "FREE", label = "1 · FREE CAM" },
         { id = "PRO",  label = "2 · PRO CAM" },
         { id = "CINE", label = "3 · CINEMATIC" },
+        { id = "RACE", label = "4 · RACE CAM" },
 }
 for i, m in ipairs(modeDefs) do
         local b = new("TextButton", {
@@ -921,10 +898,13 @@ makeToggle(UI.tabSISTEM, "BEKUKAN KARAKTER (KAMERA/CAPSLOCK)", CFG.Anchor, funct
         CFG.Anchor = state
         setAnchorState()
 end, 6)
-makeToggle(UI.tabSISTEM, "LETTERBOX SINEMATIK", CFG.Letterbox, function(state)
+makeToggle(UI.tabSISTEM, "LETTERBOX SINEMATIK (SEMUA MODE)", CFG.Letterbox, function(state)
         CFG.Letterbox = state
         applyLetterbox()
 end, 7)
+makeToggle(UI.tabSISTEM, "KAMERA ANTI-TEMBOSS (DINDING/TANAH)", CFG.AntiClip, function(state)
+        CFG.AntiClip = state
+end, 8)
 
 secLabel(UI.tabSISTEM, "Keybind", 8)
 new("TextLabel", {
@@ -1253,8 +1233,6 @@ function applyUIVisibility()
         local vis = not S.uiHidden
         UI.panel.Visible = vis and S.panelOpen
         UI.notifBox.Visible = vis
-        UI.shot.Visible = vis and (S.mode == "CINE")
-        -- chip selalu tampil
 end
 
 function togglePanel()
@@ -1275,53 +1253,20 @@ function flash()
 end
 
 function applyLetterbox()
-        local on = (S.mode == "CINE") and CFG.Letterbox and (S.foto.ratio == "FULL")
+        -- LETTERBOX SEMUA MODE: FREE / PRO / CINEMATIC aktif, ATAU layer MODE FOTO (M) nyala
+        local modeOn = (S.mode ~= "NONE") or S.fotoAktif
+        local on = modeOn and CFG.Letterbox and (S.foto.ratio == "FULL")
         local target = on and 62 or 0
         local tw = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         TweenService:Create(UI.lbT, tw, { Size = UDim2.new(1, 0, 0, target) }):Play()
         TweenService:Create(UI.lbB, tw, { Size = UDim2.new(1, 0, 0, target) }):Play()
 end
 
--- ═══════════════ CHIP STATUS ═══════════════
+-- ═══════════════ CHIP STATUS (DIHAPUS) ═══════════════
+-- Tampilan dibersihkan: tidak ada lagi chip kiri atas / label mode permanen.
+-- Fungsi jadi no-op supaya semua pemanggil lama tetap aman.
 function updateChip()
-        if not S.master then
-                UI.chipTxt.Text = "● KAMERA OFF — CapsLock / 1 / 2 / 3"
-                UI.chipStroke.Color = CFG.DANGER
-                return
-        end
-        local txt, col
-        if S.mode == "FREE" then
-                txt, col = "FREE CAM", CFG.Neon1
-        elseif S.mode == "PRO" then
-                txt, col = "PRO CAM", CFG.Neon1
-        elseif S.mode == "CINE" then
-                txt, col = "CINEMATIC", CFG.Neon2
-        else
-                txt, col = "SIAP", CFG.TXT_DIM
-        end
-        if S.mode == "CINE" then
-                local c = getSubjectChar()
-                local pl = c and Players:GetPlayerFromCharacter(c)
-                local nm = "?"
-                if pl then
-                        nm = (pl == LP) and "DIRI SENDIRI" or pl.Name
-                end
-                txt = txt .. " · " .. nm
-        end
-        if S.turbo then
-                txt = txt .. " · TURBO"
-        end
-        if S.locked and S.lockPlayer and (S.mode == "FREE" or S.mode == "PRO") then
-                txt = txt .. " · LOCK:" .. S.lockPlayer.Name
-        end
-        if S.lightOn then
-                txt = txt .. " · CAHAYA AUTO"
-        end
-        if CFG.Anchor and (S.master or S.mode ~= "NONE") then
-                txt = txt .. " · BEKU"
-        end
-        UI.chipTxt.Text = "● " .. txt
-        UI.chipStroke.Color = col
+        return
 end
 
 -- ═══════════════ KARAKTER BEKU (OTOMATIS) ═══════════════
@@ -1331,7 +1276,8 @@ function setAnchorState()
         if unloadDone then
                 return
         end
-        local want = CFG.Anchor and (S.master or S.mode ~= "NONE")
+        -- RACE CAM tidak membekukan karakter: kamu tetap menyetir selagi kamera merekam
+        local want = CFG.Anchor and (S.master or S.mode ~= "NONE") and S.mode ~= "RACE"
         local hrp = getRoot(myChar())
         if hrp then
                 if want then
@@ -1404,7 +1350,7 @@ function toggleLock()
                 if UI.updateLockBtn then
                         UI.updateLockBtn()
                 end
-                notify("Target lock: MATI")
+                notify("Target lock: MATI", 1.2)
                 return
         end
         local best, bd = findNearestPlayer()
@@ -1421,7 +1367,7 @@ function toggleLock()
         if UI.updateLockBtn then
                 UI.updateLockBtn()
         end
-        notify("Locked (terdekat dari kamera): " .. best.Name .. " (" .. math.floor(bd) .. " stud)")
+        notify("Locked (terdekat dari kamera): " .. best.Name .. " (" .. math.floor(bd) .. " stud)", 1.4)
 end
 
 -- AUTO LOCK: kunci terdekat + pindah sendiri kalau target hilang/mati
@@ -1434,7 +1380,7 @@ function lockAutoToggle()
                 if UI.updateLockBtn then
                         UI.updateLockBtn()
                 end
-                notify("AUTO LOCK: OFF")
+                notify("AUTO LOCK: OFF", 1.2)
                 return
         end
         local best = findNearestPlayer()
@@ -1451,7 +1397,7 @@ function lockAutoToggle()
         if UI.updateLockBtn then
                 UI.updateLockBtn()
         end
-        notify("AUTO LOCK: ON → " .. best.Name .. " (pindah sendiri kalau target hilang)")
+        notify("AUTO LOCK: ON → " .. best.Name .. " (pindah sendiri kalau target hilang)", 1.4)
 end
 
 -- PILIH SENDIRI: lock pemain dari daftar
@@ -1459,13 +1405,13 @@ function lockPick(pl)
         if not pl or pl == LP then
                 S.locked = false
                 S.lockPlayer = nil
-                notify("Lock dilepas")
+                notify("Lock dilepas", 1.2)
         else
                 S.locked = true
                 S.lockMode = "PILIH"
                 S.lockPlayer = pl
                 S.selected = pl
-                notify("Lock (pilih sendiri): " .. pl.Name)
+                notify("Lock (pilih sendiri): " .. pl.Name, 1.4)
         end
         updateChip()
         refreshTargetList()
@@ -1973,6 +1919,13 @@ function applyDof()
                 DOF.InFocusRadius = 7
                 DOF.FarIntensity = 0.22 + 0.25 * S.cine.dofK
                 DOF.NearIntensity = 0
+        elseif S.mode == "RACE" and (S.race.dofK or 0) > 0.02 then
+                -- blur balap: nempel saat shot dekat (roda, three-quarter)
+                DOF.Enabled = true
+                DOF.FocusDistance = S.race.focusDist or 10
+                DOF.InFocusRadius = 7
+                DOF.FarIntensity = 0.22 + 0.25 * S.race.dofK
+                DOF.NearIntensity = 0
         else
                 DOF.Enabled = false
         end
@@ -1984,7 +1937,7 @@ function takePhoto()
         end
         S.shooting = true
         notify("Layar bersih 5 detik — ambil screenshotmu!", 2)
-        local els = { UI.panel, UI.notifBox, UI.shot, UI.chip }
+        local els = { UI.panel, UI.notifBox }
         local states = {}
         for i, el in ipairs(els) do
                 states[i] = el.Visible
@@ -1996,6 +1949,115 @@ function takePhoto()
                 end
                 S.shooting = false
         end)
+end
+
+-- ═══════════════ KAMERA ANTI-TEMBOSS (DINDING / TANAH / OBJEK) ═══════════════
+-- Semua mode: kamera TIDAK akan masuk ke dinding, tanah, atau terhalang objek.
+-- Cara kerja: sebelum posisi kamera diterapkan, garis dari titik fokus (subjek)
+-- ke kamera di-raycast — kalau ada yang menghalangi, kamera ditarik maju
+-- sampai garis pandang bebas. FREE cam juga dilindungi saat terbang.
+local camRay = RaycastParams.new()
+camRay.FilterType = Enum.RaycastFilterType.Exclude
+camRay.FilterDescendantsInstances = { workspace.CurrentCamera }
+camRay.IgnoreWater = true
+
+local CLIP_SAFE = 0.4   -- jarak aman kamera dari permukaan (stud)
+local lastFreePos = nil -- posisi free cam frame sebelumnya (anti temboss saat terbang)
+
+-- segarkan daftar yang dikecualikan dari raycast (dipanggil berkala)
+function refreshCamFilter()
+        if unloadDone then
+                return
+        end
+        local list = { workspace.CurrentCamera }
+        -- badan AVATAR (pemain lain / NPC) tidak mengunci kamera — biar tidak lompat-lompat
+        for _, pl in ipairs(Players:GetPlayers()) do
+                if pl.Character then
+                        table.insert(list, pl.Character)
+                end
+        end
+        local myc = myChar()
+        if myc then
+                table.insert(list, myc)
+                -- kendaraan yang sedang ditunggangi ikut dikecualikan
+                local hum = myc:FindFirstChildOfClass("Humanoid")
+                local seat = hum and hum.SeatPart or nil
+                if seat then
+                        local veh = seat:FindFirstAncestorOfClass("Model")
+                        if veh then
+                                table.insert(list, veh)
+                        end
+                end
+        end
+        local subj = getSubjectChar()
+        if subj and subj.Parent then
+                table.insert(list, subj)
+                -- kendaraan yang ditunggangi target juga dikecualikan (RACE CAM / cockpit)
+                local shum = subj:FindFirstChildOfClass("Humanoid")
+                local sseat = shum and shum.SeatPart or nil
+                if sseat then
+                        local sveh = sseat:FindFirstAncestorOfClass("Model")
+                        if sveh then
+                                table.insert(list, sveh)
+                        end
+                end
+        end
+        camRay.FilterDescendantsInstances = list
+end
+
+-- raycast yang MELEWATI part tembus (dekorasi/rumput/invisible non-collide)
+local function castClear(from, dirUnit, dist)
+        local origin, remaining = from, dist
+        for _ = 1, 4 do
+                local hit = workspace:Raycast(origin, dirUnit * remaining, camRay)
+                if not hit then
+                        return nil
+                end
+                if hit.Instance.CanCollide then
+                        return hit
+                end
+                local step = (hit.Position - origin).Magnitude + 0.15
+                origin = hit.Position + dirUnit * 0.15
+                remaining = remaining - step
+                if remaining <= 0.2 then
+                        return nil
+                end
+        end
+        return nil
+end
+
+-- kamera orbit (PRO/CINE): tarik mendekat ke fokus kalau garis pandang terhalang
+local function safeOrbit(focusPos, wantPos)
+        if not CFG.AntiClip then
+                return wantPos
+        end
+        local v = wantPos - focusPos
+        local d = v.Magnitude
+        if d > 1 then
+                local hit = castClear(focusPos, v.Unit, d)
+                if hit then
+                        local nd = math.max((hit.Position - focusPos).Magnitude - CLIP_SAFE, 1)
+                        return focusPos + v.Unit * nd
+                end
+        end
+        return wantPos
+end
+
+-- free cam: cegah menembus dinding/tanah saat melaju (ray dari posisi frame lalu)
+local function freeClip(pos)
+        if lastFreePos then
+                local v = pos - lastFreePos
+                local d = v.Magnitude
+                if d > 0.05 and CFG.AntiClip then
+                        local hit = castClear(lastFreePos, v.Unit, d)
+                        if hit then
+                                local nd = math.max((hit.Position - lastFreePos).Magnitude - CLIP_SAFE, 0.05)
+                                pos = lastFreePos + v.Unit * nd
+                        end
+                end
+        end
+        lastFreePos = pos
+        return pos
 end
 
 -- ═══════════════ FREE CAM (mesin v11: halus + terbang + anti menggeleng) ═══════════════
@@ -2016,6 +2078,7 @@ local function freeUpdate(dt)
                 local k0 = math.clamp(f.t / f.dur, 0, 1)
                 local k = k0 * k0 * (3 - 2 * k0)
                 S.freePos = f.fromPos:Lerp(f.toPos, k)
+                lastFreePos = S.freePos -- penerbangan disengaja: lewati clip, lanjutkan setelah mendarat
                 S.yaw = lerpAngle(f.fromYaw, f.toYaw, k)
                 S.pitch = f.fromPitch + (f.toPitch - f.fromPitch) * k
                 if f.t >= f.dur then
@@ -2048,7 +2111,7 @@ local function freeUpdate(dt)
                         move = move.Unit * spd
                 end
                 S.freeVel = S.freeVel:Lerp(move, alpha)
-                S.freePos = S.freePos + S.freeVel * dt
+                S.freePos = freeClip(S.freePos + S.freeVel * dt) -- ANTI-TEMBOSS: tak masuk dinding/tanah
                 -- TARGET LOCK: aim halus ke target, vertikal ter-damping
                 -- (target lompat-lompat → kamera tetap stabil, tidak ikut menggeleng)
                 if S.locked and S.lockPlayer then
@@ -2121,6 +2184,7 @@ local function proUpdate(dt)
         local rot = CFrame.fromOrientation(S.proPitch, S.proYaw, 0)
         local desiredPos = S.proPivot + rot:VectorToWorldSpace(Vector3.new(0, 0, S.proDist))
         S.proPos = S.proPos and S.proPos:Lerp(desiredPos, math.clamp(alpha * 1.5, 0, 1)) or desiredPos
+        S.proPos = safeOrbit(S.proPivot, S.proPos) -- ANTI-TEMBOSS: mundur kalau terhalang dinding/objek
         Camera.CFrame = Camera.CFrame:Lerp(CFrame.lookAt(S.proPos, S.proPivot), math.clamp(alpha * 1.5, 0, 1))
         Camera.FieldOfView = Camera.FieldOfView + (CFG.FOV - Camera.FieldOfView) * alpha
 end
@@ -2224,48 +2288,61 @@ local function cineCtx(dt)
         }
 end
 
--- ═══════════════ LIBRARY SHOT (11 SHOT) ═══════════════
+-- ═══════════════ LIBRARY SHOT CINEMATIC (12 SHOT · 2 KATEGORI) ═══════════════
+-- CLOSE = shot dekat untuk 1 objek / karakter (detail, hero, emosi)
+-- WIDE  = shot jauh OTOMATIS saat kerumunan (banyak karakter/objek dekat target)
+-- BOTH  = dipakai dua kategori — jarak ikut P.dm (makin ramai makin jauh)
+-- Semua shot tetap RENDAH & sinematik, tanpa sudut dari atas.
 local SHOTS = {}
 
--- 1. CHASE LOW — kejar rendah dari belakang
-SHOTS["CHASE LOW"] = {
-        weights = { idle = 0.4, walk = 2.5, run = 4, vehicle = 5 },
+-- 1. REVEAL SHOT — buka adegan: kamera mundur & naik pelan memperkenalkan subjek
+SHOTS["REVEAL SHOT"] = {
+        cat = "BOTH",
+        weights = { idle = 3, walk = 2, run = 1.5, vehicle = 1.5 },
         enter = function(ctx, P)
-                P.d = rr(9, 14)
-                P.h = rr(1.8, 3.2)
-                P.fov = rr(60, 70)
                 P.dir = ctx.moveDir
-                seedSway(P, 1.3)
-        end,
-        update = function(P, t, dt, ctx)
-                local dir = smoothDir(P, ctx, dt, 2.2)
-                local p = ctx.pos - dir * P.d + Vector3.new(0, P.h, 0) + sway(P, t, 0.14)
-                return CFrame.lookAt(p, ctx.head + dir * 4), P.fov, closeDof(P.d, 4)
-        end,
-}
-
--- 2. WIDE SHOT — jauh & zoom out, estetik perjalanan
-SHOTS["WIDE SHOT"] = {
-        weights = { idle = 1.2, walk = 2, run = 3, vehicle = 4 },
-        enter = function(ctx, P)
-                P.d = rr(28, 42)
-                P.h = rr(6, 10)
-                P.fov = rr(52, 60)
-                P.dir = ctx.moveDir
+                P.d0 = rr(10, 14) * P.dm
+                P.d1 = P.d0 + rr(9, 14) * P.dm
+                P.h0 = rr(1, 1.6)
+                P.h1 = rr(3.5, 6)
+                P.fov = rr(50, 58)
                 seedSway(P, 0.7)
         end,
         update = function(P, t, dt, ctx)
                 local dir = smoothDir(P, ctx, dt, 1.6)
-                local p = ctx.pos - dir * P.d + Vector3.new(0, P.h, 0) + sway(P, t, 0.3)
-                return CFrame.lookAt(p, ctx.head + dir * 6), P.fov, 0
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local d = P.d0 + (P.d1 - P.d0) * k
+                local h = P.h0 + (P.h1 - P.h0) * k
+                local p = ctx.pos - dir * d + Vector3.new(0, h, 0) + sway(P, t, 0.14)
+                return CFrame.lookAt(p, ctx.head + dir * 4), P.fov - 6 * k, 0
         end,
 }
 
--- 3. SIDE TRACK — samping menyusul
-SHOTS["SIDE TRACK"] = {
-        weights = { idle = 1, walk = 4, run = 4, vehicle = 4 },
+-- 2. WIDE GROUND-LEVEL SHOT — perlihatkan lokasi dari ketinggian tanah (bukan dari atas)
+SHOTS["WIDE GROUND-LEVEL SHOT"] = {
+        cat = "WIDE",
+        weights = { idle = 3, walk = 2.5, run = 2, vehicle = 2 },
         enter = function(ctx, P)
-                P.absd = rr(9, 14)
+                P.dir = ctx.moveDir
+                P.d = rr(24, 34) * P.dm
+                P.h = rr(0.7, 1.4)
+                P.fov = rr(55, 64)
+                seedSway(P, 0.6)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 1.4)
+                local d = math.max(P.d - t * 0.35, 16 * P.dm) -- dorongan maju super halus
+                local p = ctx.pos - dir * d + Vector3.new(0, P.h, 0) + sway(P, t, 0.12)
+                return CFrame.lookAt(p, ctx.head + dir * 8), P.fov, 0
+        end,
+}
+
+-- 5. SIDE TRACK — gerakan dari samping, halus menyusul
+SHOTS["SIDE TRACK"] = {
+        cat = "BOTH",
+        weights = { idle = 1, walk = 4, run = 4, vehicle = 3 },
+        enter = function(ctx, P)
+                P.absd = rr(9, 14) * P.dm
                 P.side = (math.random() < 0.5 and -1 or 1) * P.absd
                 P.h = rr(1.5, 2.8)
                 P.fov = rr(58, 66)
@@ -2280,53 +2357,58 @@ SHOTS["SIDE TRACK"] = {
         end,
 }
 
--- 4. FRONT PASS — kamera statis DI DEPAN, subjek lewat mendekat
-SHOTS["FRONT PASS"] = {
-        weights = { idle = 0.5, walk = 3.5, run = 2.5, vehicle = 3 },
+-- 4. EYE-LEVEL TRACK — sejajar mata, mengikuti natural & elegan
+SHOTS["EYE-LEVEL TRACK"] = {
+        cat = "CLOSE",
+        weights = { idle = 1.5, walk = 3.5, run = 3, vehicle = 2.5 },
         enter = function(ctx, P)
-                P.approachDir = ctx.moveDir
-                P.spot = ctx.pos + ctx.moveDir * rr(11, 17) + Vector3.new(0, rr(1.6, 2.6), 0)
-                P.fov = rr(58, 70)
-                P.cut = false
+                P.dir = ctx.moveDir
+                P.d = rr(6.5, 9.5)
+                P.side = rr(-2.2, 2.2)
+                P.h = 1.55
+                P.fov = rr(48, 56)
+                seedSway(P, 1)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.2)
+                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                local p = ctx.pos + dir * P.d + perp * P.side + Vector3.new(0, P.h, 0) + sway(P, t, 0.1)
+                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(P.d, 5)
+        end,
+}
+
+-- 3. LOW ANGLE HERO — super rendah dari depan, gagah & premium
+SHOTS["LOW ANGLE HERO"] = {
+        cat = "CLOSE",
+        weights = { idle = 2.5, walk = 2.5, run = 2, vehicle = 1.5 },
+        enter = function(ctx, P)
+                P.dirMode = "look"
+                P.d0 = rr(9, 12)
+                P.d1 = rr(5.5, 7.5)
+                P.h = rr(0.5, 1.1)
+                P.fov = rr(50, 60)
+                P.dir = ctx.look
                 seedSway(P, 0.9)
         end,
         update = function(P, t, dt, ctx)
-                local rel = ctx.pos - P.spot
-                local along = rel:Dot(P.approachDir)
-                if along < -2.5 and not P.cut then
-                        -- subjek sudah lewat kamera: potong lebih cepat
-                        P.cut = true
-                        S.cine.dur = math.min(S.cine.dur, S.cine.t + 0.12)
-                end
-                local p = P.spot + sway(P, t, 0.1)
-                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(rel.Magnitude, 5)
+                local face = smoothDir(P, ctx, dt, 2.2)
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local d = P.d0 + (P.d1 - P.d0) * k
+                local p = ctx.pos + face * d + Vector3.new(0, P.h, 0) + sway(P, t, 0.08)
+                -- merayap pelan mendekat, kamera di bawah dagu → kesan megah
+                return CFrame.lookAt(p, ctx.head + Vector3.new(0, 0.4, 0)), P.fov, closeDof(d, 4)
         end,
 }
 
--- 5. CLOSE-UP — kamera DI DEPAN BADAN karakter
-SHOTS["CLOSE-UP"] = {
-        weights = { idle = 4, walk = 1.5, run = 0.4, vehicle = 0.3 },
-        enter = function(ctx, P)
-                P.dirMode = "look"
-                P.d = rr(4.5, 7)
-                P.hOff = rr(0.6, 1.4)
-                P.fov = rr(34, 46)
-                seedSway(P, 0.8)
-        end,
-        update = function(P, t, dt, ctx)
-                local face = smoothDir(P, ctx, dt, 3)
-                local p = ctx.pos + face * P.d + Vector3.new(0, P.hOff, 0) + sway(P, t, 0.07)
-                return CFrame.lookAt(p, ctx.head), P.fov, 1
-        end,
-}
-
--- 6. LEAD AHEAD — kamera di depan menghadap balik
+-- 6. LEAD AHEAD — kamera di depan bergerak mundur menghadap subjek
 SHOTS["LEAD AHEAD"] = {
-        weights = { idle = 0.5, walk = 3, run = 3.5, vehicle = 3.5 },
+        cat = "BOTH",
+        weights = { idle = 0.5, walk = 3, run = 3.5, vehicle = 3 },
         enter = function(ctx, P)
-                P.d = rr(12, 18)
+                P.d = rr(12, 18) * P.dm
                 P.h = rr(2, 4)
                 P.fov = rr(55, 63)
+                P.dir = ctx.moveDir
                 seedSway(P, 1)
         end,
         update = function(P, t, dt, ctx)
@@ -2336,15 +2418,16 @@ SHOTS["LEAD AHEAD"] = {
         end,
 }
 
--- 7. ORBIT 360 — putar penuh mengelilingi
-SHOTS["ORBIT 360"] = {
-        weights = { idle = 3.5, walk = 1.5, run = 1, vehicle = 1 },
+-- 9. SLOW ORBIT 180 — mengitari subjek setengah lingkaran perlahan
+SHOTS["SLOW ORBIT 180"] = {
+        cat = "BOTH",
+        weights = { idle = 3, walk = 1.5, run = 1, vehicle = 1.5 },
         enter = function(ctx, P)
-                P.r = rr(10, 17)
-                P.h = rr(2, 5)
+                P.r = rr(8, 13) * P.dm
+                P.h = rr(1.6, 3.2)
                 P.ang = rr(0, math.pi * 2)
-                P.spd = (math.random() < 0.5 and -1 or 1) * math.rad(rr(35, 65))
-                P.fov = rr(55, 65)
+                P.spd = (math.random() < 0.5 and -1 or 1) * math.rad(rr(22, 38)) -- pelan ≈ 180°
+                P.fov = rr(52, 62)
                 seedSway(P, 0.9)
         end,
         update = function(P, t, dt, ctx)
@@ -2354,105 +2437,162 @@ SHOTS["ORBIT 360"] = {
         end,
 }
 
--- 8. CRANE RISE — naik perlahan dari rendah ke tinggi
-SHOTS["CRANE RISE"] = {
-        weights = { idle = 3, walk = 2, run = 1.5, vehicle = 1.5 },
+-- 7. FRONT THREE-QUARTER PUSH-IN — mendekat dari sudut depan samping (3/4)
+SHOTS["FRONT THREE-QUARTER PUSH-IN"] = {
+        cat = "CLOSE",
+        weights = { idle = 3, walk = 2, run = 1.2, vehicle = 1 },
         enter = function(ctx, P)
-                P.dir = ctx.moveDir
-                P.d0 = rr(8, 12)
-                P.d1 = P.d0 + rr(5, 9)
-                P.h1 = rr(9, 15)
-                P.fov0 = rr(58, 66)
-                seedSway(P, 0.8)
-        end,
-        update = function(P, t, dt, ctx)
-                local dir = smoothDir(P, ctx, dt, 1.8)
-                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
-                local d = P.d0 + (P.d1 - P.d0) * k
-                local h = 1.6 + (P.h1 - 1.6) * k
-                local p = ctx.pos - dir * d + Vector3.new(0, h, 0) + sway(P, t, 0.12)
-                return CFrame.lookAt(p, ctx.head), P.fov0 - 10 * k, 0
-        end,
-}
-
--- 9. DOLLY PUSH — zoom in perlahan, blur muncul di akhir
-SHOTS["DOLLY PUSH"] = {
-        weights = { idle = 3, walk = 1.5, run = 0.5, vehicle = 0.5 },
-        enter = function(ctx, P)
-                P.dirMode = (math.random() < 0.55 and "look" or "move")
-                P.front = (P.dirMode == "look")
-                P.d0 = rr(16, 20)
-                P.d1 = rr(6.5, 9)
-                P.fov0 = rr(56, 66)
-                P.fov1 = P.fov0 - rr(14, 20)
+                P.dirMode = "look"
+                P.dir = ctx.look
+                P.ang = rr(0.5, 0.95) -- 28°-55° dari depan
+                P.side = (math.random() < 0.5 and -1 or 1)
+                P.d0 = rr(10, 13)
+                P.d1 = rr(5.5, 7.5)
+                P.h = rr(1.1, 2)
+                P.fov = rr(42, 52)
                 seedSway(P, 0.7)
         end,
         update = function(P, t, dt, ctx)
-                local dir = smoothDir(P, ctx, dt, 1.8)
+                local face = smoothDir(P, ctx, dt, 2)
                 local k = smoothstep(t / math.max(S.cine.dur, 0.1))
                 local d = P.d0 + (P.d1 - P.d0) * k
-                local sign = P.front and 1 or -1
-                local p = ctx.pos + dir * d * sign + Vector3.new(0, 1.6 + 0.6 * (1 - k), 0) + sway(P, t, 0.08)
-                return CFrame.lookAt(p, ctx.head), P.fov0 + (P.fov1 - P.fov0) * k, closeDof(d, 5)
+                local dir3q = rotY(face, P.ang * P.side)
+                local p = ctx.pos + dir3q * d + Vector3.new(0, P.h, 0) + sway(P, t, 0.08)
+                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(d, 4)
         end,
 }
 
--- 10. DUTCH TILT — miring dramatis
-SHOTS["DUTCH TILT"] = {
-        weights = { idle = 2, walk = 2, run = 1.5, vehicle = 1.5 },
+-- 8. REAR CHASE LOW — kejar rendah dari belakang, penuh energi
+SHOTS["REAR CHASE LOW"] = {
+        cat = "CLOSE",
+        weights = { idle = 0.6, walk = 3, run = 4, vehicle = 4 },
         enter = function(ctx, P)
-                P.absd = rr(6.5, 10)
-                P.side = (math.random() < 0.5 and -1 or 1) * P.absd
-                P.h = rr(1.6, 2.6)
-                P.roll = (math.random() < 0.5 and -1 or 1) * math.rad(rr(8, 15))
-                P.drift = (math.random() < 0.5 and -1 or 1) * rr(0.8, 1.7)
-                P.fov = rr(46, 58)
                 P.dir = ctx.moveDir
-                seedSway(P, 1)
+                P.d = rr(7, 10)
+                P.h = rr(1, 1.8)
+                P.fov = rr(56, 64)
+                seedSway(P, 1.3)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.6)
+                local p = ctx.pos - dir * P.d + Vector3.new(0, P.h, 0) + sway(P, t, 0.16)
+                return CFrame.lookAt(p, ctx.head + dir * 4), P.fov, closeDof(P.d, 4)
+        end,
+}
+
+-- 10. RACK FOCUS CLOSE-UP — dekat wajah/detail, blur menarik perhatian
+SHOTS["RACK FOCUS CLOSE-UP"] = {
+        cat = "CLOSE",
+        weights = { idle = 4, walk = 1.2, run = 0.3, vehicle = 0.3 },
+        enter = function(ctx, P)
+                P.dirMode = "look"
+                P.d = rr(3.6, 5.2)
+                P.hOff = rr(0.5, 1.2)
+                P.side = rr(-1.6, 1.6)
+                P.fov = rr(30, 38)
+                seedSway(P, 0.7)
+        end,
+        update = function(P, t, dt, ctx)
+                local face = smoothDir(P, ctx, dt, 3)
+                local perp = Vector3.new(-face.Z, 0, face.X)
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local p = ctx.pos + face * P.d + perp * P.side * (k - 0.5) + Vector3.new(0, P.hOff, 0) + sway(P, t, 0.05)
+                -- geser lateral pelan + blur maksimal = efek rack focus
+                return CFrame.lookAt(p, ctx.head), P.fov, 1
+        end,
+}
+
+-- 11. FOREGROUND WIPE — transisi artistik: kamera menyapu depan subjek
+SHOTS["FOREGROUND WIPE"] = {
+        cat = "BOTH",
+        weights = { idle = 2.5, walk = 2, run = 1.5, vehicle = 1.5 },
+        enter = function(ctx, P)
+                P.dir = ctx.moveDir
+                P.dF = rr(4.5, 6.5) * P.dm
+                P.xs = rr(5, 8) * P.dm
+                P.sign = (math.random() < 0.5 and -1 or 1)
+                P.h = rr(1.2, 2)
+                P.fov = rr(50, 60)
+                P.cut = false
+                seedSway(P, 0.8)
         end,
         update = function(P, t, dt, ctx)
                 local dir = smoothDir(P, ctx, dt, 2)
                 local perp = Vector3.new(-dir.Z, 0, dir.X)
-                if perp.Magnitude > 0.001 then
-                        perp = perp.Unit
+                local k = math.clamp(t / math.max(S.cine.dur, 0.1), 0, 1)
+                local lateral = (k * 2 - 1) * P.xs * P.sign
+                if not P.cut and math.abs(lateral) > P.xs * 0.92 then
+                        -- sapuan selesai: potong lebih cepat
+                        P.cut = true
+                        S.cine.dur = math.min(S.cine.dur, S.cine.t + 0.15)
                 end
-                local drift = perp * (t * P.drift)
-                local p = ctx.pos + perp * P.side + Vector3.new(0, P.h, 0) + drift + sway(P, t, 0.12)
-                local cf = CFrame.lookAt(p, ctx.head) * CFrame.Angles(0, 0, P.roll)
-                return cf, P.fov, closeDof(P.absd, 4)
+                local p = ctx.pos + dir * P.dF + perp * lateral + Vector3.new(0, P.h, 0) + sway(P, t, 0.06)
+                return CFrame.lookAt(p, ctx.head), P.fov, 0.85
         end,
 }
 
--- 11. TOP-DOWN — dari atas, berputar pelan
-SHOTS["TOP-DOWN"] = {
-        weights = { idle = 2.5, walk = 1.5, run = 1, vehicle = 1.5 },
+-- 12. DOLLY PULL-OUT — penutup: kamera menjauh perlahan dari subjek
+SHOTS["DOLLY PULL-OUT"] = {
+        cat = "BOTH",
+        weights = { idle = 2.5, walk = 2, run = 1.5, vehicle = 2 },
         enter = function(ctx, P)
-                P.h = rr(20, 32)
-                P.offA = rr(0, math.pi * 2)
-                P.offR = rr(3, 7)
-                P.spin = (math.random() < 0.5 and -1 or 1) * math.rad(rr(6, 14))
-                P.fov = rr(48, 58)
+                P.dir = ctx.moveDir
+                P.d0 = rr(5.5, 8) * P.dm
+                P.d1 = P.d0 + rr(12, 20) * P.dm
+                P.h0 = 1.4
+                P.h1 = rr(2.5, 4.5)
+                P.fov0 = rr(44, 52)
+                P.fov1 = P.fov0 + rr(8, 14)
                 seedSway(P, 0.6)
         end,
         update = function(P, t, dt, ctx)
-                P.offA = P.offA + P.spin * dt
-                local off = Vector3.new(math.cos(P.offA) * P.offR, 0, math.sin(P.offA) * P.offR)
-                local p = ctx.pos + off + Vector3.new(0, P.h, 0)
-                local lookTarget = ctx.pos + off * 0.3
-                local cf = CFrame.lookAt(p, lookTarget)
-                if math.abs(cf.LookVector.Y) > 0.995 then
-                        cf = CFrame.lookAt(p, lookTarget + Vector3.new(0.001, 0, 0.001))
-                end
-                return cf, P.fov, 0
+                local dir = smoothDir(P, ctx, dt, 1.8)
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local d = P.d0 + (P.d1 - P.d0) * k
+                local h = P.h0 + (P.h1 - P.h0) * k
+                local p = ctx.pos - dir * d + Vector3.new(0, h, 0) + sway(P, t, 0.1)
+                return CFrame.lookAt(p, ctx.head), P.fov0 + (P.fov1 - P.fov0) * k, closeDof(d, 5)
         end,
 }
 
--- ═══════════════ PEMILIH SHOT ADAPTIF ═══════════════
-local function pickShot()
+-- ═══════════════ DETEKSI KERUMUNAN & PEMILIH SHOT ═══════════════
+-- Kerumunan = pemain/NPC lain dekat subjek. Ramai → kategori WIDE + kamera mundur.
+local function crowdCount(root)
+        if not root then
+                return 0
+        end
+        local origin = root.Position
+        local n = 0
+        local seen = {}
+        for _, pl in ipairs(Players:GetPlayers()) do
+                local c = pl.Character
+                if c then
+                        seen[c] = true
+                        if pl ~= LP then
+                                local r = getRoot(c)
+                                if r and (r.Position - origin).Magnitude <= CFG.CrowdRadius then
+                                        n = n + 1
+                                end
+                        end
+                end
+        end
+        for _, obj in ipairs(workspace:GetChildren()) do
+                if obj:IsA("Model") and not seen[obj] then
+                        local hum = obj:FindFirstChildOfClass("Humanoid")
+                        local r = getRoot(obj)
+                        if hum and hum.Health > 0 and r and (r.Position - origin).Magnitude <= CFG.CrowdRadius then
+                                n = n + 1
+                        end
+                end
+        end
+        return n
+end
+
+local function pickShot(cat)
         local ctx = cineCtx()
         local pool, total = {}, 0
         for name, def in pairs(SHOTS) do
-                local w = def.weights[ctx.context] or 0
+                local w = (def.cat == cat or def.cat == "BOTH") and (def.weights[ctx.context] or 0) or 0
                 if w > 0 and name ~= S.cine.lastName then
                         table.insert(pool, { name = name, w = w })
                         total = total + w
@@ -2460,7 +2600,7 @@ local function pickShot()
         end
         if #pool == 0 then
                 for name, def in pairs(SHOTS) do
-                        local w = def.weights[ctx.context] or 0
+                        local w = (def.cat == cat or def.cat == "BOTH") and (def.weights[ctx.context] or 0) or 0
                         if w > 0 then
                                 table.insert(pool, { name = name, w = w })
                                 total = total + w
@@ -2468,7 +2608,7 @@ local function pickShot()
                 end
         end
         if #pool == 0 then
-                return "ORBIT 360"
+                return "SLOW ORBIT 180"
         end
         local roll = math.random() * total
         for _, it in ipairs(pool) do
@@ -2482,7 +2622,9 @@ end
 
 local function startShot()
         local ctx = cineCtx()
-        local name = pickShot()
+        local crowd = crowdCount(ctx.root)
+        local cat = (crowd >= 2) and "WIDE" or "CLOSE"
+        local name = pickShot(cat)
         local def = SHOTS[name]
         S.cine.name = name
         S.cine.lastName = name
@@ -2490,12 +2632,11 @@ local function startShot()
         S.cine.t = 0
         S.cine.dur = math.clamp(CFG.CineTempo + rr(-1.2, 1.2), 2.5, 10)
         S.cine.char = ctx.char
-        S.cine.P = {}
+        S.cine.crowd = crowd
+        -- makin ramai → jarak kamera makin jauh (dm sampai ~1.7x)
+        S.cine.P = { crowd = crowd, dm = 1 + math.min(crowd, 6) * 0.12, wide = (cat == "WIDE") }
         if def and def.enter then
                 def.enter(ctx, S.cine.P)
-        end
-        if UI.shotTxt then
-                UI.shotTxt.Text = "● " .. name
         end
 end
 
@@ -2517,10 +2658,368 @@ local function cineUpdate(dt)
         local cf, fov, dofK = S.cine.def.update(S.cine.P, S.cine.t, dt, ctx)
         -- breathing FOV halus biar hidup
         fov = fov + math.sin(os.clock() * 1.2) * 1.2
+        -- ANTI-TEMBOSS: shot tidak menembus dinding/tanah & tidak terhalang
+        local p = safeOrbit(ctx.head, cf.Position)
+        if p ~= cf.Position then
+                cf = CFrame.new(p) * cf.Rotation
+        end
         Camera.CFrame = cf
         Camera.FieldOfView = fov
         S.cine.dofK = dofK or 0
         S.cine.focusDist = (Camera.CFrame.Position - ctx.head).Magnitude
+end
+
+-- ═══════════════ RACE CAM — MODE 4 (NAIK KENDARAAN) ═══════════════
+-- Aktif dengan tombol 4 saat naik mobil/heli/perahu (target lock didukung:
+-- kalau target sedang menyetir, kamera memfilmkan kendaraannya).
+-- 10 shot balap dipilih otomatis sesuai kecepatan, tikungan, dan drift.
+local RSHOTS = {}
+
+-- 1. LOW REAR CHASE — kejar rendah dari belakang, FOV melebar makin ngebut
+RSHOTS["LOW REAR CHASE"] = {
+        pick = function(ctx) return 3 + ctx.spk * 4 end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.d = rr(10, 15)
+                P.h = rr(-0.6, 0.6)
+                P.fov = rr(58, 66)
+                seedSway(P, 1.3)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.8)
+                local fov = P.fov + ctx.spk * 18
+                local p = ctx.pos - dir * (P.d + ctx.spk * 4) + Vector3.new(0, P.h, 0) + sway(P, t, 0.18)
+                return CFrame.lookAt(p, ctx.pos + dir * 6), fov, closeDof(P.d, 5)
+        end,
+}
+
+-- 2. FRONT LEAD SHOT — di depan, bergerak mundur menghadap kendaraan
+RSHOTS["FRONT LEAD SHOT"] = {
+        pick = function(ctx) return 2.5 + ctx.spk * 2 end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.d = rr(10, 15)
+                P.h = rr(0.6, 1.6)
+                P.fov = rr(52, 60)
+                seedSway(P, 1)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.4)
+                local p = ctx.pos + dir * (P.d + ctx.spk * 3) + Vector3.new(0, P.h, 0) + sway(P, t, 0.14)
+                return CFrame.lookAt(p, ctx.pos + dir * 2), P.fov + ctx.spk * 8, 0
+        end,
+}
+
+-- 3. SIDE-BY-SIDE TRACK — sejajar samping saat melaju
+RSHOTS["SIDE-BY-SIDE TRACK"] = {
+        pick = function(ctx) return 3 + ctx.spk * 2 end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.side = (math.random() < 0.5 and -1 or 1) * rr(8, 13)
+                P.lead = rr(2, 5)
+                P.h = rr(0.4, 1.4)
+                P.fov = rr(56, 64)
+                seedSway(P, 1.1)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.2)
+                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                local p = ctx.pos + perp * P.side + dir * P.lead + Vector3.new(0, P.h, 0) + sway(P, t, 0.14)
+                return CFrame.lookAt(p, ctx.pos + dir * 2), P.fov, closeDof(math.abs(P.side), 6)
+        end,
+}
+
+-- 4. LOW FRONT THREE-QUARTER — sudut rendah depan samping, agresif
+RSHOTS["LOW FRONT THREE-QUARTER"] = {
+        pick = function(ctx) return 3 - ctx.spk * 1.5 end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.ang = rr(0.45, 0.9) -- 26°-52° dari depan
+                P.side = (math.random() < 0.5 and -1 or 1)
+                P.d0 = rr(7, 11)
+                P.h = rr(-0.4, 0.4)
+                P.fov = rr(44, 54)
+                seedSway(P, 0.9)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2)
+                local k = smoothstep(t / math.max(S.race.dur, 0.1))
+                local d = P.d0 - k * 2.5 -- dorongan pelan mendekat
+                local dir3q = rotY(dir, P.ang * P.side)
+                local p = ctx.pos + dir3q * d + Vector3.new(0, P.h, 0) + sway(P, t, 0.1)
+                return CFrame.lookAt(p, ctx.pos), P.fov, closeDof(d, 5)
+        end,
+}
+
+-- 5. PASS-BY SHOT — kamera diam, kendaraan melintas cepat
+RSHOTS["PASS-BY SHOT"] = {
+        pick = function(ctx) return (ctx.speed < 8) and 0 or 3.5 end,
+        enter = function(ctx, P)
+                local vdir = (ctx.speed > 1) and flatUnit(ctx.vel) or ctx.fwd
+                local right = Vector3.new(-vdir.Z, 0, vdir.X)
+                P.spot = ctx.pos + vdir * ctx.speed * rr(1.1, 1.8) + right * (math.random() < 0.5 and -1 or 1) * rr(4, 8) + Vector3.new(0, rr(0.8, 2), 0)
+                P.fov = rr(50, 58)
+                P.cut = false
+                seedSway(P, 0.5)
+        end,
+        update = function(P, t, dt, ctx)
+                local rel = ctx.pos - P.spot
+                local vdir = (ctx.speed > 1) and flatUnit(ctx.vel) or ctx.fwd
+                if not P.cut and rel:Dot(vdir) < -3 then
+                        P.cut = true -- kendaraan sudah lewat: potong
+                        S.race.dur = math.min(S.race.dur, S.race.t + 0.12)
+                end
+                local p = P.spot + sway(P, t, 0.08)
+                return CFrame.lookAt(p, ctx.pos), P.fov, 0
+        end,
+}
+
+-- 6. PANNING CORNER SHOT — kamera diam di tikungan, mengikuti lewat pan
+RSHOTS["PANNING CORNER SHOT"] = {
+        pick = function(ctx) return (math.abs(ctx.turn) > 0.3) and 4.5 or 0.4 end,
+        enter = function(ctx, P)
+                local side = (ctx.turn > 0 and 1 or -1) -- sisi luar tikungan
+                P.spot = ctx.pos + ctx.right * side * rr(9, 14) + ctx.fwd * rr(2, 6) + Vector3.new(0, rr(1.5, 3), 0)
+                P.fov = rr(48, 58)
+                seedSway(P, 0.5)
+        end,
+        update = function(P, t, dt, ctx)
+                local p = P.spot + sway(P, t, 0.08)
+                return CFrame.lookAt(p, ctx.pos), P.fov, 0
+        end,
+}
+
+-- 7. OVERTAKE SHOT — kamera menyiplin cepat dari belakang ke depan
+RSHOTS["OVERTAKE SHOT"] = {
+        pick = function(ctx) return 2 + ctx.spk * 2.5 end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.side = (math.random() < 0.5 and -1 or 1) * rr(3.5, 6)
+                P.h = rr(0.6, 1.6)
+                P.fov = rr(60, 68)
+                seedSway(P, 1.2)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.4)
+                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                local k = smoothstep(t / math.max(S.race.dur, 0.1))
+                local along = -12 + 25 * k -- dari belakang → depan
+                local p = ctx.pos + dir * along + perp * P.side + Vector3.new(0, P.h, 0) + sway(P, t, 0.12)
+                return CFrame.lookAt(p, ctx.pos + dir * 2), P.fov + ctx.spk * 6, closeDof(math.abs(along), 6)
+        end,
+}
+
+-- 8. WHEEL & TIRE CLOSE-UP — rendah dekat roda, detail & asap
+RSHOTS["WHEEL & TIRE CLOSE-UP"] = {
+        pick = function(ctx) return math.max(2.5 - ctx.spk * 1.2, 0.6) end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.ang = rr(0.6, 1.1)
+                P.side = (math.random() < 0.5 and -1 or 1)
+                P.d = rr(3.2, 4.6)
+                P.h = rr(-1.3, -0.7) -- setinggi roda
+                P.fov = rr(34, 44)
+                seedSway(P, 0.8)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.6)
+                local dirW = rotY(dir, P.ang * P.side)
+                local p = ctx.pos + dirW * P.d + Vector3.new(0, P.h, 0) + sway(P, t, 0.05)
+                return CFrame.lookAt(p, ctx.pos - Vector3.new(0, 0.8, 0)), P.fov, 1
+        end,
+}
+
+-- 9. COCKPIT POV — sudut pandang pengemudi dari dalam kabin
+RSHOTS["COCKPIT POV"] = {
+        pick = function(ctx) return 2 end,
+        enter = function(ctx, P)
+                P.dirMode = "look"
+                P.dir = ctx.fwd
+                P.fov = rr(66, 76)
+                seedSway(P, 1.4)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 3)
+                local p = ctx.pos + ctx.fwd * 0.4 + Vector3.new(0, 0.5, 0) + sway(P, t, 0.04)
+                return CFrame.lookAt(p, p + dir), P.fov, 0
+        end,
+}
+
+-- 10. DRIFT ARC SHOT — kamera melengkung mengitari kendaraan saat drift/tikungan
+RSHOTS["DRIFT ARC SHOT"] = {
+        pick = function(ctx) return ctx.drift and 6 or ((math.abs(ctx.turn) > 0.25) and 2.5 or 0.5) end,
+        enter = function(ctx, P)
+                P.r = rr(8, 12)
+                P.ang = math.atan2(ctx.fwd.Z, ctx.fwd.X) -- mulai searah kendaraan
+                P.spin = (ctx.turn >= 0 and 1 or -1) * math.rad(rr(24, 40))
+                P.h = rr(0.8, 1.8)
+                P.fov = rr(52, 62)
+                seedSway(P, 1)
+        end,
+        update = function(P, t, dt, ctx)
+                P.ang = P.ang + P.spin * dt
+                local fov = P.fov + ctx.spk * 6
+                local p = ctx.pos + Vector3.new(math.cos(P.ang) * P.r, P.h, math.sin(P.ang) * P.r) + sway(P, t, 0.12)
+                return CFrame.lookAt(p, ctx.pos), fov, closeDof(P.r, 6)
+        end,
+}
+
+-- konteks kendaraan untuk shot balap (dt opsional → stabilizer & deteksi belok aktif)
+local function raceCtx(dt)
+        local char = getSubjectChar()
+        local hum = getHum(char)
+        if not (hum and hum.SeatPart) then
+                char = myChar()
+                hum = getHum(char)
+        end
+        local root = getRoot(char)
+        local seat = hum and hum.SeatPart or nil
+        local pos = workspace.CurrentCamera.CFrame.Position
+        local speed = 0
+        local vel = Vector3.zero
+        local fwd = Vector3.new(0, 0, -1)
+        if root then
+                pos = root.Position
+                vel = root.AssemblyLinearVelocity
+                speed = vel.Magnitude
+                if seat and seat.Parent then
+                        fwd = flatUnit(seat.CFrame.LookVector)
+                end
+                if fwd.Magnitude < 0.05 then
+                        fwd = (speed > 1) and flatUnit(vel) or flatUnit(root.CFrame.LookVector)
+                end
+                if fwd.Magnitude < 0.05 then
+                        fwd = Vector3.new(0, 0, -1)
+                end
+                -- stabilizer vertikal (berbagi state dengan cinematic — hanya 1 mode aktif)
+                if S.cineStabChar ~= root then
+                        S.cineStabChar = root
+                        S.cineStabY = pos.Y
+                end
+                if dt then
+                        local grounded = (hum == nil) or (hum.FloorMaterial ~= Enum.Material.Air)
+                        local kY = grounded and CFG.CineStabG or CFG.CineStabA
+                        S.cineStabY = expLerp(S.cineStabY, pos.Y, dt, kY)
+                else
+                        S.cineStabY = pos.Y
+                end
+                pos = Vector3.new(pos.X, S.cineStabY, pos.Z)
+        end
+        local right = Vector3.new(-fwd.Z, 0, fwd.X)
+        local lat = vel:Dot(right)
+        -- laju belok (rad/s, ditandai + kiri/− kanan) untuk shot tikungan & drift
+        local turn = S.race.turn or 0
+        if dt and S.race.lastFwd then
+                local lf = S.race.lastFwd
+                local dot = math.clamp(lf:Dot(fwd), -1, 1)
+                local ang = math.asin(math.clamp(lf:Cross(fwd).Y, -1, 1))
+                if dot < 0 then
+                        ang = (ang >= 0) and (math.pi - ang) or (-math.pi - ang)
+                end
+                local inst = ang / math.max(dt, 0.001)
+                turn = turn + (inst - turn) * math.min(1, dt * 6)
+        end
+        S.race.turn = turn
+        if fwd.Magnitude > 0.05 then
+                S.race.lastFwd = fwd
+        end
+        return {
+                char = char,
+                root = root,
+                hum = hum,
+                seat = seat,
+                pos = pos,
+                vel = vel,
+                speed = speed,
+                fwd = fwd,
+                right = right,
+                turn = turn,
+                lat = lat,
+                drift = (speed > 10) and (math.abs(lat) > math.max(speed * 0.3, 6)),
+                spk = math.clamp((speed - 6) / 34, 0, 1),
+                look = fwd,  -- kompatibel dengan smoothDir
+                moveDir = fwd,
+                head = pos + Vector3.new(0, 1.2, 0),
+        }
+end
+
+local function racePick(ctx)
+        local pool, total = {}, 0
+        for name, def in pairs(RSHOTS) do
+                local w = def.pick(ctx) or 0
+                if w > 0 and name ~= S.race.lastName then
+                        table.insert(pool, { name = name, w = w })
+                        total = total + w
+                end
+        end
+        if #pool == 0 then
+                for name, def in pairs(RSHOTS) do
+                        local w = def.pick(ctx) or 0
+                        if w > 0 then
+                                table.insert(pool, { name = name, w = w })
+                                total = total + w
+                        end
+                end
+        end
+        if #pool == 0 then
+                return "LOW REAR CHASE"
+        end
+        local roll = math.random() * total
+        for _, it in ipairs(pool) do
+                roll = roll - it.w
+                if roll <= 0 then
+                        return it.name
+                end
+        end
+        return pool[1].name
+end
+
+local function startRaceShot()
+        local ctx = raceCtx()
+        local name = racePick(ctx)
+        local def = RSHOTS[name]
+        S.race.name = name
+        S.race.lastName = name
+        S.race.def = def
+        S.race.t = 0
+        S.race.dur = math.clamp(CFG.CineTempo + rr(-1, 1.2), 2.5, 9)
+        S.race.char = ctx.char
+        S.race.P = {}
+        if def and def.enter then
+                def.enter(ctx, S.race.P)
+        end
+end
+
+local function raceUpdate(dt)
+        local ctx = raceCtx(dt)
+        if not ctx.root or not ctx.seat then
+                -- keluar dari kendaraan / kendaraan hilang → RACE mati otomatis
+                setMode("NONE")
+                notify("Keluar kendaraan — RACE CAM OFF", 1.6)
+                return
+        end
+        if not S.race.def then
+                startRaceShot()
+                if not S.race.def then
+                        return
+                end
+        end
+        S.race.t = S.race.t + dt
+        if ctx.char ~= S.race.char or S.race.t >= S.race.dur then
+                startRaceShot()
+        end
+        local cf, fov, dofK = S.race.def.update(S.race.P, S.race.t, dt, ctx)
+        -- breathing FOV halus biar hidup
+        fov = fov + math.sin(os.clock() * 1.2) * 1.2
+        -- ANTI-TEMBOSS: shot balap juga tak menembus dinding/tanah
+        local p = safeOrbit(ctx.pos, cf.Position)
+        if p ~= cf.Position then
+                cf = CFrame.new(p) * cf.Rotation
+        end
+        Camera.CFrame = cf
+        Camera.FieldOfView = fov
+        S.race.dofK = dofK or 0
+        S.race.focusDist = (Camera.CFrame.Position - ctx.pos).Magnitude
 end
 
 -- ═══════════════ SPACE (TAHAN) = TURBO + ANTI LOMPAT ═══════════════
@@ -2565,6 +3064,17 @@ function setMode(m)
                 -- tekan tombol mode yang sama = matikan
                 m = "NONE"
         end
+        if m == "RACE" then
+                -- RACE CAM butuh kendaraan: cek subjek (target lock) lalu diri sendiri
+                local hum = getHum(getSubjectChar())
+                if not (hum and hum.SeatPart) then
+                        hum = getHum(myChar())
+                end
+                if not (hum and hum.SeatPart) then
+                        notify("RACE CAM butuh kendaraan — naik mobil/heli/perahu dulu", 1.6)
+                        return
+                end
+        end
         if m ~= "NONE" then
                 -- mode kamera apapun otomatis menyalakan kembali master yang mati
                 if not S.master then
@@ -2581,7 +3091,10 @@ function setMode(m)
                 unbindSpace()
         end
         S.mode = m
+        lastFreePos = nil -- jejak anti-temboss free cam direset tiap ganti mode
+        refreshCamFilter()
         if m == "NONE" then
+                notify("KAMERA MODE OFF", 1.2)
                 S.fly = nil
                 S.proGlide = nil
                 S.turbo = false
@@ -2624,7 +3137,7 @@ function setMode(m)
                 setAnchorState()
                 bindSpace()
                 Camera.FieldOfView = CFG.FOV * 0.8 -- efek zoom-in pembuka
-                notify("FREE CAM — WASD+QE gerak · RMB lihat · Scroll FOV · tahan Space turbo")
+                notify("FREE CAM — WASD+QE gerak · RMB lihat · Scroll FOV · tahan Space turbo", 1.4)
         elseif m == "PRO" then
                 local camCF = workspace.CurrentCamera.CFrame
                 local look = camCF.LookVector
@@ -2644,12 +3157,20 @@ function setMode(m)
                 setAnchorState()
                 bindSpace()
                 Camera.FieldOfView = CFG.FOV * 0.8
-                notify("PRO CAM — RMB putar · Scroll zoom 4–80 stud")
+                notify("PRO CAM — RMB putar · Scroll zoom 4–80 stud", 1.4)
         elseif m == "CINE" then
                 Camera.CameraType = Enum.CameraType.Scriptable
                 S.cine.def = nil
                 setAnchorState() -- karakter beku total, biar shot tetap rapi
-                notify("CINEMATIC — shot otomatis + cut langsung · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s")
+                notify("CINEMATIC — shot otomatis + cut langsung · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s", 1.4)
+        elseif m == "RACE" then
+                Camera.CameraType = Enum.CameraType.Scriptable
+                S.race.def = nil
+                S.race.lastName = ""
+                S.race.turn = 0
+                S.race.lastFwd = nil
+                setAnchorState() -- RACE tidak beku: kamu tetap menyetir selagi kamera merekam
+                notify("RACE CAM — 10 shot balap otomatis · keluar kendaraan = mati sendiri", 1.4)
         end
         refreshModeUI()
         updateChip()
@@ -2673,6 +3194,16 @@ function setMaster(on)
                 if not m or m == "NONE" then
                         m = "FREE"
                 end
+                if m == "RACE" then
+                        -- RACE hanya masuk akal kalau masih di kendaraan
+                        local hum = getHum(getSubjectChar())
+                        if not (hum and hum.SeatPart) then
+                                hum = getHum(myChar())
+                        end
+                        if not (hum and hum.SeatPart) then
+                                m = "FREE"
+                        end
+                end
                 setMode(m)
                 setFilter(S.foto.filter) -- filter foto kembali sesuai setting
                 updateRatioMasks()       -- mask rasio kembali
@@ -2682,6 +3213,7 @@ function setMaster(on)
                         S.lastMode = S.mode
                 end
                 setMode("NONE")
+                S.fotoAktif = false -- layer foto ikut mati
                 -- matikan filter foto TANPA mereset pilihan user
                 PHOTO_CC.Enabled = false
                 PHOTO_BLOOM.Enabled = false
@@ -2725,27 +3257,33 @@ table.insert(CONNS, UserInputService.InputBegan:Connect(function(input, gp)
                 setMode("PRO")
         elseif kc == Enum.KeyCode.Three then
                 setMode("CINE")
+        elseif kc == Enum.KeyCode.Four then
+                setMode("RACE")
         elseif kc == Enum.KeyCode.CapsLock then
                 -- MASTER: CapsLock mati = semua fitur kamera off
                 setMaster(not S.master)
         elseif kc == Enum.KeyCode.F then
                 togglePanel()
         elseif kc == Enum.KeyCode.M then
-                -- MODE FOTO: buka panel + langsung ke tab FOTO
-                if not S.master then
-                        -- foto butuh efek kamera -> nyalakan master dulu (tanpa paksa mode)
-                        S.master = true
-                        setFilter(S.foto.filter)
-                        updateRatioMasks()
-                        updateChip()
+                -- MODE FOTO on/off: layer foto + letterbox bioskop (bisa dipakai tanpa mode kamera)
+                S.fotoAktif = not S.fotoAktif
+                if S.fotoAktif then
+                        if not S.master then
+                                -- foto butuh efek kamera -> nyalakan master dulu (tanpa paksa mode)
+                                S.master = true
+                                setFilter(S.foto.filter)
+                                updateRatioMasks()
+                                updateChip()
+                        end
+                        if S.uiHidden then
+                                toggleHideUI()
+                        end
+                        S.panelOpen = true
+                        UI.panel.Visible = true
+                        switchTab("FOTO")
                 end
-                if S.uiHidden then
-                        toggleHideUI()
-                end
-                S.panelOpen = true
-                UI.panel.Visible = true
-                switchTab("FOTO")
-                notify("MODE FOTO · atur filter, rasio & DoF lalu AMBIL FOTO")
+                applyLetterbox()
+                notify(S.fotoAktif and "MODE FOTO ON — letterbox bioskop aktif (M lagi = mati)" or "MODE FOTO OFF", 1.4)
         elseif kc == Enum.KeyCode.T then
                 toggleLock()
         elseif kc == Enum.KeyCode.C then
@@ -2812,8 +3350,14 @@ end))
 
 -- ═══════════════ LOOP RENDER ═══════════════
 local lockCheck = 0
+local camFilterCheck = 0
 table.insert(CONNS, RunService.RenderStepped:Connect(function(dt)
         Camera = workspace.CurrentCamera
+        -- segarkan filter anti-temboss tiap 0.5 detik (respawn/kendaraan baru ikut tercakup)
+        if os.clock() - camFilterCheck > 0.5 then
+                camFilterCheck = os.clock()
+                refreshCamFilter()
+        end
         -- RAWAT TARGET LOCK: AUTO pindah sendiri, mode lain lepas kalau target hilang/mati
         if S.locked and os.clock() - lockCheck > 0.5 then
                 lockCheck = os.clock()
@@ -2825,7 +3369,7 @@ table.insert(CONNS, RunService.RenderStepped:Connect(function(dt)
                                 if best then
                                         S.lockPlayer = best
                                         S.selected = best
-                                        notify("AUTO LOCK → " .. best.Name)
+                                        notify("AUTO LOCK → " .. best.Name, 1.2)
                                         updateChip()
                                         refreshTargetList()
                                         if UI.updateLockBtn then
@@ -2835,7 +3379,7 @@ table.insert(CONNS, RunService.RenderStepped:Connect(function(dt)
                         else
                                 S.locked = false
                                 S.lockPlayer = nil
-                                notify("Target hilang — lock dilepas")
+                                notify("Target hilang — lock dilepas", 1.4)
                                 updateChip()
                                 refreshTargetList()
                                 if UI.updateLockBtn then
@@ -2850,6 +3394,8 @@ table.insert(CONNS, RunService.RenderStepped:Connect(function(dt)
                 proUpdate(dt)
         elseif S.mode == "CINE" then
                 cineUpdate(dt)
+        elseif S.mode == "RACE" then
+                raceUpdate(dt)
         end
         applyDof()
 end))
