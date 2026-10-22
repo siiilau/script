@@ -1,5 +1,5 @@
 --========================================================
---  BALAP v1.4 — Script Balapan Gabungan
+--  BALAP v1.5 — Script Balapan Gabungan
 --
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
@@ -8,17 +8,19 @@
 --    2 🎨 VISUAL : Hide, Hide Pemain Lain, Cahaya Auto 2 arah, Lightweight, Dinding Batas
 --    3 ⚙️ SISTEM : Layar PC, reset, rejoin, hapus script
 --
---  BARU v1.4 — 🖥️ LAYAR PC 27" (fix: "frame script tidak mengecil"):
---    • Frame panel BALAP sekarang BENAR-BENAR mengecil — penyebab lama:
---      ada 2 UIScale di frame yang sama (Roblox hanya menghormati satu),
---      sekarang pakai panelScale yang sudah ada (satu-satunya UIScale).
---    • SEMUA UI (game + Roblox) mengecil DI TEMPAT masing-masing — posisi
---      tidak bergeser, layar tetap rapi. Wadah layar-penuh ditembus agar
---      bar atas / panel samping / bar bawah tetap di posisinya.
---    • Scan LEBIH DALAM: ScreenGui yang disimpan dalam Folder/kelompok
---      sekarang ikut ketemu (dulu cuma GUI langsung di PlayerGui).
---    • Proteksi dobel-scale: elemen yang sudah tercakup scale induknya
---      tidak dipasang scale lagi (tidak ada UI yang mengecil 2x).
+--  BARU v1.5 — 🖥️ LAYAR PC 27" (fix: "beberapa UI posisinya berubah"):
+--    • POSISI LEBIH SETIA — UI yang MENEMPEL TEPIS layar (chat kiri, bar
+--      bawah, playerlist kanan) tetap menempel di tepinya saat mengecil.
+--      UI yang MELAYANG di tengah (popup, jendela) sekarang mengecil
+--      SIMETRIS DI TENGAHNYA — tidak merayap ke pojok kiri-atasnya.
+--    • REGISTRY DATA ASLI — posisi & ukuran asli tiap elemen disimpan;
+--      semua hitungan selalu dari nilai asli (tidak menumpuk) dan posisi
+--      dipulihkan 100% saat mode NORMAL / hapus script.
+--    • ANTI DOBEL-SCALE DUA ARAH — induk yang baru dipasangi scale otomatis
+--      melepas scale sisa di turunannya (container game yang membesar-
+--      mengecil antar sapuan tidak lagi bikin UI mengecil 2x / melompat).
+--    • TINGGI FRAME PANEL DI-CAP — maksimal ±68% tinggi layar (dulu 82%
+--      dari 720px = nyaris memenuhi layar kecil).
 --    • 2 mode: PC 27" (UI 82% + FOV 74°) ⇄ NORMAL. Default: PC 27".
 --
 --  Keybind:
@@ -30,7 +32,7 @@
 --    N = Layar PC: toggle PC 27" ⇄ Normal
 --    K = Rejoin (double-tap)
 --========================================================
-local VERSI = "1.4"
+local VERSI = "1.5"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -81,7 +83,7 @@ local CFG = {
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
 }
--- Preset Layar PC (v1.4): 2 mode — PC 27" & NORMAL.
+-- Preset Layar PC (v1.5): 2 mode — PC 27" & NORMAL.
 -- ui  = faktor scale SEMUA UI (game + Roblox), dipasang PER-ELEMEN supaya
 --       posisi tidak bergeser. fov = FOV saat "Lebar Pandang" aktif.
 local PC_MODES = {
@@ -487,7 +489,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.4 ⚡",
+    Text = "⚡ BALAP v1.5 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -943,18 +945,18 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.4\n"
+    Text = "⚡ BALAP v1.5\n"
         .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
         .. "B fall • R hide • T cahaya • X dinding • N layar PC • K×2 rejoin\n"
-        .. "🖥️ Layar PC v1.4: SEMUA UI (game + Roblox) + frame script mengecil di tempat, posisi tetap — seperti PC 27\"",
+        .. "🖥️ Layar PC v1.5: UI menempel tepi tetap di tepi, UI melayang mengecil di tengahnya — seperti PC 27\"",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
 buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoVersi)
 
--- ===== section 🖥️ LAYAR PC (v1.4) =====
+-- ===== section 🖥️ LAYAR PC (v1.5) =====
 buatHeader(scrollSistem, "Layar PC")
 PCStatus = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
@@ -1047,7 +1049,8 @@ local infoKredit = buat("TextLabel", {
         .. "Basis: SILAU BALAPAN v1.1 (5 skrip digabung)\n"
         .. "v1.0.1: rename BALAP — 3 tab fokus balapan\n"
         .. "v1.3: 🖥️ Layar PC per-elemen — posisi tetap\n"
-        .. "v1.4: PC 27\" — frame panel ikut mengecil + scan lebih dalam",
+        .. "v1.4: PC 27\" — frame panel ikut mengecil + scan lebih dalam\n"
+        .. "v1.5: posisi lebih setia + tinggi panel di-cap muat layar",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
@@ -2104,24 +2107,26 @@ end
 -- Nilai ON (17.25 / 21.25, atau di antaranya) dipilih via stepper di Tab GERAK.
 -- Keybind Q langsung panggil setFeature("Speed", ...) dari handler [21].
 
--- LAYAR PC (v1.4) — emulasi monitor 27" di device apapun
--- v1.4 (fix "frame script tidak mengecil" + "masih ada UI yang tidak berubah"):
---   • FRAME PANEL: dulu dipasang UIScale KEDUA (BalapPCScale) di frame yang
---     sudah punya panelScale → Roblox hanya menghormati SATU UIScale per
---     objek, jadi frame tidak pernah mengecil. Sekarang panelScale langsung
---     dipakai (nilai akhir = panelTarget()), satu-satunya UIScale di panel.
---   • SCAN LEBIH DALAM: LayerCollector di dalam Folder/kelompok sekarang
---     ketemu (dulu hanya GUI yang langsung di PlayerGui/CoreGui).
---   • ANTI DOBEL-SCALE: elemen yang induknya sudah berscale DILEWATI,
---     supaya tidak ada yang mengecil dua kali (0.82 × 0.82 = 0.67).
---   • Scale PER-ELEMEN tetap: tiap UI mengecil DI TEMPATNYA sesuai anchor,
---     posisi tidak bergeser; wadah layar-penuh ditembus (recurse) → bar
---     atas / panel kanan / bar bawah tetap di posisinya.
---   • PlayerGui + CoreGui discan penuh (UI game + UI Roblox, best-effort)
---   • Anti-reset: watcher Changed + sapu ulang tiap 2 detik + DescendantAdded
---   • Notif toast ikut mengecil (pcScaleNotif, satu-satunya UIScale di holder)
+-- LAYAR PC (v1.5) — emulasi monitor 27" di device apapun
+-- v1.5 (fix "beberapa UI posisinya berubah" + "frame script masih besar"):
+--   • POSISI LEBIH SETIA — UI yang MENEMPEL TEPIS (chat kiri, bar bawah,
+--     playerlist kanan) tetap menempel di tepinya saat mengecil. UI yang
+--     MELAYANG (popup, jendela) mengecil SIMETRIS DI TENGAHNYA — tidak
+--     merayap ke pojok kiri-atasnya (delta posisi center-preserving).
+--   • REGISTRY DATA ASLI (pcData) — posisi & ukuran asli tiap elemen
+--     disimpan; hitungan selalu dari nilai asli (idempoten, tidak
+--     menumpuk) dan posisi dipulihkan saat NORMAL / hapus script.
+--   • ANTI DOBEL-SCALE DUA ARAH — induk yang baru dipasangi scale otomatis
+--     melepas scale sisa di turunannya (container game yang membesar-
+--     mengecil antar sapuan tidak lagi bikin UI mengecil 2x / melompat).
+--   • TINGGI FRAME PANEL DI-CAP ±68% tinggi layar (dulu 82% × 720px =
+--     nyaris memenuhi layar kecil).
+--   • Tetap: scale per-elemen DI TEMPAT, wadah layar-penuh ditembus
+--     (recurse), scan dalam (PlayerGui + CoreGui + Folder bersarang),
+--     anti-reset watcher + sapu 2 detik + DescendantAdded + respawn.
 local pcScaleNotif
 local pcInjected = {}
+local pcData = {}  -- v1.5: [elemen] = {pos, lastPos, w, h, sc} data asli
 do
     if Original.FOV == nil then
         local cam0 = Workspace.CurrentCamera
@@ -2130,9 +2135,20 @@ do
     pcScaleNotif = buat("UIScale", {Name = "BalapPCScale", Scale = 1}, notifHolder)
 
     -- nilai akhir scale panel sesuai mode (dipakai animasi buka/tutup + mesin)
+    -- v1.5: tinggi panel (desain 720px) di-CAP supaya maksimal ±68% tinggi
+    -- layar — di layar kecil panel tidak lagi nyaris memenuhi layar.
     panelTarget = function()
         if (State.PCMode or 0) > 0 and PC_MODES[State.PCMode] then
-            return PC_MODES[State.PCMode].ui
+            local f = PC_MODES[State.PCMode].ui
+            local cam = Workspace.CurrentCamera
+            if cam then
+                local vh = cam.ViewportSize.Y
+                if vh > 100 then
+                    local fit = (vh * 0.68) / 720
+                    if fit < f then f = fit end
+                end
+            end
+            return f
         end
         return 1
     end
@@ -2171,21 +2187,95 @@ do
         return a.X >= ps.X * 0.9 and a.Y >= ps.Y * 0.9
     end
 
-    local function pasangScaleGui(gui, faktor)
-        if not gui or State.Removed then return 0 end
+    -- v1.5 [1/3] — deteksi menempel-tepi PER SUMBU: true kalau elemen
+    -- menyentuh area tepi layar di sumbu itu (kiri/kanan, atas/bawah).
+    -- Elemen tepi (chat kiri, bar bawah, playerlist kanan) harus tetap
+    -- MENEMPEL TEPINYA saat mengecil — bukan ditarik ke tengah.
+    local function tepiSumbu(el, w, h)
+        local cam = Workspace.CurrentCamera
+        if not cam then return false, false end
+        local vp = cam.ViewportSize
+        if vp.X <= 0 or vp.Y <= 0 then return false, false end
+        local ap = el.AbsolutePosition
+        local mX, mY = vp.X * 0.08, vp.Y * 0.08
+        local pinX = (ap.X <= mX) or (ap.X + w >= vp.X - mX)
+        local pinY = (ap.Y <= mY) or (ap.Y + h >= vp.Y - mY)
+        return pinX, pinY
+    end
+
+    -- v1.5 [2/3] — posisi akhir = posisi ASLI + delta center-preserving
+    -- pada sumbu yang TIDAK menempel tepi. UI melayang mengecil simetris
+    -- di tengahnya sendiri (tidak merayap ke pojok), UI tepi tetap di tepi.
+    -- Selalu dihitung dari data ASLI (d.pos, d.w, d.h) → idempoten.
+    local function terapkanPosisi(el, d, faktor)
+        if not el:IsA("GuiObject") then return end
+        local pinX, pinY = tepiSumbu(el, d.w, d.h)
+        local an = el.AnchorPoint
+        local dx = (not pinX) and (1 - faktor) * d.w * (0.5 - an.X) or 0
+        local dy = (not pinY) and (1 - faktor) * d.h * (0.5 - an.Y) or 0
+        local baru = d.pos + UDim2.fromOffset(dx, dy)
+        el.Position = baru
+        d.lastPos = baru
+    end
+
+    -- v1.5 [3/3] — lepas scale satu elemen + PULIHKAN posisi aslinya
+    -- (dipakai saat elemen berubah jadi wadah/tercakup induk/bersih-bersih)
+    local function lepasScale(el, sisa)
+        local d = pcData[el]
+        if d then
+            pcall(function() if el.Parent then el.Position = d.pos end end)
+            pcData[el] = nil
+        end
+        if sisa then
+            pcall(function() sisa:Destroy() end)
+            local idx = table.find(pcInjected, sisa)
+            if idx then table.remove(pcInjected, idx) end
+        end
+    end
+
+    local function pasangScaleGui(el, faktor)
+        if not el or State.Removed then return 0 end
         -- GUI BALAP sendiri jangan (sudah diskalakan terpisah)
-        if gui.Name == "BalapMain" or gui:IsDescendantOf(root) then return 0 end
-        local s = gui:FindFirstChild("BalapPCScale")
-        if s and s:IsA("UIScale") then
-            s.Scale = faktor
-            if not table.find(pcInjected, s) then table.insert(pcInjected, s) end
+        if el.Name == "BalapMain" or el:IsDescendantOf(root) then return 0 end
+        local d = pcData[el]
+        if d and d.sc and d.sc.Parent then
+            -- sudah terdaftar: cukup selaraskan scale + posisi dgn faktor kini
+            d.sc.Scale = faktor
+            -- game memindahkan elemen? → jadikan posisi barunya acuan asli
+            if el.Position ~= d.lastPos then d.pos = el.Position end
+            -- game mengubah ukuran property Size? → ukur ulang dari absolut
+            pcall(function()
+                if d.sc.Scale > 0.01 and el.AbsoluteSize.X > 1 then
+                    d.w = el.AbsoluteSize.X / d.sc.Scale
+                    d.h = el.AbsoluteSize.Y / d.sc.Scale
+                end
+            end)
+            terapkanPosisi(el, d, faktor)
             return 1
         end
+        -- elemen BARU dipasangi scale: lepas dulu sisa scale DI TURUNANNYA
+        -- (kasus: container game membesar lalu mengecil antar sapuan —
+        -- anak-anaknya sempat diskala sendiri → dobel scale & melompat!)
+        for _, tur in ipairs(el:GetDescendants()) do
+            if tur:IsA("GuiObject") then
+                local sisa = tur:FindFirstChild("BalapPCScale")
+                if sisa and sisa:IsA("UIScale") then lepasScale(tur, sisa) end
+            end
+        end
         local ok = pcall(function()
+            local d2 = {
+                pos = el.Position,        -- posisi ASLI (sebelum discale)
+                lastPos = el.Position,
+                w = el.AbsoluteSize.X,    -- ukuran ASLI (sebelum discale)
+                h = el.AbsoluteSize.Y,
+            }
             local ns = Instance.new("UIScale")
             ns.Name = "BalapPCScale"
+            d2.sc = ns
+            pcData[el] = d2
+            terapkanPosisi(el, d2, faktor) -- rapikan posisi SEBELUM scale aktif
             ns.Scale = faktor
-            ns.Parent = gui
+            ns.Parent = el
             -- kalau game me-reset nilai scale ini → kembalikan otomatis
             ns.Changed:Connect(function(prop)
                 if prop == "Scale" and (State.PCMode or 0) > 0 and not State.Removed
@@ -2195,6 +2285,11 @@ do
             end)
             table.insert(pcInjected, ns)
         end)
+        if not ok then
+            local d3 = pcData[el]
+            if d3 and d3.sc then pcall(function() d3.sc:Destroy() end) end
+            pcData[el] = nil
+        end
         return ok and 1 or 0
     end
 
@@ -2220,17 +2315,16 @@ do
             if el:IsA("GuiObject") or el:IsA("LayerCollector") then
                 if el.Name ~= "BalapMain" and not el:IsDescendantOf(root) then
                     if tembus(el) then
-                        -- elemen dulu ke-scale lama jadi wadah penuh? lepas scale lamanya
+                        -- elemen dulu ke-scale lama jadi wadah penuh? lepas
+                        -- scale + PULIHKAN posisi aslinya (v1.5)
                         local sisa = el:FindFirstChild("BalapPCScale")
-                        if sisa and sisa:IsA("UIScale") then pcall(function() sisa:Destroy() end) end
+                        if sisa and sisa:IsA("UIScale") then lepasScale(el, sisa) end
                         prosesContainer(el, faktor, stat)
                     elseif adaScaleDiAtas(el, container) then
-                        -- sudah tercakup scale induknya → hapus sisa scale di
-                        -- dirinya sendiri (kalau ada) lalu lewati
+                        -- sudah tercakup scale induknya → lepas scale sendiri
+                        -- + pulihkan posisi (kalau ada sisa), lalu lewati
                         local sendiri = el:FindFirstChild("BalapPCScale")
-                        if sendiri and sendiri:IsA("UIScale") then
-                            pcall(function() sendiri:Destroy() end)
-                        end
+                        if sendiri and sendiri:IsA("UIScale") then lepasScale(el, sendiri) end
                     else
                         stat.coba += 1
                         stat.ok += pasangScaleGui(el, faktor)
@@ -2251,13 +2345,20 @@ do
     end
 
     local function bersihkanPC()
+        -- v1.5: pulihkan posisi ASLI semua elemen yang pernah kita ubah
+        for el, d in pairs(pcData) do
+            pcall(function()
+                if el and el.Parent and d.pos then el.Position = d.pos end
+            end)
+        end
+        table.clear(pcData)
         for _, s in ipairs(pcInjected) do
             pcall(function() if s and s.Parent then s:Destroy() end end)
         end
         table.clear(pcInjected)
         pcFaktor = 1
-        panelScale.Scale = 1
-        if pcScaleNotif then pcScaleNotif.Scale = 1 end
+        pcall(function() panelScale.Scale = 1 end)
+        if pcScaleNotif then pcall(function() pcScaleNotif.Scale = 1 end) end
     end
 
     -- v1.4: kumpulkan SEMUA GUI teratas dalam container (GetDescendants),
@@ -2341,7 +2442,7 @@ do
         end
         State.PCMode = n
         if n == 0 then
-            bersihkanPC()
+            pcall(bersihkanPC)
         else
             pcall(sapuPC)
         end
@@ -2484,12 +2585,19 @@ unloadScript = function()
     -- 5b) Restore Layar PC: hapus semua scale yang dipasang + balikin FOV asli
     pcall(function()
         State.PCMode = 0
+        -- v1.5: pulihkan posisi asli semua elemen yang pernah diubah
+        for el, d in pairs(pcData) do
+            pcall(function()
+                if el and el.Parent and d.pos then el.Position = d.pos end
+            end)
+        end
+        table.clear(pcData)
         for _, s in ipairs(pcInjected) do
             pcall(function() if s.Parent then s:Destroy() end end)
         end
         table.clear(pcInjected)
-        panelScale.Scale = 1
-        if pcScaleNotif then pcScaleNotif.Scale = 1 end
+        pcall(function() panelScale.Scale = 1 end)
+        if pcScaleNotif then pcall(function() pcScaleNotif.Scale = 1 end) end
         local cam = Workspace.CurrentCamera
         if cam and Original.FOV then cam.FieldOfView = Original.FOV end
     end)
@@ -2599,7 +2707,7 @@ local function minimizeGui()
         if sesiAnim ~= id then return end
         root.Visible = false
         root.Rotation = 0
-        panelScale.Scale = panelTarget()  -- v1.4: ikut mode layar PC
+        panelScale.Scale = panelTarget()  -- v1.5: ikut mode layar PC (+ cap tinggi)
         fadeVal.Value = 0
     end)
 end
