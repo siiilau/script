@@ -26,7 +26,8 @@
           CATATAN :
             • Mesin FREE/PRO + target lock dari GALAXY v11 (halus & anti menggeleng)
             • Lompat/jatuh = kamera tetap lembut & halus (boleh sedikit terlambat, lebih realistis)
-            • CINEMATIC 16 shot · 2 kategori: CLOSE (1 objek) / WIDE (kerumunan, jarak otomatis)
+            • CINEMATIC 21 shot PENUH GERAKAN (dolly zoom · spiral · orbit 360 · dutch tilt · crash
+              zoom · kurva-S) · CLOSE (1 objek) / WIDE (kerumunan, jarak otomatis) · banking drone
             • Jarak shot ADAPTIF: diam = kamera mendekat · lari/ngebut = kamera menjauh (sesuai kondisi)
             • Perpindahan shot CUT LANGSUNG gaya film · di dalam shot tetap halus (koreksi dinding lembut)
             • WAJAH SHOT CINE 60/20/20: 60% DEPAN · 20% SAMPING · 20% BELAKANG
@@ -41,6 +42,8 @@
             • Kamera balik persis ke posisi semula saat mode dimatikan
             • ANTI-TEMBOSS: CINE/RACE penuh (dinding+tanah) · FREE/PRO tanah saja
             • Dinding boleh ditembus di FREE/PRO — benturan dinding tidak bikin kamera getar
+            • CINE/RACE bisa nembus benda KECIL (plang kayu, papan, karakter lain, mobil) —
+              dinding/gedung/bukit ukuran besar tetap menahan kamera
             • Letterbox bioskop otomatis di SEMUA mode kamera (FREE/PRO/CINE/FOTO)
             • CapsLock = MASTER fitur kamera: OFF (default saat dibuka) = keybind kamera MATI
               (anti salah tekan 1/2 pas ambil item) · F · Z · K · J berdiri sendiri (mandiri)
@@ -82,6 +85,9 @@ local CFG = {
         CrowdRadius = 24, -- radius deteksi kerumunan → pilih shot WIDE & kamera mundur otomatis
         Letterbox = true, -- letterbox bioskop otomatis di SEMUA mode kamera
         AntiClip  = true, -- anti-temboss: CINE/RACE penuh (dinding+tanah) · FREE/PRO tanah saja (dinding bebas, anti getar)
+        CRPass    = true, -- CINE/RACE: benda KECIL bisa ditembus kamera (plang kayu, papan, karakter lain, mobil) — dinding besar tetap menahan
+        CRSmall   = 4,    -- sisi terpanjang < ini (stud) = benda kecil → kamera bisa melewatinya
+        CRThin    = 1.1,  -- benda pipih (sisi tengah < ini: papan/plang/tiang/kabel) → tetap bisa ditembus walau agak panjang
         Anchor    = true,  -- karakter beku TOTAL saat kamera/CapsLock on (toggle SISTEM)
         -- MESIN SUPER HALUS (anti hentakan segala kondisi): SEMUA input & gerakan dihaluskan dulu
         Smoothness    = 0.12,  -- kehalusan gerak free cam (makin kecil = makin responsif)
@@ -2022,6 +2028,9 @@ end
 -- Cara kerja: sebelum posisi kamera diterapkan, garis dari titik fokus (subjek)
 -- ke kamera di-raycast — kalau ada yang menghalangi, kamera ditarik maju
 -- sampai garis pandang bebas. FREE cam juga dilindungi saat terbang.
+-- CINE/RACE (permintaan user): benda KECIL — plang kayu, papan, karakter lain,
+-- mobil — TIDAK menahan kamera; kamera meluncur menembusnya. Dinding/gedung/
+-- tanah ukuran besar tetap menahan kamera seperti biasa.
 local camRay = RaycastParams.new()
 camRay.FilterType = Enum.RaycastFilterType.Exclude
 camRay.FilterDescendantsInstances = { workspace.CurrentCamera }
@@ -2071,15 +2080,55 @@ function refreshCamFilter()
         camRay.FilterDescendantsInstances = list
 end
 
+-- klasifikasi "benda boleh ditembus" (CINE/RACE) — hasil di-cache per part (weak key):
+--   PASS = karakter lain / NPC (model ber-Humanoid) · kendaraan (model ber-VehicleSeat)
+--          · benda kecil (semua sisi < CRSmall) · benda pipih (sisi tengah < CRThin:
+--          papan, plang, tiang, kabel)
+--   BLOK = dinding, gedung, bukit tanah, dan semua benda besar → kamera ditarik maju
+local siTembusCache = setmetatable({}, { __mode = "k" })
+local function siTembus(inst)
+        local c = siTembusCache[inst]
+        if c ~= nil then
+                return c
+        end
+        local ok = false
+        if inst and inst:IsA("BasePart") then
+                -- karakter lain / NPC / kendaraan → selalu bisa ditembus (permintaan user)
+                local m = inst:FindFirstAncestorOfClass("Model")
+                local hop = 0
+                while m and hop < 4 do
+                        if m:FindFirstChildOfClass("Humanoid") or m:FindFirstChildOfClass("VehicleSeat") then
+                                ok = true
+                                break
+                        end
+                        hop = hop + 1
+                        m = m:FindFirstAncestorOfClass("Model")
+                end
+                if not ok then
+                        -- ukuran: tiga sisi diurutkan kecil → besar (a ≤ b ≤ cc)
+                        local s = inst.Size
+                        local a, b, cc = s.X, s.Y, s.Z
+                        if a > b then a, b = b, a end
+                        if b > cc then b, cc = cc, b end
+                        if a > b then a, b = b, a end
+                        ok = cc < CFG.CRSmall or b < CFG.CRThin
+                end
+        end
+        siTembusCache[inst] = ok
+        return ok
+end
+
 -- raycast yang MELEWATI part tembus (dekorasi/rumput/invisible non-collide)
+-- + benda KECIL saat CRPass (CINE/RACE): plang kayu, papan, karakter lain, mobil —
+--   ray diteruskan menembus benda itu; dinding/gedung/tanah besar tetap menghentikan
 local function castClear(from, dirUnit, dist)
         local origin, remaining = from, dist
-        for _ = 1, 4 do
+        for _ = 1, 12 do
                 local hit = workspace:Raycast(origin, dirUnit * remaining, camRay)
                 if not hit then
                         return nil
                 end
-                if hit.Instance.CanCollide then
+                if hit.Instance.CanCollide and not (CFG.CRPass and siTembus(hit.Instance)) then
                         return hit
                 end
                 local step = (hit.Position - origin).Magnitude + 0.15
@@ -2156,6 +2205,7 @@ local function floorGuard(pos)
 end
 
 -- kamera orbit (CINE/RACE): tarik mendekat ke fokus kalau garis pandang terhalang
+-- (benda KECIL — plang/papan/karakter lain/mobil — tidak dianggap halangan; dinding besar ya)
 local function safeOrbit(focusPos, wantPos)
         if not CFG.AntiClip then
                 return wantPos
@@ -2475,13 +2525,13 @@ local function cineCtx(dt)
         }
 end
 
--- ═══════════════ LIBRARY SHOT CINEMATIC (12 SHOT · 2 KATEGORI) ═══════════════
+-- ═══════════════ LIBRARY SHOT CINEMATIC (21 SHOT · 2 KATEGORI · PENUH GERAKAN) ═══════════════
 -- CLOSE = shot dekat untuk 1 objek / karakter (detail, hero, emosi)
 -- WIDE  = shot jauh OTOMATIS saat kerumunan (banyak karakter/objek dekat target)
 -- BOTH  = dipakai dua kategori — jarak ikut P.dm (makin ramai makin jauh)
 -- Semua shot tetap RENDAH & sinematik, tanpa sudut dari atas.
 -- JARAK ADAPTIF — kondisi menentukan jarak: diam/pelan = dekat · lari/ngebut = jauh (P.dm dari distK).
--- WAJAH SHOT 60/20/20 — tiap shot diberi face: DEPAN (8 shot) · SAMPING (3 shot) · BELAKANG (5 shot).
+-- WAJAH SHOT 60/20/20 — tiap shot diberi face: DEPAN (9 shot) · SAMPING (5 shot) · BELAKANG (7 shot).
 -- Pemilihan shot: 60% dari depan · 20% dari samping · 20% dari belakang, lalu bobot konteks di dalamnya.
 local SHOTS = {}
 
@@ -2523,7 +2573,7 @@ SHOTS["WIDE GROUND-LEVEL SHOT"] = {
         end,
         update = function(P, t, dt, ctx)
                 local dir = smoothDir(P, ctx, dt, 1.4)
-                local d = math.max(P.d - t * 0.35, 22 * P.dm) -- dorongan maju super halus
+                local d = math.max(P.d - t * 0.6, 22 * P.dm) -- dorongan maju halus (tetap bergerak)
                 local p = ctx.pos - dir * d + Vector3.new(0, P.h, 0) + sway(P, t, 0.12)
                 return CFrame.lookAt(p, ctx.head + dir * 8), P.fov, 0
         end,
@@ -2782,51 +2832,58 @@ SHOTS["CRANE DOWN FRONT"] = {
         end,
 }
 
--- 14. STATIC HERO FRONT — kamera diam (tripod) di depan, subjek yang bergerak
-SHOTS["STATIC HERO FRONT"] = {
+-- 14. CRASH ZOOM PUSH — dorongan cepat ke subjek + FOV menyempit, berhenti mulus (punchy)
+SHOTS["CRASH ZOOM PUSH"] = {
         cat = "CLOSE",
-        face = "DEPAN", -- tripod diam di depan, subjek bergerak mendekat/melewat
-        weights = { idle = 3, walk = 3, run = 1.5, vehicle = 1.5 },
+        face = "DEPAN", -- dorongan cepat dari depan
+        weights = { idle = 2, walk = 2.5, run = 1.5, vehicle = 1.5 },
         enter = function(ctx, P)
-                P.spot = ctx.pos + ctx.look * rr(9, 13) * P.dm + Vector3.new(0, rr(1.2, 2), 0)
-                P.fov = rr(44, 52)
-                P.cut = false
-                seedSway(P, 0.4)
+                P.dir = ctx.moveDir
+                P.side = rr(-2.5, 2.5)
+                P.d0 = rr(19, 24) * P.dm
+                P.d1 = rr(6.5, 8.5) * P.dm
+                P.fov0 = rr(58, 64)
+                P.fov1 = rr(42, 48)
+                P.h = rr(1.2, 2)
+                seedSway(P, 0.9)
         end,
         update = function(P, t, dt, ctx)
-                local rel = ctx.pos - P.spot
-                local fdir = (ctx.moveDir.Magnitude > 0.1) and ctx.moveDir.Unit or ctx.look
-                if not P.cut and rel:Dot(fdir) < -1.5 then
-                        P.cut = true -- subjek sudah sangat dekat/melewat: potong lebih cepat
-                        S.cine.dur = math.min(S.cine.dur, S.cine.t + 0.15)
-                end
-                local p = P.spot + sway(P, t, 0.04)
-                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(rel.Magnitude, 4)
+                local dir = smoothDir(P, ctx, dt, 2.4)
+                -- dorongan cepat di awal (55% durasi), FOV menyusul sedikit lebih lambat → terasa "crash"
+                local k = smoothstep(t / math.max(S.cine.dur * 0.55, 0.1))
+                local kF = smoothstep(t / math.max(S.cine.dur * 0.8, 0.1))
+                local d = P.d0 + (P.d1 - P.d0) * k
+                local fov = P.fov0 + (P.fov1 - P.fov0) * kF
+                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                local p = ctx.pos + dir * d + perp * P.side * (1 - k) + Vector3.new(0, P.h, 0) + sway(P, t, 0.07)
+                return CFrame.lookAt(p, ctx.head), fov, closeDof(d, 4)
         end,
 }
 
--- 15. SIDE STATIC PASS — kamera diam di tepi samping, subjek melintas
-SHOTS["SIDE STATIC PASS"] = {
+-- 15. WHIP ARC PASS — sapuan cepat melengkung melewati depan-samping subjek (energik)
+SHOTS["WHIP ARC PASS"] = {
         cat = "BOTH",
-        face = "SAMPING", -- kamera diam di tepi samping lintasan
-        weights = { idle = 0.4, walk = 3.5, run = 3.5, vehicle = 2.5 },
+        face = "SAMPING", -- sapuan melengkung lewat samping-depan
+        weights = { idle = 1.5, walk = 2.5, run = 3, vehicle = 2.5 },
         enter = function(ctx, P)
-                local vdir = (ctx.moveDir.Magnitude > 0.5) and ctx.moveDir.Unit or ctx.look
-                local perp = Vector3.new(-vdir.Z, 0, vdir.X)
-                P.spot = ctx.pos + perp * (math.random() < 0.5 and 1 or -1) * rr(8, 12) * P.dm + vdir * rr(4, 8) + Vector3.new(0, rr(1.2, 2.2), 0)
-                P.fov = rr(50, 58)
-                P.cut = false
-                seedSway(P, 0.5)
+                P.dir = ctx.moveDir
+                P.sign = (math.random() < 0.5 and -1 or 1)
+                P.sideA = rr(8.5, 12) * P.dm
+                P.bulge = rr(2, 4) -- arc mendekat ke subjek di tengah sapuan
+                P.a0 = rr(-9, -6) -- mulai dari belakang samping
+                P.a1 = rr(10, 14) -- berakhir di depan samping
+                P.h = rr(1.4, 2.4)
+                P.fov = rr(54, 62)
+                seedSway(P, 0.8)
         end,
         update = function(P, t, dt, ctx)
-                local rel = ctx.pos - P.spot
-                local vdir = (ctx.moveDir.Magnitude > 0.5) and ctx.moveDir.Unit or ctx.look
-                if not P.cut and rel:Dot(vdir) < -2 then
-                        P.cut = true -- subjek sudah lewat: potong
-                        S.cine.dur = math.min(S.cine.dur, S.cine.t + 0.12)
-                end
-                local p = P.spot + sway(P, t, 0.05)
-                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(rel.Magnitude, 5)
+                local dir = smoothDir(P, ctx, dt, 2.6)
+                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local along = P.a0 + (P.a1 - P.a0) * k
+                local side = P.sign * (P.sideA + math.sin(k * math.pi) * P.bulge)
+                local p = ctx.pos + dir * along + perp * side + Vector3.new(0, P.h, 0) + sway(P, t, 0.08)
+                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(math.abs(side), 6)
         end,
 }
 
@@ -2851,6 +2908,136 @@ SHOTS["FOLLOW CRANE RISE"] = {
                 local h = P.h0 + (P.h1 - P.h0) * k
                 local p = ctx.pos - dir * d + Vector3.new(0, h, 0) + sway(P, t, 0.1)
                 return CFrame.lookAt(p, ctx.head + dir * 5), P.fov, 0
+        end,
+}
+
+-- 17. DOLLY ZOOM VERTIGO — kamera mendekat sambil FOV melebar: ukuran subjek TETAP,
+--     dunia di belakang melar (efek vertigo Hitchcock — sangat sinematik)
+SHOTS["DOLLY ZOOM VERTIGO"] = {
+        cat = "CLOSE",
+        face = "DEPAN", -- dari depan, jarak & FOV saling mengunci
+        weights = { idle = 2.5, walk = 1.5, run = 0.8, vehicle = 0.8 },
+        enter = function(ctx, P)
+                P.dirMode = "look"
+                P.dir = ctx.look
+                P.fov0 = rr(32, 36)
+                P.fov1 = rr(56, 62)
+                P.kSize = 5.2 -- konstanta ukuran: d * tan(fov/2) tetap → subjek tak berubah besar
+                P.hOff = rr(0.8, 1.6)
+                P.side = rr(-1.5, 1.5)
+                seedSway(P, 0.6)
+        end,
+        update = function(P, t, dt, ctx)
+                local face = smoothDir(P, ctx, dt, 2)
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local fov = P.fov0 + (P.fov1 - P.fov0) * k
+                local d = P.kSize / math.tan(math.rad(fov * 0.5)) -- subjek ukurannya TETAP di frame
+                local perp = Vector3.new(-face.Z, 0, face.X)
+                local p = ctx.pos + face * d + perp * P.side + Vector3.new(0, P.hOff, 0) + sway(P, t, 0.05)
+                return CFrame.lookAt(p, ctx.head), fov, closeDof(d, 4)
+        end,
+}
+
+-- 18. SPIRAL ASCEND ORBIT — mengitari subjek sambil naik membentuk spiral (heliks)
+SHOTS["SPIRAL ASCEND ORBIT"] = {
+        cat = "BOTH",
+        face = "SAMPING", -- mengitari lewat samping sambil naik
+        weights = { idle = 2.5, walk = 2, run = 1.5, vehicle = 1.5 },
+        enter = function(ctx, P)
+                P.r0 = rr(14, 18) * P.dm
+                P.r1 = rr(9, 12) * P.dm
+                P.h0 = rr(1, 1.8)
+                P.h1 = rr(5, 7.5)
+                P.ang = rr(0, math.pi * 2)
+                P.spd = (math.random() < 0.5 and -1 or 1) * math.rad(rr(42, 56))
+                P.fov = rr(50, 58)
+                seedSway(P, 0.8)
+        end,
+        update = function(P, t, dt, ctx)
+                P.ang = P.ang + P.spd * dt
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local r = P.r0 + (P.r1 - P.r0) * k
+                local h = P.h0 + (P.h1 - P.h0) * k
+                local p = ctx.pos + Vector3.new(math.cos(P.ang) * r, h, math.sin(P.ang) * r) + sway(P, t, 0.09)
+                return CFrame.lookAt(p, ctx.head), P.fov - 4 * k, closeDof(r, 5)
+        end,
+}
+
+-- 19. ORBIT 360 TURBO — memutar penuh 360° lebih cepat, hidup & energik
+SHOTS["ORBIT 360 TURBO"] = {
+        cat = "BOTH",
+        face = "SAMPING", -- mengitari penuh lewat samping
+        weights = { idle = 3, walk = 2, run = 1.5, vehicle = 1.5 },
+        enter = function(ctx, P)
+                P.r = rr(12, 17) * P.dm
+                P.h = rr(1.6, 3)
+                P.wav = rr(0.6, 1.2) -- gelombang naik-turun lembut
+                P.ang = rr(0, math.pi * 2)
+                P.spd = (math.random() < 0.5 and -1 or 1) * math.rad(rr(52, 68))
+                P.fov = rr(52, 60)
+                seedSway(P, 0.9)
+        end,
+        update = function(P, t, dt, ctx)
+                P.ang = P.ang + P.spd * dt
+                local h = P.h + math.sin(t * 1.3) * P.wav
+                local p = ctx.pos + Vector3.new(math.cos(P.ang) * P.r, h, math.sin(P.ang) * P.r) + sway(P, t, 0.1)
+                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(P.r, 5)
+        end,
+}
+
+-- 20. DUTCH TILT REVEAL — dari belakang kamera MIRING (canted), melurus sambil naik & mendekat
+SHOTS["DUTCH TILT REVEAL"] = {
+        cat = "BOTH",
+        face = "BELAKANG", -- dari belakang, kamera miring lalu melurus
+        weights = { idle = 2, walk = 2.5, run = 2.5, vehicle = 2 },
+        enter = function(ctx, P)
+                P.dir = ctx.moveDir
+                P.d0 = rr(13, 17) * P.dm
+                P.d1 = rr(8.5, 11) * P.dm
+                P.h0 = rr(1.2, 1.8)
+                P.h1 = rr(2.8, 4.2)
+                P.roll0 = math.rad(rr(7, 10)) * (math.random() < 0.5 and -1 or 1)
+                P.fov = rr(50, 58)
+                seedSway(P, 0.8)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2)
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local d = P.d0 + (P.d1 - P.d0) * k
+                local h = P.h0 + (P.h1 - P.h0) * k
+                local p = ctx.pos - dir * d + Vector3.new(0, h, 0) + sway(P, t, 0.09)
+                -- kemiringan dutch tilt melurus pelan selama shot (baked ke CFrame)
+                local cf = CFrame.lookAt(p, ctx.head + dir * 3) * CFrame.Angles(0, 0, P.roll0 * (1 - k))
+                return cf, P.fov, 0
+        end,
+}
+
+-- 21. S-CURVE FLYBY — kamera terbang kurva-S dari depan samping, menyelip dekat, berakhir di belakang
+SHOTS["S-CURVE FLYBY"] = {
+        cat = "BOTH",
+        face = "BELAKANG", -- berakhir di belakang (mulai dari depan samping)
+        weights = { idle = 0.8, walk = 2, run = 3, vehicle = 3 },
+        enter = function(ctx, P)
+                P.dir = ctx.moveDir
+                P.sign = (math.random() < 0.5 and -1 or 1)
+                P.a0 = rr(14, 18) * P.dm  -- mulai di depan
+                P.a1 = -rr(10, 14) * P.dm -- berakhir di belakang
+                P.sideA = rr(9, 13) * P.dm
+                P.bulge = rr(3, 5) -- menyelip DEKAT subjek di tengah lintasan (kurva-S)
+                P.h0 = rr(1.4, 2)
+                P.h1 = rr(2.2, 3.2)
+                P.fov = rr(54, 62)
+                seedSway(P, 0.9)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.4)
+                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local along = P.a0 + (P.a1 - P.a0) * k
+                local side = P.sign * (P.sideA - math.sin(k * math.pi) * P.bulge) -- kurva-S
+                local h = P.h0 + (P.h1 - P.h0) * k
+                local p = ctx.pos + dir * along + perp * side + Vector3.new(0, h, 0) + sway(P, t, 0.09)
+                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(math.abs(side), 6)
         end,
 }
 
@@ -3007,6 +3194,7 @@ local function startShot()
         -- CUT GAYA FILM: perpindahan shot langsung POTONG ke pose baru (tanpa larutan) —
         -- penghalus di-reset supaya frame pertama langsung menampilkan shot baru yang sudah aman
         S.cine.smCf = nil
+        S.cine.bankYaw = nil -- reset yaw banking: cut baru tidak memicu tendangan miring
         if def and def.enter then
                 def.enter(ctx, S.cine.P)
         end
@@ -3043,6 +3231,22 @@ local function cineUpdate(dt)
         end
         S.cine.smCf = cf
         Camera.CFrame = cf
+        -- GERAK SINEMATIK EKSTRA (semua shot terasa hidup, bukan kamera diam-diam):
+        -- banking gaya drone — kamera MIRING masuk belokan saat menyapu/mengitari subjek —
+        -- plus nafas dutch tilt pelan. Diterapkan paling akhir (rotasi saja, posisi tetap)
+        -- supaya tidak mengganggu penghalus dalam-shot maupun anti-temboss.
+        local yawNow = math.atan2(-cf.LookVector.X, -cf.LookVector.Z)
+        local dYaw = yawNow - (S.cine.bankYaw or yawNow)
+        if dYaw > math.pi then
+                dYaw = dYaw - 2 * math.pi
+        elseif dYaw < -math.pi then
+                dYaw = dYaw + 2 * math.pi
+        end
+        S.cine.bankYaw = yawNow
+        local bankT = math.clamp((dYaw / math.max(dt, 0.001)) * 5, -7, 7) -- derajat, ikut laju sapuan
+        S.cine.bank = (S.cine.bank or 0) + (bankT - (S.cine.bank or 0)) * math.min(1, dt * 5)
+        local nafas = math.sin(os.clock() * 0.7) * 1.6
+        Camera.CFrame = Camera.CFrame * CFrame.Angles(0, 0, math.rad((S.cine.bank or 0) + nafas))
         Camera.FieldOfView = fov
         S.cine.dofK = dofK or 0
         S.cine.focusDist = (Camera.CFrame.Position - ctx.head).Magnitude
@@ -3742,7 +3946,7 @@ function setMode(m)
                 S.cine.def = nil
                 S.cine.smCf = nil
                 setAnchorState() -- karakter beku total, biar shot tetap rapi
-                notify("CINEMATIC — 16 shot · cut antar shot gaya film · 60% depan · 20% samping · 20% belakang · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s", 1.4)
+                notify("CINEMATIC — 21 shot penuh gerakan · cut antar shot gaya film · 60% depan · 20% samping · 20% belakang · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s · nembus benda kecil", 1.4)
         elseif m == "RACE" then
                 Camera.CameraType = Enum.CameraType.Scriptable
                 S.race.def = nil
@@ -3751,7 +3955,7 @@ function setMode(m)
                 S.race.lastFwd = nil
                 S.race.smCf = nil
                 setAnchorState() -- RACE tidak beku: kamu tetap menyetir selagi kamera merekam
-                notify("RACE CAM — 17 shot · 50% samping atas · 20% depan atas · 10% samping · 10% belakang · 10% dekat · cut gaya film", 1.4)
+                notify("RACE CAM — 17 shot · 50% samping atas · 20% depan atas · 10% samping · 10% belakang · 10% dekat · cut gaya film · nembus benda kecil", 1.4)
         end
         refreshModeUI()
         updateChip()
