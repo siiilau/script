@@ -1,5 +1,5 @@
 --========================================================
---  BALAP v1.3 — Script Balapan Gabungan
+--  BALAP v1.4 — Script Balapan Gabungan
 --
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
@@ -8,12 +8,18 @@
 --    2 🎨 VISUAL : Hide, Hide Pemain Lain, Cahaya Auto 2 arah, Lightweight, Dinding Batas
 --    3 ⚙️ SISTEM : Layar PC, reset, rejoin, hapus script
 --
---  BARU v1.3 — 🖥️ LAYAR PC PER-ELEMEN (fix: "posisi berubah"):
---    SEMUA UI (game + Roblox) mengecil DI TEMPAT masing-masing — posisi
---    tidak bergeser, layar tetap rapi. Wadah layar-penuh ditembus agar
---    bar atas / panel samping / bar bawah tetap di posisinya.
---    Frame panel BALAP ikut mengecil mengikuti layar.
---    2 mode: PC 32" (UI 72% + FOV 78°) ⇄ NORMAL. Default: PC 32".
+--  BARU v1.4 — 🖥️ LAYAR PC 27" (fix: "frame script tidak mengecil"):
+--    • Frame panel BALAP sekarang BENAR-BENAR mengecil — penyebab lama:
+--      ada 2 UIScale di frame yang sama (Roblox hanya menghormati satu),
+--      sekarang pakai panelScale yang sudah ada (satu-satunya UIScale).
+--    • SEMUA UI (game + Roblox) mengecil DI TEMPAT masing-masing — posisi
+--      tidak bergeser, layar tetap rapi. Wadah layar-penuh ditembus agar
+--      bar atas / panel samping / bar bawah tetap di posisinya.
+--    • Scan LEBIH DALAM: ScreenGui yang disimpan dalam Folder/kelompok
+--      sekarang ikut ketemu (dulu cuma GUI langsung di PlayerGui).
+--    • Proteksi dobel-scale: elemen yang sudah tercakup scale induknya
+--      tidak dipasang scale lagi (tidak ada UI yang mengecil 2x).
+--    • 2 mode: PC 27" (UI 82% + FOV 74°) ⇄ NORMAL. Default: PC 27".
 --
 --  Keybind:
 --    F = buka/tutup GUI (saat tutup = hilang total)
@@ -21,10 +27,10 @@
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
 --    G = Moonwalk    B = Smart Fall Assist    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
---    N = Layar PC: toggle PC 32" ⇄ Normal
+--    N = Layar PC: toggle PC 27" ⇄ Normal
 --    K = Rejoin (double-tap)
 --========================================================
-local VERSI = "1.3"
+local VERSI = "1.4"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -75,12 +81,12 @@ local CFG = {
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
 }
--- Preset Layar PC (v1.3): 2 mode — PC 32" & NORMAL.
+-- Preset Layar PC (v1.4): 2 mode — PC 27" & NORMAL.
 -- ui  = faktor scale SEMUA UI (game + Roblox), dipasang PER-ELEMEN supaya
 --       posisi tidak bergeser. fov = FOV saat "Lebar Pandang" aktif.
 local PC_MODES = {
     [0] = { nama = "NORMAL",  ui = 1.00, fov = 70 },
-    [1] = { nama = "PC 32\"", ui = 0.72, fov = 78 },
+    [1] = { nama = "PC 27\"", ui = 0.82, fov = 74 },
 }
 -- shorthand alias untuk konstanta yang dipakai banyak (tetap hemat local)
 local Warna = {
@@ -385,6 +391,13 @@ local function bunyi(id, vol, pitch)
     task.delay(3, function() s:Destroy() end)
 end
 
+-- CATATAN v1.4: panelScale = SATU-SATUNYA UIScale di frame panel.
+-- Dulu (v1.3) ditambah UIScale kedua khusus PC — Roblox hanya menghormati
+-- SATU UIScale per objek, makanya frame script tidak pernah mengecil.
+-- Sekarang scale PC + animasi buka/tutup berbagi panelScale ini, dengan
+-- panelTarget() sebagai nilai akhir yang benar sesuai mode layar PC.
+local panelAnimSampai = 0  -- stempel waktu animasi panel (scale PC tidak mengganggu)
+
 -- [7] BANGUN UI: ROOT + OUTER + PANEL -------------------------------
 local screenFx = buat("Frame", {
     Size = UDim2.new(1, 0, 1, 0),
@@ -402,6 +415,9 @@ local root = buat("Frame", {
     Visible = false,
 }, screenGui)
 local panelScale = buat("UIScale", {Scale = 1}, root)
+local panelTarget  -- DEKLARASI — diisi oleh mesin LAYAR PC di bawah:
+-- panelTarget() = 1 (normal) atau faktor UI PC (0.82) saat layar PC aktif.
+-- Dipakai animasi buka/tutup + mesin PC supaya nilainya selalu seragam.
 local outer = buat("Frame", {
     Size = UDim2.new(1, 0, 1, 0),
     BackgroundColor3 = Warna.Hitam,
@@ -471,7 +487,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.3 ⚡",
+    Text = "⚡ BALAP v1.4 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -927,18 +943,18 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.3\n"
+    Text = "⚡ BALAP v1.4\n"
         .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
         .. "B fall • R hide • T cahaya • X dinding • N layar PC • K×2 rejoin\n"
-        .. "🖥️ Layar PC v1.3: SEMUA UI (game + Roblox) mengecil di tempat, posisi tetap — seperti PC 32\"",
+        .. "🖥️ Layar PC v1.4: SEMUA UI (game + Roblox) + frame script mengecil di tempat, posisi tetap — seperti PC 27\"",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
 buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoVersi)
 
--- ===== section 🖥️ LAYAR PC (v1.3) =====
+-- ===== section 🖥️ LAYAR PC (v1.4) =====
 buatHeader(scrollSistem, "Layar PC")
 PCStatus = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
@@ -947,7 +963,7 @@ PCStatus = buat("TextLabel", {
     TextSize = 11,
     TextColor3 = Warna.Ungu,
     TextXAlignment = Enum.TextXAlignment.Left,
-    Text = "Aktif: PC 32\" • UI 72% • FOV 78°",
+    Text = "Aktif: PC 27\" • UI 82% • FOV 74°",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, PCStatus)
@@ -963,7 +979,7 @@ buat("UIListLayout", {
     SortOrder = Enum.SortOrder.LayoutOrder,
 }, pcRow)
 PCBtns = {}
-for i, pc in ipairs({{n = 1, label = "🖥️ PC 32\""}, {n = 0, label = "▫️ NORMAL"}}) do
+for i, pc in ipairs({{n = 1, label = "🖥️ PC 27\""}, {n = 0, label = "▫️ NORMAL"}}) do
     local b = buat("TextButton", {
         BackgroundColor3 = Warna.AbuItem,
         Size = UDim2.new(0.5, -7, 1, 0),
@@ -1030,7 +1046,8 @@ local infoKredit = buat("TextLabel", {
     Text = "Tema SILAU NEON (ungu/biru LED) ⚡\n"
         .. "Basis: SILAU BALAPAN v1.1 (5 skrip digabung)\n"
         .. "v1.0.1: rename BALAP — 3 tab fokus balapan\n"
-        .. "v1.3: 🖥️ Layar PC per-elemen — posisi tetap, frame panel ikut mengecil",
+        .. "v1.3: 🖥️ Layar PC per-elemen — posisi tetap\n"
+        .. "v1.4: PC 27\" — frame panel ikut mengecil + scan lebih dalam",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
@@ -1090,7 +1107,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1600, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • G Moonwalk • B FallAssist   ✦   🎨 R Hide • Hide Pemain Lain • T Cahaya 2-arah • X Dinding • LW   ✦   🖥️ N Layar PC (32\" ⇄ Normal) • K×2 rejoin • Notif kanan atas",
+    Text = "⌨ F = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • G Moonwalk • B FallAssist   ✦   🎨 R Hide • Hide Pemain Lain • T Cahaya 2-arah • X Dinding • LW   ✦   🖥️ N Layar PC (27\" ⇄ Normal) • K×2 rejoin • Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -2087,26 +2104,38 @@ end
 -- Nilai ON (17.25 / 21.25, atau di antaranya) dipilih via stepper di Tab GERAK.
 -- Keybind Q langsung panggil setFeature("Speed", ...) dari handler [21].
 
--- LAYAR PC (v1.3) — emulasi monitor 32" di device apapun
--- v1.3 (fix "posisi berubah & sebagian UI tidak mengecil"):
---   • Scale PER-ELEMEN: UIScale dipasang di TIAP elemen UI (bukan satu
---     ScreenGui) → tiap elemen mengecil DI TEMPATNYA sesuai anchor,
---     posisi layar tidak bergeser (cara lama menarik semua ke kiri-atas)
---   • Wadah yang memenuhi layar ditembus (recurse) → bar atas / panel
---     kanan / bar bawah tetap di posisinya, cuma ukurannya yang mengecil
+-- LAYAR PC (v1.4) — emulasi monitor 27" di device apapun
+-- v1.4 (fix "frame script tidak mengecil" + "masih ada UI yang tidak berubah"):
+--   • FRAME PANEL: dulu dipasang UIScale KEDUA (BalapPCScale) di frame yang
+--     sudah punya panelScale → Roblox hanya menghormati SATU UIScale per
+--     objek, jadi frame tidak pernah mengecil. Sekarang panelScale langsung
+--     dipakai (nilai akhir = panelTarget()), satu-satunya UIScale di panel.
+--   • SCAN LEBIH DALAM: LayerCollector di dalam Folder/kelompok sekarang
+--     ketemu (dulu hanya GUI yang langsung di PlayerGui/CoreGui).
+--   • ANTI DOBEL-SCALE: elemen yang induknya sudah berscale DILEWATI,
+--     supaya tidak ada yang mengecil dua kali (0.82 × 0.82 = 0.67).
+--   • Scale PER-ELEMEN tetap: tiap UI mengecil DI TEMPATNYA sesuai anchor,
+--     posisi tidak bergeser; wadah layar-penuh ditembus (recurse) → bar
+--     atas / panel kanan / bar bawah tetap di posisinya.
 --   • PlayerGui + CoreGui discan penuh (UI game + UI Roblox, best-effort)
 --   • Anti-reset: watcher Changed + sapu ulang tiap 2 detik + DescendantAdded
---   • Frame panel BALAP + notif ikut mengecil biar konsisten dengan layar
--- Catatan: panelScale dipakai animasi buka/tutup, jadi scale PC pakai UIScale terpisah.
-local pcScalePanel, pcScaleNotif
+--   • Notif toast ikut mengecil (pcScaleNotif, satu-satunya UIScale di holder)
+local pcScaleNotif
 local pcInjected = {}
 do
     if Original.FOV == nil then
         local cam0 = Workspace.CurrentCamera
         Original.FOV = (cam0 and cam0.FieldOfView) or 70
     end
-    pcScalePanel = buat("UIScale", {Name = "BalapPCScale", Scale = 1}, root)
     pcScaleNotif = buat("UIScale", {Name = "BalapPCScale", Scale = 1}, notifHolder)
+
+    -- nilai akhir scale panel sesuai mode (dipakai animasi buka/tutup + mesin)
+    panelTarget = function()
+        if (State.PCMode or 0) > 0 and PC_MODES[State.PCMode] then
+            return PC_MODES[State.PCMode].ui
+        end
+        return 1
+    end
 
     local pcFaktor = 1            -- faktor scale yang sedang dipasang
     local pcSudahPeringatan = false
@@ -2169,6 +2198,21 @@ do
         return ok and 1 or 0
     end
 
+    -- v1.4: true kalau ADA induk (sampai batas container) yang sudah
+    -- dipasangi scale BALAP → elemen ini otomatis ikut mengecil, JANGAN
+    -- dipasang scale lagi (mencegah dobel-scale 0.82 × 0.82 = 0.67)
+    local function adaScaleDiAtas(el, hingga)
+        local p = el.Parent
+        while p and p ~= hingga do
+            if p:IsA("GuiObject") then
+                local s = p:FindFirstChild("BalapPCScale")
+                if s and s:IsA("UIScale") then return true end
+            end
+            p = p.Parent
+        end
+        return false
+    end
+
     -- proses anak-anak sebuah GUI: wadah layar-penuh ditembus (recurse),
     -- elemen lain dipasangi UIScale masing-masing (mengecil di tempat)
     local function prosesContainer(container, faktor, stat)
@@ -2180,6 +2224,13 @@ do
                         local sisa = el:FindFirstChild("BalapPCScale")
                         if sisa and sisa:IsA("UIScale") then pcall(function() sisa:Destroy() end) end
                         prosesContainer(el, faktor, stat)
+                    elseif adaScaleDiAtas(el, container) then
+                        -- sudah tercakup scale induknya → hapus sisa scale di
+                        -- dirinya sendiri (kalau ada) lalu lewati
+                        local sendiri = el:FindFirstChild("BalapPCScale")
+                        if sendiri and sendiri:IsA("UIScale") then
+                            pcall(function() sendiri:Destroy() end)
+                        end
                     else
                         stat.coba += 1
                         stat.ok += pasangScaleGui(el, faktor)
@@ -2205,8 +2256,27 @@ do
         end
         table.clear(pcInjected)
         pcFaktor = 1
-        if pcScalePanel then pcScalePanel.Scale = 1 end
+        panelScale.Scale = 1
         if pcScaleNotif then pcScaleNotif.Scale = 1 end
+    end
+
+    -- v1.4: kumpulkan SEMUA GUI teratas dalam container (GetDescendants),
+    -- TERMASUK ScreenGui yang disimpan di dalam Folder/kelompok — dulu
+    -- hanya GUI yang langsung menjadi anak PlayerGui/CoreGui yang diproses.
+    local function kumpulkanGUI(container, hasil)
+        for _, d in ipairs(container:GetDescendants()) do
+            if d:IsA("LayerCollector") and not d:IsDescendantOf(screenGui) then
+                -- hanya yang TERATAS: tidak ada LayerCollector lain di antara
+                -- dia dan container (yang bersarang terjangkau lewat rekursi)
+                local teratas = true
+                local p = d.Parent
+                while p and p ~= container do
+                    if p:IsA("LayerCollector") then teratas = false break end
+                    p = p.Parent
+                end
+                if teratas then table.insert(hasil, d) end
+            end
+        end
     end
 
     local function sapuPC()
@@ -2219,29 +2289,32 @@ do
             if not s or not s.Parent then table.remove(pcInjected, i) end
         end
         local stat = { ok = 0, coba = 0 }
-        -- 1) SEMUA GUI milik game di PlayerGui (termasuk yang bersarang)
+        -- 1) SEMUA GUI milik game di PlayerGui (v1.4: GetDescendants —
+        --    termasuk ScreenGui yang disimpan di dalam Folder/kelompok)
+        local daftarGUI = {}
         local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
         if pg then
             hapusLegacy(pg)
-            for _, gui in ipairs(pg:GetChildren()) do
-                if gui:IsA("LayerCollector") and gui.Name ~= "BalapMain" then
-                    pcall(prosesContainer, gui, faktor, stat)
-                end
-            end
+            pcall(kumpulkanGUI, pg, daftarGUI)
         end
         -- 2) SEMUA GUI bawaan Roblox di CoreGui (best-effort, izin executor)
         pcall(function()
             local cg = game:GetService("CoreGui")
             hapusLegacy(cg)
-            for _, gui in ipairs(cg:GetChildren()) do
-                if gui:IsA("LayerCollector") and gui.Name ~= "BalapMain" then
-                    pcall(prosesContainer, gui, faktor, stat)
-                end
-            end
+            kumpulkanGUI(cg, daftarGUI)
         end)
-        -- 3) frame panel BALAP + notif ikut mengecil (anchor tetap, tak geser)
-        if pcScalePanel then pcScalePanel.Scale = faktor end
+        for _, gui in ipairs(daftarGUI) do
+            if gui.Name ~= "BalapMain" then
+                pcall(prosesContainer, gui, faktor, stat)
+            end
+        end
+        -- 3) frame panel BALAP ikut mengecil — pakai panelScale, SATU-SATUNYA
+        --    UIScale di panel (UIScale kedua dulu DIABAIKAN Roblox!).
+        --    Notif toast juga ikut. Anchor tetap, posisi tidak geser.
         if pcScaleNotif then pcScaleNotif.Scale = faktor end
+        if root.Visible and os.clock() >= panelAnimSampai then
+            panelScale.Scale = panelTarget()
+        end
         -- 4) ada elemen dicoba tapi NOL yang berhasil → executor/game blokir
         if stat.coba > 0 and stat.ok == 0 and not pcSudahPeringatan then
             pcSudahPeringatan = true
@@ -2262,7 +2335,7 @@ do
     Setters.PCScreen = function(n, silent)
         n = tonumber(n) or 0
         if not PC_MODES[n] then n = 0 end
-        if (State.PCMode or 0) == n and pcScalePanel and pcScalePanel.Parent then
+        if (State.PCMode or 0) == n and panelScale and panelScale.Parent then
             if updatePCStatus then updatePCStatus() end
             return
         end
@@ -2415,7 +2488,7 @@ unloadScript = function()
             pcall(function() if s.Parent then s:Destroy() end end)
         end
         table.clear(pcInjected)
-        if pcScalePanel then pcScalePanel.Scale = 1 end
+        panelScale.Scale = 1
         if pcScaleNotif then pcScaleNotif.Scale = 1 end
         local cam = Workspace.CurrentCamera
         if cam and Original.FOV then cam.FieldOfView = Original.FOV end
@@ -2514,6 +2587,7 @@ local sesiAnim = 0
 local function minimizeGui()
     if not root.Visible then return end
     sesiAnim += 1
+    panelAnimSampai = os.clock() + 0.45  -- scale PC jangan ganggu animasi
     local id = sesiAnim
     bunyi(CFG.SND_PING, 0.3, 0.75)
     -- icon minimize DIHAPUS — GUI sembunyi total, buka lewat F
@@ -2525,12 +2599,13 @@ local function minimizeGui()
         if sesiAnim ~= id then return end
         root.Visible = false
         root.Rotation = 0
-        panelScale.Scale = 1
+        panelScale.Scale = panelTarget()  -- v1.4: ikut mode layar PC
         fadeVal.Value = 0
     end)
 end
 local function bukaGui()
     sesiAnim += 1
+    panelAnimSampai = os.clock() + 0.45  -- scale PC jangan ganggu animasi
     bunyi(CFG.SND_PING, 0.35, 1.15)
     root.Visible = true
     root.Rotation = -8
@@ -2538,7 +2613,7 @@ local function bukaGui()
     fadeVal.Value = 1
     setFade(1)
     tween(root, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Rotation = 0})
-    tween(panelScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
+    tween(panelScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = panelTarget()})
     tween(fadeVal, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Value = 0})
     konfeti(root, UDim2.new(0.5, 0, 0.5, 0), 12)
     emojiBurst(root, UDim2.new(0.5, 0, 0.5, 0), {"✨", "⚡", "💜", "💙"}, 6)
@@ -2595,14 +2670,14 @@ end))
 -- [22] MULAI ---------------------------------------------------------
 afkStatusUpdate()
 updateSpeedLabel()
-setFeature("PCScreen", 1)  -- 🖥️ Layar PC 32" aktif otomatis (N = ganti Normal)
+setFeature("PCScreen", 1)  -- 🖥️ Layar PC 27" aktif otomatis (N = ganti Normal)
 setTab(1)  -- 🏃 GERAK jadi tab pertama
 task.delay(0.15, bukaGui)
 print("[BALAP v" .. VERSI .. "] SIAP ✔ — F = GUI | K×2 = rejoin")
 print("[BALAP] 3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM")
 print("[BALAP] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
 print("[BALAP]           B fall assist • R hide • T cahaya 2-arah • X dinding • N layar PC • K×2 rejoin")
-print("[BALAP] 🖥️ Layar PC 32\" aktif: SEMUA UI mengecil 72% di tempat + FOV 78° — N = Normal")
+print("[BALAP] 🖥️ Layar PC 27\" aktif: SEMUA UI + frame script mengecil 82% di tempat + FOV 74° — N = Normal")
 print("[BALAP] Fitur dinding (X) dari skrip lain sudah jadi 1 dengan script balapan")
 end -- akhir initLogic()
 
