@@ -26,14 +26,14 @@
           CATATAN :
             • Mesin FREE/PRO + target lock dari GALAXY v11 (halus & anti menggeleng)
             • Lompat/jatuh = kamera tetap lembut & halus (boleh sedikit terlambat, lebih realistis)
-            • CINEMATIC 12 shot · 2 kategori: CLOSE (1 objek) / WIDE (kerumunan, jarak otomatis)
+            • CINEMATIC 16 shot · 2 kategori: CLOSE (1 objek) / WIDE (kerumunan, jarak otomatis)
             • Jarak shot ADAPTIF: diam = kamera mendekat · lari/ngebut = kamera menjauh (sesuai kondisi)
             • Perpindahan shot CUT LANGSUNG gaya film · di dalam shot tetap halus (koreksi dinding lembut)
             • WAJAH SHOT CINE 60/20/20: 60% DEPAN · 20% SAMPING · 20% BELAKANG
             • WAJAH SHOT RACE: 50% SAMPING ATAS (kanan/kiri) · 20% DEPAN ATAS · 10% SAMPING · 10% BELAKANG · 10% DEKAT
             • Mesin SUPER HALUS: mouse/zoom/follow/lompatan semua dilarutkan — PRO & FREE tanpa hentakan
-            • RACE CAM 10 shot balap (tombol 4): kamera jauh & tinggi
-              (samping kanan/kiri atas · depan atas) — tanpa shot dari dalam kabin
+            • RACE CAM 17 shot balap (tombol 4): kamera jauh & tinggi
+              (samping kanan/kiri atas · depan atas · dekat kendaraan) — tanpa shot dari dalam kabin
             • Target lock 3 cara: T (terdekat dari kamera) · AUTO LOCK · pilih sendiri
             • Tombol KE KARAKTER UTAMA = kamera terbang mulus balik ke kamu
             • RESET SCRIPT di tab SISTEM = semua setting balik default
@@ -86,7 +86,7 @@ local CFG = {
         -- MESIN SUPER HALUS (anti hentakan segala kondisi): SEMUA input & gerakan dihaluskan dulu
         Smoothness    = 0.12,  -- kehalusan gerak free cam (makin kecil = makin responsif)
         FreeLook      = 0.045, -- FREE: kelembutan gerakan mouse RMB (putaran larut, anti sentak)
-        ProFollow     = 0.11,  -- PRO: kelembutan ikut subjek horizontal (dilarutkan ekstra saat subjek ngebut)
+        ProVelH       = 0.16,  -- PRO: kelembutan ikut LAJU horizontal (feed-forward — maju konstan = mulus penuh)
         ProLook       = 0.05,  -- PRO: kelembutan gerakan mouse RMB (putaran kamera anti sentak)
         ProZoom       = 0.14,  -- PRO: kelembutan scroll zoom (jarak berubah larut, tidak melompat)
         ProPos        = 0.08,  -- PRO: kelembutan posisi kamera akhir (koreksi tanah ikut larut, tak terlihat)
@@ -96,9 +96,12 @@ local CFG = {
         MouseSens     = 0.25,  -- sensitivitas RMB look
         SelfFlyDist   = 8,     -- jarak kamera mendarat di belakang karakter (KE KARAKTER)
         SelfFlyHeight = 2.4,   -- tinggi kamera di atas kepala (KE KARAKTER)
-        ProYDamp      = 1.4,   -- PRO: damping vertikal pivot (makin besar = makin lembut ikut lompat/jatuh target)
         AimYDamp      = 1.3,   -- FREE: damping aim vertikal (makin besar = makin lembut, boleh sedikit terlambat)
-        ProSnap       = 12,    -- PRO: batas tangkap cepat kalau subjek pindah jauh (>40 = teleport, langsung ikut)
+        ProSnap       = 12,    -- PRO: batas kejar cepat kalau selisih besar (>40 = teleport, langsung ikut)
+        ProVelV       = 0.32,  -- PRO: kelembutan laju vertikal (lompat/jatuh terasa melayang lembut)
+        ProVelYMax    = 42,    -- PRO: batas laju vertikal yang diikuti (jatuh mendadak tak menjatuhkan kamera)
+        ProErr        = 0.30,  -- PRO: koreksi selisih posisi standar (sangat lembut, tak terlihat)
+        ProErrFast    = 0.10,  -- PRO: koreksi saat selisih besar (kejar cepat TANPA lompatan)
         -- cahaya auto 2 arah (Z): malam → diterangi · siang → dilembutkan (anti silau)
         JamMalamMulai   = 18,     -- jam mulai malam
         JamMalamAkhir   = 6,      -- jam akhir malam
@@ -153,8 +156,7 @@ local S = {
         proYawT = 0,         -- TARGET yaw dari mouse RMB (dihaluskan — sumber hentakan dicabut)
         proPitchT = 0.24,    -- TARGET pitch dari mouse RMB
         proDistT = 14,       -- TARGET jarak dari scroll zoom (dihaluskan — zoom larut)
-        proSpeed = nil,      -- kecepatan subjek tersimulasi → damping adaptif
-        proCatch = false,    -- mode kejar cepat (subjek pindah jauh, tanpa lompatan)
+        proPivotVel = Vector3.new(0, 0, 0), -- LAJU pivot tersimulasi (feed-forward — inti kehalusan PRO)
         proCF = nil,         -- CFrame terakhir → penghalus rotasi terakhir
         -- target
         locked = false,
@@ -2281,11 +2283,13 @@ local function proUpdate(dt)
         S.proPitch = S.proPitch + (S.proPitchT - S.proPitch) * la
         local za = 1 - math.exp(-dt / CFG.ProZoom)
         S.proDist = S.proDist + (S.proDistT - S.proDist) * za
-        -- 2) PIVOT: damping adaptif — subjek ngebut → ikutan makin larut (glide, tidak getar);
-        --    lompat/jatuh/mandat → vertikal makin pelan (tidak ikut memantul)
+        -- 2) PIVOT: FEED-FORWARD LAJU (mesin glide) — kamera mengikuti LAJU subjek, bukan
+        --    mengejar posisinya. Maju/mundur/kesamping dengan laju konstan = pivot ikut 1:1
+        --    TANPA selisih → benar-benar mulus seperti tidak terjadi apa-apa. Belok/berhenti/
+        --    balik arah = LAJU-nya yang dihaluskan dulu → kamera meluncur membelok, tidak
+        --    menyentak. Lompat & jatuh mendadak = laju vertikal dihaluskan ekstra + dibatasi,
+        --    mendarat pun tanpa memantul (seperti kondisi kamera free yang tidak terganggu).
         local vel = root.AssemblyLinearVelocity
-        local spd = flat(vel).Magnitude
-        S.proSpeed = expLerp(S.proSpeed or 0, spd, dt, 3)
         local targetPivot = root.Position + Vector3.new(0, 1.5, 0)
         if S.proGlide then
                 -- glide halus ke karakter utama (tombol KE KARAKTER UTAMA)
@@ -2294,40 +2298,50 @@ local function proUpdate(dt)
                 local k0 = math.clamp(g.t / g.dur, 0, 1)
                 local k = k0 * k0 * (3 - 2 * k0)
                 S.proPivot = g.fromPivot:Lerp(targetPivot, k)
+                S.proPivotVel = Vector3.new(0, 0, 0)
                 if g.t >= g.dur then
                         S.proGlide = nil
                 end
         else
                 if not S.proPivot then
                         S.proPivot = targetPivot
+                        S.proPivotVel = Vector3.new(0, 0, 0)
                 end
                 local gap = (targetPivot - S.proPivot).Magnitude
                 if gap > 40 then
-                        -- teleport sungguhan lintas map (respawn): langsung ikut
+                        -- teleport sungguhan lintas map (respawn/naik kendaraan jauh): langsung ikut
                         S.proPivot = targetPivot
+                        S.proPivotVel = Vector3.new(0, 0, 0)
                         S.proPos = nil
                         S.proCF = nil
-                        S.proCatch = false
-                elseif gap > CFG.ProSnap then
-                        S.proCatch = true -- kejar cepat TANPA lompatan (anti hentakan)
                 end
-                local speedK = math.clamp(S.proSpeed / 32, 0, 1)
-                local fallK = math.clamp(math.abs(vel.Y) / 60, 0, 1)
-                local tauX = CFG.ProFollow * (1 + speedK * 0.9)
-                local tauY = CFG.ProYDamp * (1 + fallK * 1.3)
-                if S.proCatch then
-                        if gap < 1.5 then
-                                S.proCatch = false
-                        end
-                        tauX = tauX * 0.22 -- kejar cepat tapi tetap larut
-                        tauY = tauY * 0.5
-                end
-                local ax = 1 - math.exp(-dt / tauX)
-                local ay = 1 - math.exp(-dt / tauY)
+                -- LAJU dihaluskan dulu (feed-forward): sumber hentakan utama kini dilunturkan
+                local aH = 1 - math.exp(-dt / CFG.ProVelH)
+                local aV = 1 - math.exp(-dt / CFG.ProVelV)
+                local vy = math.clamp(vel.Y, -CFG.ProVelYMax, CFG.ProVelYMax)
+                local pv = S.proPivotVel or Vector3.new(0, 0, 0)
+                S.proPivotVel = Vector3.new(
+                        pv.X + (vel.X - pv.X) * aH,
+                        pv.Y + (vy - pv.Y) * aV,
+                        pv.Z + (vel.Z - pv.Z) * aH
+                )
+                -- maju mengikuti laju yang sudah halus (tanpa lag saat laju konstan)
+                S.proPivot = S.proPivot + S.proPivotVel * dt
+                -- koreksi selisih sisa, per sumbu & TANPA LOMPATAN: skalanya kontinu —
+                -- selisih makin besar → koreksi makin gesit (tetap glide, tidak snap),
+                -- vertikal selalu lebih larut dari horizontal (lompat/jatuh tak memantul)
+                local err = targetPivot - S.proPivot
+                local eH = math.sqrt(err.X * err.X + err.Z * err.Z)
+                local kH = math.clamp(eH / CFG.ProSnap, 0, 1)
+                local kV = math.clamp(math.abs(err.Y) / CFG.ProSnap, 0, 1)
+                local tauH = CFG.ProErr * (1 - (1 - CFG.ProErrFast / CFG.ProErr) * kH)
+                local tauV = CFG.ProErr * (1.7 - 1.3 * kV)
+                local aEH = 1 - math.exp(-dt / tauH)
+                local aEV = 1 - math.exp(-dt / tauV)
                 S.proPivot = Vector3.new(
-                        S.proPivot.X + (targetPivot.X - S.proPivot.X) * ax,
-                        S.proPivot.Y + (targetPivot.Y - S.proPivot.Y) * ay,
-                        S.proPivot.Z + (targetPivot.Z - S.proPivot.Z) * ax
+                        S.proPivot.X + err.X * aEH,
+                        S.proPivot.Y + err.Y * aEV,
+                        S.proPivot.Z + err.Z * aEH
                 )
         end
         -- 3) POSISI: tanah ditahan SEBELUM penghalusan → koreksi tak pernah terlihat sebagai sentakan
@@ -2467,7 +2481,7 @@ end
 -- BOTH  = dipakai dua kategori — jarak ikut P.dm (makin ramai makin jauh)
 -- Semua shot tetap RENDAH & sinematik, tanpa sudut dari atas.
 -- JARAK ADAPTIF — kondisi menentukan jarak: diam/pelan = dekat · lari/ngebut = jauh (P.dm dari distK).
--- WAJAH SHOT 60/20/20 — tiap shot diberi face: DEPAN (6 shot) · SAMPING (2 shot) · BELAKANG (4 shot).
+-- WAJAH SHOT 60/20/20 — tiap shot diberi face: DEPAN (8 shot) · SAMPING (3 shot) · BELAKANG (5 shot).
 -- Pemilihan shot: 60% dari depan · 20% dari samping · 20% dari belakang, lalu bobot konteks di dalamnya.
 local SHOTS = {}
 
@@ -2744,6 +2758,102 @@ SHOTS["DOLLY PULL-OUT"] = {
         end,
 }
 
+-- 13. CRANE DOWN FRONT — kran turun dari atas depan ke sejajar mata, pembuka megah
+SHOTS["CRANE DOWN FRONT"] = {
+        cat = "BOTH",
+        face = "DEPAN", -- kran turun dari atas depan ke sejajar mata
+        weights = { idle = 2.5, walk = 2.5, run = 1.5, vehicle = 2 },
+        enter = function(ctx, P)
+                P.dir = ctx.moveDir
+                P.d0 = rr(16, 20) * P.dm
+                P.d1 = rr(11, 14) * P.dm
+                P.h0 = rr(6, 9)
+                P.h1 = rr(1.4, 2)
+                P.fov = rr(48, 56)
+                seedSway(P, 0.7)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 1.8)
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local d = P.d0 + (P.d1 - P.d0) * k
+                local h = P.h0 + (P.h1 - P.h0) * k
+                local p = ctx.pos + dir * d + Vector3.new(0, h, 0) + sway(P, t, 0.08)
+                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(d, 5)
+        end,
+}
+
+-- 14. STATIC HERO FRONT — kamera diam (tripod) di depan, subjek yang bergerak
+SHOTS["STATIC HERO FRONT"] = {
+        cat = "CLOSE",
+        face = "DEPAN", -- tripod diam di depan, subjek bergerak mendekat/melewat
+        weights = { idle = 3, walk = 3, run = 1.5, vehicle = 1.5 },
+        enter = function(ctx, P)
+                P.spot = ctx.pos + ctx.look * rr(9, 13) * P.dm + Vector3.new(0, rr(1.2, 2), 0)
+                P.fov = rr(44, 52)
+                P.cut = false
+                seedSway(P, 0.4)
+        end,
+        update = function(P, t, dt, ctx)
+                local rel = ctx.pos - P.spot
+                local fdir = (ctx.moveDir.Magnitude > 0.1) and ctx.moveDir.Unit or ctx.look
+                if not P.cut and rel:Dot(fdir) < -1.5 then
+                        P.cut = true -- subjek sudah sangat dekat/melewat: potong lebih cepat
+                        S.cine.dur = math.min(S.cine.dur, S.cine.t + 0.15)
+                end
+                local p = P.spot + sway(P, t, 0.04)
+                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(rel.Magnitude, 4)
+        end,
+}
+
+-- 15. SIDE STATIC PASS — kamera diam di tepi samping, subjek melintas
+SHOTS["SIDE STATIC PASS"] = {
+        cat = "BOTH",
+        face = "SAMPING", -- kamera diam di tepi samping lintasan
+        weights = { idle = 0.4, walk = 3.5, run = 3.5, vehicle = 2.5 },
+        enter = function(ctx, P)
+                local vdir = (ctx.moveDir.Magnitude > 0.5) and ctx.moveDir.Unit or ctx.look
+                local perp = Vector3.new(-vdir.Z, 0, vdir.X)
+                P.spot = ctx.pos + perp * (math.random() < 0.5 and 1 or -1) * rr(8, 12) * P.dm + vdir * rr(4, 8) + Vector3.new(0, rr(1.2, 2.2), 0)
+                P.fov = rr(50, 58)
+                P.cut = false
+                seedSway(P, 0.5)
+        end,
+        update = function(P, t, dt, ctx)
+                local rel = ctx.pos - P.spot
+                local vdir = (ctx.moveDir.Magnitude > 0.5) and ctx.moveDir.Unit or ctx.look
+                if not P.cut and rel:Dot(vdir) < -2 then
+                        P.cut = true -- subjek sudah lewat: potong
+                        S.cine.dur = math.min(S.cine.dur, S.cine.t + 0.12)
+                end
+                local p = P.spot + sway(P, t, 0.05)
+                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(rel.Magnitude, 5)
+        end,
+}
+
+-- 16. FOLLOW CRANE RISE — dari belakang, kran naik pelan membuka pemandangan
+SHOTS["FOLLOW CRANE RISE"] = {
+        cat = "BOTH",
+        face = "BELAKANG", -- dari belakang, kran naik pelan
+        weights = { idle = 1.5, walk = 3, run = 3.5, vehicle = 3 },
+        enter = function(ctx, P)
+                P.dir = ctx.moveDir
+                P.d0 = rr(10, 14) * P.dm
+                P.d1 = P.d0 + rr(4, 8) * P.dm
+                P.h0 = rr(1.4, 2)
+                P.h1 = rr(4.5, 7)
+                P.fov = rr(52, 60)
+                seedSway(P, 0.8)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2)
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local d = P.d0 + (P.d1 - P.d0) * k
+                local h = P.h0 + (P.h1 - P.h0) * k
+                local p = ctx.pos - dir * d + Vector3.new(0, h, 0) + sway(P, t, 0.1)
+                return CFrame.lookAt(p, ctx.head + dir * 5), P.fov, 0
+        end,
+}
+
 -- ═══════════════ DETEKSI KERUMUNAN & PEMILIH SHOT ═══════════════
 -- Kerumunan = pemain/NPC lain dekat subjek. Ramai → kategori WIDE + kamera mundur.
 local function crowdCount(root)
@@ -2810,8 +2920,8 @@ local function pickFaceShot(lib, bobotFn, last, W, ORDER)
         local avail, atot = {}, 0
         for _, g in ipairs(ORDER) do
                 if gtot[g] > 0 then
-                        avail[g] = FACE_W[g]
-                        atot = atot + FACE_W[g]
+                        avail[g] = W[g] -- pakai bobot yang dikirim pemanggil (CINE=FACE_W · RACE=RACE_W)
+                        atot = atot + W[g]
                 end
         end
         if atot <= 0 then
@@ -2941,9 +3051,10 @@ end
 -- ═══════════════ RACE CAM — MODE 4 (NAIK KENDARAAN) ═══════════════
 -- Aktif dengan tombol 4 saat naik mobil/heli/perahu (target lock didukung:
 -- kalau target sedang menyetir, kamera memfilmkan kendaraannya).
--- 10 shot balap dipilih otomatis sesuai kecepatan, tikungan, dan drift.
+-- 17 shot balap dipilih otomatis sesuai kecepatan, tikungan, dan drift.
 -- JARAK ADAPTIF — pelan/cruising = kamera dekat · ngebut = kamera jauh (P.dm dari distK kecepatan).
--- GRUP SHOT RACE — 50% SAMPING ATAS (kanan/kiri) · 20% DEPAN ATAS · 10% SAMPING · 10% BELAKANG · 10% DEKAT kendaraan.
+-- GRUP SHOT RACE — 50% SAMPING ATAS (5 shot, kanan/kiri) · 20% DEPAN ATAS (2 shot) ·
+-- 10% SAMPING (5 shot) · 10% BELAKANG (2 shot) · 10% DEKAT kendaraan (3 shot) = 17 shot.
 local RSHOTS = {}
 
 -- 1. LOW REAR CHASE — kejar rendah dari belakang, FOV melebar makin ngebut
@@ -3154,6 +3265,157 @@ RSHOTS["DRIFT ARC SHOT"] = {
                 local fov = P.fov + ctx.spk * 6
                 local p = ctx.pos + Vector3.new(math.cos(P.ang) * P.r, P.h, math.sin(P.ang) * P.r) + sway(P, t, 0.12)
                 return CFrame.lookAt(p, ctx.pos), fov, closeDof(P.r, 6)
+        end,
+}
+
+-- 11. SKYLINE CRANE TRACK — kran/drone SANGAT TINGGI di samping, melihat kendaraan & jalanan
+RSHOTS["SKYLINE CRANE TRACK"] = {
+        face = "ATAS SAMPING", -- samping atas kanan/kiri, sangat tinggi (kran/drone)
+        dmK = 0.6,
+        pick = function(ctx) return 2.6 + ctx.spk * 1.5 end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.side = (math.random() < 0.5 and 1 or -1) * rr(9, 14) * P.dm
+                P.along = rr(2, 8)
+                P.h = rr(8, 11) * P.dm
+                P.fov = rr(46, 54)
+                seedSway(P, 0.7)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2)
+                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                local p = ctx.pos + dir * P.along + perp * P.side + Vector3.new(0, P.h, 0) + sway(P, t, 0.1)
+                return CFrame.lookAt(p, ctx.pos + dir * 5), P.fov, 0
+        end,
+}
+
+-- 12. TOP-DOWN SWEEP — samping atas: mulai nyaris di atas kendaraan, menyapu turun lembut
+RSHOTS["TOP-DOWN SWEEP"] = {
+        face = "ATAS SAMPING", -- samping atas kanan/kiri, menyapu turun
+        dmK = 0.6,
+        pick = function(ctx) return 2.2 + ctx.spk end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.side = (math.random() < 0.5 and 1 or -1) * rr(8, 12) * P.dm
+                P.along = rr(4, 9)
+                P.h0 = rr(7.5, 9.5) * P.dm
+                P.h1 = rr(3, 4) * P.dm
+                P.fov = rr(48, 56)
+                seedSway(P, 0.8)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.2)
+                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                local k = smoothstep(t / math.max(S.race.dur, 0.1))
+                local h = P.h0 + (P.h1 - P.h0) * k
+                local p = ctx.pos + dir * P.along + perp * P.side + Vector3.new(0, h, 0) + sway(P, t, 0.08)
+                return CFrame.lookAt(p, ctx.pos + dir * 2), P.fov, 0
+        end,
+}
+
+-- 13. CHOPPER SWAY — samping atas gaya helikopter: melayang dengan naik-turun lembut
+RSHOTS["CHOPPER SWAY"] = {
+        face = "ATAS SAMPING", -- samping atas kanan/kiri, melayang gaya helikopter
+        dmK = 0.6,
+        pick = function(ctx) return 2.4 end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.side = (math.random() < 0.5 and 1 or -1) * rr(9, 13) * P.dm
+                P.along = rr(0, 5)
+                P.h = rr(4.5, 6.5) * P.dm
+                P.osf = rr(0.5, 0.8) -- frekuensi naik-turun (kali 2π)
+                P.osp = rr(0.8, 1.4) -- amplitudo naik-turun
+                P.ph = rr(0, math.pi * 2)
+                P.fov = rr(50, 58)
+                seedSway(P, 0.9)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.1)
+                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                local h = P.h + math.sin(t * P.osf * math.pi * 2 + P.ph) * P.osp
+                local p = ctx.pos + dir * P.along + perp * P.side + Vector3.new(0, h, 0) + sway(P, t, 0.09)
+                return CFrame.lookAt(p, ctx.pos + dir * 3), P.fov, 0
+        end,
+}
+
+-- 14. DRONE FRONT HIGH — DEPAN ATAS: drone di depan atas, menghadap ke bawah
+RSHOTS["DRONE FRONT HIGH"] = {
+        face = "ATAS DEPAN", -- depan atas: drone menghadap ke bawah dari depan
+        dmK = 0.5,
+        pick = function(ctx) return 2 + ctx.spk * 1.5 end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.d = rr(16, 22) * P.dm
+                P.h = rr(5, 8) * P.dm
+                P.fov = rr(50, 58)
+                seedSway(P, 0.9)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.2)
+                local p = ctx.pos + dir * P.d + Vector3.new(0, P.h, 0) + sway(P, t, 0.1)
+                return CFrame.lookAt(p, ctx.pos + dir * 4), P.fov, 0
+        end,
+}
+
+-- 15. HIGH REAR CRANE — belakang atas: kran tinggi mengekor, melihat jalan di depan
+RSHOTS["HIGH REAR CRANE"] = {
+        face = "BELAKANG", -- belakang atas: kran tinggi mengekor
+        dmK = 0.55,
+        pick = function(ctx) return 2.5 + ctx.spk * 2 end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.d = rr(18, 26) * P.dm
+                P.h = rr(3.5, 5.5) * P.dm
+                P.fov = rr(52, 60)
+                seedSway(P, 1)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.4)
+                local p = ctx.pos - dir * P.d + Vector3.new(0, P.h, 0) + sway(P, t, 0.11)
+                return CFrame.lookAt(p, ctx.pos + dir * 8), P.fov + ctx.spk * 6, 0
+        end,
+}
+
+-- 16. EXHAUST & SPOILER — DEKAT: menempel belakang bawah, fokus knalpot & spoiler
+RSHOTS["EXHAUST & SPOILER"] = {
+        face = "DEKAT", -- menempel di belakang bawah kendaraan: knalpot & spoiler
+        dmK = 0.4,
+        pick = function(ctx) return math.max(2 - ctx.spk * 0.8, 0.5) end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.ang = rr(2.35, 2.75) -- sudut belakang 3/4 (rad dari depan)
+                P.side = (math.random() < 0.5 and 1 or -1)
+                P.d = rr(5.5, 7.5) * P.dm
+                P.h = rr(-1.1, -0.4)
+                P.fov = rr(36, 46)
+                seedSway(P, 0.7)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.5)
+                local dirB = rotY(dir, P.ang * P.side)
+                local p = ctx.pos + dirB * P.d + Vector3.new(0, P.h, 0) + sway(P, t, 0.05)
+                return CFrame.lookAt(p, ctx.pos - Vector3.new(0, 0.4, 0)), P.fov, 1
+        end,
+}
+
+-- 17. WINDOW GLIDE — DEKAT: menempel sejajar jendela samping, glide halus
+RSHOTS["WINDOW GLIDE"] = {
+        face = "DEKAT", -- menempel sejajar jendela samping (dekat kendaraan)
+        dmK = 0.4,
+        pick = function(ctx) return math.max(1.8 - ctx.spk * 0.6, 0.5) end,
+        enter = function(ctx, P)
+                P.dir = ctx.fwd
+                P.side = (math.random() < 0.5 and 1 or -1) * rr(4.5, 6.5) * P.dm
+                P.lead = rr(0, 2)
+                P.h = rr(0.5, 1.3)
+                P.fov = rr(40, 50)
+                seedSway(P, 0.8)
+        end,
+        update = function(P, t, dt, ctx)
+                local dir = smoothDir(P, ctx, dt, 2.6)
+                local perp = Vector3.new(-dir.Z, 0, dir.X)
+                local p = ctx.pos + perp * P.side + dir * P.lead + Vector3.new(0, P.h, 0) + sway(P, t, 0.06)
+                return CFrame.lookAt(p, ctx.pos + Vector3.new(0, 0.6, 0)), P.fov, 1
         end,
 }
 
@@ -3469,8 +3731,7 @@ function setMode(m)
                 S.proDistT = S.proDist
                 S.proPos = camCF.Position
                 S.proCF = nil
-                S.proSpeed = nil
-                S.proCatch = false
+                S.proPivotVel = Vector3.new(0, 0, 0)
                 S.proGlide = nil
                 Camera.CameraType = Enum.CameraType.Scriptable
                 setAnchorState()
@@ -3481,7 +3742,7 @@ function setMode(m)
                 S.cine.def = nil
                 S.cine.smCf = nil
                 setAnchorState() -- karakter beku total, biar shot tetap rapi
-                notify("CINEMATIC — 12 shot · cut antar shot gaya film · 60% depan · 20% samping · 20% belakang · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s", 1.4)
+                notify("CINEMATIC — 16 shot · cut antar shot gaya film · 60% depan · 20% samping · 20% belakang · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s", 1.4)
         elseif m == "RACE" then
                 Camera.CameraType = Enum.CameraType.Scriptable
                 S.race.def = nil
@@ -3490,7 +3751,7 @@ function setMode(m)
                 S.race.lastFwd = nil
                 S.race.smCf = nil
                 setAnchorState() -- RACE tidak beku: kamu tetap menyetir selagi kamera merekam
-                notify("RACE CAM — 50% samping atas · 20% depan atas · 10% samping · 10% belakang · 10% dekat · cut gaya film", 1.4)
+                notify("RACE CAM — 17 shot · 50% samping atas · 20% depan atas · 10% samping · 10% belakang · 10% dekat · cut gaya film", 1.4)
         end
         refreshModeUI()
         updateChip()
