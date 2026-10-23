@@ -2,6 +2,7 @@
 --  BALAP v1.0.3 — Script Balapan Gabungan
 --  v1.0.2: FIX Fall Assist (variabel hrp/hum tertukar) + Velocity Dampener
 --  v1.0.3: Fall HALUS — potong 50% + napi awal (-72) + jeda platform singkat
+--  v1.0.4: SILENT FALL — tanpa hentakan & tanpa pengurangan kecepatan jatuh
 --
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
@@ -18,7 +19,7 @@
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    K = Rejoin (double-tap)
 --========================================================
-local VERSI = "1.0.3"
+local VERSI = "1.0.4"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -456,7 +457,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.0.3 ⚡",
+    Text = "⚡ BALAP v1.0.4 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -731,7 +732,7 @@ State.FallOn  = false
 State.MoonOn  = false  -- Moonwalk (G)
 State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
 
--- Config Fall Assist v3.3 "SMOOTH BRANCH" (permintaan: potong 50%, sekhalus mungkin)
+-- Config Fall Assist v3.4 "SILENT FALL" (potong 50%, TANPA hentakan, tanpa cap kecepatan)
 cfgFall = {
     minJatuh = 35,
     posisi   = 0.50,
@@ -756,6 +757,7 @@ fallState = {
     groundY = nil,
     lastRay = 0,
     conn    = nil,
+    pulseSampai = nil,
 }
 
 -- Raycast params khusus Fall Assist
@@ -911,7 +913,7 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.0.3\n"
+    Text = "⚡ BALAP v1.0.4\n"
         .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
@@ -937,7 +939,7 @@ end)
 buatHeader(scrollSistem, "Tentang")
 local infoKredit = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 72),
+    Size = UDim2.new(1, 0, 0, 86),
     FontFace = fnt("med"),
     TextSize = 11,
     TextColor3 = Warna.AbuTeks,
@@ -948,7 +950,8 @@ local infoKredit = buat("TextLabel", {
         .. "Basis: SILAU BALAPAN v1.1 (5 skrip digabung)\n"
         .. "v1.0.1: rename BALAP — 3 tab fokus balapan\n"
         .. "v1.0.2: fix fall assist (var tertukar) + dampener\n"
-        .. "v1.0.3: jatuh lebih halus — potong 50% + soft catch",
+        .. "v1.0.3: potong 50% + soft catch\n"
+        .. "v1.0.4: silent fall — tanpa hentakan, tanpa cap kecepatan",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
@@ -1902,17 +1905,17 @@ Setters.Light = function(v, silent)
     syncNotify("Light", v, silent, "Cahaya Auto")
 end
 
--- SMART FALL ASSIST v3.3 "SMOOTH BRANCH + DAMPENER"
--- v1.0.3 mode HALUS: kecepatan jatuh di-cap -72 sejak awal (napi awal),
--- platform memotong di 50% perjalanan, dan hanya bertahan 0.10 detik —
--- sehingga "berhenti di udara" jauh lebih sulit terasa.
+-- SMART FALL ASSIST v3.4 "SILENT FALL"
+-- v1.0.4: TANPA platform fisik & TANPA cap kecepatan — jatuh 100% natural.
+-- Reset dipalsukan lewat "pulse" state Landed 0.08 dtk di titik potong (50%):
+-- game menganggap kita sudah mendarat, padahal fisika tidak tersentuh sama sekali.
+-- Mendarat akhir dilembutkan bertahap (±7/dtk per frame) hanya utk jatuh besar.
 -- FIX v1.0.2: sebelumnya `local char, hum, hrp = getKarakter()` TERTUKAR
 -- (getKarakter mengembalikan char, HRP, Humanoid) sehingga
 -- hrp.AssemblyLinearVelocity ERROR tiap frame dan assist tidak pernah jalan.
--- Jatuh normal kencang -> sekali di posisi bentur (0.70) perjalanan:
--- platform tak terlihat muncul 4 stud di bawah kaki ->
--- karakter MENDARAT BENERAN (reset penghitung jatuh) ->
--- 0.15 detik kemudian platform hilang -> jatuh sisa pendek
+-- Alur SILENT: jatuh natural penuh -> di 50% perjalanan kirim "pulse Landed"
+-- 0.08 dtk (game reset hitungan jatuh, fisika tidak berubah) -> lanjut jatuh
+-- natural -> 10 stud terakhir dilembutkan bertahap (hanya jatuh besar).
 Setters.Fall = function(v, silent)
     if State.FallOn == v then return end
     State.FallOn = v
@@ -1923,6 +1926,12 @@ Setters.Fall = function(v, silent)
             local char, hrp, hum = getKarakter()  -- FIX v1.0.2: urutan benar (HRP dulu, baru Humanoid)
             if not hum or not hrp then return end
             local now = os.clock()
+            -- v1.0.4 SILENT PULSE: selama jendela pulse, paksa state "Landed"
+            -- tiap frame. Kecepatan & fisika jatuh TIDAK diubah sama sekali —
+            -- game hanya menerima event mendarat (penghitung jatuh tereset).
+            if fallState.pulseSampai and now < fallState.pulseSampai then
+                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Landed) end)
+            end
             local vel = hrp.AssemblyLinearVelocity
             local st
             pcall(function() st = hum:GetState() end)
@@ -1934,18 +1943,10 @@ Setters.Fall = function(v, silent)
                     fallState.sejak = now
                     fallState.groundY = nil
                     fallState.lastRay = 0
+                    fallState.pulseSampai = nil
                 end
                 fallState.apex = math.max(fallState.apex, hrp.Position.Y)
                 local sudahTurun = fallState.apex - hrp.Position.Y
-                -- v3.3 NAPI AWAL: batasi kecepatan jatuh maksimal -72 stud/detik
-                -- supaya benturan platform & tanah lebih lembut (jarang terasa).
-                -- Lompatan biasa (jatuhnya di bawah ~12 stud) tidak pernah tersentuh.
-                if sudahTurun > 12 and vel.Y < -72 then
-                    pcall(function()
-                        hrp.AssemblyLinearVelocity = Vector3.new(vel.X, -72, vel.Z)
-                    end)
-                    vel = hrp.AssemblyLinearVelocity
-                end
                 -- update cache ketinggian tanah: 10Hz saat jauh, tiap frame saat dekat
                 if sudahTurun > 10 and vel.Y < -40 then
                     local dekat = (fallState.groundY ~= nil) and (hrp.Position.Y - fallState.groundY) < 60
@@ -1973,31 +1974,21 @@ Setters.Fall = function(v, silent)
                     end
                     if picu then
                         fallState.bentur = true
-                        toast("🍂 Fall Assist: platform muncul", Warna.Hijau2)
-                        pcall(function()
-                            local plat = Instance.new("Part")
-                            plat.Name = "Branch"
-                            plat.Size = Vector3.new(6, 0.4, 6)
-                            plat.Transparency = 1
-                            plat.Anchored = true
-                            plat.CanCollide = true
-                            plat.CanQuery = false
-                            plat.CanTouch = false
-                            plat.CastShadow = false
-                            plat.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 4, hrp.Position.Z)
-                            plat.Parent = workspace
-                            task.delay(0.10, function()  -- v1.0.3: 0.15 → 0.10 dtk, jeda makin pendek
-                                pcall(function() plat:Destroy() end)
-                            end)
-                        end)
+                        toast("🍂 Fall Assist: reset senyap di udara", Warna.Hijau2)
+                        -- v1.0.4 SILENT: TANPA platform fisik = TANPA hentakan.
+                        -- Cukup buka jendela pulse "Landed" selama 0.08 detik.
+                        fallState.pulseSampai = now + 0.08
                     end
                 end
-                -- v3.2 VELOCITY DAMPENER: perlambat jatuh menjelang tanah
-                -- (untuk game yang menghitung damage/stun dari kecepatan bentur)
-                if vel.Y < -60 and fallState.groundY
-                and (hrp.Position.Y - fallState.groundY) < 14 then
+                -- v1.0.4 BLEND LEMBUT (pengganti dampener 1-frame yang terasa "bentur"):
+                -- deselerasi bertahap di 10 stud terakhir, HANYA utk jatuh besar
+                -- (tinggi total ≥ MIN JATUH). Perubahan cuma ±7 stud/dtk per frame —
+                -- di bawah ambang persepsi; mendarat akhir ~-30 (kayak lompat biasa).
+                if tinggiTotal and tinggiTotal >= cfgFall.minJatuh
+                and fallState.groundY and vel.Y < -45
+                and (hrp.Position.Y - fallState.groundY) < 10 then
                     pcall(function()
-                        hrp.AssemblyLinearVelocity = Vector3.new(vel.X, -22, vel.Z)
+                        hrp.AssemblyLinearVelocity = Vector3.new(vel.X, math.min(vel.Y + 7, -30), vel.Z)
                     end)
                 end
             elseif fallState.jatuh then
