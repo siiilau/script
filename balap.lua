@@ -1,4 +1,10 @@
 --========================================================
+--  BALAP v1.2.2 — Script Balapan Gabungan
+--  3 TAB:
+--    1 🏃 GERAK  : Speed, Jump, Shiftlock, Moonwalk, Fall Assist, Anti-AFK
+--    2 🎨 VISUAL : Hide, Hide Pemain Lain, Cahaya Auto 2 arah, Lightweight, Dinding Batas
+--    3 ⚙️ SISTEM : reset, rejoin, hapus script
+--
 --  Keybind:
 --    F = buka/tutup GUI (saat tutup = hilang total)
 --    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
@@ -7,7 +13,7 @@
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    K = Rejoin (double-tap)
 --========================================================
-local VERSI = "1.0.4"
+local VERSI = "1.2.2"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -445,7 +451,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.0.4 ⚡",
+    Text = "⚡ BALAP v1.2.2 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -720,10 +726,11 @@ State.FallOn  = false
 State.MoonOn  = false  -- Moonwalk (G)
 State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
 
--- Config Fall Assist v3.4 "SILENT FALL" (potong 50%, TANPA hentakan, tanpa cap kecepatan)
+-- Config Fall Assist v3.5 "1 FITUR" (v1.2) — TANPA minimal jatuh.
+-- Tinggal 1 angka: POTONGAN DEMAGE (%). Potong di X% perjalanan jatuh
+-- = damage kira-kira turun X%. 0 = normal total, 30 = ringan, 75 = paling ringan.
 cfgFall = {
-    minJatuh = 35,
-    posisi   = 0.50,
+    potongan = 30,  -- v1.2: default pilihan user (menggantikan posisi 0.30 + minJatuh 35)
 }
 
 -- Original Lighting (untuk restore saat cahaya dimatikan)
@@ -746,6 +753,8 @@ fallState = {
     lastRay = 0,
     conn    = nil,
     pulseSampai = nil,
+    sudahPulse  = false,  -- v1.2.2: latch GLOBAL 1x per terbangan (2 lapis)
+    tanahSejak  = nil,    -- v1.2.2: sejak kapan menempel tanah (untuk re-arm stabil)
 }
 
 -- Raycast params khusus Fall Assist
@@ -835,9 +844,9 @@ local function buatNumRow(parent, labelText, default, cb)
         end
     end)
 end
-buatNumRow(scrollKing, "MIN JATUH (stud)", cfgFall.minJatuh, function(n) cfgFall.minJatuh = n end)
-buatNumRow(scrollKing, "POSISI BENTUR (0-1)", cfgFall.posisi, function(n)
-    if n > 0 and n < 1 then cfgFall.posisi = n end
+-- v1.2: 1 fitur — cukup 1 angka (MIN JATUH & POSISI BENTUR dihapus)
+buatNumRow(scrollKing, "POTONGAN DEMAGE (0-75%)", cfgFall.potongan, function(n)
+    if n >= 0 and n <= 75 then cfgFall.potongan = n end
 end)
 
 -- [7d] KONTEN TAB 2: VISUAL -----------------------------------------
@@ -901,7 +910,7 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.0.4\n"
+    Text = "⚡ BALAP v1.2.2\n"
         .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
@@ -927,7 +936,7 @@ end)
 buatHeader(scrollSistem, "Tentang")
 local infoKredit = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 86),
+    Size = UDim2.new(1, 0, 0, 142),
     FontFace = fnt("med"),
     TextSize = 11,
     TextColor3 = Warna.AbuTeks,
@@ -939,7 +948,11 @@ local infoKredit = buat("TextLabel", {
         .. "v1.0.1: rename BALAP — 3 tab fokus balapan\n"
         .. "v1.0.2: fix fall assist (var tertukar) + dampener\n"
         .. "v1.0.3: potong 50% + soft catch\n"
-        .. "v1.0.4: silent fall — tanpa hentakan, tanpa cap kecepatan",
+        .. "v1.0.4: silent fall — tanpa hentakan, tanpa cap kecepatan\n"
+        .. "v1.0.6: posisi bentur 0.30 — reduksi ringan biar masuk akal\n"
+        .. "v1.2: 1 fitur — potongan % (0-75), tanpa minimal jatuh, tanpa soft landing\n"
+        .. "v1.2.1: fix reset senyap — cukup 1x per terbangan, ulang setelah injek tanah\n"
+        .. "v1.2.2: fix final — 1x per turunan walau memantul di lereng (tanah stabil 0.3 dtk)",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
@@ -1893,17 +1906,25 @@ Setters.Light = function(v, silent)
     syncNotify("Light", v, silent, "Cahaya Auto")
 end
 
--- SMART FALL ASSIST v3.4 "SILENT FALL"
--- v1.0.4: TANPA platform fisik & TANPA cap kecepatan — jatuh 100% natural.
--- Reset dipalsukan lewat "pulse" state Landed 0.08 dtk di titik potong (50%):
+-- SMART FALL ASSIST v3.5 "1 FITUR" (v1.2)
+-- TANPA minimal jatuh — semua ketinggian masuk (batas alami cuma fisika:
+-- pemicu butuh jatuh >10 stud & vel < -40; jatuh sekecil itu memang 0 damage).
+-- Tinggal 1 angka: POTONGAN DEMAGE % (0-75). Potong di X% perjalanan jatuh =
+-- damage kira-kira turun X%. Soft landing -30 DIHAPUS di v1.2 supaya angka %
+-- JUJUR (bantalan -30 dulu bikin rasa "terlalu kebal") — mendarat 100% natural.
+-- Reset dipalsukan lewat "pulse" state Landed 0.08 dtk di titik potong:
 -- game menganggap kita sudah mendarat, padahal fisika tidak tersentuh sama sekali.
--- Mendarat akhir dilembutkan bertahap (±7/dtk per frame) hanya utk jatuh besar.
 -- FIX v1.0.2: sebelumnya `local char, hum, hrp = getKarakter()` TERTUKAR
 -- (getKarakter mengembalikan char, HRP, Humanoid) sehingga
 -- hrp.AssemblyLinearVelocity ERROR tiap frame dan assist tidak pernah jalan.
--- Alur SILENT: jatuh natural penuh -> di 50% perjalanan kirim "pulse Landed"
--- 0.08 dtk (game reset hitungan jatuh, fisika tidak berubah) -> lanjut jatuh
--- natural -> 10 stud terakhir dilembutkan bertahap (hanya jatuh besar).
+-- Alur SILENT: jatuh natural penuh -> di X% perjalanan kirim "pulse Landed"
+-- 0.08 dtk (game reset hitungan jatuh, fisika tidak berubah) -> lanjut jatuh natural.
+-- v1.2.1+v1.2.2 LATCH 1x (2 LAPIS): pulse cuma SEKALI per terbangan.
+-- Lapis 1 (per record): bentur. Lapis 2 (GLOBAL): sudahPulse — apa pun yang
+-- menghapus record (state flap / pantulan lereng), pemicu tetap MATI sampai
+-- benar-benar selesai terbangan: menempel tanah >= 0.30 dtk (bukan sentuhan
+-- sekilas!), masuk air, duduk, panjat, atau mati. Dulu di lereng salju bisa
+-- 2-3x karena tiap pantulan singkat dianggap "sudah mendarat".
 Setters.Fall = function(v, silent)
     if State.FallOn == v then return end
     State.FallOn = v
@@ -1928,6 +1949,8 @@ Setters.Fall = function(v, silent)
                     fallState.jatuh = true
                     fallState.apex = hrp.Position.Y
                     fallState.bentur = false
+                    -- v1.2.2: sudahPulse sengaja TIDAK direset di sini — latch
+                    -- global cuma dibuka saat mendarat sungguhan (tanah stabil)
                     fallState.sejak = now
                     fallState.groundY = nil
                     fallState.lastRay = 0
@@ -1950,38 +1973,68 @@ Setters.Fall = function(v, silent)
                     sisaJatuh = hrp.Position.Y - fallState.groundY
                     tinggiTotal = fallState.apex - fallState.groundY
                 end
-                -- VIRTUAL BRANCH: sekali per jatuh di posisi bentur
-                if not fallState.bentur and sudahTurun > 10 and vel.Y < -40 then
+                -- VIRTUAL BRANCH: sekali per jatuh di titik potong (POTONGAN %)
+                if not fallState.bentur and not fallState.sudahPulse
+                and sudahTurun > 10 and vel.Y < -40 then
                     local picu = false
-                    if tinggiTotal and tinggiTotal >= cfgFall.minJatuh
-                    and sisaJatuh <= tinggiTotal * (1 - cfgFall.posisi) then
+                    if cfgFall.potongan > 0 and tinggiTotal
+                    and sisaJatuh <= tinggiTotal * (1 - cfgFall.potongan / 100) then
                         picu = true
                     end
-                    if not picu and not tinggiTotal and (now - fallState.sejak) > 0.6 and vel.Y < -70 then
+                    if not picu and cfgFall.potongan > 0 and not tinggiTotal
+                    and (now - fallState.sejak) > 0.6 and vel.Y < -70 then
                         picu = true
                     end
                     if picu then
                         fallState.bentur = true
+                        fallState.sudahPulse = true  -- v1.2.2: latch global — 1x per terbangan
                         toast("🍂 Fall Assist: reset senyap di udara", Warna.Hijau2)
                         -- v1.0.4 SILENT: TANPA platform fisik = TANPA hentakan.
                         -- Cukup buka jendela pulse "Landed" selama 0.08 detik.
                         fallState.pulseSampai = now + 0.08
                     end
                 end
-                -- v1.0.4 BLEND LEMBUT (pengganti dampener 1-frame yang terasa "bentur"):
-                -- deselerasi bertahap di 10 stud terakhir, HANYA utk jatuh besar
-                -- (tinggi total ≥ MIN JATUH). Perubahan cuma ±7 stud/dtk per frame —
-                -- di bawah ambang persepsi; mendarat akhir ~-30 (kayak lompat biasa).
-                if tinggiTotal and tinggiTotal >= cfgFall.minJatuh
-                and fallState.groundY and vel.Y < -45
-                and (hrp.Position.Y - fallState.groundY) < 10 then
-                    pcall(function()
-                        hrp.AssemblyLinearVelocity = Vector3.new(vel.X, math.min(vel.Y + 7, -30), vel.Z)
-                    end)
-                end
+                -- v1.2: BLEND LEMBUT DIHAPUS — mendarat 100% natural.
+                -- Bantalan -30 dulu bikin rasa "terlalu kebal" + angka % tak akurat.
             elseif fallState.jatuh then
-                fallState.jatuh = false
-                fallState.bentur = false
+                -- v1.2.2 RE-ARM STABIL: sentuhan tanah sesaat (memantul/menyenggol
+                -- lereng salju) TIDAK menghidupkan ulang pemicu. Re-arm HANYA jika:
+                -- (a) menempel tanah terus-menerus >= 0.30 dtk (mendarat beneran),
+                -- (b) masuk air / duduk / panjat, atau (c) mati.
+                if st == Enum.HumanoidStateType.Dead then
+                    fallState.jatuh = false
+                    fallState.bentur = false
+                    fallState.sudahPulse = false
+                    fallState.tanahSejak = nil
+                else
+                    local okRe, tanah, selesaiMutlak = pcall(function()
+                        return hum.FloorMaterial ~= Enum.Material.Air,
+                            st == Enum.HumanoidStateType.Swimming
+                            or st == Enum.HumanoidStateType.Seated
+                            or st == Enum.HumanoidStateType.Climbing
+                    end)
+                    if okRe then
+                        if selesaiMutlak then
+                            fallState.jatuh = false
+                            fallState.bentur = false
+                            fallState.sudahPulse = false
+                            fallState.tanahSejak = nil
+                        elseif tanah then
+                            if not fallState.tanahSejak then
+                                fallState.tanahSejak = now
+                            end
+                            if now - fallState.tanahSejak >= 0.30 then
+                                fallState.jatuh = false
+                                fallState.bentur = false
+                                fallState.sudahPulse = false
+                                fallState.tanahSejak = nil
+                            end
+                        else
+                            -- udara lagi (pantulan) -> batalkan hitungan tanah
+                            fallState.tanahSejak = nil
+                        end
+                    end
+                end
             end
         end)
     else
@@ -1991,6 +2044,8 @@ Setters.Fall = function(v, silent)
         end
         fallState.jatuh = false
         fallState.bentur = false
+        fallState.sudahPulse = false
+        fallState.tanahSejak = nil
     end
     syncNotify("Fall", v, silent, "Smart Fall Assist")
 end
