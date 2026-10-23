@@ -1,2284 +1,1587 @@
---========================================================
---  BALAP v1.0.3 — Script Balapan Gabungan
---  v1.0.2: FIX Fall Assist (variabel hrp/hum tertukar) + Velocity Dampener
---  v1.0.3: Fall HALUS — potong 50% + napi awal (-72) + jeda platform singkat
---  v1.0.4: SILENT FALL — tanpa hentakan & tanpa pengurangan kecepatan jatuh
---
---  TEMA: SILAU NEON (ungu/biru LED)
---
---  3 TAB:
---    1 🏃 GERAK  : Speed, Jump, Shiftlock, Moonwalk, Fall Assist, Anti-AFK
---    2 🎨 VISUAL : Hide, Hide Pemain Lain, Cahaya Auto 2 arah, Lightweight, Dinding Batas
---    3 ⚙️ SISTEM : reset, rejoin, hapus script
---
---  Keybind:
---    F = buka/tutup GUI (saat tutup = hilang total)
---    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
---    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
---    G = Moonwalk    B = Smart Fall Assist    R = Hide
---    T = Cahaya Auto (2 arah)    X = Dinding Batas
---    K = Rejoin (double-tap)
---========================================================
-local VERSI = "1.0.4"
-
--- [1] PENGAMAN DASAR -----------------------------------------------
-local RunService = game:GetService("RunService")
-if not RunService:IsClient() then
-    warn("[BALAP] GAGAL: harus jalan di CLIENT (executor / LocalScript), bukan server!")
-    return
-end
-if not game:IsLoaded() then
-    game.Loaded:Wait()
-end
-local Players          = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local TweenService     = game:GetService("TweenService")
-local HttpService      = game:GetService("HttpService")
-local TeleportService  = game:GetService("TeleportService")
-local Lighting         = game:GetService("Lighting")
-local Workspace        = game:GetService("Workspace")
-local VirtualUser      = game:GetService("VirtualUser")
-local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
-if not LocalPlayer then
-    warn("[BALAP] GAGAL: LocalPlayer belum ada.")
-    return
-end
-local Terrain = Workspace:WaitForChild("Terrain")
-
--- anti double-run
-if _G.__BALAP_MAIN__ then return end
-_G.__BALAP_MAIN__ = true
-
--- [2] KONFIGURASI ---------------------------------------------------
--- Semua konstanta digabung ke dalam 1 table CFG untuk hemat local count
--- (Luau limit 200 local per function)
-local CFG = {
-    ICON_SIZE       = 36,
-    TOGGLE_KEY      = Enum.KeyCode.F,
-    LED_TEXT        = "⚡ B A L A P ⚡",
-    SOUND_ON        = true,
-    FX_LEVEL        = 1,
-    -- Speed cycle 3 state (17.10 → 17.25 → 21.25 → balik OFF)
-    SPEED_OFF   = 17.10,
-    SPEED_ON_1  = 17.25,
-    SPEED_ON_2  = 21.25,
-    -- Jump: OFF 51.25 ⇄ ON 65.25 (kondisional UseJumpPower / JumpHeight)
-    OFF_JUMP    = 51.25,
-    ON_JUMP     = 65.25,
-    OFF_JUMP_H  = 6.69,
-    ON_JUMP_H   = 8.50,
-    SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
-    SND_SNAP   = "rbxasset://sounds/snap.mp3",
+--[[  SCRIPT FREE CAM YANTO  ]]
+-- CapsLock = master | 1 = free cam | F = panel | K 2x = hapus script
+local _Y7T = {
+"61b1cdc2dac6d3d4",
+"64b6d9d2b7c9d6dacdc7c9",
+"e83d5b4d5a3156585d5c3b4d5a5e514b4d",
+"5497c3c2c8b9ccc895b7c8bdc3c2a7b9c6cabdb7b9",
+"a9fd200e0e17fc0e1b1f120c0e",
+"7bc9cac9c0",
+"5ea6d3cbbfcccdc7c2b0cdcdd2aebfd0d2",
+"b3fb28201421221c17",
+"7ee4f3ece1f2e7edec",
+"266995988b6d9b8f",
+"89d9f5ea02eefbd0fef2",
+"347aa3a09899a6",
+"87cac8d4ccd9c8e6cdd9cccce6fdb8",
+"eb2e2c38303d2c4a611c4a1b4a1c",
+"55a89e9e9ea196aab4cb86b48586",
+"70c3b9b9b9bcb1c5e8b3b1bdb5c2b1c0c2bf",
+"79ccc2c2c2c5baced8c0bac5bad1d2d8bcbac6",
+"6cbfcfded1d1dab3e1d5",
+"b70c00fa2629251c29",
+"63b8acb6d7d5d2cec8",
+"b409fdfb2615181d192228",
+"7bd0c4cbdcdfdfe4e9e2",
+"2c729e8d9991",
+"b207fbfe1b2526fe132b212726",
+"88dced00fcd4e9eaedf4",
+"266c786b6b46696773628c95949a4689959295986348496c6c586a67674864469c57545662558c95949a64",
+"4588a6b5b891b4a8b06594936527cbd765766582658b978a8a65888692",
+"95e9fa0d09d70a09090403",
+"b99b394c",
+"f1445463605d5d5a5f583763525e56",
+"81c7a1f1e2efe6eda14338a1cca1b3f9a1e9e2f1f6f4a1f4e4f3eaf1f5",
+"4628c6da66",
+"6b8b8b8b2d228b8b8b",
+"dd2c2b",
+"2e7d7474",
+"69b6d8cdce89b4cad6cedbca",
+"5a",
+"b4e5d4766bd4fa06f9f9d4f7f501",
+"89cfdbcece",
+"6345faec8383aea883aea4b5a4aeb7a8b583b8b7a4b0a4",
+"e8384d564f495c5d5a4956",
+"80cbc5c3c5d0c1d4c1ce",
+"d6f6494a4b3a0549",
+"75bbc4cb",
+"2beddb",
+"b20122251b",
+"286a6d737d7369764873697a69737c6d7a48507369756d7a695775697b7c6d7a51",
+"d8241d2c2c1d2a1a2730f82b21261d25192c2123",
+"66b1cbdfc8cfd4ca",
+"61a4c2d1d4add0c4cc819e81aea2b4b5a6b381ccc2cec6d3c281b0af90b0a7a78189c5c6c7c2d6cdd581b0a7a78a6b92819e81a7b3a6a681a4a2ae81d0cf90d0c7c781231881a7819e81d1c2cfc6cd81231881ac8193d9819e81c9c2d1d6d481d4c4d3cad1d56bb8a2b4a581c8c6d3c2cc81231881b290a681d5d6d3d6cf90cfc2cacc81231881b3aea381d5c2c9c2cf819e81cdcac9c2d56bb4c4d3d0cdcd819e81a7b0b781231881b4d1c2c4c68189d5c2c9c2cf8a819e81d5d6d3c3d081231881a4d5d3cd819e81cdc2cec3c2d5",
+"e32e03155b03a59a032b24333836033626352c3337",
+"cffa",
+"489d919baba9b4ad",
+"d91a444d423f443a47f91f2b1e1ef91c1a26f93d4e454ef9010a02f94e474d4e44f94942473d3a41f9443ef9443a4b3a444d3e4b",
+"a5f006170610190a17c5070a111a12c5180e0615",
+"c10c222e263322e1312a2f252229e12c26e12c2233222c352633e13635222e22",
+"d3204237383f",
+"a1e7f3e6e6e4e2ee00f5f6f3e3f0",
+"bcfffd0c0f080bff07dc0b0202dc9e3c50dc3021271d2adcff1d2c2f082b1f27dc20312831dc312a303127dc2c1d271d25dc271d29212e1d",
+"d81e2a1d1df81b1925f8271e1e",
+"b5fb07fafad5f8f602d5973549d50cf608f9e006fad51c1a271620d5776cd50702f7d5211e1d1629d5776cd5081827242121d5fb040bd5776cd529161d1623d5082516181ad5292a271724",
+"cc0f0d1c1f181b0f17ec1b1aecae4c60ec372d39313e2dec0d17201512ecf44031372d3aecfdec09ec121e1111ec0f0d19f5",
+"5ea19faeb1aaada1a97eada4a47e40def27ec9c3d7c0c7ccc27ec9bfcbc3d0bf7eab9fb2a77e86a47ecebfccc3ca7e20157ea97ec6bfced3d17ed2c3d2bfce7ec6c7c2d3ce87",
+"73c7d8ded4e193be93e6d8ded4dfdc93dfd4dadc93e8e1e7e8de93dbd4e3e8e693e6d6e5dce3e7",
+"a8eb1d1a1a0d161ceb09150d1a09",
+"df22202c2431203e333431212e",
+"66b9afafafb2a7bbc5babbb8a8b5",
+"6ec9b4c0b3b38eb1afbb8ee49f9c9ecb8ee1d1e0d7dee28ed2d7d6cfdee3e18e50ee028ee1cfdbdecfd78ed8e3dbdecf8f",
+"e42a3629290427253104574d455404c664780458494f455204272534373033272f0448595059040c5145575849560d10045045505904150421042a3629290427253104a69b042a04544552495004a69b042f04165c044c45545957",
+"d5301b271a1af5181622f54b06030532f5483e3645f5b75569f51836454821443840f52423f5b75b67f506f512f51b271a1af5181622f5978cf51bf54536433a41f5978cf520f5074df53d36454a48",
+"7bbebcc8c0cdbcdac1cdc0c0dad1acdad0c9c7cabcbf",
+"266967736b7867857c575657857b747275676a",
+"68bbb1b1b1b4a9bdc7aba9b5c7bdb6b4b7a9ac",
+"e65d474f5a",
+"d420433735402440354d3946",
+"479ab7acacab",
+"66b2cbdadacbd8c8d5de",
+"5b9cc9cfc49ec7c4cb",
+"5293c0b5bac1c4",
+"398ca6a8a8ada1a79eacac",
+"2a709c8f8f76999995",
+"f145666353603e665d65",
+"71c4dde0e8bee6dde5",
+"f03d5f65635543555e63",
+"bb0e202721012734ff242e2f",
+"bb0e20272101273403202422232f",
+"d7253c464508",
+"48aebab7b59a8f8a",
+"c6142b3534f8",
+"bafc01",
+"2b6d726e8c9d8f",
+"da2e322e",
+"ad0105010cf1f6fa",
+"4f93909d9694a1",
+"2390928788",
+"5dcabed0d1c2cf",
+"c63627342b3215362b34",
+"ce433716373232333c",
+"36a8a398",
+"c82b3c3a340c373f36",
+"43b7b8b5a5b2",
+"74e0d5e7e8bf",
+"67cdd9ccccb7d6da",
+"e9574e60",
+"d83e4a3d3d2e3d44",
+"68c9d1d5c1",
+"2b9197a4",
+"930cf40a",
+"88f8f1fcebf0",
+"a0190117f4",
+"85f5eef9e8edd9",
+"a31604190807e60410",
+"81c4e9e2f3e2e4f5e6f3",
+"359ea3a89aa7a9",
+"b70718291c252b",
+"4e9cafbbb3",
+"c5172a382a3914331835263c33",
+"71bad8dfe0e3d6b8e6dabadfe4d6e5",
+"468aafb9b6b2a7bf95b8aaabb8",
+"51ab9abfb5b6c993b6b9b2c7bac0c3",
+"98eb01fa040106ff",
+"62a5d1d4d0c7d4b4c3c6cbd7d5",
+"8ed1fdfafd00",
+"a5f90d0e0810130a1818",
+"ac001e0d1a1f1c0d1e111a0f25",
+"96d70606020fe90a080501fbe305fafb",
+"266895988a8b98",
+"d123404532453a403f",
+"51a1b2b5b5babfb8a5c0c1",
+"3f8fa0a3a3a8ada681aeb3b3aeac",
+"b000111414191e17fc151624",
+"99e9fafdfd020700eb0200010d",
+"b723190b",
+"5d9fbec0c8c4cfccd2cbc1a0ccc9cccf90",
+"6caedbded0d1debfd5e6d1bcd5e4d1d8",
+"26798fa08b",
+"5fafced2c8d3c8cecd",
+"ee48375c525366",
+"b31f15f5",
+"498ab7acb1b8bb99b8b2b7bd",
+"c62c3227392e",
+"ec2e4d4f57535e5b615a50405e4d5a5f5c4d5e515a4f65",
+"72e0e1e6dbd8b4e1ea",
+"95d60a090402f609fef8e8fe0ffa",
+"4aa3",
+"7bcbdcdfdfe4e9e2",
+"97ea06090be609fbfc09",
+"348095ada3a9a883a69899a6",
+"ae0413202217110f1aef1a17151c1b131c22",
+"c2163132",
+"59c9bac7bec5",
+"7ebfe1f2e7f4e3",
+"4abaabb8afb69dbebcb9b5af",
+"7fc4ede0e1ebe4e3",
+"93fbf8f4f7",
+"da4e434e463f",
+"2a7099989e",
+"c50c34392d26320731262830",
+"ea3e4f625e",
+"be1027212612233632",
+"c317283b3706322f3235f6",
+"297d8ea19d7c92a38e",
+"8ce0f10400e4cdf8f5f3faf9f1fa00",
+"9ce8010210",
+"299c9e8b",
+"3d84acb1a59eaa8aa2a1a6b2aa",
+"c83531360a3c36",
+"a1e8101509020ee3100d05",
+"2e909d92a7",
+"63a6c4d1d9c4d6b6ccddc8",
+"8acbfffef9f7ebfef3edcdebf800ebfdddf304ef",
+"75c8d8e7e4e1e1dee3dcb9dee7dad8e9dee4e3",
+"e63949585552522847583a4e4f4951544b5959",
+"b1041423201d1df31223fa1e121816f4201d2023e4",
+"298f98989d",
+"e93d4e615d3d5b4a575c594a5b4e574c62",
+"6ad6d3ddde",
+"b12621211623",
+"5e9fd3d2cda0d3d2d2cdcca1cdcacdd0",
+"b1fe20262416f3262525201fe2f41d1a141c",
+"e739504e4f5b",
+"399ca59aa6a9",
+"93d4f50602ff0807f8e30206fc07fc0201",
+"62ba",
+"3ca99db4",
+"70b1d2e3dfdce5e4d5c3d9ead5",
+"7ed1e3f2",
+"4089aeb0b5b482a5a7a1ae",
+"3489a799a67da2a4a9a888ada499",
+"71bee0e6e4d6b3e6e5e5e0dfa2",
+"d529444a383d",
+"4992b7b9bebd8cb1aab7b0aead",
+"4f9cbec4c2b49cbec5b4bcb4bdc3",
+"68b1d6d8dddcadd6cccdcc",
+"b11e201516f3251f24",
+"7adceee8",
+"59c0cbbabd",
+"f16465",
+"d3474b47",
+"ba2d2a1f1f1e0d26231e1f2c",
+"d83e4447474a",
+"379da6ad8aa3a09b9ca9",
+"eb3f50635f442c575452595850595f",
+"4fa5b8c2b8b1bbb4",
+"328595939e97",
+"57a6bdbdcabccb",
+"de414a4d4149",
+"f04455686447625160605554",
+"64a9c5d7cdd2cbb7d8ddd0c9",
+"3d7f9ea0a8",
+"4f94b0c2b8bdb693b8c1b4b2c3b8bebd",
+"3685abaa",
+"84e8e9f0e5fd",
+"7ecff3dfe2",
+"f1325f545960635655",
+"ea2b5d5d4f574c56633653584f4b5c404f56594d535e63",
+"27a18c9996",
+"e64c58555335584f4b545a475a4f5554",
+"2e7a9d9d99849391a29da0",
+"b610",
+"c411252b322d38392829",
+"4ba0b9b4bf",
+"a8091c0916da",
+"c324362c31",
+"53c7",
+"e0445552",
+"e24854514f325155",
+"cf433e1f3e42",
+"58becac7c5b1b9cf",
+"a41813fd051b",
+"a10713100ef10a150409",
+"ed615c3d56615055",
+"2f75989ba394a183a89f94",
+"79cbdaf2dcdaecedbfe2e5eddeebcdf2e9de",
+"abf0230e17200f10",
+"5ca2c5c8d0c1cea0c1cfbfc1cac0bdcad0cfa5cacfd0bdcabfc1cf",
+"266f8d9495988b7d879a8b98",
+"67baccc8dbb7c8d9db",
+"d821464b4c39463b3d",
+"90d3f1fed3fffcfcf9f4f5",
+"a6f41518130712",
+"d5453e",
+"6dd2e5dd",
+"ad1a161b",
+"bf020531202c24",
+"69bbd2d0d1ddbfceccddd8db",
+"d11c364a14403536",
+"c118",
+"2e81",
+"c809",
+"266a",
+"6cb1",
+"cf20",
+"89cff2eef5edd8efdff2ee00",
+"5bb0cec0cda4c9cbd0cfaecfbccfc0",
+"327497999ba0",
+"92d5010006f70a06d3f506fb0100e4f70507fe06",
+"86d9eff4f1",
+"99de07fd",
+"97e7f80a0a",
+"77cae7d8dadc",
+"bcff1d29212e1d10352c21",
+"2c7f8f9e959ca08d8e9891",
+"e448494a4956",
+"5295c7c5c6c1bf",
+"c003212d2532211335222a252334",
+"7fcceef4f2e4c1e4e7e0f5e8eef1",
+"5498b9bab5c9c0c8",
+"6ebbdde3e1d3b0e3e2e2dddca0",
+"9de90c0008e0020b11020f",
+"ec3751654e5b4d5e50",
+"74b7d5e4e7c0e3d7df",
+"e82e",
+"4994",
+"72c1e0d7",
+"a6f20b0c1ae915141a181512",
+"7dc1e2e9f1de",
+"b401232927190b1c191920",
+"a1f3060f050613f4150611110605",
+"cc0f342d3e2d2f40313e0d30303130",
+"b619221b1728"
 }
--- shorthand alias untuk konstanta yang dipakai banyak (tetap hemat local)
-local Warna = {
-    Ungu      = Color3.fromRGB(124, 58, 237),
-    Ungu2     = Color3.fromRGB(167, 139, 250),
-    UnguMuda  = Color3.fromRGB(237, 233, 254),
-    Biru      = Color3.fromRGB(37, 99, 235),
-    Biru2     = Color3.fromRGB(59, 130, 246),
-    BiruMuda  = Color3.fromRGB(219, 234, 254),
-    Hitam     = Color3.fromRGB(12, 10, 20),
-    Hitam2    = Color3.fromRGB(22, 18, 38),
-    Putih     = Color3.fromRGB(255, 255, 255),
-    PutihLap  = Color3.fromRGB(250, 250, 255),
-    AbuMuda   = Color3.fromRGB(243, 242, 250),
-    AbuItem   = Color3.fromRGB(246, 245, 252),
-    TeksGelap = Color3.fromRGB(28, 24, 46),
-    AbuTeks   = Color3.fromRGB(130, 125, 155),
-    AbuGelap  = Color3.fromRGB(160, 155, 185),
-    Merah     = Color3.fromRGB(239, 68, 68),
-    MerahMuda = Color3.fromRGB(254, 202, 202),
-    Hijau     = Color3.fromRGB(34, 197, 94),
-    Hijau2    = Color3.fromRGB(16, 185, 129),
-    HijauMuda = Color3.fromRGB(187, 247, 208),
-    Kuning    = Color3.fromRGB(250, 204, 21),
-    Gray      = Color3.fromRGB(72, 72, 94),
-    Card2     = Color3.fromRGB(40, 40, 62),
-}
-
--- [3] FONT KOMPATIBEL -----------------------------------------------
-local FONT_OK = pcall(function()
-    return Font.new("rbxasset://fonts/families/Bangers.json", Enum.FontWeight.Regular)
-end)
-
--- cacheFont di-inline ke dalam closure fnt untuk hemat local count
-local fnt
-do
-    local cache = {}
-    fnt = function(k)
-        if cache[k] then return cache[k] end
-        local v
-        if FONT_OK then
-            local fam = {
-                judul = "rbxasset://fonts/families/Bangers.json",
-                bold  = "rbxasset://fonts/families/Montserrat.json",
-                semi  = "rbxasset://fonts/families/Montserrat.json",
-                med   = "rbxasset://fonts/families/Montserrat.json",
-                reg   = "rbxasset://fonts/families/Montserrat.json",
-            }
-            local wts = {
-                judul = Enum.FontWeight.Regular,
-                bold  = Enum.FontWeight.Bold,
-                semi  = Enum.FontWeight.SemiBold,
-                med   = Enum.FontWeight.Medium,
-                reg   = Enum.FontWeight.Regular,
-            }
-            v = Font.new(fam[k], wts[k])
-        else
-            local legacy = {
-                judul = Enum.Font.Bangers,
-                bold  = Enum.Font.GothamBold,
-                semi  = Enum.Font.GothamSemibold,
-                med   = Enum.Font.GothamMedium,
-                reg   = Enum.Font.Gotham,
-            }
-            v = legacy[k]
-        end
-        cache[k] = v
-        return v
-    end
+local _Y7F = function(_h)
+	local _k = tonumber(_h:sub(1, 2), 16)
+	local _o = {}
+	for _i = 3, #_h, 2 do
+		_o[#_o + 1] = string.char((tonumber(_h:sub(_i, _i + 1), 16) - _k) % 256)
+	end
+	return table.concat(_o)
+end
+local _Y7S = function(_n)
+	return _Y7F(_Y7T[_n])
 end
 
--- [4] HELPER --------------------------------------------------------
-local rnd = math.random
-local function buat(class, props, parent)
-    local obj = Instance.new(class)
-    local isTextClass = (class == "TextLabel" or class == "TextButton" or class == "TextBox")
-    for k, v in pairs(props) do
-        if k == "FontFace" and isTextClass and not FONT_OK then
-            obj.Font = v
-        else
-            obj[k] = v
-        end
-    end
-    obj.Parent = parent
-    return obj
-end
-local function tween(obj, info, props)
-    local t = TweenService:Create(obj, info, props)
-    t:Play()
-    return t
-end
-local function angkaDari(teks)
-    local v = tostring(teks):gsub(",", ".")
-    return tonumber((v:gsub("[^%d%.]", "")))
-end
-local function clamp2(v) return math.floor(v * 100 + 0.5) / 100 end
-local function fmtNum(v)
-    v = clamp2(v)
-    if v % 1 == 0 then return tostring(math.floor(v)) end
-    local s = string.format("%.2f", v)
-    s = s:gsub("0+$", "")
-    s = s:gsub("%.$", "")
-    return s
-end
-local function nomorBebas(prefix, daftarNama)
-    local pakai = {}
-    for _, nama in ipairs(daftarNama) do
-        local n = tonumber(nama:match("^" .. prefix .. " (%d+)$"))
-        if n then pakai[n] = true end
-    end
-    local n = 1
-    while pakai[n] do n += 1 end
-    return n
-end
-local function idBaru()
-    return tostring(os.time()) .. "-" .. tostring(rnd(100000, 999999))
-end
 
--- [4b] REGISTRY KONEKSI & FORWARD DECLARE ---------------------------
-local semuaKoneksi = {}
-local function catat(conn)
-    table.insert(semuaKoneksi, conn)
-    return conn
-end
-local function putuskan(conn)
-    local i = table.find(semuaKoneksi, conn)
-    if i then table.remove(semuaKoneksi, i) end
-    pcall(function() conn:Disconnect() end)
-end
-local State = { Removed = false }
-local Original = {}
-local Setters, Switches = {}, {}
-local setFeature, togglePanel, resetAll, rejoin, unloadScript
-local applySpeed, applyJump, updateJumpLabel
-local RefreshSpeed, RefreshJump, JumpLabel, SpeedLabel, AfkLabel
-local cfgFall, oLight, fallState, fallRay, lightConn
 
--- Forward declare untuk part3 (FX/footer/icon) — di-expose via buildFX()
-local konfeti, emojiBurst, pusatDiRoot, toast
-local kumpulkanFade, setFade, fadeVal
 
--- Forward declare untuk part2 (UI builder) — di-expose via buildUI()
-local tabBtns, kontenTabs, setTab
-local kontenKing, scrollKing, kontenVisual, scrollVisual
-local kontenSistem, scrollSistem
-setFeature = function(name, v, silent)
-    local f = Setters[name]
-    if f then f(v, silent) end
+if _G[_Y7S(71)] then
+        pcall(_G[_Y7S(71)])
 end
-local function getChar() return LocalPlayer.Character end
-local function getHum()
-    local c = getChar()
-    return c and c:FindFirstChildOfClass("Humanoid")
+if _G[_Y7S(72)] then
+        pcall(_G[_Y7S(72)]) 
 end
-local function getKarakter()
-    local char = LocalPlayer.Character
-    if not char then return nil end
-    return char, char:FindFirstChild("HumanoidRootPart"), char:FindFirstChildOfClass("Humanoid")
+if _G[_Y7S(73)] then
+        pcall(_G[_Y7S(73)]) 
 end
+task[_Y7S(74)](0.05)
 
--- [5] EFEK LED & UI HELPER ------------------------------------------
-local function ledSweep(inst, base, bandA, bandB, dur)
-    local g = buat("UIGradient", {
-        Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0.00, base),
-            ColorSequenceKeypoint.new(0.40, base),
-            ColorSequenceKeypoint.new(0.47, bandA),
-            ColorSequenceKeypoint.new(0.54, bandB),
-            ColorSequenceKeypoint.new(0.61, base),
-            ColorSequenceKeypoint.new(1.00, base),
-        }),
-        Offset = Vector2.new(-1, 0),
-    }, inst)
-    tween(g, TweenInfo.new(dur or 2.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-        {Offset = Vector2.new(1, 0)})
-    return g
-end
-local function cycleColor(obj, prop, colors, interval)
-    task.spawn(function()
-        local i = 1
-        while obj.Parent do
-            tween(obj, TweenInfo.new(interval * 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {[prop] = colors[i]})
-            task.wait(interval)
-            if not obj.Parent then break end
-            i = i % #colors + 1
-        end
-    end)
-end
-local function buatDraggable(handle, target, onClickIfClick)
-    local dragging, dragStart, startPos, jarak = false, nil, nil, 0
-    catat(handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            dragging, dragStart, startPos, jarak = true, input.Position, target.Position, 0
-        end
-    end))
-    catat(handle.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-            if dragging and onClickIfClick and jarak < 6 then onClickIfClick() end
-            dragging = false
-        end
-    end))
-    catat(UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-        or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            jarak = math.abs(delta.X) + math.abs(delta.Y)
-            target.Position = UDim2.new(
-                startPos.X.Scale, math.round(startPos.X.Offset + delta.X),
-                startPos.Y.Scale, math.round(startPos.Y.Offset + delta.Y)
-            )
-        end
-    end))
-end
-local function ripple(btn, warna)
-    btn.ClipsDescendants = true
-    local c = buat("Frame", {
-        Name = "NoFade",
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.5, 0, 0.5, 0),
-        Size = UDim2.fromOffset(8, 8),
-        BackgroundColor3 = warna or Warna.Putih,
-        BackgroundTransparency = 0.5,
-        BorderSizePixel = 0,
-    }, btn)
-    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, c)
-    local target = math.max(btn.AbsoluteSize.X, btn.AbsoluteSize.Y) * 2.4
-    tween(c, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {Size = UDim2.fromOffset(target, target), BackgroundTransparency = 1})
-    task.delay(0.5, function() c:Destroy() end)
-end
-local function efekTombol(btn, skalaHover)
-    local s = buat("UIScale", {Scale = 1}, btn)
-    local target = skalaHover or 1.06
-    btn.MouseEnter:Connect(function()
-        tween(s, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = target})
-    end)
-    btn.MouseLeave:Connect(function()
-        tween(s, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1})
-    end)
-    btn.MouseButton1Down:Connect(function()
-        tween(s, TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = target * 0.9})
-    end)
-    btn.MouseButton1Up:Connect(function()
-        tween(s, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = target})
-    end)
-end
-local function sorotInput(box, stroke, rest)
-    box.Focused:Connect(function()
-        tween(stroke, TweenInfo.new(0.15), {Transparency = 0})
-    end)
-    box.FocusLost:Connect(function()
-        tween(stroke, TweenInfo.new(0.2), {Transparency = rest})
-    end)
-end
-local function gayaToggle(btn, on)
-    btn.BackgroundColor3 = on and Warna.Hijau or Warna.Merah
-    btn.BackgroundTransparency = on and 0.78 or 0.82
-    btn.TextColor3 = on and Warna.HijauMuda or Warna.MerahMuda
-end
 
--- [6] SCREENGUI -----------------------------------------------------
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BalapMain"
-screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 9999
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-pcall(function() screenGui.OnTopOfCoreBlur = true end)
-local kandidatParent = {}
-pcall(function() if gethui then table.insert(kandidatParent, gethui()) end end)
-pcall(function() table.insert(kandidatParent, game:GetService("CoreGui")) end)
-pcall(function() table.insert(kandidatParent, LocalPlayer:WaitForChild("PlayerGui")) end)
-for _, t in ipairs(kandidatParent) do
-    pcall(function()
-        local lama = t:FindFirstChild("BalapMain")
-        if lama then lama:Destroy() end
-    end)
-end
-local terpasang = false
-for _, t in ipairs(kandidatParent) do
-    local ok = pcall(function() screenGui.Parent = t end)
-    if ok and screenGui.Parent == t then
-        terpasang = true
-        break
-    end
-end
-if not terpasang then
-    warn("[BALAP] GAGAL: tidak bisa memasang GUI.")
-    return
-end
-local function bunyi(id, vol, pitch)
-    if not CFG.SOUND_ON then return end
-    local s = Instance.new("Sound")
-    s.SoundId = id
-    s.Volume = vol or 0.35
-    s.PlaybackSpeed = pitch or 1
-    s.Parent = screenGui
-    s:Play()
-    task.delay(3, function() s:Destroy() end)
-end
+local _V1 = game:_V2(_Y7S(1))
+local _V3 = game:_V2(_Y7S(2))
+local _V4 = game:_V2(_Y7S(3))
+local _V5 = game:_V2(_Y7S(4))
+local _V6 = game:_V2(_Y7S(5))
 
--- [7] BANGUN UI: ROOT + OUTER + PANEL -------------------------------
-local screenFx = buat("Frame", {
-    Size = UDim2.new(1, 0, 1, 0),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ZIndex = 900,
-}, screenGui)
--- screenFx akan di-akses lintas part (untuk FX overlay teleport)
-local root = buat("Frame", {
-    Size = UDim2.fromOffset(360, 720),
-    Position = UDim2.new(0.5, 0, 0.10, 0),
-    AnchorPoint = Vector2.new(0.5, 0),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    Visible = false,
-}, screenGui)
-local panelScale = buat("UIScale", {Scale = 1}, root)
-local outer = buat("Frame", {
-    Size = UDim2.new(1, 0, 1, 0),
-    BackgroundColor3 = Warna.Hitam,
-    BorderSizePixel = 0,
-}, root)
-buat("UICorner", {CornerRadius = UDim.new(0, 16)}, outer)
-local borderStroke = buat("UIStroke", {Color = Warna.Ungu, Thickness = 3}, outer)
-local borderGrad = buat("UIGradient", {
-    Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0.00, Warna.Ungu),
-        ColorSequenceKeypoint.new(0.25, Warna.Biru),
-        ColorSequenceKeypoint.new(0.50, Warna.Ungu2),
-        ColorSequenceKeypoint.new(0.75, Warna.Biru2),
-        ColorSequenceKeypoint.new(1.00, Warna.Ungu),
-    }),
-}, borderStroke)
-tween(borderGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = 360})
-local ring2Stroke = buat("UIStroke", {Color = Warna.Putih, Thickness = 1, Transparency = 0.45}, outer)
-local ring2Grad = buat("UIGradient", {Color = ColorSequence.new(Warna.Ungu2, Warna.Biru2)}, ring2Stroke)
-tween(ring2Grad, TweenInfo.new(3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = -360})
-local panel = buat("Frame", {
-    Size = UDim2.new(1, -10, 1, -10),
-    Position = UDim2.new(0, 5, 0, 5),
-    BackgroundColor3 = Warna.PutihLap,
-    BorderSizePixel = 0,
-}, outer)
-buat("UICorner", {CornerRadius = UDim.new(0, 11)}, panel)
-buat("UIStroke", {Color = Warna.UnguMuda, Thickness = 1, Transparency = 0.35}, panel)
-ledSweep(panel, Warna.PutihLap, Warna.Putih, Warna.BiruMuda, 5)
-local partBox = buat("Frame", {
-    Name = "NoFade",
-    Position = UDim2.new(0, 4, 0, 50),
-    Size = UDim2.new(1, -8, 1, -84),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ClipsDescendants = true,
-}, panel)
-for i = 1, 3 do
-    local stripe = buat("Frame", {
-        Name = "NoFade",
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(0.3 * i, 0, 0.5, 0),
-        Size = UDim2.fromOffset(26, 580),
-        Rotation = 24,
-        BackgroundColor3 = i % 2 == 0 and Warna.UnguMuda or Warna.BiruMuda,
-        BackgroundTransparency = 0.5,
-        BorderSizePixel = 0,
-    }, partBox)
-    tween(stripe, TweenInfo.new(6 + i * 2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true),
-        {Position = UDim2.new(0.3 * i + 0.25, 0, 0.5, 0)})
-end
-local header = buat("Frame", {
-    Size = UDim2.new(1, 0, 0, 46),
-    BackgroundColor3 = Warna.Hitam2,
-    BorderSizePixel = 0,
-    Active = true,
-}, panel)
-buat("UICorner", {CornerRadius = UDim.new(0, 11)}, header)
-buat("Frame", {
-    Size = UDim2.new(1, 0, 0, 11),
-    Position = UDim2.new(0, 0, 0, 35),
-    BackgroundColor3 = Warna.Hitam2,
-    BorderSizePixel = 0,
-}, panel)
-local title = buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 12, 0, 0),
-    Size = UDim2.new(1, -70, 1, 0),
-    FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.0.4 ⚡",
-    TextColor3 = Warna.Putih,
-    TextSize = 21,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, header)
-ledSweep(title, Warna.Putih, Warna.Ungu2, Warna.Biru2, 2.2)
-local titleGlow = buat("UIStroke", {Name = "NoFade", Color = Warna.Ungu2, Thickness = 1, Transparency = 0.35}, title)
-task.spawn(function()
-    while title.Parent do
-        tween(titleGlow, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.75})
-        task.wait(0.8)
-        if not title.Parent then break end
-        tween(titleGlow, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.35})
-        task.wait(0.8)
-    end
-end)
-local minBtn = buat("TextButton", {
-    Size = UDim2.fromOffset(28, 28),
-    Position = UDim2.new(1, -40, 0.5, -14),
-    BackgroundColor3 = Warna.Hitam,
-    BorderSizePixel = 0,
-    FontFace = fnt("bold"),
-    Text = "–",
-    TextColor3 = Warna.Putih,
-    TextSize = 18,
-    AutoButtonColor = false,
-}, header)
-buat("UICorner", {CornerRadius = UDim.new(0, 9)}, minBtn)
-buat("UIStroke", {Color = Warna.Ungu, Thickness = 1, Transparency = 0.3}, minBtn)
-local accent = buat("Frame", {
-    Size = UDim2.new(1, 0, 0, 2),
-    Position = UDim2.new(0, 0, 0, 46),
-    BorderSizePixel = 0,
-}, panel)
-ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
+local _V7 = _V1[_Y7S(75)]
+local _V8 = workspace[_Y7S(65)]
 
--- [7b] TAB BAR (3 TAB) ----------------------------------------------
--- Bungkus dengan function untuk hemat local count (Luau limit 200)
-local function buildUI()
-tabBtns = {}
-local tabLabels = {"🏃 GERAK", "🎨 VISUAL", "⚙️ SISTEM"}
-local tabColors = {Warna.Ungu2, Warna.Biru, Warna.AbuGelap}
-kontenTabs = {}
-for i, lbl in ipairs(tabLabels) do
-    local tab = buat("TextButton", {
-        Size = UDim2.new(1 / 3, -3.4, 0, 24),
-        Position = UDim2.new((i - 1) * (1 / 3), 3.5 + (i - 1) * 2, 0, 50),
-        BackgroundColor3 = (i == 1) and tabColors[i] or Warna.AbuMuda,
-        BorderSizePixel = 0,
-        FontFace = fnt("bold"),
-        Text = lbl,
-        TextColor3 = (i == 1) and Warna.Putih or Warna.AbuTeks,
-        TextSize = 10,
-        AutoButtonColor = false,
-    }, panel)
-    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, tab)
-    efekTombol(tab, 1.04)
-    table.insert(tabBtns, tab)
-end
-setTab = function(n)
-    for i, t in ipairs(tabBtns) do
-        local aktif = (i == n)
-        t.BackgroundColor3 = aktif and tabColors[i] or Warna.AbuMuda
-        t.TextColor3 = aktif and Warna.Putih or Warna.AbuTeks
-    end
-    for i, k in ipairs(kontenTabs) do
-        k.Visible = (i == n)
-    end
-    bunyi(CFG.SND_PING, 0.2, 1.0 + 0.1 * n)
-end
-for i, t in ipairs(tabBtns) do
-    local idx = i
-    t.MouseButton1Click:Connect(function()
-        ripple(t, Warna.Putih)
-        setTab(idx)
-    end)
-end
 
--- [7c] KONTEN TAB 1: GERAK ------------------------------------------
-kontenKing = buat("Frame", {
-    Position = UDim2.new(0, 0, 0, 80),
-    Size = UDim2.new(1, 0, 1, -110),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    Visible = false,
-}, panel)
-table.insert(kontenTabs, kontenKing)
-scrollKing = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 2),
-    Size = UDim2.new(1, -24, 1, -6),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ScrollBarThickness = 4,
-    ScrollBarImageColor3 = Warna.Ungu,
-    ScrollingDirection = Enum.ScrollingDirection.Y,
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, kontenKing)
-buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollKing)
-local sOrder = 0
-local function nextOrder() sOrder += 1 return sOrder end
-
--- ===== baris generik (dipakai tab GERAK / VISUAL / SISTEM) =====
-local function buatHeader(parent, text)
-    return buat("TextLabel", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 16),
-        FontFace = fnt("bold"),
-        TextSize = 11,
-        TextColor3 = Warna.Ungu,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Text = "▎" .. string.upper(text),
-        LayoutOrder = nextOrder(),
-    }, parent)
-end
-local function buatToggleRow(parent, labelText, keyText, featureName)
-    local row = buat("Frame", {
-        BackgroundColor3 = Warna.AbuItem,
-        Size = UDim2.new(1, 0, 0, 32),
-        LayoutOrder = nextOrder(),
-    }, parent)
-    buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
-    local label = buat("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0, 10, 0, 0),
-        Size = UDim2.new(1, -110, 1, 0),
-        FontFace = fnt("med"),
-        TextSize = 12,
-        TextColor3 = Warna.TeksGelap,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextTruncate = Enum.TextTruncate.AtEnd,
-        Text = labelText,
-    }, row)
-    if keyText then
-        local chip = buat("TextLabel", {
-            BackgroundColor3 = Warna.Card2,
-            Size = UDim2.new(0, 22, 0, 20),
-            Position = UDim2.new(1, -80, 0.5, -10),
-            FontFace = fnt("bold"),
-            TextSize = 11,
-            TextColor3 = Warna.AbuGelap,
-            Text = keyText,
-        }, row)
-        buat("UICorner", {CornerRadius = UDim.new(0, 6)}, chip)
-    end
-    local sw = buat("TextButton", {
-        BackgroundColor3 = Warna.Gray,
-        Size = UDim2.new(0, 40, 0, 20),
-        Position = UDim2.new(1, -50, 0.5, -10),
-        Text = "",
-        AutoButtonColor = false,
-    }, row)
-    buat("UICorner", {CornerRadius = UDim.new(0, 10)}, sw)
-    local knob = buat("Frame", {
-        BackgroundColor3 = Color3.fromRGB(235, 235, 240),
-        Size = UDim2.new(0, 14, 0, 14),
-        Position = UDim2.new(0, 3, 0.5, -7),
-    }, sw)
-    buat("UICorner", {CornerRadius = UDim.new(0, 10)}, knob)
-    local api = {}
-    function api.set(on)
-        tween(sw, TweenInfo.new(0.15), {BackgroundColor3 = on and Warna.Hijau or Warna.Gray})
-        tween(knob, TweenInfo.new(0.15), {
-            Position = on and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
-        })
-    end
-    Switches[featureName] = api
-    api.set(State[featureName .. "On"])
-    sw.MouseButton1Click:Connect(function()
-        setFeature(featureName, not State[featureName .. "On"])
-    end)
-    return row, label
-end
-local function buatStepperRow(parent, labelText, getV, setV)
-    local row = buat("Frame", {
-        BackgroundColor3 = Warna.AbuItem,
-        Size = UDim2.new(1, 0, 0, 30),
-        LayoutOrder = nextOrder(),
-    }, parent)
-    buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
-    if labelText then
-        buat("TextLabel", {
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 10, 0, 0),
-            Size = UDim2.new(0, 100, 1, 0),
-            FontFace = fnt("med"),
-            TextSize = 11,
-            TextColor3 = Warna.TeksGelap,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            Text = labelText,
-        }, row)
-    end
-    local minus = buat("TextButton", {
-        BackgroundColor3 = Warna.Card2,
-        Size = UDim2.new(0, 32, 0, 22),
-        Position = UDim2.new(0, labelText and 110 or 8, 0.5, -11),
-        FontFace = fnt("bold"),
-        TextSize = 15,
-        TextColor3 = Warna.Putih,
-        Text = "-",
-        AutoButtonColor = false,
-    }, row)
-    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, minus)
-    local box = buat("TextBox", {
-        BackgroundColor3 = Warna.Hitam2,
-        Size = UDim2.new(1, labelText and -192 or -92, 0, 22),
-        Position = UDim2.new(0, labelText and 148 or 46, 0.5, -11),
-        FontFace = fnt("reg"),
-        TextSize = 13,
-        TextColor3 = Warna.Putih,
-        Text = fmtNum(getV()),
-        ClearTextOnFocus = false,
-    }, row)
-    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, box)
-    local plus = buat("TextButton", {
-        BackgroundColor3 = Warna.Card2,
-        Size = UDim2.new(0, 32, 0, 22),
-        Position = UDim2.new(1, -40, 0.5, -11),
-        FontFace = fnt("bold"),
-        TextSize = 15,
-        TextColor3 = Warna.Putih,
-        Text = "+",
-        AutoButtonColor = false,
-    }, row)
-    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, plus)
-    local function refresh() box.Text = fmtNum(getV()) end
-    local function notifChange()
-        if labelText then
-            toast(labelText .. ": " .. fmtNum(getV()), Warna.Biru)
-        end
-    end
-    minus.MouseButton1Click:Connect(function() setV(clamp2(getV() - 0.25)); refresh(); notifChange() end)
-    plus.MouseButton1Click:Connect(function() setV(clamp2(getV() + 0.25)); refresh(); notifChange() end)
-    box.FocusLost:Connect(function()
-        local n = tonumber(box.Text)
-        if n then setV(clamp2(math.clamp(n, 0, 1000))) end
-        refresh()
-        notifChange()
-    end)
-    return refresh
-end
-local function buatActionRow(parent, text, color, callback)
-    local btn = buat("TextButton", {
-        BackgroundColor3 = color,
-        Size = UDim2.new(1, 0, 0, 30),
-        LayoutOrder = nextOrder(),
-        FontFace = fnt("bold"),
-        TextSize = 12,
-        TextColor3 = Warna.Putih,
-        Text = text,
-        AutoButtonColor = false,
-    }, parent)
-    buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btn)
-    btn.MouseButton1Click:Connect(callback)
-    efekTombol(btn, 1.03)
-    return btn
-end
-
--- ===== init State KING (dibuat SEBELUM baris toggle) =====
-State.SpeedOn = false
-State.SpeedValue = CFG.SPEED_ON_1
-State.JumpOn  = false
-State.JumpValue = CFG.ON_JUMP
-State.JumpHeightValue = CFG.ON_JUMP_H
-State.ShiftOn = false
-State.IsSwimming = false
-State.HideOn  = false
-State.LWOn    = false
-State.WallsOn = false
-State.PlayersOn = false  -- Hide Pemain Lain (baru v2.2)
-State.LightOn = false
-State.FallOn  = false
-State.MoonOn  = false  -- Moonwalk (G)
-State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
-
--- Config Fall Assist v3.4 "SILENT FALL" (potong 50%, TANPA hentakan, tanpa cap kecepatan)
-cfgFall = {
-    minJatuh = 35,
-    posisi   = 0.50,
+local _V9 = {
+        [_Y7S(76)]  = 45,  
+        [_Y7S(44)]    = 70,  
+        [_Y7S(77)] = true, 
+        [_Y7S(78)]  = true, 
+        [_Y7S(79)]    = true, 
+        
+        [_Y7S(80)] = 0.12,  
+        [_Y7S(81)]   = 0.045, 
+        [_Y7S(82)]  = 3,     
+        [_Y7S(83)]   = 0.25,  
+        [_Y7S(84)]  = 0.25,  
+        [_Y7S(85)]   = 8,   
+        [_Y7S(86)] = 2.4, 
+        
+        [_Y7S(87)]   = Color3[_Y7S(88)](0, 255, 240),  
+        [_Y7S(89)]   = Color3[_Y7S(88)](255, 45, 170), 
+        [_Y7S(90)]      = Color3[_Y7S(88)](12, 12, 24),
+        [_Y7S(91)]  = Color3[_Y7S(88)](20, 20, 38),
+        [_Y7S(92)]     = Color3[_Y7S(88)](236, 236, 255),
+        [_Y7S(93)] = Color3[_Y7S(88)](132, 134, 168),
+        [_Y7S(94)]  = Color3[_Y7S(88)](255, 72, 96),
 }
 
--- Original Lighting (untuk restore saat cahaya dimatikan)
-oLight = {
-    Brightness = Lighting.Brightness,
-    Ambient = Lighting.Ambient,
-    OutdoorAmbient = Lighting.OutdoorAmbient,
-    ClockTime = Lighting.ClockTime,
-    ExposureCompensation = Lighting.ExposureCompensation,
-    FogEnd = Lighting.FogEnd,
+
+local _V10 = {
+        [_Y7S(95)] = _Y7S(6), 
+        [_Y7S(96)] = false,      
+        [_Y7S(97)] = true,
+        [_Y7S(98)] = false,
+        
+        [_Y7S(99)] = false,
+        [_Y7S(100)] = false,
+        [_Y7S(101)] = false,
+        [_Y7S(102)] = 0,
+        
+        [_Y7S(103)] = Vector3[_Y7S(104)](0, 0, 0),
+        [_Y7S(105)] = Vector3[_Y7S(104)](0, 0, 0),
+        [_Y7S(106)] = nil,
+        [_Y7S(107)] = nil,
+        [_Y7S(108)] = 0,
+        [_Y7S(109)] = -0.14,
+        [_Y7S(110)] = 0,        
+        [_Y7S(111)] = -0.14,  
+        [_Y7S(112)] = nil,  
 }
 
--- State Fall Assist
-fallState = {
-    jatuh   = false,
-    apex    = 0,
-    bentur  = false,
-    sejak   = 0,
-    groundY = nil,
-    lastRay = 0,
-    conn    = nil,
-    pulseSampai = nil,
-}
+local _V11 = {}          
+local _V12 = false 
+local _V13 = {}         
+local _V14 = false
+local _V15 = {}            
 
--- Raycast params khusus Fall Assist
-fallRay = RaycastParams.new()
-fallRay.FilterType = Enum.RaycastFilterType.Exclude
-lightConn = nil
 
--- ===== baris TAB 1: GERAK =====
-buatHeader(scrollKing, "Player")
-local _, speedLbl = buatToggleRow(scrollKing, "Speed (Q): OFF (17.10)", "Q", "Speed")
-SpeedLabel = speedLbl
--- Nilai ON dipilih via stepper: rentang 17.25 - 21.25 (Q = ON/OFF saja)
-RefreshSpeed = buatStepperRow(
-    scrollKing,
-    "Speed",
-    function() return State.SpeedValue end,
-    function(v)
-        State.SpeedValue = math.clamp(v, CFG.SPEED_ON_1, CFG.SPEED_ON_2)
-        if State.SpeedOn then applySpeed() end
-        if SpeedLabel and SpeedLabel.Parent then
-            SpeedLabel.Text = "Speed (Q): " .. (State.SpeedOn and fmtNum(State.SpeedValue) or ("OFF (" .. fmtNum(CFG.SPEED_OFF) .. ")"))
+local _V16, _V17, _V18, _V19
+local _V20, _V21
+local _V22, _V23, _V24, _V25
+
+
+local function _V26(_V27)
+        if _V27 then
+                return _V27:_V28(_Y7S(7))
         end
-    end
-)
-local _, jumpLabelRow = buatToggleRow(scrollKing, "JumpPower", "J", "Jump")
-JumpLabel = jumpLabelRow
-RefreshJump = buatStepperRow(
-    scrollKing,
-    "Jump",
-    function()
-        local hum = getHum()
-        if hum and hum.UseJumpPower == false then return State.JumpHeightValue end
-        return State.JumpValue
-    end,
-    function(v)
-        local hum = getHum()
-        if hum and hum.UseJumpPower == false then State.JumpHeightValue = v else State.JumpValue = v end
-        if State.JumpOn then applyJump() end
-    end
-)
-buatToggleRow(scrollKing, "Shiftlock Mobile", "C", "Shift")
-buatToggleRow(scrollKing, "Moonwalk", "G", "Moon")
-buatHeader(scrollKing, "Anti AFK")
-local _, afkLbl = buatToggleRow(scrollKing, "👻 Anti-AFK (2 lapis)", nil, "Afk")
-AfkLabel = afkLbl
-buatHeader(scrollKing, "Jatuh Cerdas")
-buatToggleRow(scrollKing, "Smart Fall Assist", "B", "Fall")
+        return nil
+end
 
--- King number row (untuk pengaturan fall assist — number row tetap ada)
-local function buatNumRow(parent, labelText, default, cb)
-    local row = buat("Frame", {
-        BackgroundColor3 = Warna.AbuItem,
-        Size = UDim2.new(1, 0, 0, 30),
-        LayoutOrder = nextOrder(),
-    }, parent)
-    buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
-    buat("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0, 10, 0, 0),
-        Size = UDim2.new(1, -100, 1, 0),
-        FontFace = fnt("med"),
-        TextSize = 11,
-        TextColor3 = Warna.TeksGelap,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Text = labelText,
-    }, row)
-    local bx = buat("TextBox", {
-        BackgroundColor3 = Warna.Hitam2,
-        Size = UDim2.fromOffset(70, 22),
-        Position = UDim2.new(1, -80, 0.5, -11),
-        FontFace = fnt("reg"),
-        TextSize = 12,
-        TextColor3 = Warna.Putih,
-        Text = string.format("%.2f", default),
-        ClearTextOnFocus = false,
-    }, row)
-    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, bx)
-    buat("UIStroke", {Color = Warna.AbuGelap, Thickness = 1, Transparency = 0.5}, bx)
-    bx.FocusLost:Connect(function()
-        local n = tonumber((bx.Text:gsub("[^%d%.%-]", "")))
-        if n then
-            cb(n)
-            bx.Text = string.format("%.2f", n)
-            toast(labelText .. ": " .. string.format("%.2f", n), Warna.Biru)
-        else
-            bx.Text = string.format("%.2f", default)
+local function _V29(_V27)
+        if _V27 then
+                return _V27:_V30(_Y7S(8))
         end
-    end)
+        return nil
 end
-buatNumRow(scrollKing, "MIN JATUH (stud)", cfgFall.minJatuh, function(n) cfgFall.minJatuh = n end)
-buatNumRow(scrollKing, "POSISI BENTUR (0-1)", cfgFall.posisi, function(n)
-    if n > 0 and n < 1 then cfgFall.posisi = n end
-end)
 
--- [7d] KONTEN TAB 2: VISUAL -----------------------------------------
-kontenVisual = buat("Frame", {
-    Position = UDim2.new(0, 0, 0, 80),
-    Size = UDim2.new(1, 0, 1, -110),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    Visible = false,
-}, panel)
-table.insert(kontenTabs, kontenVisual)
-scrollVisual = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 2),
-    Size = UDim2.new(1, -24, 1, -6),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ScrollBarThickness = 4,
-    ScrollBarImageColor3 = Warna.Ungu,
-    ScrollingDirection = Enum.ScrollingDirection.Y,
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, kontenVisual)
-buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollVisual)
-buatHeader(scrollVisual, "Visual")
-buatToggleRow(scrollVisual, "Hide Player + Kendaraan", "R", "Hide")
-buatToggleRow(scrollVisual, "Hide Pemain Lain", nil, "Players")
-buatToggleRow(scrollVisual, "Cahaya Auto (2 arah)", "T", "Light")
-buatHeader(scrollVisual, "Lightweight")
-buatToggleRow(scrollVisual, "Partikel / Bayangan / Efek", nil, "LW")
-buatHeader(scrollVisual, "Map")
-buatToggleRow(scrollVisual, "Dinding Batas", "X", "Walls")
-
--- [7g] KONTEN TAB 3: SISTEM -----------------------------------------
-kontenSistem = buat("Frame", {
-    Position = UDim2.new(0, 0, 0, 80),
-    Size = UDim2.new(1, 0, 1, -110),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    Visible = false,
-}, panel)
-table.insert(kontenTabs, kontenSistem)
-scrollSistem = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 2),
-    Size = UDim2.new(1, -24, 1, -6),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ScrollBarThickness = 4,
-    ScrollBarImageColor3 = Warna.Ungu,
-    ScrollingDirection = Enum.ScrollingDirection.Y,
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, kontenSistem)
-buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollSistem)
-buatHeader(scrollSistem, "Info")
-local infoVersi = buat("TextLabel", {
-    BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 64),
-    FontFace = fnt("med"),
-    TextSize = 11,
-    TextColor3 = Warna.TeksGelap,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    TextYAlignment = Enum.TextYAlignment.Top,
-    TextWrapped = true,
-    Text = "⚡ BALAP v1.0.4\n"
-        .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
-        .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
-        .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
-        .. "B fall • R hide • T cahaya • X dinding • K×2 rejoin",
-    LayoutOrder = nextOrder(),
-}, scrollSistem)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
-buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoVersi)
-buatHeader(scrollSistem, "Aksi")
-buatActionRow(scrollSistem, "🔄 RESET SCRIPT", Warna.Biru, function() resetAll() end)
-buatActionRow(scrollSistem, "🔁 REJOIN SERVER  [K×2]", Warna.Biru, function() rejoin() end)
-buatActionRow(scrollSistem, "🗑️ HAPUS SCRIPT", Warna.Merah, function()
-    if not _G.__KS_DELETE_ARMED__ then
-        _G.__KS_DELETE_ARMED__ = true
-        bunyi(CFG.SND_SNAP, 0.3, 0.8)
-        toast("Tekan HAPUS sekali lagi untuk konfirmasi", Warna.Merah)
-        task.delay(3, function() _G.__KS_DELETE_ARMED__ = nil end)
-    else
-        _G.__KS_DELETE_ARMED__ = nil
-        unloadScript()
-    end
-end)
-buatHeader(scrollSistem, "Tentang")
-local infoKredit = buat("TextLabel", {
-    BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 86),
-    FontFace = fnt("med"),
-    TextSize = 11,
-    TextColor3 = Warna.AbuTeks,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    TextYAlignment = Enum.TextYAlignment.Top,
-    TextWrapped = true,
-    Text = "Tema SILAU NEON (ungu/biru LED) ⚡\n"
-        .. "Basis: SILAU BALAPAN v1.1 (5 skrip digabung)\n"
-        .. "v1.0.1: rename BALAP — 3 tab fokus balapan\n"
-        .. "v1.0.2: fix fall assist (var tertukar) + dampener\n"
-        .. "v1.0.3: potong 50% + soft catch\n"
-        .. "v1.0.4: silent fall — tanpa hentakan, tanpa cap kecepatan",
-    LayoutOrder = nextOrder(),
-}, scrollSistem)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
-buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoKredit)
-
-end -- akhir buildUI()
-
--- Eksekusi buildUI() sekarang (panel, root, outer, Warna, buat sudah ada dari part1)
-buildUI()
-
--- [8] FOOTER + LED + MARQUEE ---------------------------------------
--- Bungkus dengan function untuk hemat local count (Luau limit 200)
-local function buildFX()
-local footer = buat("Frame", {
-    Size = UDim2.new(1, 0, 0, 30),
-    Position = UDim2.new(0, 0, 1, -30),
-    BackgroundColor3 = Warna.Hitam2,
-    BorderSizePixel = 0,
-}, panel)
-buat("UICorner", {CornerRadius = UDim.new(0, 11)}, footer)
-buat("Frame", {
-    Size = UDim2.new(1, 0, 0, 11),
-    Position = UDim2.new(0, 0, 1, -41),
-    BackgroundColor3 = Warna.Hitam2,
-    BorderSizePixel = 0,
-}, panel)
-ledSweep(footer, Warna.Hitam2, Warna.Ungu, Warna.Biru, 3.2)
-local ledLabel = buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.new(0, 0, 0, 0),
-    Size = UDim2.new(1, 0, 0, 17),
-    FontFace = fnt("judul"),
-    Text = CFG.LED_TEXT,
-    TextColor3 = Warna.Putih,
-    TextSize = 14,
-}, footer)
-local ledGlow = buat("UIStroke", {Name = "NoFade", Color = Warna.Ungu2, Thickness = 1, Transparency = 0.4}, ledLabel)
-cycleColor(ledLabel, "TextColor3", {Warna.Putih, Warna.Ungu2, Warna.Biru2, Warna.Ungu2}, 0.4)
-task.spawn(function()
-    while ledGlow.Parent do
-        tween(ledGlow, TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.8})
-        task.wait(0.5)
-        if not ledGlow.Parent then break end
-        tween(ledGlow, TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.2})
-        task.wait(0.5)
-    end
-end)
-local marqueeClip = buat("Frame", {
-    Position = UDim2.new(0, 6, 0, 17),
-    Size = UDim2.new(1, -12, 0, 13),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ClipsDescendants = true,
-}, footer)
-local marquee = buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Position = UDim2.fromOffset(360, 0),
-    Size = UDim2.fromOffset(1600, 13),
-    FontFace = fnt("med"),
-    Text = "⌨ F = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • G Moonwalk • B FallAssist   ✦   🎨 R Hide • Hide Pemain Lain • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
-    TextColor3 = Warna.AbuGelap,
-    TextSize = 9,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, marqueeClip)
-tween(marquee, TweenInfo.new(24, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-    {Position = UDim2.fromOffset(-1600, 0)})
-
--- bracket pojok (dekorasi)
-local posisiTitik = {
-    UDim2.new(0.5, 0, 0, 1),
-    UDim2.new(0.5, 0, 1, -1),
-    UDim2.new(0, 1, 0.5, 0),
-    UDim2.new(1, -1, 0.5, 0),
-}
-for i, p in ipairs(posisiTitik) do
-    local d = buat("Frame", {
-        Name = "NoFade",
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = p,
-        Size = UDim2.fromOffset(6, 6),
-        BackgroundColor3 = Warna.Ungu2,
-        BorderSizePixel = 0,
-        ZIndex = 3,
-    }, outer)
-    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, d)
-    cycleColor(d, "BackgroundColor3", {Warna.Putih, Warna.Ungu2, Warna.Biru2, Warna.Ungu}, 0.6 * i + 0.3)
-end
-local function bracket(ax, ay, px, py, warna)
-    local bar1 = buat("Frame", {Name = "NoFade", AnchorPoint = Vector2.new(ax, ay),
-        Position = UDim2.new(px, ax == 1 and -8 or 8, py, ay == 1 and -8 or 8),
-        Size = UDim2.fromOffset(14, 3), BackgroundColor3 = warna, BorderSizePixel = 0, ZIndex = 3}, outer)
-    local bar2 = buat("Frame", {Name = "NoFade", AnchorPoint = Vector2.new(ax, ay),
-        Position = UDim2.new(px, ax == 1 and -3 or 3, py, ay == 1 and -3 or 3),
-        Size = UDim2.fromOffset(3, 14), BackgroundColor3 = warna, BorderSizePixel = 0, ZIndex = 3}, outer)
-    return {bar1, bar2}
-end
-local semuaBracket = {
-    bracket(0, 0, 0, 0, Warna.Ungu2),
-    bracket(1, 0, 1, 0, Warna.Biru2),
-    bracket(0, 1, 0, 1, Warna.Biru2),
-    bracket(1, 1, 1, 1, Warna.Ungu2),
-}
-task.spawn(function()
-    while outer.Parent do
-        for i, pasang in ipairs(semuaBracket) do
-            for _, b in ipairs(pasang) do
-                tween(b, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                    {BackgroundTransparency = (i % 2 == 0) and 0.7 or 0.1})
-            end
-        end
-        task.wait(0.62)
-        if not outer.Parent then break end
-        for i, pasang in ipairs(semuaBracket) do
-            for _, b in ipairs(pasang) do
-                tween(b, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                    {BackgroundTransparency = (i % 2 == 0) and 0.1 or 0.7})
-            end
-        end
-        task.wait(0.62)
-    end
-end)
-
--- [9] PARTIKEL AMBIENT ----------------------------------------------
-local emojiAmbient = {"✨", "⚡", "💜", "💙", "⭐", "💫", "🔹", "🌟"}
-task.spawn(function()
-    while partBox.Parent do
-        if CFG.FX_LEVEL == 1 and root.Visible then
-            local x0 = rnd(6, 94) / 100
-            local l = buat("TextLabel", {
-                Name = "NoFade",
-                AnchorPoint = Vector2.new(0.5, 0.5),
-                Position = UDim2.new(x0, 0, 1.05, 0),
-                Size = UDim2.fromOffset(20, 20),
-                BackgroundTransparency = 1,
-                Font = Enum.Font.SourceSans,
-                Text = emojiAmbient[rnd(1, #emojiAmbient)],
-                TextSize = rnd(11, 17),
-                TextColor3 = Warna.Putih,
-                TextTransparency = 1,
-                Rotation = rnd(-15, 15),
-            }, partBox)
-            local dur = rnd(28, 46) / 10
-            tween(l, TweenInfo.new(0.35), {TextTransparency = 0.55})
-            tween(l, TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
-                {Position = UDim2.new(x0 + rnd(-6, 6) / 100, 0, -0.08, 0)})
-            tween(l, TweenInfo.new(1.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-                {Rotation = l.Rotation + rnd(16, 30) * (rnd(0, 1) == 0 and 1 or -1)})
-            task.delay(dur - 0.4, function()
-                if l.Parent then tween(l, TweenInfo.new(0.4), {TextTransparency = 1}) end
-            end)
-            task.delay(dur + 0.1, function() l:Destroy() end)
-            task.wait(rnd(4, 8) / 10)
-        else
-            task.wait(0.8)
-        end
-    end
-end)
-task.spawn(function()
-    while header.Parent do
-        task.wait(rnd(6, 14) / 10)
-        if not header.Parent then break end
-        local s = buat("TextLabel", {
-            Name = "NoFade",
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = UDim2.new(rnd(5, 90) / 100, 0, rnd(20, 80) / 100, 0),
-            Size = UDim2.fromOffset(14, 14),
-            BackgroundTransparency = 1,
-            Font = Enum.Font.SourceSans,
-            Text = rnd(0, 1) == 0 and "✦" or "✨",
-            TextSize = rnd(9, 13),
-            TextColor3 = Warna.Putih,
-            TextTransparency = 1,
-            ZIndex = 2,
-        }, header)
-        tween(s, TweenInfo.new(0.2), {TextTransparency = 0.1})
-        task.delay(0.35, function()
-            if s.Parent then tween(s, TweenInfo.new(0.35), {TextTransparency = 1}) end
-        end)
-        task.delay(0.75, function() s:Destroy() end)
-    end
-end)
-
--- [10] BURST FX -----------------------------------------------------
-local paletKonfeti = {Warna.Ungu, Warna.Ungu2, Warna.Biru, Warna.Biru2, Warna.Putih, Warna.Hijau2}
-konfeti = function(parent, pos, n)
-    for _ = 1, n do
-        local c = buat("Frame", {
-            Name = "NoFade",
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = pos,
-            Size = UDim2.fromOffset(rnd(5, 9), rnd(5, 9)),
-            BackgroundColor3 = paletKonfeti[rnd(1, #paletKonfeti)],
-            BorderSizePixel = 0,
-            Rotation = rnd(0, 360),
-            ZIndex = 800,
-        }, parent)
-        local sudut = rnd(1, 360) * math.pi / 180
-        local jarak = rnd(60, 150)
-        local dur = rnd(55, 85) / 100
-        tween(c, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Position = UDim2.new(pos.X.Scale, pos.X.Offset + math.cos(sudut) * jarak,
-                pos.Y.Scale, pos.Y.Offset + math.sin(sudut) * jarak + 30),
-            Rotation = c.Rotation + rnd(180, 540),
-            BackgroundTransparency = 1,
-        })
-        task.delay(dur + 0.05, function() c:Destroy() end)
-    end
-end
-emojiBurst = function(parent, pos, daftar, n)
-    for _ = 1, n do
-        local l = buat("TextLabel", {
-            Name = "NoFade",
-            AnchorPoint = Vector2.new(0.5, 0.5),
-            Position = pos,
-            Size = UDim2.fromOffset(24, 24),
-            BackgroundTransparency = 1,
-            Font = Enum.Font.SourceSans,
-            Text = daftar[rnd(1, #daftar)],
-            TextSize = rnd(14, 22),
-            Rotation = rnd(-20, 20),
-            ZIndex = 801,
-        }, parent)
-        local sudut = rnd(1, 360) * math.pi / 180
-        local jarak = rnd(70, 160)
-        local dur = rnd(60, 90) / 100
-        tween(l, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-            Position = UDim2.new(pos.X.Scale, pos.X.Offset + math.cos(sudut) * jarak,
-                pos.Y.Scale, pos.Y.Offset + math.sin(sudut) * jarak - 40),
-            Rotation = l.Rotation + rnd(-180, 180),
-            TextTransparency = 1,
-        })
-        task.delay(dur + 0.05, function() l:Destroy() end)
-    end
-end
-pusatDiRoot = function(gui)
-    local sz = gui.AbsoluteSize
-    return UDim2.new(0, gui.AbsolutePosition.X - root.AbsolutePosition.X + sz.X / 2,
-        0, gui.AbsolutePosition.Y - root.AbsolutePosition.Y + sz.Y / 2)
+local function _V31()
+        return _V7[_Y7S(113)]
 end
 
 
--- [12] TOAST — KANAN ATAS LAYAR (stack vertikal) -------------------
-local notifHolder = buat("Frame", {
-    Name = "NotifHolder",
-    AnchorPoint = Vector2.new(1, 0),
-    Position = UDim2.new(1, -10, 0, 10),
-    Size = UDim2.fromOffset(280, 400),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ZIndex = 980,
-}, screenGui)
-buat("UIListLayout", {
-    Padding = UDim.new(0, 6),
-    SortOrder = Enum.SortOrder.LayoutOrder,
-    HorizontalAlignment = Enum.HorizontalAlignment.Right,
-    VerticalAlignment = Enum.VerticalAlignment.Top,
-}, notifHolder)
-local notifCounter = 0
-toast = function(teks, aksen)
-    notifCounter += 1
-    local t = buat("Frame", {
-        Name = "NoFade",
-        AnchorPoint = Vector2.new(1, 0),
-        Size = UDim2.fromOffset(270, 32),
-        BackgroundColor3 = Warna.Putih,
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        ZIndex = 981,
-        LayoutOrder = notifCounter,
-    }, notifHolder)
-    buat("UICorner", {CornerRadius = UDim.new(0, 10)}, t)
-    local st = buat("UIStroke", {Color = aksen or Warna.Ungu, Thickness = 1, Transparency = 1}, t)
-    -- dot indikator warna
-    local dot = buat("Frame", {
-        AnchorPoint = Vector2.new(0, 0.5),
-        Position = UDim2.new(0, 8, 0.5, 0),
-        Size = UDim2.fromOffset(6, 6),
-        BackgroundColor3 = aksen or Warna.Ungu,
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-    }, t)
-    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, dot)
-    local lb = buat("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0, 22, 0, 0),
-        Size = UDim2.new(1, -28, 1, 0),
-        FontFace = fnt("semi"),
-        Text = teks,
-        TextColor3 = Warna.TeksGelap,
-        TextSize = 12,
-        TextTransparency = 1,
-        TextTruncate = Enum.TextTruncate.AtEnd,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    }, t)
-    -- animasi masuk: slide dari kanan + fade in
-    t.Position = UDim2.new(1, 20, 0, 0)  -- start offset right
-    local ti = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-    tween(t,   ti, {BackgroundTransparency = 0.05, Position = UDim2.new(1, 0, 0, 0)})
-    tween(st,  ti, {Transparency = 0.15})
-    tween(dot, ti, {BackgroundTransparency = 0})
-    tween(lb,  ti, {TextTransparency = 0})
-    task.delay(1.6, function()
-        local to = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-        tween(t,   to, {BackgroundTransparency = 1, Position = UDim2.new(1, 20, 0, 0)})
-        tween(st,  to, {Transparency = 1})
-        tween(dot, to, {BackgroundTransparency = 1})
-        tween(lb,  to, {TextTransparency = 1})
-        task.delay(0.3, function() t:Destroy() end)
-    end)
-    -- batasi max 5 notif tampil
-    local list = {}
-    for _, c in ipairs(notifHolder:GetChildren()) do
-        if c:IsA("Frame") and c.Name == "NoFade" then table.insert(list, c) end
-    end
-    if #list > 5 then
-        list[1]:Destroy()
-    end
-end
 
--- [13] FADE PER-ELEMEN ----------------------------------------------
-local elemenFade = {}
-fadeVal = Instance.new("NumberValue")
-pcall(function() fadeVal.Parent = screenGui end)
-kumpulkanFade = function()
-    table.clear(elemenFade)
-    local daftar = outer:GetDescendants()
-    table.insert(daftar, outer)
-    for _, obj in ipairs(daftar) do
-        if obj.Name ~= "NoFade" then
-            if obj:IsA("Frame") or obj:IsA("TextLabel") or obj:IsA("TextBox") then
-                if obj.BackgroundTransparency < 1 then
-                    table.insert(elemenFade, {obj, "BackgroundTransparency", obj.BackgroundTransparency})
+local function _V32()
+        local _V33 = {}
+        local _V34, _V35 = pcall(function()
+                if type(_V36) == _Y7S(9) then
+                        return _V36()
                 end
-                if (obj:IsA("TextLabel") or obj:IsA("TextBox")) and obj.TextTransparency < 1 then
-                    table.insert(elemenFade, {obj, "TextTransparency", obj.TextTransparency})
-                end
-            elseif obj:IsA("UIStroke") and obj.Transparency < 1 then
-                table.insert(elemenFade, {obj, "Transparency", obj.Transparency})
-            end
-        end
-    end
-end
-setFade = function(t)
-    for _, e in ipairs(elemenFade) do
-        e[1][e[2]] = e[3] + (1 - e[3]) * t
-    end
-end
-fadeVal.Changed:Connect(setFade)
-
-end -- akhir buildFX()
-
--- Eksekusi buildFX() sekarang (panel, root, outer sudah ada dari part1)
-buildFX()
-
--- [14] LOGIKA UTAMA -------------------------------------------------
--- Bungkus part logika dengan function untuk hemat local count (Luau limit 200)
-local function initLogic()
-
-
--- [17C] MESIN ANTI-AFK 2 LAPIS — port dari A ------------------------
--- Lapis 1: VirtualUser CaptureController + ClickButton2 (event Idled + jadwal)
--- Lapis 2: gerakan mikro (opsional, jumpMode)
-local AFK_CFG = {
-    interval     = 240,   -- detik antar intervensi terjadwal (4 menit)
-    jitter       = 60,    -- + acak, biar polanya tidak kaku
-    jumpMode     = false, -- ubah ke true HANYA kalau game punya anti-AFK sendiri
-    jumpInterval = 45,
-}
-local afkState = { aktif = State.AfkOn, jumlah = 0, terakhir = 0, sudahIngatkan = false }
-local inputTerakhir = os.time()
-catat(UserInputService.InputBegan:Connect(function() inputTerakhir = os.time() end))
-local function afkStatusUpdate()
-    if AfkLabel and AfkLabel.Parent then
-        if afkState.aktif then
-            if afkState.terakhir > 0 then
-                AfkLabel.Text = string.format("👻 Anti-AFK (2 lapis) • %dx • %dm lalu",
-                    afkState.jumlah, math.floor((os.time() - afkState.terakhir) / 60))
-            else
-                AfkLabel.Text = string.format("👻 Anti-AFK (2 lapis) • %dx • siaga", afkState.jumlah)
-            end
-        else
-            AfkLabel.Text = "👻 Anti-AFK (2 lapis) • MATI"
-        end
-    end
-end
-local function afkIntervensi(alasan)
-    local ok = pcall(function()
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
-    end)
-    if not ok then
-        pcall(function()
-            local vim = game:GetService("VirtualInputManager")
-            vim:SendMouseButtonEvent(5, 5, 1, true, game, 0)
-            vim:SendMouseButtonEvent(5, 5, 1, false, game, 0)
+                return nil
         end)
-    end
-    afkState.jumlah += 1
-    afkState.terakhir = os.time()
-    print("[BALAP][Anti-AFK] intervensi #" .. afkState.jumlah .. " (" .. tostring(alasan) .. ")")
-    afkStatusUpdate()
-end
-catat(LocalPlayer.Idled:Connect(function()
-    if afkState.aktif then afkIntervensi("event Idled") end
-end))
-
--- lapis 1: jadwal berkala (hanya kalau user lama tidak input apa pun)
-task.spawn(function()
-    while screenGui.Parent do
-        if afkState.aktif then
-            local tunggu = AFK_CFG.interval + rnd(0, AFK_CFG.jitter)
-            task.wait(tunggu)
-            if afkState.aktif and screenGui.Parent
-            and (os.time() - inputTerakhir) >= AFK_CFG.interval then
-                afkIntervensi("jadwal " .. tunggu .. "s")
-            end
-        else
-            task.wait(2)
+        if _V34 and _V35 then
+                table[_Y7S(114)](_V33, _V35)
         end
-    end
-end)
-
--- lapis 2: gerakan mikro (default OFF, aktifkan via jumpMode)
-if AFK_CFG.jumpMode then
-    task.spawn(function()
-        while screenGui.Parent do
-            task.wait(AFK_CFG.jumpInterval)
-            if afkState.aktif then
-                local _, _, hum = getKarakter()
-                if hum and hum.Health > 0 then
-                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jump) end)
-                end
-            end
-        end
-    end)
-end
-
--- refresh tampilan status anti-afk tiap 30 detik
-task.spawn(function()
-    while screenGui.Parent do
-        task.wait(30)
-        afkStatusUpdate()
-    end
-end)
-
--- [18] LOGIKA KING ---------------------------------------------------
--- SPEED & JUMP
-applySpeed = function()
-    local hum = getHum()
-    if not hum then return end
-    local base = State.SpeedOn and State.SpeedValue or CFG.SPEED_OFF
-    if State.ShiftOn and State.IsSwimming then
-        base = base * 1.10
-    end
-    hum.WalkSpeed = base
-end
-applyJump = function()
-    local hum = getHum()
-    if not hum then return end
-    if hum.UseJumpPower then
-        hum.JumpPower = State.JumpOn and State.JumpValue or CFG.OFF_JUMP
-    else
-        hum.JumpHeight = State.JumpOn and State.JumpHeightValue or CFG.OFF_JUMP_H
-    end
-end
-updateJumpLabel = function()
-    local hum = getHum()
-    if JumpLabel then
-        JumpLabel.Text = (hum and hum.UseJumpPower) and "JumpPower" or "JumpHeight (auto)"
-    end
-    if RefreshJump then RefreshJump() end
-end
-
--- label Speed menampilkan nilai state saat ini (ON/OFF, nilai via stepper)
-local function updateSpeedLabel()
-    if SpeedLabel and SpeedLabel.Parent then
-        SpeedLabel.Text = "Speed (Q): "
-            .. (State.SpeedOn and fmtNum(State.SpeedValue) or ("OFF (" .. fmtNum(CFG.SPEED_OFF) .. ")"))
-    end
-end
-local function syncNotify(name, v, silent, label)
-    local sw = Switches[name]
-    if sw then sw.set(v) end
-    if not silent then
-        toast(label .. ": " .. (v and "ON" or "OFF"), v and Warna.Hijau or Warna.Merah)
-    end
-end
-Setters.Speed = function(v, silent)
-    if State.SpeedOn == v then return end
-    State.SpeedOn = v
-    applySpeed()
-    updateSpeedLabel()
-    if not v then
-        task.spawn(function()
-            for _ = 1, 8 do
-                task.wait(0.25)
-                if State.SpeedOn or State.Removed then return end
-                local h = getHum()
-                if h and h.WalkSpeed ~= CFG.SPEED_OFF then
-                    h.WalkSpeed = CFG.SPEED_OFF
-                end
-            end
+        local _V37, _V38 = pcall(function()
+                return game:_V2(_Y7S(10))
         end)
-    end
-    syncNotify("Speed", v, silent, "Speed")
-end
-Setters.Jump = function(v, silent)
-    if State.JumpOn == v then return end
-    State.JumpOn = v
-    applyJump()
-    if not v then
-        task.spawn(function()
-            for _ = 1, 8 do
-                task.wait(0.25)
-                if State.JumpOn or State.Removed then return end
-                local h = getHum()
-                if h then
-                    if h.UseJumpPower and h.JumpPower ~= CFG.OFF_JUMP then
-                        h.JumpPower = CFG.OFF_JUMP
-                    elseif not h.UseJumpPower and h.JumpHeight ~= CFG.OFF_JUMP_H then
-                        h.JumpHeight = CFG.OFF_JUMP_H
-                    end
-                end
-            end
-        end)
-    end
-    syncNotify("Jump", v, silent, "JumpPower")
-end
-
--- SHIFTLOCK MOBILE
-Setters.Shift = function(v, silent)
-    if State.ShiftOn == v then return end
-    State.ShiftOn = v
-    if v then
-        local hum = getHum()
-        if hum then hum.AutoRotate = false end
-        RunService:BindToRenderStep("KS_SHIFTLOCK", Enum.RenderPriority.Character.Value + 1, function()
-            local char = getChar()
-            local h = char and char:FindFirstChildOfClass("Humanoid")
-            local r = char and char:FindFirstChild("HumanoidRootPart")
-            if h and r and h.Health > 0 then
-                local cam = Workspace.CurrentCamera
-                local _, yaw = cam.CFrame:ToOrientation()
-                r.CFrame = CFrame.new(r.Position) * CFrame.Angles(0, yaw, 0)
-            end
-        end)
-    else
-        RunService:UnbindFromRenderStep("KS_SHIFTLOCK")
-        local hum = getHum()
-        if hum then hum.AutoRotate = true end
-        applySpeed()
-    end
-    syncNotify("Shift", v, silent, "Shiftlock Mobile")
-end
-
--- MOONWALK (G) — badan TERKUNCI menghadap kamera/layar saat jalan
-Setters.Moon = function(v, silent)
-    if State.MoonOn == v then return end
-    State.MoonOn = v
-    if v then
-        local hum = getHum()
-        if hum then hum.AutoRotate = false end
-        RunService:BindToRenderStep("KS_MOONWALK", Enum.RenderPriority.Character.Value + 1, function()
-            local char = getChar()
-            local h = char and char:FindFirstChildOfClass("Humanoid")
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if h and hrp and h.Health > 0 then
-                local cam = Workspace.CurrentCamera
-                if cam then
-                    local _, yaw = cam.CFrame:ToOrientation()
-                    -- putar 180 derajat = badan menghadap kamera
-                    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, yaw + math.pi, 0)
-                end
-            end
-        end)
-    else
-        RunService:UnbindFromRenderStep("KS_MOONWALK")
-        local hum = getHum()
-        if hum then hum.AutoRotate = true end
-    end
-    syncNotify("Moon", v, silent, "Moonwalk")
-end
-
--- HIDE PLAYER + KENDARAAN
-local hiddenParts, hiddenBB, hiddenHumans, hiddenCharConns = {}, {}, {}, {}
-local function hideApplyTo(obj)
-    if (obj:IsA("BasePart") or obj:IsA("Decal")) and hiddenParts[obj] == nil then
-        hiddenParts[obj] = obj.Transparency
-        obj.Transparency = 1
-    elseif obj:IsA("BillboardGui") and hiddenBB[obj] == nil then
-        hiddenBB[obj] = obj.Enabled
-        obj.Enabled = false
-    end
-end
-local function hideCharacter(char)
-    if hiddenCharConns[char] then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        hiddenHumans[hum] = hum.DisplayDistanceType
-        hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-    end
-    for _, obj in ipairs(char:GetDescendants()) do hideApplyTo(obj) end
-    hiddenCharConns[char] = char.DescendantAdded:Connect(hideApplyTo)
-end
-local function unhideCharacter(char)
-    local conn = hiddenCharConns[char]
-    if conn then conn:Disconnect() hiddenCharConns[char] = nil end
-end
-local function unhideAll()
-    for obj, t in pairs(hiddenParts) do
-        pcall(function() if obj.Parent then obj.Transparency = t end end)
-    end
-    table.clear(hiddenParts)
-    for obj, e in pairs(hiddenBB) do
-        pcall(function() if obj.Parent then obj.Enabled = e end end)
-    end
-    table.clear(hiddenBB)
-    for hum, d in pairs(hiddenHumans) do
-        pcall(function() if hum.Parent then hum.DisplayDistanceType = d end end)
-    end
-    table.clear(hiddenHumans)
-    for char in pairs(hiddenCharConns) do unhideCharacter(char) end
-end
-local vehParts = {}
-local overlapParams = OverlapParams.new()
-local function isMyStuff(model)
-    local char = getChar()
-    if not char then return false end
-    if model == char or char:IsDescendantOf(model) then return true end
-    local hum = getHum()
-    if hum and hum.SeatPart then
-        if hum.SeatPart:FindFirstAncestorOfClass("Model") == model then return true end
-    end
-    return false
-end
-local function vehicleModelFromPart(part)
-    local m = part:FindFirstAncestorOfClass("Model")
-    while m do
-        if m:FindFirstChildWhichIsA("Humanoid", true) then return nil end
-        if m:FindFirstChildWhichIsA("VehicleSeat", true) or m:FindFirstChildWhichIsA("Seat", true) then
-            local s = m:GetExtentsSize()
-            if math.max(s.X, s.Y, s.Z) <= 64 then return m end
-            return nil
+        if _V37 and _V38 then
+                table[_Y7S(114)](_V33, _V38)
         end
-        m = m:FindFirstAncestorOfClass("Model")
-    end
-    return nil
-end
-local function applyVehicleHide(model)
-    local set = vehParts[model]
-    if not set then set = {} vehParts[model] = set end
-    for _, p in ipairs(model:GetDescendants()) do
-        if p:IsA("BasePart") and set[p] == nil then
-            set[p] = p.Transparency
-            p.Transparency = math.max(p.Transparency, 0.8)
-        end
-    end
-end
-local function restoreVehicle(model)
-    local set = vehParts[model]
-    if not set then return end
-    vehParts[model] = nil
-    for p, t in pairs(set) do
-        pcall(function() if p.Parent then p.Transparency = t end end)
-    end
-end
-local function updateVehicles()
-    local char = getChar()
-    local r = char and char:FindFirstChild("HumanoidRootPart")
-    if not r then return end
-    overlapParams.FilterType = Enum.RaycastFilterType.Exclude
-    overlapParams.FilterDescendantsInstances = char and {char} or {}
-    local near = {}
-    for _, part in ipairs(Workspace:GetPartBoundsInRadius(r.Position, 20, overlapParams)) do
-        local m = vehicleModelFromPart(part)
-        if m and not isMyStuff(m) then near[m] = true end
-    end
-    for m in pairs(near) do applyVehicleHide(m) end
-    for m in pairs(vehParts) do
-        if not near[m] then restoreVehicle(m) end
-    end
-end
-local function restoreAllVehicles()
-    for m in pairs(vehParts) do restoreVehicle(m) end
-end
-local function playerHideHook(plr)
-    if plr == LocalPlayer then return end
-    plr.CharacterAdded:Connect(function(char)
-        task.wait(0.4)
-        if State.HideOn and not State.Removed then hideCharacter(char) end
-    end)
-    if plr.Character and State.HideOn then hideCharacter(plr.Character) end
-end
-Setters.Hide = function(v, silent)
-    if State.HideOn == v then return end
-    State.HideOn = v
-    if v then
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then hideCharacter(plr.Character) end
-        end
-    else
-        unhideAll()
-        restoreAllVehicles()
-    end
-    syncNotify("Hide", v, silent, "Hide Player + Kendaraan")
-end
-
--- HIDE PEMAIN LAIN (baru v2.2 — toggle terpisah dari Hide R)
--- Hanya pemain lain (tanpa kendaraan), pakai LocalTransparencyModifier
--- supaya tidak konflik dengan fitur Hide (R) yang memakai Transparency.
--- LTM bisa di-reset kamera/respawn -> loop penjaga Heartbeat tiap ~0.3s.
-local plrHideConn, plrHideT = nil, 0
-local function plrHideSapu(on)
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if pl ~= LocalPlayer and pl.Character then
-            for _, d in ipairs(pl.Character:GetDescendants()) do
-                pcall(function()
-                    if d:IsA("BasePart") or d:IsA("Decal") then
-                        d.LocalTransparencyModifier = on and 1 or 0
-                    elseif d:IsA("Humanoid") and not (not on and State.HideOn) then
-                        -- saat OFF, jangan ganggu Humanoid kalau Hide (R) masih pegang kendali
-                        d.DisplayDistanceType = on and Enum.HumanoidDisplayDistanceType.None
-                            or Enum.HumanoidDisplayDistanceType.Viewer
-                        d.HealthDisplayType = on and Enum.HumanoidHealthDisplayType.AlwaysOff
-                            or Enum.HumanoidHealthDisplayType.WhenDamaged
-                    end
+        table[_Y7S(114)](_V33, _V7:_V39(_Y7S(11)))
+        for _, _V40 in ipairs(_V33) do
+                local _V41 = Instance[_Y7S(104)](_Y7S(12))
+                local _V42 = pcall(function()
+                        _V41[_Y7S(115)] = _V40
                 end)
-            end
-        end
-    end
-end
-Setters.Players = function(v, silent)
-    if State.PlayersOn == v then return end
-    State.PlayersOn = v
-    if v then
-        plrHideSapu(true)
-        plrHideT = 0
-        plrHideConn = RunService.Heartbeat:Connect(function(dt)
-            if not State.PlayersOn or State.Removed then return end
-            plrHideT = plrHideT + dt
-            if plrHideT >= 0.3 then
-                plrHideT = 0
-                plrHideSapu(true)
-            end
-        end)
-    else
-        if plrHideConn then plrHideConn:Disconnect() plrHideConn = nil end
-        plrHideSapu(false)
-    end
-    syncNotify("Players", v, silent, "Hide Pemain Lain")
-end
-
--- LIGHTWEIGHT (Partikel / Bayangan / Efek)
-local lwEffects, lwConns = {}, {}
-local function lwDisable(obj)
-    local dis = obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
-        or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") or obj:IsA("PostEffect")
-    if dis and lwEffects[obj] == nil then
-        lwEffects[obj] = obj.Enabled
-        obj.Enabled = false
-    end
-end
-Setters.LW = function(v, silent)
-    if State.LWOn == v then return end
-    State.LWOn = v
-    if v then
-        Original.GlobalShadows = Lighting.GlobalShadows
-        Lighting.GlobalShadows = false
-        Original.WaterWaveSize = Terrain.WaterWaveSize
-        Original.WaterWaveSpeed = Terrain.WaterWaveSpeed
-        Terrain.WaterWaveSize = 0
-        Terrain.WaterWaveSpeed = 0
-        for _, obj in ipairs(Workspace:GetDescendants()) do lwDisable(obj) end
-        for _, obj in ipairs(Lighting:GetDescendants()) do lwDisable(obj) end
-        table.insert(lwConns, Workspace.DescendantAdded:Connect(function(obj) task.defer(lwDisable, obj) end))
-        table.insert(lwConns, Lighting.DescendantAdded:Connect(function(obj) task.defer(lwDisable, obj) end))
-    else
-        if Original.GlobalShadows ~= nil then Lighting.GlobalShadows = Original.GlobalShadows end
-        if Original.WaterWaveSize ~= nil then Terrain.WaterWaveSize = Original.WaterWaveSize end
-        if Original.WaterWaveSpeed ~= nil then Terrain.WaterWaveSpeed = Original.WaterWaveSpeed end
-        for obj, e in pairs(lwEffects) do
-            pcall(function() if obj.Parent then obj.Enabled = e end end)
-        end
-        table.clear(lwEffects)
-        for _, c in ipairs(lwConns) do c:Disconnect() end
-        table.clear(lwConns)
-    end
-    syncNotify("LW", v, silent, "Lightweight")
-end
-
--- DINDING BATAS (upgrade: lihat dinding tak terlihat -> jalur tipis gampang dicari)
--- Dinding invisible (CanCollide + nyaris transparan) dibikin kelihatan:
---   isi abu gelap tembus pandang (60%) + garis tepi, jadi dinding se tipis
---   apa pun tetap kebaca dari jauh. Tanpa bikin part baru -> tetap ringan.
-local wallOriginal = {}
-local wallBoxes = {}   -- part -> SelectionBox (garis tepi)
-local wallConn
-local WALL_ISI  = Color3.fromRGB(70, 70, 70)    -- isi abu gelap
-local WALL_TEPI = Color3.fromRGB(150, 150, 150) -- garis tepi abu sedang
-local function isWallCandidate(part)
-    if not part:IsA("BasePart") or part == Terrain then return false end
-    if part.Transparency < 0.95 then return false end  -- tangkap juga yang "hampir" tak terlihat
-    if not part.CanCollide then return false end
-    local m = part:FindFirstAncestorOfClass("Model")
-    if m and Players:GetPlayerFromCharacter(m) then return false end
-    return true
-end
-local function wallify(part)
-    if wallOriginal[part] then return end
-    wallOriginal[part] = {Transparency = part.Transparency, Color = part.Color}
-    part.Transparency = 0.6
-    part.Color = WALL_ISI
-    pcall(function()
-        local box = Instance.new("SelectionBox")
-        box.Adornee = part
-        box.LineThickness = 0.05
-        box.Color3 = WALL_TEPI
-        box.SurfaceTransparency = 1
-        box.Visible = true
-        box.Parent = part   -- ikut terhapus otomatis kalau part-nya dihancurkan game
-        wallBoxes[part] = box
-    end)
-end
-Setters.Walls = function(v, silent)
-    if State.WallsOn == v then return end
-    State.WallsOn = v
-    if v then
-        for _, obj in ipairs(Workspace:GetDescendants()) do
-            if isWallCandidate(obj) then wallify(obj) end
-        end
-        wallConn = Workspace.DescendantAdded:Connect(function(obj)
-            task.defer(function()
-                if State.WallsOn and isWallCandidate(obj) then wallify(obj) end
-            end)
-        end)
-    else
-        if wallConn then wallConn:Disconnect() wallConn = nil end
-        for part, d in pairs(wallOriginal) do
-            pcall(function()
-                if part.Parent then
-                    part.Transparency = d.Transparency
-                    part.Color = d.Color
+                _V41:_V43()
+                if _V42 then
+                        return _V40
                 end
-            end)
         end
-        for _, box in pairs(wallBoxes) do
-            pcall(function() box:Destroy() end)
-        end
-        table.clear(wallOriginal)
-        table.clear(wallBoxes)
-    end
-    syncNotify("Walls", v, silent, "Dinding Batas")
+        return _V7:_V39(_Y7S(11))
 end
 
--- CAHAYA AUTO DUA ARAH (baru v2.0 — pengganti Auto Terang lama dari E)
--- Malam (< 6 atau >= 18) → terangi   : ClockTime ≈ 14, Brightness naik ≈ 2.5, fog gelap dibuka
--- Siang                  → gelapkan  : ClockTime ≈ 17.5 (senja lembut), Brightness ≈ 1.6 (anti-silau)
--- Loop penjaga tiap ~2 detik; saat OFF semua nilai asli di-restore.
-local CAHAYA = {
-    JAM_MALAM_MULAI  = 18,
-    JAM_MALAM_AKHIR  = 6,
-    CLOCK_TERANGI    = 14,
-    BRIGHT_TERANGI   = 2.5,
-    AMBIENT_TERANGI  = Color3.fromRGB(140, 140, 165),
-    CLOCK_ANTISILAU  = 17.5,
-    BRIGHT_ANTISILAU = 1.6,
-    AMBIENT_LEMBUT   = Color3.fromRGB(110, 110, 120),
-    FOG_BUKA         = 100000,
-}
-local lightPernahAktif = false
-local function apakahMalam()
-    local t = Lighting.ClockTime
-    return t >= CAHAYA.JAM_MALAM_MULAI or t < CAHAYA.JAM_MALAM_AKHIR
-end
-local function targetCahaya()
-    if apakahMalam() then
-        return CAHAYA.CLOCK_TERANGI, CAHAYA.BRIGHT_TERANGI, CAHAYA.AMBIENT_TERANGI
-    end
-    return CAHAYA.CLOCK_ANTISILAU, CAHAYA.BRIGHT_ANTISILAU, CAHAYA.AMBIENT_LEMBUT
-end
 
--- ClockTime wrap 0-24: jangan di-tween mentah — step bertahap via loop task.wait
-local function langkahCahaya()
-    local jamTarget, brightTarget, ambientTarget = targetCahaya()
-    local jam0 = Lighting.ClockTime
-    local delta = jamTarget - jam0
-    if delta > 12 then delta -= 24 elseif delta < -12 then delta += 24 end
-    local bright0 = Lighting.Brightness
-    local ambient0 = Lighting.Ambient
-    local out0 = Lighting.OutdoorAmbient
-    local jumlah = 22
-    for i = 1, jumlah do
-        if not State.LightOn or State.Removed then return end
-        local a = i / jumlah
-        pcall(function()
-            Lighting.ClockTime = (jam0 + delta * a) % 24
-            Lighting.Brightness = bright0 + (brightTarget - bright0) * a
-            Lighting.Ambient = ambient0:Lerp(ambientTarget, a)
-            Lighting.OutdoorAmbient = out0:Lerp(ambientTarget, a)
+do
+        local _V44 = { _Y7S(13), _Y7S(14), _Y7S(15), _Y7S(16), _Y7S(17) }
+        local _V33 = {}
+        local _V34, _V35 = pcall(function()
+                if type(_V36) == _Y7S(9) then
+                        return _V36()
+                end
+                return nil
         end)
-        task.wait(0.05)
-    end
-    pcall(function()
-        Lighting.ClockTime = jamTarget % 24
-        Lighting.Brightness = brightTarget
-        Lighting.Ambient = ambientTarget
-        Lighting.OutdoorAmbient = ambientTarget
-    end)
-end
-Setters.Light = function(v, silent)
-    if State.LightOn == v then return end
-    State.LightOn = v
-    if v then
-        lightPernahAktif = true
-        -- capture original first (ClockTime/Brightness/Exposure/FogEnd disimpan semua)
-        oLight.Brightness = Lighting.Brightness
-        oLight.Ambient = Lighting.Ambient
-        oLight.OutdoorAmbient = Lighting.OutdoorAmbient
-        oLight.ClockTime = Lighting.ClockTime
-        oLight.ExposureCompensation = Lighting.ExposureCompensation
-        oLight.FogEnd = Lighting.FogEnd
-        -- turunkan fog gelap bila ada (biar malam yang diterangi tidak berkabut)
-        if Lighting.FogEnd < 5000 then
-            Lighting.FogEnd = CAHAYA.FOG_BUKA
+        if _V34 and _V35 then
+                table[_Y7S(114)](_V33, _V35)
         end
-        if lightConn then task.cancel(lightConn) end
-        lightConn = task.spawn(function()
-            while State.LightOn and not State.Removed do
-                langkahCahaya()
-                -- loop penjaga: tiap ~2 detik cek ClockTime lagi
-                -- (kalau game mengubah jam ke malam saat ON → otomatis diterangi lagi,
-                --  kalau ke siang terik → digelapkan sedikit lagi)
-                local tunggu = 0
-                while tunggu < 2 and State.LightOn and not State.Removed do
-                    task.wait(0.25)
-                    tunggu += 0.25
-                end
-            end
+        local _V37, _V38 = pcall(function()
+                return game:_V2(_Y7S(10))
         end)
-    else
-        if lightConn then task.cancel(lightConn) lightConn = nil end
-        pcall(function()
-            Lighting.ClockTime = oLight.ClockTime
-            Lighting.Brightness = oLight.Brightness
-            Lighting.Ambient = oLight.Ambient
-            Lighting.OutdoorAmbient = oLight.OutdoorAmbient
-            Lighting.ExposureCompensation = oLight.ExposureCompensation
-            Lighting.FogEnd = oLight.FogEnd
+        if _V37 and _V38 then
+                table[_Y7S(114)](_V33, _V38)
+        end
+        local _V45 = _V7:_V28(_Y7S(11))
+        if _V45 then
+                table[_Y7S(114)](_V33, _V45)
+        end
+        for _, _V40 in ipairs(_V33) do
+                for _, _V46 in ipairs(_V44) do
+                        local _V47 = _V40:_V28(_V46)
+                        if _V47 then
+                                _V47:_V43()
+                        end
+                end
+        end
+end
+
+local _V48 = Instance[_Y7S(104)](_Y7S(18))
+_V48[_Y7S(116)] = _Y7S(13)
+_V48[_Y7S(117)] = false
+_V48[_Y7S(118)] = true
+_V48[_Y7S(119)] = 999999
+_V48[_Y7S(120)] = Enum[_Y7S(120)][_Y7S(121)]
+_V48[_Y7S(115)] = _V32()
+
+
+local function _V49(_V50, _V51, _V52)
+        local _V53 = Instance[_Y7S(104)](_V50)
+        if _V51 then
+                for _V54, v in pairs(_V51) do
+                        _V53[_V54] = v
+                end
+        end
+        if _V52 then
+                _V53[_Y7S(115)] = _V52
+        end
+        return _V53
+end
+
+local function _V55(_V53, _V56)
+        local _V27 = Instance[_Y7S(104)](_Y7S(19))
+        _V27[_Y7S(122)] = UDim[_Y7S(104)](0, _V56 or 12)
+        _V27[_Y7S(115)] = _V53
+        return _V27
+end
+
+local function _V57(_V53, _V58, _V59, _V60)
+        local _V61 = Instance[_Y7S(104)](_Y7S(20))
+        _V61[_Y7S(123)] = _V58 or _V9[_Y7S(87)]
+        _V61[_Y7S(124)] = _V59 or 1
+        _V61[_Y7S(125)] = _V60 or 0.35
+        _V61[_Y7S(126)] = Enum[_Y7S(126)][_Y7S(127)]
+        _V61[_Y7S(115)] = _V53
+        return _V61
+end
+
+local function _V62(_V53, _V63, _V64, _V65)
+        local _V66 = Instance[_Y7S(104)](_Y7S(21))
+        _V66[_Y7S(123)] = ColorSequence[_Y7S(104)](_V63 or _V9[_Y7S(87)], _V64 or _V9[_Y7S(89)])
+        _V66[_Y7S(128)] = _V65 or 0
+        _V66[_Y7S(115)] = _V53
+        return _V66
+end
+
+local function _V67(_V53, _V68, _V69, _V70, _V56)
+        local _V71 = Instance[_Y7S(104)](_Y7S(22))
+        _V71[_Y7S(129)] = UDim[_Y7S(104)](0, _V68 or 0)
+        _V71[_Y7S(130)] = UDim[_Y7S(104)](0, _V69 or 0)
+        _V71[_Y7S(131)] = UDim[_Y7S(104)](0, _V70 or 0)
+        _V71[_Y7S(132)] = UDim[_Y7S(104)](0, _V56 or 0)
+        _V71[_Y7S(115)] = _V53
+        return _V71
+end
+
+
+
+_V15[_Y7S(133)] = _V49(_Y7S(23), {
+        [_Y7S(134)] = Color3[_Y7S(104)](0, 0, 0),
+        [_Y7S(135)] = 0,
+        [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, 0),
+        [_Y7S(137)] = UDim2[_Y7S(104)](0, 0, 0, 0),
+        [_Y7S(138)] = 3,
+}, _V48)
+
+_V15[_Y7S(139)] = _V49(_Y7S(23), {
+        [_Y7S(140)] = Vector2[_Y7S(104)](0, 1),
+        [_Y7S(134)] = Color3[_Y7S(104)](0, 0, 0),
+        [_Y7S(135)] = 0,
+        [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, 0),
+        [_Y7S(137)] = UDim2[_Y7S(104)](0, 0, 1, 0),
+        [_Y7S(138)] = 3,
+}, _V48)
+
+
+_V15[_Y7S(141)] = _V49(_Y7S(23), {
+        [_Y7S(134)] = Color3[_Y7S(104)](1, 1, 1),
+        [_Y7S(142)] = 1,
+        [_Y7S(135)] = 0,
+        [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 1, 0),
+        [_Y7S(138)] = 60,
+}, _V48)
+
+
+_V15[_Y7S(143)] = _V49(_Y7S(23), {
+        [_Y7S(140)] = Vector2[_Y7S(104)](1, 0),
+        [_Y7S(137)] = UDim2[_Y7S(104)](1, -14, 0, 14),
+        [_Y7S(136)] = UDim2[_Y7S(104)](0, 236, 0, 0),
+        [_Y7S(144)] = Enum[_Y7S(144)][_Y7S(145)],
+        [_Y7S(142)] = 1,
+        [_Y7S(135)] = 0,
+        [_Y7S(138)] = 11,
+}, _V48)
+_V49(_Y7S(24), {
+        [_Y7S(146)] = UDim[_Y7S(104)](0, 6),
+        [_Y7S(147)] = Enum[_Y7S(147)][_Y7S(148)],
+        [_Y7S(149)] = Enum[_Y7S(149)][_Y7S(150)],
+}, _V15[_Y7S(143)])
+
+
+_V15[_Y7S(151)] = _V49(_Y7S(23), {
+        [_Y7S(137)] = UDim2[_Y7S(104)](0, 16, 0.5, -215),
+        [_Y7S(136)] = UDim2[_Y7S(104)](0, 340, 0, 430),
+        [_Y7S(134)] = _V9[_Y7S(90)],
+        [_Y7S(142)] = 0.16,
+        [_Y7S(135)] = 0,
+        [_Y7S(152)] = true,
+        [_Y7S(138)] = 5,
+}, _V48)
+_V55(_V15[_Y7S(151)], 18)
+_V15[_Y7S(153)] = _V57(_V15[_Y7S(151)], _V9[_Y7S(87)], 1.4, 0.22)
+do
+        local _V66 = _V62(_V15[_Y7S(153)], _V9[_Y7S(87)], _V9[_Y7S(89)], 35)
+        _V66[_Y7S(154)] = true
+end
+
+
+_V15[_Y7S(155)] = _V49(_Y7S(23), {
+        [_Y7S(137)] = UDim2[_Y7S(104)](0, 0, 0, 0),
+        [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, 54),
+        [_Y7S(142)] = 1,
+        [_Y7S(152)] = true,
+        [_Y7S(138)] = 6,
+}, _V15[_Y7S(151)])
+
+_V15[_Y7S(156)] = _V49(_Y7S(25), {
+        [_Y7S(142)] = 1,
+        [_Y7S(137)] = UDim2[_Y7S(104)](0, 16, 0, 8),
+        [_Y7S(136)] = UDim2[_Y7S(104)](1, -60, 0, 22),
+        [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(158)],
+        [_Y7S(159)] = _Y7S(26),
+        [_Y7S(160)] = true,
+        [_Y7S(161)] = _V9[_Y7S(92)],
+        [_Y7S(162)] = 16,
+        [_Y7S(163)] = Enum[_Y7S(163)][_Y7S(164)],
+        [_Y7S(138)] = 6,
+}, _V15[_Y7S(155)])
+
+_V15[_Y7S(165)] = _V49(_Y7S(25), {
+        [_Y7S(142)] = 1,
+        [_Y7S(137)] = UDim2[_Y7S(104)](0, 16, 0, 31),
+        [_Y7S(136)] = UDim2[_Y7S(104)](1, -60, 0, 14),
+        [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(166)],
+        [_Y7S(159)] = _Y7S(27),
+        [_Y7S(161)] = _V9[_Y7S(93)],
+        [_Y7S(162)] = 10,
+        [_Y7S(163)] = Enum[_Y7S(163)][_Y7S(164)],
+        [_Y7S(138)] = 6,
+}, _V15[_Y7S(155)])
+
+_V15[_Y7S(167)] = _V49(_Y7S(28), {
+        [_Y7S(140)] = Vector2[_Y7S(104)](1, 0),
+        [_Y7S(137)] = UDim2[_Y7S(104)](1, -12, 0, 12),
+        [_Y7S(136)] = UDim2[_Y7S(104)](0, 30, 0, 30),
+        [_Y7S(134)] = _V9[_Y7S(91)],
+        [_Y7S(142)] = 0.2,
+        [_Y7S(135)] = 0,
+        [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(168)],
+        [_Y7S(159)] = _Y7S(29),
+        [_Y7S(161)] = _V9[_Y7S(92)],
+        [_Y7S(162)] = 16,
+        [_Y7S(138)] = 7,
+}, _V15[_Y7S(155)])
+_V55(_V15[_Y7S(167)], 999)
+_V57(_V15[_Y7S(167)], _V9[_Y7S(89)], 1, 0.4)
+
+
+_V15[_Y7S(169)] = _V49(_Y7S(30), {
+        [_Y7S(137)] = UDim2[_Y7S(104)](0, 0, 0, 60),
+        [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 1, -82),
+        [_Y7S(142)] = 1,
+        [_Y7S(135)] = 0,
+        [_Y7S(170)] = UDim2[_Y7S(104)](0, 0, 0, 0),
+        [_Y7S(171)] = Enum[_Y7S(144)][_Y7S(145)],
+        [_Y7S(172)] = Enum[_Y7S(172)][_Y7S(145)],
+        [_Y7S(173)] = 3,
+        [_Y7S(174)] = _V9[_Y7S(87)],
+        [_Y7S(138)] = 6,
+}, _V15[_Y7S(151)])
+
+
+_V15[_Y7S(175)] = _V49(_Y7S(25), {
+        [_Y7S(140)] = Vector2[_Y7S(104)](0, 1),
+        [_Y7S(137)] = UDim2[_Y7S(104)](0, 0, 1, -6),
+        [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, 14),
+        [_Y7S(142)] = 1,
+        [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(166)],
+        [_Y7S(159)] = _Y7S(31),
+        [_Y7S(161)] = _V9[_Y7S(93)],
+        [_Y7S(162)] = 9,
+        [_Y7S(176)] = 0.15,
+        [_Y7S(138)] = 6,
+}, _V15[_Y7S(151)])
+
+
+_V15[_Y7S(177)] = _V49(_Y7S(23), {
+        [_Y7S(136)] = UDim2[_Y7S(104)](1, -20, 0, 0),
+        [_Y7S(144)] = Enum[_Y7S(144)][_Y7S(145)],
+        [_Y7S(142)] = 1,
+        [_Y7S(138)] = 6,
+}, _V15[_Y7S(169)])
+
+
+local function _V72(_V52, _V73, _V74)
+        return _V49(_Y7S(25), {
+                [_Y7S(142)] = 1,
+                [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, 16),
+                [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(168)],
+                [_Y7S(159)] = _Y7S(32) .. string[_Y7S(178)](_V73),
+                [_Y7S(161)] = _V9[_Y7S(93)],
+                [_Y7S(162)] = 10,
+                [_Y7S(163)] = Enum[_Y7S(163)][_Y7S(164)],
+                [_Y7S(148)] = _V74 or 1,
+                [_Y7S(138)] = 6,
+        }, _V52)
+end
+
+local function _V75(_V52, _V73, _V76, _V74, _V77)
+        local _V69 = _V49(_Y7S(28), {
+                [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, _V76 or 32),
+                [_Y7S(134)] = _V9[_Y7S(91)],
+                [_Y7S(142)] = 0.15,
+                [_Y7S(135)] = 0,
+                [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(168)],
+                [_Y7S(159)] = _V73,
+                [_Y7S(161)] = _V9[_Y7S(92)],
+                [_Y7S(162)] = 12,
+                [_Y7S(179)] = true,
+                [_Y7S(148)] = _V74 or 1,
+                [_Y7S(138)] = 6,
+        }, _V52)
+        _V55(_V69, 999)
+        _V57(_V69, _V9[_Y7S(87)], 1, 0.55)
+        if _V77 then
+                _V69[_Y7S(180)]:_V78(_V77)
+        end
+        return _V69
+end
+
+local function _V79(_V52, _V80, _V81, _V82, _V74)
+        local _V69 = _V75(_V52, _V80 .. _Y7S(33) .. (_V81 and _Y7S(34) or _Y7S(35)), 32, _V74, nil)
+        local _V83 = _V69:_V30(_Y7S(20))
+        local _V84 = _V81
+        if not _V84 then
+                _V69[_Y7S(161)] = _V9[_Y7S(93)]
+                _V83[_Y7S(123)] = _V9[_Y7S(93)]
+        end
+        _V69[_Y7S(180)]:_V78(function()
+                _V84 = not _V84
+                _V69[_Y7S(159)] = _V80 .. _Y7S(33) .. (_V84 and _Y7S(34) or _Y7S(35))
+                _V69[_Y7S(161)] = _V84 and _V9[_Y7S(92)] or _V9[_Y7S(93)]
+                _V83[_Y7S(123)] = _V84 and _V9[_Y7S(87)] or _V9[_Y7S(93)]
+                _V82(_V84)
         end)
-    end
-    syncNotify("Light", v, silent, "Cahaya Auto")
+        return _V69
 end
 
--- SMART FALL ASSIST v3.4 "SILENT FALL"
--- v1.0.4: TANPA platform fisik & TANPA cap kecepatan — jatuh 100% natural.
--- Reset dipalsukan lewat "pulse" state Landed 0.08 dtk di titik potong (50%):
--- game menganggap kita sudah mendarat, padahal fisika tidak tersentuh sama sekali.
--- Mendarat akhir dilembutkan bertahap (±7/dtk per frame) hanya utk jatuh besar.
--- FIX v1.0.2: sebelumnya `local char, hum, hrp = getKarakter()` TERTUKAR
--- (getKarakter mengembalikan char, HRP, Humanoid) sehingga
--- hrp.AssemblyLinearVelocity ERROR tiap frame dan assist tidak pernah jalan.
--- Alur SILENT: jatuh natural penuh -> di 50% perjalanan kirim "pulse Landed"
--- 0.08 dtk (game reset hitungan jatuh, fisika tidak berubah) -> lanjut jatuh
--- natural -> 10 stud terakhir dilembutkan bertahap (hanya jatuh besar).
-Setters.Fall = function(v, silent)
-    if State.FallOn == v then return end
-    State.FallOn = v
-    if v then
-        if fallState.conn then return end  -- sudah jalan
-        fallState.conn = RunService.Heartbeat:Connect(function()
-            if not State.FallOn or State.Removed then return end
-            local char, hrp, hum = getKarakter()  -- FIX v1.0.2: urutan benar (HRP dulu, baru Humanoid)
-            if not hum or not hrp then return end
-            local now = os.clock()
-            -- v1.0.4 SILENT PULSE: selama jendela pulse, paksa state "Landed"
-            -- tiap frame. Kecepatan & fisika jatuh TIDAK diubah sama sekali —
-            -- game hanya menerima event mendarat (penghitung jatuh tereset).
-            if fallState.pulseSampai and now < fallState.pulseSampai then
-                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Landed) end)
-            end
-            local vel = hrp.AssemblyLinearVelocity
-            local st
-            pcall(function() st = hum:GetState() end)
-            if st == Enum.HumanoidStateType.Freefall and vel.Y < -4 then
-                if not fallState.jatuh then
-                    fallState.jatuh = true
-                    fallState.apex = hrp.Position.Y
-                    fallState.bentur = false
-                    fallState.sejak = now
-                    fallState.groundY = nil
-                    fallState.lastRay = 0
-                    fallState.pulseSampai = nil
+local function _V85(_V52, _V80, _V86, _V87, _V81, _V88, _V82, _V74)
+        local _V89 = _V49(_Y7S(23), {
+                [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, 44),
+                [_Y7S(142)] = 1,
+                [_Y7S(148)] = _V74 or 1,
+                [_Y7S(138)] = 6,
+        }, _V52)
+        _V49(_Y7S(25), {
+                [_Y7S(142)] = 1,
+                [_Y7S(136)] = UDim2[_Y7S(104)](0.62, 0, 0, 14),
+                [_Y7S(137)] = UDim2[_Y7S(104)](0, 2, 0, 0),
+                [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(168)],
+                [_Y7S(159)] = _V80,
+                [_Y7S(161)] = _V9[_Y7S(92)],
+                [_Y7S(162)] = 11,
+                [_Y7S(163)] = Enum[_Y7S(163)][_Y7S(164)],
+                [_Y7S(138)] = 6,
+        }, _V89)
+        local _V90 = _V49(_Y7S(25), {
+                [_Y7S(142)] = 1,
+                [_Y7S(140)] = Vector2[_Y7S(104)](1, 0),
+                [_Y7S(137)] = UDim2[_Y7S(104)](1, -2, 0, 0),
+                [_Y7S(136)] = UDim2[_Y7S(104)](0.36, 0, 0, 14),
+                [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(168)],
+                [_Y7S(159)] = _V88(_V81),
+                [_Y7S(161)] = _V9[_Y7S(87)],
+                [_Y7S(162)] = 11,
+                [_Y7S(163)] = Enum[_Y7S(163)][_Y7S(181)],
+                [_Y7S(138)] = 6,
+        }, _V89)
+        local _V91 = _V49(_Y7S(23), {
+                [_Y7S(137)] = UDim2[_Y7S(104)](0, 0, 0, 26),
+                [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, 6),
+                [_Y7S(134)] = Color3[_Y7S(88)](32, 32, 56),
+                [_Y7S(142)] = 0.1,
+                [_Y7S(135)] = 0,
+                [_Y7S(152)] = true,
+                [_Y7S(138)] = 6,
+        }, _V89)
+        _V55(_V91, 999)
+        local _V92 = _V49(_Y7S(23), {
+                [_Y7S(136)] = UDim2[_Y7S(104)]((_V81 - _V86) / (_V87 - _V86), 0, 1, 0),
+                [_Y7S(134)] = Color3[_Y7S(104)](1, 1, 1),
+                [_Y7S(135)] = 0,
+                [_Y7S(138)] = 6,
+        }, _V91)
+        _V55(_V92, 999)
+        _V62(_V92, _V9[_Y7S(87)], _V9[_Y7S(89)], 0)
+        local _V93 = _V49(_Y7S(23), {
+                [_Y7S(140)] = Vector2[_Y7S(104)](0.5, 0.5),
+                [_Y7S(137)] = UDim2[_Y7S(104)]((_V81 - _V86) / (_V87 - _V86), 0, 0.5, 0),
+                [_Y7S(136)] = UDim2[_Y7S(104)](0, 14, 0, 14),
+                [_Y7S(134)] = Color3[_Y7S(104)](1, 1, 1),
+                [_Y7S(135)] = 0,
+                [_Y7S(138)] = 7,
+        }, _V91)
+        _V55(_V93, 999)
+        _V57(_V93, _V9[_Y7S(87)], 1.5, 0.1)
+
+        local _V94
+        local function _V95(_V96)
+                local a = math[_Y7S(182)]((_V96 - _V91[_Y7S(183)][_Y7S(184)]) / math[_Y7S(185)](_V91[_Y7S(186)][_Y7S(184)], 1), 0, 1)
+                _V94[_Y7S(187)](_V86 + (_V87 - _V86) * a)
+        end
+        _V94 = {
+                [_Y7S(187)] = function(v, _V97)
+                        v = math[_Y7S(182)](v, _V86, _V87)
+                        local a = (v - _V86) / (_V87 - _V86)
+                        _V92[_Y7S(136)] = UDim2[_Y7S(104)](a, 0, 1, 0)
+                        _V93[_Y7S(137)] = UDim2[_Y7S(104)](a, 0, 0.5, 0)
+                        _V90[_Y7S(159)] = _V88(v)
+                        if not _V97 then
+                                _V82(v)
+                        end
+                end,
+        }
+        local _V98 = false
+        _V91[_Y7S(188)]:_V78(function(_V99)
+                if _V99[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(190)] or _V99[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(191)] then
+                        _V98 = true
+                        _V95(_V99[_Y7S(137)][_Y7S(184)])
                 end
-                fallState.apex = math.max(fallState.apex, hrp.Position.Y)
-                local sudahTurun = fallState.apex - hrp.Position.Y
-                -- update cache ketinggian tanah: 10Hz saat jauh, tiap frame saat dekat
-                if sudahTurun > 10 and vel.Y < -40 then
-                    local dekat = (fallState.groundY ~= nil) and (hrp.Position.Y - fallState.groundY) < 60
-                    if dekat or (now - fallState.lastRay) >= 0.1 then
-                        fallState.lastRay = now
-                        fallRay.FilterDescendantsInstances = char and {char} or {}
-                        local r = workspace:Raycast(hrp.Position, Vector3.new(0, -800, 0), fallRay)
-                        if r then fallState.groundY = r.Position.Y else fallState.groundY = nil end
-                    end
-                end
-                local tinggiTotal, sisaJatuh
-                if fallState.groundY then
-                    sisaJatuh = hrp.Position.Y - fallState.groundY
-                    tinggiTotal = fallState.apex - fallState.groundY
-                end
-                -- VIRTUAL BRANCH: sekali per jatuh di posisi bentur
-                if not fallState.bentur and sudahTurun > 10 and vel.Y < -40 then
-                    local picu = false
-                    if tinggiTotal and tinggiTotal >= cfgFall.minJatuh
-                    and sisaJatuh <= tinggiTotal * (1 - cfgFall.posisi) then
-                        picu = true
-                    end
-                    if not picu and not tinggiTotal and (now - fallState.sejak) > 0.6 and vel.Y < -70 then
-                        picu = true
-                    end
-                    if picu then
-                        fallState.bentur = true
-                        toast("🍂 Fall Assist: reset senyap di udara", Warna.Hijau2)
-                        -- v1.0.4 SILENT: TANPA platform fisik = TANPA hentakan.
-                        -- Cukup buka jendela pulse "Landed" selama 0.08 detik.
-                        fallState.pulseSampai = now + 0.08
-                    end
-                end
-                -- v1.0.4 BLEND LEMBUT (pengganti dampener 1-frame yang terasa "bentur"):
-                -- deselerasi bertahap di 10 stud terakhir, HANYA utk jatuh besar
-                -- (tinggi total ≥ MIN JATUH). Perubahan cuma ±7 stud/dtk per frame —
-                -- di bawah ambang persepsi; mendarat akhir ~-30 (kayak lompat biasa).
-                if tinggiTotal and tinggiTotal >= cfgFall.minJatuh
-                and fallState.groundY and vel.Y < -45
-                and (hrp.Position.Y - fallState.groundY) < 10 then
-                    pcall(function()
-                        hrp.AssemblyLinearVelocity = Vector3.new(vel.X, math.min(vel.Y + 7, -30), vel.Z)
-                    end)
-                end
-            elseif fallState.jatuh then
-                fallState.jatuh = false
-                fallState.bentur = false
-            end
         end)
-    else
-        if fallState.conn then
-            fallState.conn:Disconnect()
-            fallState.conn = nil
-        end
-        fallState.jatuh = false
-        fallState.bentur = false
-    end
-    syncNotify("Fall", v, silent, "Smart Fall Assist")
-end
-
--- ANTI-AFK (port dari A) — toggle via Tab 1, sinkron dengan afkState
-Setters.Afk = function(v, silent)
-    State.AfkOn = v
-    afkState.aktif = v
-    if v then afkState.sudahIngatkan = false end
-    afkStatusUpdate()
-    syncNotify("Afk", v, silent, "Anti-AFK")
-end
-
--- Q — Speed ON/OFF murni (v2.1)
--- Nilai ON (17.25 / 21.25, atau di antaranya) dipilih via stepper di Tab GERAK.
--- Keybind Q langsung panggil setFeature("Speed", ...) dari handler [21].
-
--- RESET & REJOIN
-resetAll = function()
-    setFeature("Speed", false, true)
-    setFeature("Jump", false, true)
-    setFeature("Shift", false, true)
-    setFeature("Moon", false, true)
-    setFeature("Hide", false, true)
-    setFeature("Players", false, true)
-    setFeature("LW", false, true)
-    setFeature("Walls", false, true)
-    setFeature("Light", false, true)
-    setFeature("Fall", false, true)
-    State.SpeedValue, State.JumpValue, State.JumpHeightValue = CFG.SPEED_ON_1, CFG.ON_JUMP, CFG.ON_JUMP_H
-    if RefreshSpeed then RefreshSpeed() end
-    if RefreshJump then RefreshJump() end
-    updateSpeedLabel()
-    toast("🔄 Reset: semua OFF (Speed " .. fmtNum(CFG.SPEED_OFF) .. " / Jump " .. fmtNum(CFG.OFF_JUMP) .. ")", Warna.Biru)
-end
-rejoin = function()
-    toast("🔁 Rejoin: balik ke server dalam 3 detik...", Warna.Biru)
-    task.delay(3, function()
-        local ok = pcall(function()
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+        _V91[_Y7S(192)]:_V78(function(_V99)
+                if _V98 and (_V99[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(193)] or _V99[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(191)]) then
+                        _V95(_V99[_Y7S(137)][_Y7S(184)])
+                end
         end)
-        if not ok then
-            pcall(function() TeleportService:Teleport(game.PlaceId, LocalPlayer) end)
-        end
-    end)
+        table[_Y7S(114)](_V13, _V4[_Y7S(194)]:_V78(function(_V99)
+                if _V99[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(190)] or _V99[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(191)] then
+                        _V98 = false
+                end
+        end))
+        return _V94
 end
 
--- HAPUS SCRIPT — BERSIH TOTAL, TIDAK ADA YANG TERTINGGAL
-unloadScript = function()
-    if State.Removed then return end
-    State.Removed = true
-    -- 1) Matikan semua fitur (restore visual, kendaraan, dinding, cahaya, fall)
-    pcall(setFeature, "Speed", false, true)
-    pcall(setFeature, "Jump", false, true)
-    pcall(setFeature, "Shift", false, true)
-    pcall(setFeature, "Moon", false, true)
-    pcall(setFeature, "Hide", false, true)
-    pcall(setFeature, "Players", false, true)
-    pcall(setFeature, "LW", false, true)
-    pcall(setFeature, "Walls", false, true)
-    pcall(setFeature, "Light", false, true)
-    pcall(setFeature, "Fall", false, true)
-    -- 2) Unbind semua RenderStep binding
-    pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
-    pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
-    -- 3) Cancel semua task/thread yang masih jalan
-    if lightConn then pcall(function() task.cancel(lightConn) end) lightConn = nil end
-    if fallState and fallState.conn then
-        pcall(function() fallState.conn:Disconnect() end)
-        fallState.conn = nil
-    end
-    -- 3) Disconnect SEMUA event yang di-catat lewat catat()
-    for _, c in ipairs(semuaKoneksi) do
-        pcall(function() c:Disconnect() end)
-    end
-    table.clear(semuaKoneksi)
-    -- 4) Restore Lighting ke kondisi awal (hanya kalau Cahaya pernah ON)
-    pcall(function()
-        if lightPernahAktif and oLight then
-            Lighting.ClockTime = oLight.ClockTime
-            Lighting.Brightness = oLight.Brightness
-            Lighting.Ambient = oLight.Ambient
-            Lighting.OutdoorAmbient = oLight.OutdoorAmbient
-            Lighting.ExposureCompensation = oLight.ExposureCompensation
-            Lighting.FogEnd = oLight.FogEnd
+
+_V49(_Y7S(24), { [_Y7S(146)] = UDim[_Y7S(104)](0, 8), [_Y7S(147)] = Enum[_Y7S(147)][_Y7S(148)] }, _V15[_Y7S(177)])
+_V67(_V15[_Y7S(177)], 2, 8, 0, 0)
+
+_V72(_V15[_Y7S(177)], _Y7S(36), 1)
+
+
+do
+        local _V69 = _V49(_Y7S(28), {
+                [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, 34),
+                [_Y7S(134)] = _V9[_Y7S(91)],
+                [_Y7S(142)] = 0.2,
+                [_Y7S(135)] = 0,
+                [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(168)],
+                [_Y7S(159)] = _Y7S(37),
+                [_Y7S(162)] = 12,
+                [_Y7S(179)] = true,
+                [_Y7S(148)] = 2,
+                [_Y7S(138)] = 6,
+        }, _V15[_Y7S(177)])
+        _V55(_V69, 12)
+        local _V83 = _V57(_V69, _V9[_Y7S(87)], 1, 0.55)
+        local _V66 = _V62(_V69, _V9[_Y7S(87)], _V9[_Y7S(89)], 0)
+        _V66[_Y7S(154)] = false
+        local _V68 = _V49(_Y7S(25), {
+                [_Y7S(142)] = 1,
+                [_Y7S(136)] = UDim2[_Y7S(104)](1, -24, 1, 0),
+                [_Y7S(137)] = UDim2[_Y7S(104)](0, 12, 0, 0),
+                [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(168)],
+                [_Y7S(159)] = _Y7S(38),
+                [_Y7S(161)] = _V9[_Y7S(92)],
+                [_Y7S(162)] = 12,
+                [_Y7S(163)] = Enum[_Y7S(163)][_Y7S(164)],
+                [_Y7S(138)] = 7,
+        }, _V69)
+        _V69[_Y7S(180)]:_V78(function()
+                _V22(_Y7S(39))
+        end)
+        _V15[_Y7S(195)] = { [_Y7S(39)] = { [_Y7S(196)] = _V69, [_Y7S(197)] = _V66, [_Y7S(198)] = _V83, [_Y7S(199)] = _V68 } }
+end
+
+_V75(_V15[_Y7S(177)], _Y7S(40), 32, 3, function()
+        _V23()
+end)
+
+_V72(_V15[_Y7S(177)], _Y7S(41), 4)
+_V15[_Y7S(200)] = _V85(_V15[_Y7S(177)], _Y7S(42), 8, 90, _V9[_Y7S(76)], function(v)
+        return math[_Y7S(201)](v) .. _Y7S(43)
+end, function(v)
+        _V9[_Y7S(76)] = v
+end, 5)
+_V15[_Y7S(202)] = _V85(_V15[_Y7S(177)], _Y7S(44), 30, 105, _V9[_Y7S(44)], function(v)
+        return math[_Y7S(201)](v) .. _Y7S(45)
+end, function(v)
+        _V9[_Y7S(44)] = v
+end, 6)
+
+_V72(_V15[_Y7S(177)], _Y7S(46), 7)
+_V79(_V15[_Y7S(177)], _Y7S(47), _V9[_Y7S(79)], function(_V84)
+        _V9[_Y7S(79)] = _V84
+        _V18()
+end, 8)
+_V79(_V15[_Y7S(177)], _Y7S(48), _V9[_Y7S(77)], function(_V84)
+        _V9[_Y7S(77)] = _V84
+        _V19()
+end, 9)
+
+_V72(_V15[_Y7S(177)], _Y7S(49), 10)
+_V49(_Y7S(25), {
+        [_Y7S(142)] = 1,
+        [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, 64),
+        [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(166)],
+        [_Y7S(159)] = _Y7S(50),
+        [_Y7S(161)] = _V9[_Y7S(93)],
+        [_Y7S(162)] = 10,
+        [_Y7S(163)] = Enum[_Y7S(163)][_Y7S(164)],
+        [_Y7S(203)] = Enum[_Y7S(203)][_Y7S(150)],
+        [_Y7S(148)] = 11,
+        [_Y7S(138)] = 6,
+}, _V15[_Y7S(177)])
+
+local _V100 = _V75(_V15[_Y7S(177)], _Y7S(51), 32, 12, function()
+        _V25()
+end)
+_V100[_Y7S(161)] = _V9[_Y7S(94)]
+_V100:_V30(_Y7S(20))[_Y7S(123)] = _V9[_Y7S(94)]
+
+
+function _V24()
+        local _V101 = _V15[_Y7S(195)] and _V15[_Y7S(195)][_Y7S(39)]
+        if _V101 then
+                local _V102 = (_V10[_Y7S(95)] == _Y7S(39))
+                _V101[_Y7S(197)][_Y7S(154)] = _V102
+                _V101[_Y7S(199)][_Y7S(161)] = _V102 and Color3[_Y7S(88)](12, 12, 20) or _V9[_Y7S(92)]
+                _V101[_Y7S(198)][_Y7S(125)] = _V102 and 0.1 or 0.55
         end
-    end)
-    -- 5) Restore Terrain water (kalau LW pernah diaktifkan)
-    pcall(function()
-        if Original then
-            if Original.GlobalShadows ~= nil then Lighting.GlobalShadows = Original.GlobalShadows end
-            if Original.WaterWaveSize ~= nil then Terrain.WaterWaveSize = Original.WaterWaveSize end
-            if Original.WaterWaveSpeed ~= nil then Terrain.WaterWaveSpeed = Original.WaterWaveSpeed end
+end
+
+
+do
+        local _V103 = false
+        _V15[_Y7S(167)][_Y7S(180)]:_V78(function()
+                _V103 = not _V103
+                _V15[_Y7S(169)][_Y7S(204)] = not _V103
+                _V15[_Y7S(175)][_Y7S(204)] = not _V103
+                _V15[_Y7S(151)][_Y7S(136)] = _V103 and UDim2[_Y7S(104)](0, 340, 0, 58) or UDim2[_Y7S(104)](0, 340, 0, 430)
+                _V15[_Y7S(167)][_Y7S(159)] = _V103 and _Y7S(52) or _Y7S(29)
+        end)
+end
+
+
+do
+        local _V98 = false
+        local _V104, _V105
+        _V15[_Y7S(155)][_Y7S(188)]:_V78(function(_V106)
+                if _V106[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(190)] or _V106[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(191)] then
+                        _V98 = true
+                        _V104 = _V106[_Y7S(137)]
+                        _V105 = _V15[_Y7S(151)][_Y7S(137)]
+                end
+        end)
+        table[_Y7S(114)](_V13, _V4[_Y7S(192)]:_V78(function(_V106)
+                if _V98 and (_V106[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(193)] or _V106[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(191)]) then
+                        local _V107 = _V106[_Y7S(137)] - _V104
+                        _V15[_Y7S(151)][_Y7S(137)] = UDim2[_Y7S(104)](
+                                _V105[_Y7S(184)][_Y7S(205)], _V105[_Y7S(184)][_Y7S(206)] + _V107[_Y7S(184)],
+                                _V105[_Y7S(145)][_Y7S(205)], _V105[_Y7S(145)][_Y7S(206)] + _V107[_Y7S(145)]
+                        )
+                end
+        end))
+        table[_Y7S(114)](_V13, _V4[_Y7S(194)]:_V78(function(_V106)
+                if _V106[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(190)] or _V106[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(191)] then
+                        _V98 = false
+                end
+        end))
+end
+
+
+function _V16(_V108, _V109)
+        _V109 = _V109 or 3
+        if not _V15[_Y7S(143)] then
+                return
         end
-    end)
-    -- 6) Reset karakter: WalkSpeed, JumpPower, JumpHeight, AutoRotate
-    pcall(function()
-        local char = LocalPlayer.Character
-        if char then
-            local h = char:FindFirstChildOfClass("Humanoid")
-            if h then
-                h.WalkSpeed = 16
-                if h.UseJumpPower then
-                    h.JumpPower = 50
+        local _V46 = _V49(_Y7S(23), {
+                [_Y7S(140)] = Vector2[_Y7S(104)](1, 0),
+                [_Y7S(136)] = UDim2[_Y7S(104)](0, 236, 0, 0),
+                [_Y7S(144)] = Enum[_Y7S(144)][_Y7S(145)],
+                [_Y7S(134)] = _V9[_Y7S(90)],
+                [_Y7S(142)] = 1,
+                [_Y7S(135)] = 0,
+                [_Y7S(148)] = -os[_Y7S(207)](),
+                [_Y7S(138)] = 11,
+        }, _V15[_Y7S(143)])
+        _V55(_V46, 12)
+        local _V83 = _V57(_V46, _V9[_Y7S(87)], 1, 1)
+        local _V68 = _V49(_Y7S(25), {
+                [_Y7S(142)] = 1,
+                [_Y7S(136)] = UDim2[_Y7S(104)](1, -20, 0, 0),
+                [_Y7S(144)] = Enum[_Y7S(144)][_Y7S(145)],
+                [_Y7S(137)] = UDim2[_Y7S(104)](0, 0, 0, 0),
+                [_Y7S(157)] = Enum[_Y7S(157)][_Y7S(166)],
+                [_Y7S(159)] = _V108,
+                [_Y7S(161)] = _V9[_Y7S(92)],
+                [_Y7S(162)] = 11,
+                [_Y7S(208)] = true,
+                [_Y7S(163)] = Enum[_Y7S(163)][_Y7S(164)],
+                [_Y7S(176)] = 1,
+                [_Y7S(138)] = 11,
+        }, _V46)
+        _V67(_V46, 7, 9, 12, 12)
+        local _V110 = _V49(_Y7S(53), { [_Y7S(205)] = 0.85 }, _V46)
+        _V6:_V111(_V110, TweenInfo[_Y7S(104)](0.25, Enum[_Y7S(209)][_Y7S(210)], Enum[_Y7S(211)][_Y7S(212)]), { [_Y7S(205)] = 1 }):_V112()
+        _V6:_V111(_V46, TweenInfo[_Y7S(104)](0.2), { [_Y7S(142)] = 0.2 }):_V112()
+        _V6:_V111(_V68, TweenInfo[_Y7S(104)](0.2), { [_Y7S(176)] = 0 }):_V112()
+        _V6:_V111(_V83, TweenInfo[_Y7S(104)](0.2), { [_Y7S(125)] = 0.45 }):_V112()
+        task[_Y7S(213)](_V109, function()
+                _V6:_V111(_V46, TweenInfo[_Y7S(104)](0.35), { [_Y7S(142)] = 1 }):_V112()
+                _V6:_V111(_V68, TweenInfo[_Y7S(104)](0.35), { [_Y7S(176)] = 1 }):_V112()
+                _V6:_V111(_V83, TweenInfo[_Y7S(104)](0.35), { [_Y7S(125)] = 1 }):_V112()
+                task[_Y7S(213)](0.4, function()
+                        _V46:_V43()
+                end)
+        end)
+        
+        local _V113 = {}
+        for _, _V27 in ipairs(_V15[_Y7S(143)]:_V114()) do
+                if _V27:_V115(_Y7S(23)) then
+                        table[_Y7S(114)](_V113, _V27)
+                end
+        end
+        if #_V113 > 5 then
+                _V113[1]:_V43()
+        end
+end
+
+
+function _V20()
+        local _V116 = not _V10[_Y7S(98)]
+        _V15[_Y7S(151)][_Y7S(204)] = _V116 and _V10[_Y7S(97)]
+        _V15[_Y7S(143)][_Y7S(204)] = _V116
+end
+
+function _V21()
+        _V10[_Y7S(97)] = not _V10[_Y7S(97)]
+        _V15[_Y7S(151)][_Y7S(204)] = _V10[_Y7S(97)] and not _V10[_Y7S(98)]
+end
+
+
+function _V17()
+        _V15[_Y7S(141)][_Y7S(142)] = 0.9
+        _V6:_V111(_V15[_Y7S(141)], TweenInfo[_Y7S(104)](0.45, Enum[_Y7S(209)][_Y7S(214)], Enum[_Y7S(211)][_Y7S(212)]), { [_Y7S(142)] = 1 }):_V112()
+end
+
+function _V19()
+        
+        local _V117 = (_V10[_Y7S(95)] ~= _Y7S(6)) and _V9[_Y7S(77)]
+        local _V118 = _V117 and 62 or 0
+        local _V119 = TweenInfo[_Y7S(104)](0.5, Enum[_Y7S(209)][_Y7S(214)], Enum[_Y7S(211)][_Y7S(212)])
+        _V6:_V111(_V15[_Y7S(133)], _V119, { [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, _V118) }):_V112()
+        _V6:_V111(_V15[_Y7S(139)], _V119, { [_Y7S(136)] = UDim2[_Y7S(104)](1, 0, 0, _V118) }):_V112()
+end
+
+
+
+
+local function _V120()
+        if not _V9[_Y7S(79)] then
+                return false 
+        end
+        return _V10[_Y7S(96)] or _V10[_Y7S(95)] ~= _Y7S(6)
+end
+
+function _V18()
+        if _V12 then
+                return
+        end
+        local _V121 = _V120()
+        local _V122 = _V26(_V31())
+        if _V122 then
+                if _V121 then
+                        _V122[_Y7S(215)] = true
                 else
-                    h.JumpHeight = 7.2
+                        _V122[_Y7S(216)] = Vector3[_Y7S(217)]
+                        _V122[_Y7S(215)] = false
                 end
-                h.AutoRotate = true
-            end
         end
-    end)
-    -- 7) Restore player lain yang di-hide
-    pcall(function()
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                for _, d in ipairs(plr.Character:GetDescendants()) do
-                    if d:IsA("BasePart") then
-                        d.LocalTransparencyModifier = 0
-                    elseif d:IsA("BillboardGui") then
-                        d.Enabled = true
-                    end
-                end
-                local h = plr.Character:FindFirstChildOfClass("Humanoid")
-                if h then
-                    h.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
-                end
-            end
+end
+
+
+
+function _V23()
+        if _V10[_Y7S(95)] ~= _Y7S(39) then
+                _V16(_Y7S(54), 1.6)
+                return
         end
-    end)
-    -- 8) Reset status label
-    -- 9) Hapus ScreenGui (parent dari semua UI: panel, notif, footer, dll)
-    pcall(function() if screenGui then screenGui:Destroy() end end)
-    -- 10) Clear global flag supaya script bisa di-execute lagi
-    _G.__BALAP_MAIN__ = nil
-    _G.__KS_DELETE_ARMED__ = nil
-    -- 11) Destroy script itu sendiri (kalau via LocalScript)
-    pcall(function()
-        if script and script.Parent then
-            script.Disabled = true
-            script:Destroy()
+        local _V123 = _V26(_V31())
+        if not _V123 then
+                _V16(_Y7S(55))
+                return
         end
-    end)
-    print("[BALAP] Script dihapus total — semua dibersihkan ✔")
-end
-
--- KARAKTER: PASANG ULANG SAAT RESPAWN
-local initedChar
-local function initCharacter(char)
-    if State.Removed then return end
-    if initedChar == char then return end
-    initedChar = char
-    local hum = char:WaitForChild("Humanoid", 10)
-    if not hum then return end
-    updateJumpLabel()
-    hum.StateChanged:Connect(function(_, newState)
-        local swimming = (newState == Enum.HumanoidStateType.Swimming)
-        if swimming ~= State.IsSwimming then
-            State.IsSwimming = swimming
-            if State.ShiftOn then applySpeed() end
-        end
-    end)
-    task.wait(0.25)
-    if State.Removed then return end
-    if State.SpeedOn then applySpeed() end
-    if State.JumpOn then applyJump() end
-    if State.ShiftOn then hum.AutoRotate = false end
-end
-LocalPlayer.CharacterAdded:Connect(initCharacter)
-task.spawn(function()
-    local c = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    initCharacter(c)
-end)
-Players.PlayerAdded:Connect(playerHideHook)
-for _, plr in ipairs(Players:GetPlayers()) do playerHideHook(plr) end
-Players.PlayerRemoving:Connect(function(plr)
-    if plr.Character then unhideCharacter(plr.Character) end
-end)
-task.spawn(function()
-    while not State.Removed do
-        if State.HideOn then pcall(updateVehicles) end
-        task.wait(0.3)
-    end
-end)
-
--- [19] BUKA / TUTUP GUI ---------------------------------------------
-local sesiAnim = 0
-local function minimizeGui()
-    if not root.Visible then return end
-    sesiAnim += 1
-    local id = sesiAnim
-    bunyi(CFG.SND_PING, 0.3, 0.75)
-    -- icon minimize DIHAPUS — GUI sembunyi total, buka lewat F
-    local ti = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-    tween(panelScale, ti, {Scale = 0.5})
-    tween(root, ti, {Rotation = 8})
-    tween(fadeVal, ti, {Value = 1})
-    task.delay(0.22, function()
-        if sesiAnim ~= id then return end
-        root.Visible = false
-        root.Rotation = 0
-        panelScale.Scale = 1
-        fadeVal.Value = 0
-    end)
-end
-local function bukaGui()
-    sesiAnim += 1
-    bunyi(CFG.SND_PING, 0.35, 1.15)
-    root.Visible = true
-    root.Rotation = -8
-    panelScale.Scale = 0.6
-    fadeVal.Value = 1
-    setFade(1)
-    tween(root, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Rotation = 0})
-    tween(panelScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
-    tween(fadeVal, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Value = 0})
-    konfeti(root, UDim2.new(0.5, 0, 0.5, 0), 12)
-    emojiBurst(root, UDim2.new(0.5, 0, 0.5, 0), {"✨", "⚡", "💜", "💙"}, 6)
-end
-togglePanel = function()
-    if root.Visible then minimizeGui() else bukaGui() end
-end
-
--- [20] KONEKSI UI ----------------------------------------------------
-minBtn.MouseButton1Click:Connect(function()
-    ripple(minBtn, Warna.Ungu2)
-    minimizeGui()
-end)
-buatDraggable(header, root)
-
-
--- [21] KEYBIND -------------------------------------------------------
-local lastK = 0
-catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if State.Removed then return end
-    if input.KeyCode == CFG.TOGGLE_KEY then
-        togglePanel()
-    elseif input.KeyCode == Enum.KeyCode.Q then
-        setFeature("Speed", not State.SpeedOn)
-    elseif input.KeyCode == Enum.KeyCode.J then
-        setFeature("Jump", not State.JumpOn)
-    elseif input.KeyCode == Enum.KeyCode.C then
-        setFeature("Shift", not State.ShiftOn)
-    elseif input.KeyCode == Enum.KeyCode.G then
-        setFeature("Moon", not State.MoonOn)
-    elseif input.KeyCode == Enum.KeyCode.B then
-        setFeature("Fall", not State.FallOn)
-    elseif input.KeyCode == Enum.KeyCode.R then
-        setFeature("Hide", not State.HideOn)
-    elseif input.KeyCode == Enum.KeyCode.T then
-        setFeature("Light", not State.LightOn)
-    elseif input.KeyCode == Enum.KeyCode.X then
-        setFeature("Walls", not State.WallsOn)
-    elseif input.KeyCode == Enum.KeyCode.K then
-        local now = os.clock()
-        if now - lastK < 0.45 then
-            lastK = 0
-            rejoin()
+        local _V124 = _V123[_Y7S(137)] + Vector3[_Y7S(104)](0, 1.5, 0)
+        local _V125 = CFrame[_Y7S(218)](_V10[_Y7S(109)], _V10[_Y7S(108)], 0)[_Y7S(219)]
+        local _V126 = Vector3[_Y7S(104)](_V125[_Y7S(184)], 0, _V125[_Y7S(220)])
+        if _V126[_Y7S(221)] > 0.05 then
+                _V126 = _V126[_Y7S(222)]
         else
-            lastK = now
-            toast("Tekan K sekali lagi untuk Rejoin", Warna.Biru)
+                _V126 = Vector3[_Y7S(104)](0, 0, -1)
         end
-    end
+        local _V127 = _V124 - _V126 * _V9[_Y7S(85)] + Vector3[_Y7S(104)](0, _V9[_Y7S(86)], 0)
+        local _V128 = _V124 - _V127
+        local _V129 = math[_Y7S(223)](-_V128[_Y7S(184)], -_V128[_Y7S(220)])
+        local _V130 = math[_Y7S(182)](math[_Y7S(224)](math[_Y7S(182)](_V128[_Y7S(222)][_Y7S(145)], -1, 1)), -1.45, 1.45)
+        local _V131 = (_V127 - _V10[_Y7S(103)])[_Y7S(221)]
+        _V10[_Y7S(107)] = {
+                [_Y7S(225)] = 0,
+                [_Y7S(226)] = math[_Y7S(182)](0.6 + _V131 / 150, 0.6, 2.4),
+                [_Y7S(227)] = _V10[_Y7S(103)],
+                [_Y7S(228)] = _V127,
+                [_Y7S(229)] = _V10[_Y7S(108)],
+                [_Y7S(230)] = _V129,
+                [_Y7S(231)] = _V10[_Y7S(109)],
+                [_Y7S(232)] = _V130,
+        }
+        _V10[_Y7S(105)] = Vector3[_Y7S(104)](0, 0, 0)
+        _V10[_Y7S(106)] = nil
+        _V17()
+        _V16(_Y7S(56))
+end
+
+
+
+
+
+local _V132 = _V133[_Y7S(104)]()
+_V132[_Y7S(233)] = Enum[_Y7S(234)][_Y7S(235)]
+_V132[_Y7S(236)] = { workspace[_Y7S(65)] }
+_V132[_Y7S(237)] = true
+
+local _V134 = 0.4   
+local _V135 = nil 
+
+
+local function _V136()
+        if _V12 then
+                return
+        end
+        local _V137 = { workspace[_Y7S(65)] }
+        
+        for _, _V138 in ipairs(_V1:_V139()) do
+                if _V138[_Y7S(113)] then
+                        table[_Y7S(114)](_V137, _V138[_Y7S(113)])
+                end
+        end
+        local _V140 = _V31()
+        if _V140 then
+                table[_Y7S(114)](_V137, _V140)
+                
+                local _V141 = _V140:_V30(_Y7S(8))
+                local _V142 = _V141 and _V141[_Y7S(238)] or nil
+                if _V142 then
+                        local _V143 = _V142:_V144(_Y7S(57))
+                        if _V143 then
+                                table[_Y7S(114)](_V137, _V143)
+                        end
+                end
+        end
+        _V132[_Y7S(236)] = _V137
+end
+
+
+
+local function _V145(_V146, _V147, _V131)
+        local _V148, _V149 = _V146, _V131
+        for _ = 1, 4 do
+                local _V150 = workspace:_V151(_V148, _V147 * _V149, _V132)
+                if not _V150 then
+                        return nil
+                end
+                if _V150[_Y7S(239)][_Y7S(240)] and _V150[_Y7S(241)][_Y7S(145)] > 0.55 then
+                        return _V150
+                end
+                local _V152 = (_V150[_Y7S(137)] - _V148)[_Y7S(221)] + 0.15
+                _V148 = _V150[_Y7S(137)] + _V147 * 0.15
+                _V149 = _V149 - _V152
+                if _V149 <= 0.2 then
+                        return nil
+                end
+        end
+        return nil
+end
+
+
+
+local function _V153(_V154, _V155)
+        if not _V9[_Y7S(78)] or not _V154 then
+                return _V155
+        end
+        local v = _V155 - _V154
+        local _V107 = v[_Y7S(221)]
+        if _V107 > 0.05 then
+                local _V150 = _V145(_V154, v[_Y7S(222)], _V107)
+                if _V150 then
+                        local _V156 = math[_Y7S(185)]((_V150[_Y7S(137)] - _V154)[_Y7S(221)] - 0.15, 0.05)
+                        _V155 = _V154 + v[_Y7S(222)] * _V156
+                end
+        end
+        return _V155
+end
+
+
+
+local function _V157(_V155)
+        if not _V9[_Y7S(78)] then
+                return _V155
+        end
+        local _V158 = 0.3
+        
+        local _V150 = workspace:_V151(_V155, Vector3[_Y7S(104)](0, -2.5, 0), _V132)
+        if _V150 and _V150[_Y7S(239)][_Y7S(240)] and _V150[_Y7S(241)][_Y7S(145)] > 0.55 then
+                if _V155[_Y7S(145)] - _V150[_Y7S(137)][_Y7S(145)] < _V158 then
+                        _V155 = Vector3[_Y7S(104)](_V155[_Y7S(184)], _V150[_Y7S(137)][_Y7S(145)] + _V158, _V155[_Y7S(220)])
+                end
+                return _V155
+        end
+        
+        _V150 = workspace:_V151(_V155, Vector3[_Y7S(104)](0, 3, 0), _V132)
+        if _V150 and _V150[_Y7S(239)][_Y7S(240)] and _V150[_Y7S(241)][_Y7S(145)] < -0.55 then
+                _V155 = Vector3[_Y7S(104)](_V155[_Y7S(184)], _V150[_Y7S(137)][_Y7S(145)] + _V158, _V155[_Y7S(220)])
+        end
+        return _V155
+end
+
+
+local function _V159(_V155)
+        local _V160 = _V153(_V135, _V155)
+        _V135 = _V160
+        return _V160
+end
+
+
+local function _V161(a, _V69, _V68)
+        local _V162 = (_V69 - a) % (2 * math[_Y7S(242)])
+        if _V162 > math[_Y7S(242)] then
+                _V162 = _V162 - 2 * math[_Y7S(242)]
+        end
+        return a + _V162 * _V68
+end
+
+local function _V163(_V164)
+        local _V165 = 1 - math[_Y7S(243)](-_V164 / _V9[_Y7S(80)])
+        
+        local _V166 = 1 - math[_Y7S(243)](-_V164 / _V9[_Y7S(81)])
+        _V10[_Y7S(108)] = _V161(_V10[_Y7S(108)], _V10[_Y7S(110)], _V166)
+        _V10[_Y7S(109)] = _V10[_Y7S(109)] + (_V10[_Y7S(111)] - _V10[_Y7S(109)]) * _V166
+        if _V10[_Y7S(107)] then
+                
+                local _V126 = _V10[_Y7S(107)]
+                _V126[_Y7S(225)] = math[_Y7S(244)](_V126[_Y7S(225)] + _V164, _V126[_Y7S(226)])
+                local _V167 = math[_Y7S(182)](_V126[_Y7S(225)] / _V126[_Y7S(226)], 0, 1)
+                local _V54 = _V167 * _V167 * (3 - 2 * _V167)
+                _V10[_Y7S(103)] = _V126[_Y7S(227)]:_V168(_V126[_Y7S(228)], _V54)
+                _V135 = _V10[_Y7S(103)] 
+                _V10[_Y7S(108)] = _V161(_V126[_Y7S(229)], _V126[_Y7S(230)], _V54)
+                _V10[_Y7S(109)] = _V126[_Y7S(231)] + (_V126[_Y7S(232)] - _V126[_Y7S(231)]) * _V54
+                _V10[_Y7S(110)] = _V10[_Y7S(108)]   
+                _V10[_Y7S(111)] = _V10[_Y7S(109)]
+                _V8[_Y7S(245)] = CFrame[_Y7S(218)](_V10[_Y7S(109)], _V10[_Y7S(108)], 0) + _V10[_Y7S(103)]
+                if _V126[_Y7S(225)] >= _V126[_Y7S(226)] then
+                        _V10[_Y7S(107)] = nil
+                end
+        else
+                local _V169 = CFrame[_Y7S(218)](_V10[_Y7S(109)], _V10[_Y7S(108)], 0)
+                local _V126, _V56 = _V169[_Y7S(219)], _V169[_Y7S(246)]
+                local _V170 = Vector3[_Y7S(104)](0, 0, 0)
+                if _V11[Enum[_Y7S(247)][_Y7S(248)]] then
+                        _V170 = _V170 + _V126
+                end
+                if _V11[Enum[_Y7S(247)][_Y7S(249)]] then
+                        _V170 = _V170 - _V126
+                end
+                if _V11[Enum[_Y7S(247)][_Y7S(250)]] then
+                        _V170 = _V170 - _V56
+                end
+                if _V11[Enum[_Y7S(247)][_Y7S(251)]] then
+                        _V170 = _V170 + _V56
+                end
+                if _V11[Enum[_Y7S(247)][_Y7S(252)]] then
+                        _V170 = _V170 + Vector3[_Y7S(104)](0, 1, 0)
+                end
+                if _V11[Enum[_Y7S(247)][_Y7S(253)]] then
+                        _V170 = _V170 - Vector3[_Y7S(104)](0, 1, 0)
+                end
+                local _V171 = _V9[_Y7S(76)] * (_V10[_Y7S(101)] and _V9[_Y7S(82)] or 1) * (_V10[_Y7S(100)] and _V9[_Y7S(83)] or 1)
+                if _V170[_Y7S(221)] > 0.001 then
+                        _V170 = _V170[_Y7S(222)] * _V171
+                end
+                _V10[_Y7S(105)] = _V10[_Y7S(105)]:_V168(_V170, _V165)
+                _V10[_Y7S(103)] = _V157(_V159(_V10[_Y7S(103)] + _V10[_Y7S(105)] * _V164)) 
+                _V10[_Y7S(106)] = nil
+                _V8[_Y7S(245)] = CFrame[_Y7S(218)](_V10[_Y7S(109)], _V10[_Y7S(108)], 0) + _V10[_Y7S(103)]
+        end
+        _V8[_Y7S(254)] = _V8[_Y7S(254)] + (_V9[_Y7S(44)] - _V8[_Y7S(254)]) * _V165
+end
+
+
+
+
+local function _V172()
+        if _V14 then
+                return
+        end
+        _V14 = true
+        _V5:_V173(_Y7S(58), function(_, _V84)
+                if _V84 == Enum[_Y7S(255)][_Y7S(256)] then
+                        if _V10[_Y7S(95)] == _Y7S(39) and not _V4:_V174() then
+                                _V10[_Y7S(101)] = true
+                                return Enum[_Y7S(257)][_Y7S(258)]
+                        end
+                elseif _V84 == Enum[_Y7S(255)][_Y7S(259)] then
+                        if _V10[_Y7S(101)] then
+                                _V10[_Y7S(101)] = false
+                        end
+                end
+                return Enum[_Y7S(257)][_Y7S(260)]
+        end, false, Enum[_Y7S(247)][_Y7S(261)])
+end
+
+local function _V175()
+        if not _V14 then
+                return
+        end
+        _V14 = false
+        _V10[_Y7S(101)] = false
+        pcall(function()
+                _V5:_V176(_Y7S(58))
+        end)
+end
+
+
+function _V22(_V177)
+        if _V177 ~= _Y7S(6) and not _V10[_Y7S(96)] then
+                
+                _V16(_Y7S(59), 2)
+                return
+        end
+        if _V177 ~= _Y7S(6) and _V10[_Y7S(95)] == _V177 then
+                
+                _V177 = _Y7S(6)
+        end
+        if _V10[_Y7S(95)] == _Y7S(6) and _V177 ~= _Y7S(6) then
+                
+                _V10[_Y7S(112)] = { [_Y7S(245)] = workspace[_Y7S(65)][_Y7S(245)] }
+        end
+        if _V10[_Y7S(95)] == _Y7S(39) and _V177 ~= _Y7S(39) then
+                _V175()
+        end
+        _V10[_Y7S(95)] = _V177
+        _V135 = nil 
+        _V136()
+        if _V177 == _Y7S(6) then
+                _V16(_Y7S(60), 1.2)
+                _V10[_Y7S(107)] = nil
+                _V10[_Y7S(101)] = false
+                _V18()
+                if _V10[_Y7S(112)] then
+                        
+                        local _V110 = _V10[_Y7S(112)]
+                        _V10[_Y7S(112)] = nil
+                        _V8[_Y7S(262)] = Enum[_Y7S(262)][_Y7S(263)]
+                        _V8[_Y7S(245)] = _V110[_Y7S(245)]
+                        task[_Y7S(264)](function()
+                                _V8[_Y7S(262)] = Enum[_Y7S(262)][_Y7S(265)]
+                                local _V141 = _V29(_V31())
+                                if _V141 then
+                                        _V8[_Y7S(266)] = _V141
+                                end
+                                _V8[_Y7S(254)] = _V9[_Y7S(44)]
+                        end)
+                else
+                        _V8[_Y7S(262)] = Enum[_Y7S(262)][_Y7S(265)]
+                        local _V141 = _V29(_V31())
+                        if _V141 then
+                                _V8[_Y7S(266)] = _V141
+                        end
+                        _V8[_Y7S(254)] = _V9[_Y7S(44)]
+                end
+        else
+                
+                local _V178 = workspace[_Y7S(65)][_Y7S(245)]
+                local _V125 = _V178[_Y7S(219)]
+                _V10[_Y7S(103)] = _V178[_Y7S(137)]
+                _V10[_Y7S(108)] = math[_Y7S(223)](-_V125[_Y7S(184)], -_V125[_Y7S(220)])
+                _V10[_Y7S(109)] = math[_Y7S(224)](math[_Y7S(182)](_V125[_Y7S(145)], -1, 1))
+                _V10[_Y7S(110)] = _V10[_Y7S(108)]     
+                _V10[_Y7S(111)] = _V10[_Y7S(109)]
+                _V10[_Y7S(105)] = Vector3[_Y7S(104)](0, 0, 0)
+                _V10[_Y7S(106)] = nil
+                _V10[_Y7S(107)] = nil
+                _V10[_Y7S(101)] = false
+                _V8[_Y7S(262)] = Enum[_Y7S(262)][_Y7S(263)]
+                _V18()
+                _V172()
+                _V16(_Y7S(61), 1.4)
+        end
+        _V24()
+        _V19()
+        _V20()
+end
+
+
+
+
+
+
+function _V179(_V117)
+        _V10[_Y7S(96)] = _V117 and true or false
+        _V10[_Y7S(98)] = false
+        if _V10[_Y7S(96)] then
+                _V18()
+                _V20()
+                _V16(_Y7S(62), 2.2)
+        else
+                if _V10[_Y7S(95)] ~= _Y7S(6) then
+                        _V22(_Y7S(6)) 
+                end
+                _V10[_Y7S(99)] = false
+                _V10[_Y7S(101)] = false
+                _V10[_Y7S(100)] = false
+                _V18()
+                _V20()
+                pcall(function()
+                        _V4[_Y7S(267)] = Enum[_Y7S(267)][_Y7S(268)]
+                end)
+                _V16(_Y7S(63), 2.4)
+        end
+end
+
+
+table[_Y7S(114)](_V13, _V4[_Y7S(188)]:_V78(function(_V106, _V180)
+        if _V106[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(269)] then
+                
+                if _V10[_Y7S(95)] == _Y7S(39) then
+                        _V10[_Y7S(99)] = true
+                        pcall(function()
+                                _V4[_Y7S(267)] = Enum[_Y7S(267)][_Y7S(270)]
+                        end)
+                end
+                return
+        end
+        if _V180 then
+                return
+        end
+        local _V181 = _V106[_Y7S(247)]
+        if _V106[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(271)] and _V181 then
+                _V11[_V181] = true
+                if _V181 == Enum[_Y7S(247)][_Y7S(248)] or _V181 == Enum[_Y7S(247)][_Y7S(249)] or _V181 == Enum[_Y7S(247)][_Y7S(250)]
+                        or _V181 == Enum[_Y7S(247)][_Y7S(251)] or _V181 == Enum[_Y7S(247)][_Y7S(253)] or _V181 == Enum[_Y7S(247)][_Y7S(252)] then
+                        _V10[_Y7S(107)] = nil 
+                end
+        end
+        if _V181 == Enum[_Y7S(247)][_Y7S(272)] then
+                
+                _V179(not _V10[_Y7S(96)])
+                return
+        end
+        if _V181 == Enum[_Y7S(247)][_Y7S(273)] then
+                
+                _V21()
+                return
+        end
+        if _V181 == Enum[_Y7S(247)][_Y7S(274)] then
+                
+                local _V182 = os[_Y7S(207)]()
+                if _V182 - _V10[_Y7S(102)] < 2 then
+                        _V25()
+                else
+                        _V10[_Y7S(102)] = _V182
+                        _V16(_Y7S(64))
+                end
+                return
+        end
+        if not _V10[_Y7S(96)] then
+                
+                
+                return
+        end
+        if _V181 == Enum[_Y7S(247)][_Y7S(275)] then
+                _V22(_Y7S(39))
+        elseif _V181 == Enum[_Y7S(247)][_Y7S(276)] then
+                _V10[_Y7S(100)] = true
+        end
 end))
 
--- [22] MULAI ---------------------------------------------------------
-afkStatusUpdate()
-updateSpeedLabel()
-setTab(1)  -- 🏃 GERAK jadi tab pertama
-task.delay(0.15, bukaGui)
-print("[BALAP v" .. VERSI .. "] SIAP ✔ — F = GUI | K×2 = rejoin")
-print("[BALAP] 3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM")
-print("[BALAP] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
-print("[BALAP]           B fall assist • R hide • T cahaya 2-arah • X dinding • K×2 rejoin")
-print("[BALAP] Fitur dinding (X) dari skrip lain sudah jadi 1 dengan script balapan")
-end -- akhir initLogic()
+table[_Y7S(114)](_V13, _V4[_Y7S(194)]:_V78(function(_V106)
+        if _V106[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(269)] then
+                _V10[_Y7S(99)] = false
+                pcall(function()
+                        _V4[_Y7S(267)] = Enum[_Y7S(267)][_Y7S(268)]
+                end)
+        end
+        if _V106[_Y7S(247)] then
+                _V11[_V106[_Y7S(247)]] = nil
+                if _V106[_Y7S(247)] == Enum[_Y7S(247)][_Y7S(276)] then
+                        _V10[_Y7S(100)] = false
+                end
+        end
+end))
 
--- Eksekusi initLogic() sekarang (UI + helpers sudah siap dari part1-4)
-initLogic()
+
+table[_Y7S(114)](_V13, _V4[_Y7S(192)]:_V78(function(_V106)
+        if _V106[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(193)] then
+                if _V10[_Y7S(99)] and _V10[_Y7S(95)] == _Y7S(39) then
+                        local _V183, _V184 = _V106[_Y7S(277)][_Y7S(184)], _V106[_Y7S(277)][_Y7S(145)]
+                        local _V185 = _V9[_Y7S(84)] * 0.02
+                        _V10[_Y7S(107)] = nil
+                        _V10[_Y7S(110)] = _V10[_Y7S(110)] - _V183 * _V185   
+                        _V10[_Y7S(111)] = math[_Y7S(182)](_V10[_Y7S(111)] - _V184 * _V185, -1.45, 1.45)
+                end
+        elseif _V106[_Y7S(189)] == Enum[_Y7S(189)][_Y7S(278)] then
+                local _V186 = _V106[_Y7S(137)][_Y7S(220)]
+                if _V10[_Y7S(95)] == _Y7S(39) then
+                        _V9[_Y7S(44)] = math[_Y7S(182)](_V9[_Y7S(44)] - _V186 * 3, 30, 105)
+                        if _V15[_Y7S(202)] then
+                                _V15[_Y7S(202)][_Y7S(187)](_V9[_Y7S(44)])
+                        end
+                end
+        end
+end))
+
+
+local _V187 = 0
+table[_Y7S(114)](_V13, _V3[_Y7S(279)]:_V78(function(_V164)
+        _V164 = math[_Y7S(244)](_V164, 0.066) 
+        _V8 = workspace[_Y7S(65)]
+        
+        if os[_Y7S(207)]() - _V187 > 0.5 then
+                _V187 = os[_Y7S(207)]()
+                _V136()
+        end
+        if _V10[_Y7S(95)] == _Y7S(39) then
+                _V163(_V164)
+        end
+end))
+
+
+table[_Y7S(114)](_V13, _V7[_Y7S(280)]:_V78(function(_V27)
+        task[_Y7S(74)](0.5)
+        _V18() 
+        if _V10[_Y7S(95)] == _Y7S(6) then
+                local _V141 = _V29(_V27)
+                if _V141 and workspace[_Y7S(65)][_Y7S(266)] ~= _V141 then
+                        workspace[_Y7S(65)][_Y7S(266)] = _V141
+                end
+        end
+end))
+
+
+table[_Y7S(114)](_V13, workspace:_V188(_Y7S(65)):_V78(function()
+        _V8 = workspace[_Y7S(65)]
+end))
+
+
+function _V25()
+        _V12 = true
+        for _, _V27 in ipairs(_V13) do
+                pcall(function()
+                        _V27:_V189()
+                end)
+        end
+        table[_Y7S(281)](_V13)
+        _V175()
+        pcall(function()
+                _V5:_V176(_Y7S(66))
+                _V5:_V176(_Y7S(67)) 
+        end)
+        pcall(function()
+                _V8[_Y7S(262)] = Enum[_Y7S(262)][_Y7S(265)]
+                local _V141 = _V29(_V31())
+                if _V141 then
+                        _V8[_Y7S(266)] = _V141
+                end
+                _V8[_Y7S(254)] = 70
+                _V4[_Y7S(267)] = Enum[_Y7S(267)][_Y7S(268)]
+        end)
+        pcall(function()
+                local _V122 = _V26(_V31())
+                if _V122 then
+                        _V122[_Y7S(216)] = Vector3[_Y7S(217)]
+                        _V122[_Y7S(215)] = false
+                end
+        end)
+        pcall(function()
+                _V48:_V43()
+        end)
+        _G[_Y7S(71)] = nil
+        print(_Y7S(68))
+end
+_G[_Y7S(71)] = _V25
+
+
+_V18()
+_V24()
+_V19()
+_V20()
+_V16(_Y7S(69), 6)
+print(_Y7S(70))
+
