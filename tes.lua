@@ -1,6 +1,7 @@
 --========================================================
---  BALAP v1.0.2 — Script Balapan Gabungan
+--  BALAP v1.0.3 — Script Balapan Gabungan
 --  v1.0.2: FIX Fall Assist (variabel hrp/hum tertukar) + Velocity Dampener
+--  v1.0.3: Fall HALUS — potong 50% + napi awal (-72) + jeda platform singkat
 --
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
@@ -17,7 +18,7 @@
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    K = Rejoin (double-tap)
 --========================================================
-local VERSI = "1.0.2"
+local VERSI = "1.0.3"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -455,7 +456,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.0.2 ⚡",
+    Text = "⚡ BALAP v1.0.3 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -730,10 +731,10 @@ State.FallOn  = false
 State.MoonOn  = false  -- Moonwalk (G)
 State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
 
--- Config Fall Assist v3.1 "VIRTUAL BRANCH" (nilai baru spec §7)
+-- Config Fall Assist v3.3 "SMOOTH BRANCH" (permintaan: potong 50%, sekhalus mungkin)
 cfgFall = {
     minJatuh = 35,
-    posisi   = 0.70,
+    posisi   = 0.50,
 }
 
 -- Original Lighting (untuk restore saat cahaya dimatikan)
@@ -910,7 +911,7 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.0.2\n"
+    Text = "⚡ BALAP v1.0.3\n"
         .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
@@ -936,7 +937,7 @@ end)
 buatHeader(scrollSistem, "Tentang")
 local infoKredit = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 58),
+    Size = UDim2.new(1, 0, 0, 72),
     FontFace = fnt("med"),
     TextSize = 11,
     TextColor3 = Warna.AbuTeks,
@@ -946,7 +947,8 @@ local infoKredit = buat("TextLabel", {
     Text = "Tema SILAU NEON (ungu/biru LED) ⚡\n"
         .. "Basis: SILAU BALAPAN v1.1 (5 skrip digabung)\n"
         .. "v1.0.1: rename BALAP — 3 tab fokus balapan\n"
-        .. "v1.0.2: fix fall assist (var tertukar) + dampener",
+        .. "v1.0.2: fix fall assist (var tertukar) + dampener\n"
+        .. "v1.0.3: jatuh lebih halus — potong 50% + soft catch",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
@@ -1900,7 +1902,10 @@ Setters.Light = function(v, silent)
     syncNotify("Light", v, silent, "Cahaya Auto")
 end
 
--- SMART FALL ASSIST v3.2 "VIRTUAL BRANCH + DAMPENER"
+-- SMART FALL ASSIST v3.3 "SMOOTH BRANCH + DAMPENER"
+-- v1.0.3 mode HALUS: kecepatan jatuh di-cap -72 sejak awal (napi awal),
+-- platform memotong di 50% perjalanan, dan hanya bertahan 0.10 detik —
+-- sehingga "berhenti di udara" jauh lebih sulit terasa.
 -- FIX v1.0.2: sebelumnya `local char, hum, hrp = getKarakter()` TERTUKAR
 -- (getKarakter mengembalikan char, HRP, Humanoid) sehingga
 -- hrp.AssemblyLinearVelocity ERROR tiap frame dan assist tidak pernah jalan.
@@ -1932,6 +1937,15 @@ Setters.Fall = function(v, silent)
                 end
                 fallState.apex = math.max(fallState.apex, hrp.Position.Y)
                 local sudahTurun = fallState.apex - hrp.Position.Y
+                -- v3.3 NAPI AWAL: batasi kecepatan jatuh maksimal -72 stud/detik
+                -- supaya benturan platform & tanah lebih lembut (jarang terasa).
+                -- Lompatan biasa (jatuhnya di bawah ~12 stud) tidak pernah tersentuh.
+                if sudahTurun > 12 and vel.Y < -72 then
+                    pcall(function()
+                        hrp.AssemblyLinearVelocity = Vector3.new(vel.X, -72, vel.Z)
+                    end)
+                    vel = hrp.AssemblyLinearVelocity
+                end
                 -- update cache ketinggian tanah: 10Hz saat jauh, tiap frame saat dekat
                 if sudahTurun > 10 and vel.Y < -40 then
                     local dekat = (fallState.groundY ~= nil) and (hrp.Position.Y - fallState.groundY) < 60
@@ -1972,7 +1986,7 @@ Setters.Fall = function(v, silent)
                             plat.CastShadow = false
                             plat.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 4, hrp.Position.Z)
                             plat.Parent = workspace
-                            task.delay(0.15, function()
+                            task.delay(0.10, function()  -- v1.0.3: 0.15 → 0.10 dtk, jeda makin pendek
                                 pcall(function() plat:Destroy() end)
                             end)
                         end)
