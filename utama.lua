@@ -3,7 +3,7 @@
 --  TEMA: ACxSIIILAU (ungu/biru LED)
 --
 --  5 TAB:
---    1 🏃 GERAK    : Speed, Jump, Shiftlock, Moonwalk, Anti-AFK
+--    1 🏃 GERAK    : Speed, Jump, Shiftlock, Moonwalk, Fall Resist (Pulse), Anti-AFK
 --    2 🎨 VISUAL   : Hide, Cahaya Auto 2 arah, Lightweight, Dinding Batas
 --    3 🚀 TELEPORT : simpan lokasi, search, rename, AUTO TP, respawn, loop
 --    4 📍 TIANG    : pasang/sambung/putus tiang, TP, REKAM JALUR, gabung
@@ -14,7 +14,7 @@
 --    Y = pasang tiang
 --    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
---    G = Moonwalk    R = Hide
+--    G = Moonwalk    B = Fall Resist (Pulse)    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    V = Rekam jalur    K = Rejoin (double-tap)
 --========================================================
@@ -757,11 +757,77 @@ State.FallOn  = false
 State.MoonOn  = false  -- Moonwalk (G)
 State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
 
--- Config Fall Assist v3.2 "VIRTUAL BRANCH+" (fix kurang work)
-cfgFall = {
-    minJatuh = 25,   -- jatuh di bawah ini dianggap masih aman, tidak dibantu (stud)
-    sisaAman = 12,   -- cabang muncul saat sisa jatuh <= nilai ini (stud, boleh 5-25)
+-- ===== FALL RESIST V1.07 "SILENT PULSE" (digabung dari script terpisah) =====
+-- Saat jatuh, planner kurva demage menentukan kapan menembak PULSE:
+-- selama 0.08 dtk state Humanoid dipaksa "Landed" tiap frame ->
+-- game mengira sudah mendarat -> hitungan tinggi jatuh TERRESET ->
+-- demage dihitung dari sisa jatuh. Fisika & kecepatan TIDAK diubah.
+-- Level: SANGAT RINGAN 5% | RINGAN 20% (default) | SEDANG 50% | BERAT 75%
+FRPreset = {
+    { nama = "SANGAT RINGAN", pct = 5  },
+    { nama = "RINGAN",        pct = 20 },
+    { nama = "SEDANG",        pct = 50 },
+    { nama = "BERAT",         pct = 75 },
 }
+cfgFall = {
+    idx      = 2,   -- preset terpilih: RINGAN
+    potongan = 20,  -- default potongan 20%
+    pulse    = 0,   -- statistik pulse "riil" terkirim
+}
+FRVelMin    = -10   -- gerbang kecepatan turun
+FRBatasRiil = 30    -- jatuh >= 30 stud = "riil" (latch + notif); di bawah = sia-sia
+FRPulseDur  = 0.08  -- jendela pulse "Landed" (detik) - port v1.3
+FRJedaRay   = 0.10  -- raycast tanah 10Hz saat jauh, tiap frame saat dekat (<60 stud)
+
+-- KURVA DEMAGE (tracked stud -> demage) dari tes user H=60:
+-- 30->0 | 37.5->20 | 45->27 | 48->44 | 50->51 | 60->93
+-- Di luar rentang diekstrapolasi lurus (4.2 dmg/stud).
+FRKurva = {
+    { t = 30,   d = 0  },
+    { t = 37.5, d = 20 },
+    { t = 45,   d = 27 },
+    { t = 48,   d = 44 },
+    { t = 50,   d = 51 },
+    { t = 60,   d = 93 },
+}
+FRSlope = (93 - 51) / (60 - 50) -- 4.2 dmg/stud untuk tracked > 60
+
+-- demage dari tinggi tracked t (interpolar linear + ekstrapolasi)
+FRDmg = function(t)
+    if t <= FRKurva[1].t then return 0 end
+    for i = 2, #FRKurva do
+        local a, b = FRKurva[i - 1], FRKurva[i]
+        if t <= b.t then
+            local f = (t - a.t) / (b.t - a.t)
+            return a.d + f * (b.d - a.d)
+        end
+    end
+    local b = FRKurva[#FRKurva]
+    return b.d + (t - b.t) * FRSlope
+end
+
+-- kebalikan FRDmg: tinggi tracked yang menghasilkan demage d
+FRInv = function(d)
+    if d <= 0 then return FRKurva[1].t end
+    for i = 2, #FRKurva do
+        local a, b = FRKurva[i - 1], FRKurva[i]
+        if d <= b.d then
+            local f = (d - a.d) / (b.d - a.d)
+            return a.t + f * (b.t - a.t)
+        end
+    end
+    local b = FRKurva[#FRKurva]
+    return b.t + (d - b.d) / FRSlope
+end
+
+-- pilih level potongan (dipanggil tombol UI)
+setFallLevel = function(i)
+    local p = FRPreset[i]
+    if not p then return end
+    cfgFall.idx = i
+    cfgFall.potongan = p.pct
+    if RefreshFall then RefreshFall() end
+end
 
 -- Original Lighting (untuk restore saat cahaya dimatikan)
 oLight = {
@@ -773,16 +839,20 @@ oLight = {
     FogEnd = Lighting.FogEnd,
 }
 
--- State Fall Assist
+-- State Fall Resist (SILENT PULSE)
 fallState = {
-    jatuh   = false,
-    apex    = 0,
-    bentur  = false,
-    sejak   = 0,
-    groundY = nil,
-    lastRay = 0,
-    plat    = nil,
-    conn    = nil,
+    jatuh         = false, -- sedang terbangan (record aktif)
+    apex          = 0,     -- titik tertinggi sejak freefall
+    bentur        = false, -- LATCH per-record: 1x pulse per jatuh
+    sejak         = 0,     -- os.clock() saat freefall mulai
+    groundY       = nil,   -- cache ketinggian tanah (raycast)
+    lastRay       = 0,
+    pulseSampai   = nil,   -- jendela pulse aktif sampai waktu ini
+    sudahPulse    = false, -- LATCH global: 1x per jatuh RIIL (anti pantulan lereng)
+    pulseHarmless = false, -- pulse terakhir cuma di jatuh kecil (sia-sia)
+    tanahSejak    = nil,   -- re-arm stabil: menempel tanah >= 0.30 dtk
+    hum           = nil,   -- humanoid pemilik record (anti record basi saat respawn)
+    conn          = nil,
 }
 
 -- Raycast params khusus Fall Assist
@@ -828,7 +898,56 @@ buatToggleRow(scrollKing, "Moonwalk", "G", "Moon")
 buatHeader(scrollKing, "Anti AFK")
 local _, afkLbl = buatToggleRow(scrollKing, "👻 Anti-AFK (2 lapis)", nil, "Afk")
 AfkLabel = afkLbl
--- [DIMATIKAN SEMENTARA] header + tombol Fall Assist dihapus dari Tab 1
+buatHeader(scrollKing, "Fall Resist")
+local _, fallLbl = buatToggleRow(scrollKing, "Fall Resist (B): OFF", "B", "Fall")
+FallLabel = fallLbl
+
+-- baris pilih level potongan (4 tombol mini: 5/20/50/75%)
+local fallPresetBtns = {}
+local rowFallLvl = buat("Frame", {
+    BackgroundColor3 = Warna.AbuItem,
+    Size = UDim2.new(1, 0, 0, 30),
+    LayoutOrder = nextOrder(),
+}, scrollKing)
+buat("UICorner", {CornerRadius = UDim.new(0, 8)}, rowFallLvl)
+buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 0),
+    Size = UDim2.new(0, 100, 1, 0),
+    FontFace = fnt("med"),
+    TextSize = 11,
+    TextColor3 = Warna.TeksGelap,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "Potongan",
+}, rowFallLvl)
+for i, p in ipairs(FRPreset) do
+    local b = buat("TextButton", {
+        BackgroundColor3 = Warna.Card2,
+        Size = UDim2.new(0, 36, 0, 22),
+        Position = UDim2.new(1, -(4 - i) * 40 - 8, 0.5, -11),
+        FontFace = fnt("bold"),
+        TextSize = 11,
+        TextColor3 = Warna.Putih,
+        Text = p.pct .. "%",
+        AutoButtonColor = false,
+    }, rowFallLvl)
+    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, b)
+    fallPresetBtns[i] = b
+    b.MouseButton1Click:Connect(function()
+        setFallLevel(i)
+        toast("Fall Resist: " .. p.nama .. " - potongan " .. p.pct .. "%", Warna.Biru)
+    end)
+end
+RefreshFall = function()
+    for i, b in ipairs(fallPresetBtns) do
+        b.BackgroundColor3 = (i == cfgFall.idx) and Warna.Hijau or Warna.Card2
+    end
+    if FallLabel and FallLabel.Parent then
+        FallLabel.Text = "Fall Resist (B): "
+            .. (State.FallOn and ("ON " .. cfgFall.potongan .. "% • " .. FRPreset[cfgFall.idx].nama) or "OFF")
+    end
+end
+RefreshFall()
 
 -- King number row (baris angka Fall Assist sementara dihapus)
 local function buatNumRow(parent, labelText, default, cb)
@@ -1447,7 +1566,7 @@ local infoVersi = buat("TextLabel", {
         .. "Gabungan: TIANG PATH + KING + TELEPORT + TRAINING\n"
         .. "5 TAB: 🏃 GERAK | 🎨 VISUAL | 🚀 TELEPORT | 📍 TIANG | ⚙️ SISTEM\n"
         .. "Keybind: F panel • Y pasang • Q speed • J jump • C shift • G moon\n"
-        .. "R hide • T cahaya • X dinding • V rekam • K×2 rejoin",
+        .. "B fallresist • R hide • T cahaya • X dinding • V rekam • K×2 rejoin",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
@@ -1556,7 +1675,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1600, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = GUI   ✦   🏃 Q Speed 3-state (17.10/17.25/21.25) • J Jump (51.25/65.25) • C Shift • G Moonwalk   ✦   🎨 R Hide • T Cahaya 2-arah • X Dinding • LW   ✦   🚀 TP: simpan lokasi + AUTO TP + respawn/loop   ✦   📍 Y pasang tiang • V rekam jalur • gabung rekaman   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+    Text = "⌨ F = GUI   ✦   🏃 Q Speed 3-state (17.10/17.25/21.25) • J Jump (51.25/65.25) • C Shift • G Moonwalk • B FallResist   ✦   🎨 R Hide • T Cahaya 2-arah • X Dinding • LW   ✦   🚀 TP: simpan lokasi + AUTO TP + respawn/loop   ✦   📍 Y pasang tiang • V rekam jalur • gabung rekaman   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -4119,19 +4238,192 @@ Setters.Light = function(v, silent)
     syncNotify("Light", v, silent, "Cahaya Auto")
 end
 
--- SMART FALL ASSIST: DIMATIKAN SEMENTARA (permintaan user)
--- Seluruh mesin v3.2 dinonaktifkan; setter tinggal stub yang selalu OFF.
--- Kalau mau dinyalakan lagi, tempel kembali blok Setters.Fall v3.2 dari file FallFix.
+-- ============================================================
+-- FALL RESIST V1.07 "SILENT PULSE" (digabung dari script terpisah)
+-- PULSE: jendela 0.08 dtk state Humanoid dipaksa "Landed" tiap frame
+-- -> game mengira sudah mendarat -> hitungan tinggi jatuh TERRESET
+-- -> demage dihitung dari sisa jatuh. Fisika TIDAK diubah sama sekali
+-- (tanpa rem, tanpa hentakan) -> mendarat 100% natural.
+-- Planner: FRDmg/FRInv menentukan posisi pulse per level potongan.
+-- CATATAN FIX: getKarakter() = (char, HRP, Humanoid). Engine fall lama
+-- memecahnya terbalik (hum, hrp) -> error tiap frame -> fitur mati.
+-- ============================================================
 Setters.Fall = function(v, silent)
-    v = false -- paksa OFF selama fitur dinonaktifkan
-    if State.FallOn ~= v then
-        State.FallOn = v
-        if fallState and fallState.conn then
+    if State.FallOn == v then return end
+    State.FallOn = v
+    if v then
+        if fallState.conn then return end -- sudah jalan
+        fallState.conn = RunService.Heartbeat:Connect(function()
+            if not State.FallOn or State.Removed then return end
+            local char, hrp, hum = getKarakter() -- urutan benar: char, HRP, Humanoid
+            if not hum or not hrp then return end
+
+            -- anti record basi: ganti karakter (respawn) -> buang record lama
+            if fallState.hum and fallState.hum ~= hum then
+                fallState.jatuh         = false
+                fallState.bentur        = false
+                fallState.sudahPulse    = false
+                fallState.pulseHarmless = false
+                fallState.tanahSejak    = nil
+                fallState.pulseSampai   = nil
+                fallState.hum           = nil
+            end
+
+            local now = os.clock()
+
+            -- SILENT PULSE: selama jendela pulse, paksa state "Landed".
+            -- Kecepatan & fisika jatuh TIDAK diubah sama sekali - game hanya
+            -- menerima event mendarat (penghitung tinggi jatuh game tereset).
+            if fallState.pulseSampai and now < fallState.pulseSampai then
+                pcall(function() hum:ChangeState(Enum.HumanoidStateType.Landed) end)
+            end
+
+            local vel = hrp.AssemblyLinearVelocity
+            local st
+            pcall(function() st = hum:GetState() end)
+
+            if st == Enum.HumanoidStateType.Freefall and vel.Y < -4 then
+                if not fallState.jatuh then
+                    fallState.jatuh       = true
+                    fallState.apex        = hrp.Position.Y
+                    fallState.bentur      = false
+                    fallState.sejak       = now
+                    fallState.groundY     = nil
+                    fallState.lastRay     = 0
+                    fallState.pulseSampai = nil
+                    fallState.hum         = hum
+                end
+                fallState.apex = math.max(fallState.apex, hrp.Position.Y)
+
+                -- cache ketinggian tanah: 10Hz saat jauh, tiap frame saat dekat
+                if vel.Y < FRVelMin then
+                    local dekat = (fallState.groundY ~= nil) and (hrp.Position.Y - fallState.groundY) < 60
+                    if dekat or (now - fallState.lastRay) >= FRJedaRay then
+                        fallState.lastRay = now
+                        local filter = {workspace:FindFirstChild("TiangPath_Silau")}
+                        if char then table.insert(filter, char) end
+                        fallRay.FilterDescendantsInstances = filter
+                        local r = workspace:Raycast(hrp.Position, Vector3.new(0, -800, 0), fallRay)
+                        if r then fallState.groundY = r.Position.Y else fallState.groundY = nil end
+                    end
+                end
+
+                local tinggiTotal, sisaJatuh
+                if fallState.groundY then
+                    sisaJatuh   = hrp.Position.Y - fallState.groundY
+                    tinggiTotal = fallState.apex - fallState.groundY
+                end
+
+                -- RE-ARM PINTAR: pulse sebelumnya cuma di jatuh kecil (sia-sia),
+                -- tapi jatuh sekarang ternyata besar (mis. melangkah dari hop ke
+                -- tepi jurang) -> buka latch per-record supaya pulse ulang tetap
+                -- jalan di posisi tepat.
+                if fallState.bentur and fallState.pulseHarmless
+                and tinggiTotal and tinggiTotal >= FRBatasRiil then
+                    fallState.bentur        = false
+                    fallState.pulseHarmless = false
+                end
+
+                -- PLANNER KURVA DEMAGE V1.07 (TANPA gerbang jarak/tinggi):
+                -- target demage akhir ~= (100 - potongan)% x demage normal.
+                -- tPlan = tinggi tracked yang menghasilkan demage target.
+                -- Pulse ditembak saat sisa jatuh <= tPlan + margin dinamis
+                -- (kecepatan/60 = jarak per frame, kompensasi kuantisasi).
+                -- Level ringan -> trigger hampir langsung di awal jatuh;
+                -- level berat -> menunggu posisi tepat dekat tanah.
+                if (not fallState.bentur) and vel.Y < FRVelMin then
+                    local picu = false
+                    if cfgFall.potongan > 0 and tinggiTotal then
+                        local dNormal = FRDmg(tinggiTotal)
+                        local dTarget = dNormal * (1 - cfgFall.potongan / 100)
+                        local tPlan   = FRInv(dTarget)
+                        local margin  = math.abs(vel.Y) / 60
+                        if sisaJatuh <= tPlan + margin then
+                            picu = true
+                        end
+                    end
+                    -- fallback: tanah tidak terdeteksi raycast (jatuh sangat dalam)
+                    if (not picu) and cfgFall.potongan > 0 and (not tinggiTotal)
+                    and (now - fallState.sejak) > 0.6 and vel.Y < -70 then
+                        picu = true
+                    end
+                    if picu then
+                        fallState.bentur = true -- latch per-record (anti pulse beruntun)
+                        local riil = (tinggiTotal or 0) >= FRBatasRiil
+                        if riil then
+                            fallState.sudahPulse = true -- latch global (anti pantulan lereng)
+                            cfgFall.pulse = cfgFall.pulse + 1
+                            print("[FallResist] pulse Landed terkirim - potongan "
+                                .. cfgFall.potongan .. "% | H=" .. string.format("%.0f", tinggiTotal or 0))
+                            toast("Fall Resist: reset senyap di udara - potongan " .. cfgFall.potongan .. "%",
+                                Color3.fromRGB(70, 200, 120))
+                            if RefreshFall then RefreshFall() end
+                        else
+                            -- jatuh kecil (0 demage): pulse tetap jalan, tapi
+                            -- tidak mengunci jatuh besar berikutnya & tanpa notif
+                            fallState.pulseHarmless = true
+                        end
+                        fallState.pulseSampai = now + FRPulseDur
+                    end
+                end
+            elseif fallState.jatuh then
+                -- RE-ARM STABIL: sentuhan tanah sesaat (pantulan / menyenggol
+                -- lereng) TIDAK menghidupkan ulang pemicu. Re-arm HANYA jika:
+                -- (a) menempel tanah terus >= 0.30 dtk (mendarat beneran),
+                -- (b) masuk air / duduk / panjat, atau (c) mati.
+                if st == Enum.HumanoidStateType.Dead then
+                    fallState.jatuh         = false
+                    fallState.bentur        = false
+                    fallState.sudahPulse    = false
+                    fallState.pulseHarmless = false
+                    fallState.tanahSejak    = nil
+                else
+                    local okRe, tanah, selesaiMutlak = pcall(function()
+                        return hum.FloorMaterial ~= Enum.Material.Air,
+                            st == Enum.HumanoidStateType.Swimming
+                            or st == Enum.HumanoidStateType.Seated
+                            or st == Enum.HumanoidStateType.Climbing
+                    end)
+                    if okRe then
+                        if selesaiMutlak then
+                            fallState.jatuh         = false
+                            fallState.bentur        = false
+                            fallState.sudahPulse    = false
+                            fallState.pulseHarmless = false
+                            fallState.tanahSejak    = nil
+                        elseif tanah then
+                            if not fallState.tanahSejak then
+                                fallState.tanahSejak = now
+                            end
+                            if now - fallState.tanahSejak >= 0.30 then
+                                fallState.jatuh         = false
+                                fallState.bentur        = false
+                                fallState.sudahPulse    = false
+                                fallState.pulseHarmless = false
+                                fallState.tanahSejak    = nil
+                            end
+                        else
+                            fallState.tanahSejak = nil -- udara lagi (pantulan) -> batalkan hitungan tanah
+                        end
+                    end
+                end
+            end
+        end)
+    else
+        if fallState.conn then
             fallState.conn:Disconnect()
             fallState.conn = nil
         end
+        fallState.jatuh         = false
+        fallState.bentur        = false
+        fallState.sudahPulse    = false
+        fallState.pulseHarmless = false
+        fallState.tanahSejak    = nil
+        fallState.pulseSampai   = nil -- jangan sisakan jendela pulse
+        fallState.hum           = nil
     end
-    syncNotify("Fall", false, silent, "Smart Fall Assist")
+    syncNotify("Fall", v, silent, "Fall Resist")
+    if RefreshFall then RefreshFall() end
 end
 
 -- ANTI-AFK (port dari A) — toggle via Tab 1, sinkron dengan afkState
@@ -4674,6 +4966,8 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
         setFeature("Shift", not State.ShiftOn)
     elseif input.KeyCode == Enum.KeyCode.G then
         setFeature("Moon", not State.MoonOn)
+    elseif input.KeyCode == Enum.KeyCode.B then
+        setFeature("Fall", not State.FallOn)
     elseif input.KeyCode == Enum.KeyCode.R then
         setFeature("Hide", not State.HideOn)
     elseif input.KeyCode == Enum.KeyCode.T then
@@ -4722,7 +5016,7 @@ end)
 print("[SilauNeon v" .. VERSI .. "] SIAP ✔ — F = GUI | Y = pasang tiang | V = rekam jalur | K×2 = rejoin")
 print("[SilauNeon] 5 TAB: 🏃 GERAK | 🎨 VISUAL | 🚀 TELEPORT | 📍 TIANG | ⚙️ SISTEM")
 print("[SilauNeon] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
-print("[SilauNeon]           R hide • T cahaya 2-arah • X dinding • V rekam • K×2 rejoin")
+print("[SilauNeon]           B fallresist • R hide • T cahaya 2-arah • X dinding • V rekam • K×2 rejoin")
 print("[SilauNeon] Auto TP: MULAI/STOP di Tab 3. Delay per titik di kotak kecil tiap baris (kosong = global).")
 print("[SilauNeon] Penyimpanan: " .. (fileOk
     and ("Tiang='" .. CFG.NAMA_FILE_TIANG .. "' • Lokasi='" .. CFG.NAMA_FILE_LOKASI .. "' (per game: " .. game.PlaceId .. ")")
