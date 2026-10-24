@@ -14,9 +14,11 @@
 --    G = Moonwalk    B = Fall Resist (preset 5/20/50/75%)    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    K = Rejoin (double-tap)
+--    TP = via GUI (tab GERAK): simpan lokasi dgn nama bebas — permanen
 --========================================================
 print("[BALAP v1.8] load mulai...")
--- [0] DIAGNOSTIK ON-SCREEN (v1.0.5) --------------------------------
+-- [0] DIAGNOSTIK ON-SCREEN (v1.0.6) --------------------------------
+-- v1.0.6: + TP — simpan lokasi (nama bebas) & teleport, permanen via BALAP_TP.json
 -- v1.0.5: FIX "Unable to assign property CellPadding. UDim2 expected, got UDim"
 -- (bug ini bikin GUI crash diam-diam sejak v1.0.2 — tertangkap banner merah v1.0.4)
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
@@ -946,6 +948,207 @@ refreshFallPreset = function()
 end
 refreshFallPreset()
 
+-- ===== TP — TELEPORT + SIMPAN LOKASI (nama bebas, permanen) ==========
+-- Berdiri di tempat -> ketik nama -> 💾 SIMPAN -> muncul di daftar.
+-- Tombol TP = teleport ke lokasi, X = hapus. Nama sama = update posisi.
+-- Tersimpan di file BALAP_TP.json (folder Xeno) -> TETAP ADA walau
+-- keluar game/rejoin. Executor tanpa writefile -> mode sesi (getgenv).
+local TP_MAX     = 40
+local TP_FILE    = "BALAP_TP.json"
+local TP_LOKASI  = {}
+local tpBisaFile = (type(writefile) == "function") and (type(readfile) == "function")
+
+local function tpBulat(v)
+    return math.floor(v * 100 + 0.5) / 100
+end
+
+local function tpTulisFile()
+    getgenv().BALAP_TP_DATA = TP_LOKASI            -- cadangan sesi (re-execute)
+    if not tpBisaFile then return end
+    local data = {}
+    for i = 1, #TP_LOKASI do
+        local L = TP_LOKASI[i]
+        data[i] = { nama = L.nama, x = tpBulat(L.x), y = tpBulat(L.y), z = tpBulat(L.z) }
+    end
+    local ok, err = pcall(function()
+        writefile(TP_FILE, HttpService:JSONEncode(data))
+    end)
+    if not ok then warn("[BALAP-TP] gagal tulis file: " .. tostring(err)) end
+end
+
+local function tpMuat()
+    local data
+    if tpBisaFile then
+        local ada = false
+        pcall(function() ada = isfile(TP_FILE) end)
+        if ada then
+            pcall(function() data = HttpService:JSONDecode(readfile(TP_FILE)) end)
+        end
+    end
+    if type(data) ~= "table" then
+        data = rawget(getgenv(), "BALAP_TP_DATA")   -- fallback: sesi yang sama
+    end
+    if type(data) == "table" then
+        for _, v in ipairs(data) do
+            if type(v) == "table" and type(v.nama) == "string" and #v.nama > 0
+                and type(v.x) == "number" and type(v.y) == "number" and type(v.z) == "number" then
+                TP_LOKASI[#TP_LOKASI + 1] = { nama = v.nama, x = v.x, y = v.y, z = v.z }
+            end
+        end
+    end
+    getgenv().BALAP_TP_DATA = TP_LOKASI
+    print("[BALAP-TP] muat " .. #TP_LOKASI .. " lokasi"
+        .. (tpBisaFile and " (file: " .. TP_FILE .. ")" or " (mode SESI — executor tanpa writefile)"))
+end
+tpMuat()
+
+buatHeader(scrollKing, "Teleport (TP)")
+
+-- baris input: [nama bebas] [💾 SIMPAN]
+local tpInputRow = buat("Frame", {
+    BackgroundColor3 = Warna.AbuItem,
+    Size = UDim2.new(1, 0, 0, 30),
+    LayoutOrder = nextOrder(),
+}, scrollKing)
+buat("UICorner", {CornerRadius = UDim.new(0, 8)}, tpInputRow)
+local tpInput = buat("TextBox", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0.5, -11),
+    Size = UDim2.new(1, -118, 0, 22),
+    FontFace = fnt("med"),
+    TextSize = 11,
+    TextColor3 = Warna.TeksGelap,
+    PlaceholderText = "Nama lokasi (bebas)...",
+    PlaceholderColor3 = Warna.AbuTeks,
+    Text = "",
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ClearTextOnFocus = false,
+}, tpInputRow)
+local tpSaveBtn = buat("TextButton", {
+    BackgroundColor3 = Warna.Hijau,
+    Position = UDim2.new(1, -100, 0.5, -11),
+    Size = UDim2.new(0, 92, 0, 22),
+    FontFace = fnt("bold"),
+    TextSize = 10,
+    TextColor3 = Warna.HijauMuda,
+    Text = "SIMPAN",
+    AutoButtonColor = false,
+}, tpInputRow)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, tpSaveBtn)
+
+-- daftar lokasi (membesar otomatis, ikut scroll tab GERAK)
+local tpList = buat("Frame", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 0),
+    AutomaticSize = Enum.AutomaticSize.Y,
+    LayoutOrder = nextOrder(),
+}, scrollKing)
+buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, tpList)
+
+local function tpRefresh()
+    for _, c in ipairs(tpList:GetChildren()) do
+        if c:IsA("TextButton") or c:IsA("TextLabel") or c:IsA("Frame") then c:Destroy() end
+    end
+    if #TP_LOKASI == 0 then
+        buat("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 18),
+            FontFace = fnt("reg"),
+            TextSize = 10,
+            TextColor3 = Warna.AbuTeks,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = "Belum ada lokasi — berdiri di tempat, ketik nama, tekan SIMPAN",
+            LayoutOrder = 0,
+        }, tpList)
+        return
+    end
+    for i, L in ipairs(TP_LOKASI) do
+        local row = buat("Frame", {
+            BackgroundColor3 = Warna.AbuItem,
+            Size = UDim2.new(1, 0, 0, 28),
+            LayoutOrder = i,
+        }, tpList)
+        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
+        buat("TextLabel", {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 10, 0, 0),
+            Size = UDim2.new(1, -130, 1, 0),
+            FontFace = fnt("med"),
+            TextSize = 10,
+            TextColor3 = Warna.TeksGelap,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+            Text = L.nama .. "  (" .. math.floor(L.y) .. "m)",
+        }, row)
+        local btnTp = buat("TextButton", {
+            BackgroundColor3 = Warna.Biru,
+            Position = UDim2.new(1, -88, 0.5, -10),
+            Size = UDim2.new(0, 50, 0, 20),
+            FontFace = fnt("bold"),
+            TextSize = 10,
+            TextColor3 = Warna.Putih,
+            Text = "TP",
+            AutoButtonColor = false,
+        }, row)
+        buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnTp)
+        local btnHps = buat("TextButton", {
+            BackgroundColor3 = Warna.Merah,
+            Position = UDim2.new(1, -32, 0.5, -10),
+            Size = UDim2.new(0, 26, 0, 20),
+            FontFace = fnt("bold"),
+            TextSize = 10,
+            TextColor3 = Warna.Putih,
+            Text = "X",
+            AutoButtonColor = false,
+        }, row)
+        buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnHps)
+        btnTp.MouseButton1Click:Connect(function()
+            local _, hrp = getKarakter()
+            if not hrp then toast("TP gagal — karakter belum ada", Warna.Merah) return end
+            hrp.CFrame = CFrame.new(L.x, L.y + 3, L.z)
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            print("[BALAP-TP] teleport ke '" .. L.nama .. "'")
+            toast("TP: " .. L.nama, Warna.Biru)
+        end)
+        btnHps.MouseButton1Click:Connect(function()
+            table.remove(TP_LOKASI, i)
+            tpTulisFile()
+            tpRefresh()
+            print("[BALAP-TP] hapus '" .. L.nama .. "' (sisa " .. #TP_LOKASI .. ")")
+            toast("Hapus: " .. L.nama, Warna.Merah)
+        end)
+    end
+end
+
+tpSaveBtn.MouseButton1Click:Connect(function()
+    local nama = tostring(tpInput.Text):gsub("^%s+", ""):gsub("%s+$", "")
+    if #nama == 0 then toast("Tulis dulu nama lokasinya", Warna.Kuning) return end
+    local _, hrp = getKarakter()
+    if not hrp then toast("Karakter belum ada — coba lagi", Warna.Merah) return end
+    local p = hrp.Position
+    for _, L in ipairs(TP_LOKASI) do
+        if L.nama == nama then                    -- nama sama = update posisi
+            L.x, L.y, L.z = p.X, p.Y, p.Z
+            tpTulisFile()
+            tpRefresh()
+            tpInput.Text = ""
+            print("[BALAP-TP] update '" .. nama .. "' (total " .. #TP_LOKASI .. ")")
+            toast("Diperbarui: " .. nama, Warna.Hijau)
+            return
+        end
+    end
+    if #TP_LOKASI >= TP_MAX then toast("Penuh (max " .. TP_MAX .. " lokasi)", Warna.Kuning) return end
+    TP_LOKASI[#TP_LOKASI + 1] = { nama = nama, x = p.X, y = p.Y, z = p.Z }
+    tpTulisFile()
+    tpRefresh()
+    tpInput.Text = ""
+    print("[BALAP-TP] simpan '" .. nama .. "' (total " .. #TP_LOKASI .. ")"
+        .. (tpBisaFile and " -> file" or " -> SESI SAJA (executor tanpa writefile)"))
+    toast("Tersimpan: " .. nama, Warna.Hijau)
+end)
+
+tpRefresh()
+
 -- [7d] KONTEN TAB 2: VISUAL -----------------------------------------
 kontenVisual = buat("Frame", {
     Position = UDim2.new(0, 0, 0, 80),
@@ -1000,7 +1203,7 @@ buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.Layou
 buatHeader(scrollSistem, "Info")
 local infoVersi = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 64),
+    Size = UDim2.new(1, 0, 0, 78),
     FontFace = fnt("med"),
     TextSize = 11,
     TextColor3 = Warna.TeksGelap,
@@ -1010,6 +1213,7 @@ local infoVersi = buat("TextLabel", {
     Text = "⚡ BALAP v1.8\n"
         .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
+        .. "TP: simpan lokasi (nama bebas) — tersimpan permanen\n"
         .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
         .. "B fall resist • R hide • T cahaya • X dinding • K×2 rejoin",
     LayoutOrder = nextOrder(),
