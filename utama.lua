@@ -3,7 +3,7 @@
 --  TEMA: ACxSIIILAU (ungu/biru LED)
 --
 --  5 TAB:
---    1 🏃 GERAK    : Speed, Jump, Shiftlock, Moonwalk, Fall Assist, Anti-AFK
+--    1 🏃 GERAK    : Speed, Jump, Shiftlock, Moonwalk, Anti-AFK
 --    2 🎨 VISUAL   : Hide, Cahaya Auto 2 arah, Lightweight, Dinding Batas
 --    3 🚀 TELEPORT : simpan lokasi, search, rename, AUTO TP, respawn, loop
 --    4 📍 TIANG    : pasang/sambung/putus tiang, TP, REKAM JALUR, gabung
@@ -14,7 +14,7 @@
 --    Y = pasang tiang
 --    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
---    G = Moonwalk    B = Smart Fall Assist    R = Hide
+--    G = Moonwalk    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    V = Rekam jalur    K = Rejoin (double-tap)
 --========================================================
@@ -757,10 +757,10 @@ State.FallOn  = false
 State.MoonOn  = false  -- Moonwalk (G)
 State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
 
--- Config Fall Assist v3.1 "VIRTUAL BRANCH" (nilai baru spec §7)
+-- Config Fall Assist v3.2 "VIRTUAL BRANCH+" (fix kurang work)
 cfgFall = {
-    minJatuh = 35,
-    posisi   = 0.70,
+    minJatuh = 25,   -- jatuh di bawah ini dianggap masih aman, tidak dibantu (stud)
+    sisaAman = 12,   -- cabang muncul saat sisa jatuh <= nilai ini (stud, boleh 5-25)
 }
 
 -- Original Lighting (untuk restore saat cahaya dimatikan)
@@ -781,6 +781,7 @@ fallState = {
     sejak   = 0,
     groundY = nil,
     lastRay = 0,
+    plat    = nil,
     conn    = nil,
 }
 
@@ -827,10 +828,9 @@ buatToggleRow(scrollKing, "Moonwalk", "G", "Moon")
 buatHeader(scrollKing, "Anti AFK")
 local _, afkLbl = buatToggleRow(scrollKing, "👻 Anti-AFK (2 lapis)", nil, "Afk")
 AfkLabel = afkLbl
-buatHeader(scrollKing, "Jatuh Cerdas")
-buatToggleRow(scrollKing, "Smart Fall Assist", "B", "Fall")
+-- [DIMATIKAN SEMENTARA] header + tombol Fall Assist dihapus dari Tab 1
 
--- King number row (untuk pengaturan fall assist — number row tetap ada)
+-- King number row (baris angka Fall Assist sementara dihapus)
 local function buatNumRow(parent, labelText, default, cb)
     local row = buat("Frame", {
         BackgroundColor3 = Warna.AbuItem,
@@ -871,10 +871,7 @@ local function buatNumRow(parent, labelText, default, cb)
         end
     end)
 end
-buatNumRow(scrollKing, "MIN JATUH (stud)", cfgFall.minJatuh, function(n) cfgFall.minJatuh = n end)
-buatNumRow(scrollKing, "POSISI BENTUR (0-1)", cfgFall.posisi, function(n)
-    if n > 0 and n < 1 then cfgFall.posisi = n end
-end)
+-- [DIMATIKAN SEMENTARA] baris angka MIN JATUH & SISA AMAN dihapus
 
 -- [7d] KONTEN TAB 2: VISUAL -----------------------------------------
 kontenVisual = buat("Frame", {
@@ -1450,7 +1447,7 @@ local infoVersi = buat("TextLabel", {
         .. "Gabungan: TIANG PATH + KING + TELEPORT + TRAINING\n"
         .. "5 TAB: 🏃 GERAK | 🎨 VISUAL | 🚀 TELEPORT | 📍 TIANG | ⚙️ SISTEM\n"
         .. "Keybind: F panel • Y pasang • Q speed • J jump • C shift • G moon\n"
-        .. "B fall • R hide • T cahaya • X dinding • V rekam • K×2 rejoin",
+        .. "R hide • T cahaya • X dinding • V rekam • K×2 rejoin",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
@@ -1559,7 +1556,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1600, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = GUI   ✦   🏃 Q Speed 3-state (17.10/17.25/21.25) • J Jump (51.25/65.25) • C Shift • G Moonwalk • B FallAssist   ✦   🎨 R Hide • T Cahaya 2-arah • X Dinding • LW   ✦   🚀 TP: simpan lokasi + AUTO TP + respawn/loop   ✦   📍 Y pasang tiang • V rekam jalur • gabung rekaman   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+    Text = "⌨ F = GUI   ✦   🏃 Q Speed 3-state (17.10/17.25/21.25) • J Jump (51.25/65.25) • C Shift • G Moonwalk   ✦   🎨 R Hide • T Cahaya 2-arah • X Dinding • LW   ✦   🚀 TP: simpan lokasi + AUTO TP + respawn/loop   ✦   📍 Y pasang tiang • V rekam jalur • gabung rekaman   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -4122,96 +4119,19 @@ Setters.Light = function(v, silent)
     syncNotify("Light", v, silent, "Cahaya Auto")
 end
 
--- SMART FALL ASSIST v3.1 "VIRTUAL BRANCH"
--- Jatuh normal kencang -> sekali di posisi bentur (0.70) perjalanan:
--- platform tak terlihat muncul 4 stud di bawah kaki ->
--- karakter MENDARAT BENERAN (reset penghitung jatuh) ->
--- 0.15 detik kemudian platform hilang -> jatuh sisa pendek
+-- SMART FALL ASSIST: DIMATIKAN SEMENTARA (permintaan user)
+-- Seluruh mesin v3.2 dinonaktifkan; setter tinggal stub yang selalu OFF.
+-- Kalau mau dinyalakan lagi, tempel kembali blok Setters.Fall v3.2 dari file FallFix.
 Setters.Fall = function(v, silent)
-    if State.FallOn == v then return end
-    State.FallOn = v
-    if v then
-        if fallState.conn then return end  -- sudah jalan
-        fallState.conn = RunService.Heartbeat:Connect(function()
-            if not State.FallOn or State.Removed then return end
-            local char, hum, hrp = getKarakter()
-            if not hum or not hrp then return end
-            local now = os.clock()
-            local vel = hrp.AssemblyLinearVelocity
-            local st
-            pcall(function() st = hum:GetState() end)
-            if st == Enum.HumanoidStateType.Freefall and vel.Y < -4 then
-                if not fallState.jatuh then
-                    fallState.jatuh = true
-                    fallState.apex = hrp.Position.Y
-                    fallState.bentur = false
-                    fallState.sejak = now
-                    fallState.groundY = nil
-                    fallState.lastRay = 0
-                end
-                fallState.apex = math.max(fallState.apex, hrp.Position.Y)
-                local sudahTurun = fallState.apex - hrp.Position.Y
-                -- update cache ketinggian tanah: 10Hz saat jauh, tiap frame saat dekat
-                if sudahTurun > 10 and vel.Y < -40 then
-                    local dekat = (fallState.groundY ~= nil) and (hrp.Position.Y - fallState.groundY) < 60
-                    if dekat or (now - fallState.lastRay) >= 0.1 then
-                        fallState.lastRay = now
-                        local filter = {workspace:FindFirstChild("TiangPath_Silau")}
-                        if char then table.insert(filter, char) end
-                        fallRay.FilterDescendantsInstances = filter
-                        local r = workspace:Raycast(hrp.Position, Vector3.new(0, -800, 0), fallRay)
-                        if r then fallState.groundY = r.Position.Y else fallState.groundY = nil end
-                    end
-                end
-                local tinggiTotal, sisaJatuh
-                if fallState.groundY then
-                    sisaJatuh = hrp.Position.Y - fallState.groundY
-                    tinggiTotal = fallState.apex - fallState.groundY
-                end
-                -- VIRTUAL BRANCH: sekali per jatuh di posisi bentur
-                if not fallState.bentur and sudahTurun > 10 and vel.Y < -40 then
-                    local picu = false
-                    if tinggiTotal and tinggiTotal >= cfgFall.minJatuh
-                    and sisaJatuh <= tinggiTotal * (1 - cfgFall.posisi) then
-                        picu = true
-                    end
-                    if not picu and not tinggiTotal and (now - fallState.sejak) > 0.6 and vel.Y < -70 then
-                        picu = true
-                    end
-                    if picu then
-                        fallState.bentur = true
-                        pcall(function()
-                            local plat = Instance.new("Part")
-                            plat.Name = "Branch"
-                            plat.Size = Vector3.new(6, 0.4, 6)
-                            plat.Transparency = 1
-                            plat.Anchored = true
-                            plat.CanCollide = true
-                            plat.CanQuery = false
-                            plat.CanTouch = false
-                            plat.CastShadow = false
-                            plat.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 4, hrp.Position.Z)
-                            plat.Parent = workspace
-                            task.delay(0.15, function()
-                                pcall(function() plat:Destroy() end)
-                            end)
-                        end)
-                    end
-                end
-            elseif fallState.jatuh then
-                fallState.jatuh = false
-                fallState.bentur = false
-            end
-        end)
-    else
-        if fallState.conn then
+    v = false -- paksa OFF selama fitur dinonaktifkan
+    if State.FallOn ~= v then
+        State.FallOn = v
+        if fallState and fallState.conn then
             fallState.conn:Disconnect()
             fallState.conn = nil
         end
-        fallState.jatuh = false
-        fallState.bentur = false
     end
-    syncNotify("Fall", v, silent, "Smart Fall Assist")
+    syncNotify("Fall", false, silent, "Smart Fall Assist")
 end
 
 -- ANTI-AFK (port dari A) — toggle via Tab 1, sinkron dengan afkState
@@ -4279,6 +4199,11 @@ unloadScript = function()
         pcall(function() fallState.conn:Disconnect() end)
         fallState.conn = nil
     end
+    pcall(function()
+        for _, d in ipairs(workspace:GetChildren()) do
+            if d.Name == "Branch_Silau" then d:Destroy() end
+        end
+    end)
     -- 3b) Stop Auto TP + Rekam jalur (port V1.0.1)
     autoState.aktif = false
     if rekam.aktif then
@@ -4749,8 +4674,6 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
         setFeature("Shift", not State.ShiftOn)
     elseif input.KeyCode == Enum.KeyCode.G then
         setFeature("Moon", not State.MoonOn)
-    elseif input.KeyCode == Enum.KeyCode.B then
-        setFeature("Fall", not State.FallOn)
     elseif input.KeyCode == Enum.KeyCode.R then
         setFeature("Hide", not State.HideOn)
     elseif input.KeyCode == Enum.KeyCode.T then
@@ -4799,7 +4722,7 @@ end)
 print("[SilauNeon v" .. VERSI .. "] SIAP ✔ — F = GUI | Y = pasang tiang | V = rekam jalur | K×2 = rejoin")
 print("[SilauNeon] 5 TAB: 🏃 GERAK | 🎨 VISUAL | 🚀 TELEPORT | 📍 TIANG | ⚙️ SISTEM")
 print("[SilauNeon] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
-print("[SilauNeon]           B fall assist • R hide • T cahaya 2-arah • X dinding • V rekam • K×2 rejoin")
+print("[SilauNeon]           R hide • T cahaya 2-arah • X dinding • V rekam • K×2 rejoin")
 print("[SilauNeon] Auto TP: MULAI/STOP di Tab 3. Delay per titik di kotak kecil tiap baris (kosong = global).")
 print("[SilauNeon] Penyimpanan: " .. (fileOk
     and ("Tiang='" .. CFG.NAMA_FILE_TIANG .. "' • Lokasi='" .. CFG.NAMA_FILE_LOKASI .. "' (per game: " .. game.PlaceId .. ")")
