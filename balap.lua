@@ -15,7 +15,63 @@
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    K = Rejoin (double-tap)
 --========================================================
+print("[BALAP v1.8] load mulai...")
+-- [0] DIAGNOSTIK ON-SCREEN (v1.0.5) --------------------------------
+-- v1.0.5: FIX "Unable to assign property CellPadding. UDim2 expected, got UDim"
+-- (bug ini bikin GUI crash diam-diam sejak v1.0.2 — tertangkap banner merah v1.0.4)
+-- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
+-- banner berubah MERAH dan menampilkan teks errornya di layar.
+do
+        local __dGui, __dLbl
+        pcall(function()
+                __dGui = Instance.new("ScreenGui")
+                __dGui.Name = "BALAP_DIAG"
+                __dGui.ResetOnSpawn = false
+                __dGui.DisplayOrder = 1000000
+                __dLbl = Instance.new("TextLabel")
+                __dLbl.Size = UDim2.new(0, 480, 0, 38)
+                __dLbl.Position = UDim2.new(0, 8, 0, 120)
+                __dLbl.BackgroundColor3 = Color3.fromRGB(30, 30, 46)
+                __dLbl.BackgroundTransparency = 0.1
+                __dLbl.BorderSizePixel = 0
+                __dLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+                __dLbl.Font = Enum.Font.GothamBold
+                __dLbl.TextSize = 13
+                __dLbl.TextWrapped = true
+                __dLbl.Text = "BALAP: memulai..."
+                __dLbl.Parent = __dGui
+                local cr = Instance.new("UICorner")
+                cr.CornerRadius = UDim.new(0, 8)
+                cr.Parent = __dLbl
+                local dipasang = false
+                pcall(function() if gethui then __dGui.Parent = gethui(); dipasang = true end end)
+                if not dipasang then
+                        pcall(function() __dGui.Parent = game:GetService("CoreGui"); dipasang = true end)
+                end
+                if not dipasang then
+                        pcall(function()
+                                __dGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui", 5)
+                                dipasang = true
+                        end)
+                end
+        end)
+        function diagSet(teks, warna)
+                print("[BALAP-DIAG] " .. tostring(teks))
+                pcall(function()
+                        if __dGui and __dGui.Parent and __dLbl then
+                                __dLbl.Text = tostring(teks)
+                                if warna then __dLbl.BackgroundColor3 = warna end
+                        end
+                end)
+        end
+end
+
 local VERSI = "1.8"
+local __BALAP_LOAD_OK__ = xpcall(function()
+-- ================================================================
+-- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
+-- error + nomor baris LANGSUNG tampil di layar (tidak hilang diam).
+-- ================================================================
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -24,7 +80,8 @@ if not RunService:IsClient() then
     return
 end
 if not game:IsLoaded() then
-    game.Loaded:Wait()
+       diagSet("menunggu game load... (nyangkut di sini = game belum selesai load)")
+       game.Loaded:Wait()
 end
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -34,12 +91,19 @@ local TeleportService  = game:GetService("TeleportService")
 local Lighting         = game:GetService("Lighting")
 local Workspace        = game:GetService("Workspace")
 local VirtualUser      = game:GetService("VirtualUser")
+diagSet("menunggu LocalPlayer...")
 local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
 if not LocalPlayer then
-    warn("[BALAP] GAGAL: LocalPlayer belum ada.")
+        warn("[BALAP] GAGAL: LocalPlayer belum ada.")
+        diagSet("GAGAL: LocalPlayer tidak ada (dapat nil)", Color3.fromRGB(239, 68, 68))
     return
 end
-local Terrain = Workspace:WaitForChild("Terrain")
+diagSet("cek Terrain...")
+local Terrain = Workspace:FindFirstChildOfClass("Terrain") or Workspace:WaitForChild("Terrain", 10)
+if not Terrain then
+       warn("[BALAP] Terrain tidak ketemu (10 dtk) — lanjut tanpa Terrain.")
+       diagSet("Terrain tidak ketemu — lanjut tanpa Terrain")
+end
 
 -- v1.2.3 ANTI DOUBLE-INSTANCE (TAKEOVER) — pengganti "anti double-run" lama:
 -- Dulu: `if _G.__BALAP_MAIN__ then return end` punya 2 lubang:
@@ -192,6 +256,7 @@ local function idBaru()
     return tostring(os.time()) .. "-" .. tostring(rnd(100000, 999999))
 end
 
+diagSet("dasar OK — siapkan helper GUI...")
 -- [4b] REGISTRY KONEKSI & FORWARD DECLARE ---------------------------
 local semuaKoneksi = {}
 local function catat(conn)
@@ -843,7 +908,7 @@ local gridFall = buat("Frame", {
 }, scrollKing)
 buat("UIGridLayout", {
     CellSize = UDim2.new(0.5, -3, 0, 29),
-    CellPadding = UDim.new(0, 6, 0, 6),
+    CellPadding = UDim2.new(0, 6, 0, 6),
     SortOrder = Enum.SortOrder.LayoutOrder,
 }, gridFall)
 local presetFallBtns = {}
@@ -1001,6 +1066,7 @@ end -- akhir buildUI()
 
 -- Eksekusi buildUI() sekarang (panel, root, outer, Warna, buat sudah ada dari part1)
 buildUI()
+diagSet("GUI utama OK — bikin efek & notif...")
 
 -- [8] FOOTER + LED + MARQUEE ---------------------------------------
 -- Bungkus dengan function untuk hemat local count (Luau limit 200)
@@ -1345,6 +1411,7 @@ end -- akhir buildFX()
 
 -- Eksekusi buildFX() sekarang (panel, root, outer sudah ada dari part1)
 buildFX()
+diagSet("efek OK — pasang logika fitur...")
 
 -- [14] LOGIKA UTAMA -------------------------------------------------
 -- Bungkus part logika dengan function untuk hemat local count (Luau limit 200)
@@ -2072,7 +2139,7 @@ Setters.Fall = function(v, silent)
                     if dekat or (now - fallState.lastRay) >= cfgFall.JEDA_RAY then
                         fallState.lastRay = now
                         fallRay.FilterDescendantsInstances = char and {char} or {}
-                        local r = workspace:Raycast(hrp.Position, Vector3.new(0, -800, 0), fallRay)
+                        local r = Workspace:Raycast(hrp.Position, Vector3.new(0, -800, 0), fallRay)
                         if r then fallState.groundY = r.Position.Y else fallState.groundY = nil end
                     end
                 end
@@ -2456,17 +2523,54 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end))
 
+diagSet("keybind OK — finalisasi...")
 -- [22] MULAI ---------------------------------------------------------
 afkStatusUpdate()
 updateSpeedLabel()
 setTab(1)  -- 🏃 GERAK jadi tab pertama
-task.delay(0.15, bukaGui)
+task.delay(0.15, function()
+        local okG, errG = pcall(bukaGui)
+        if not okG then
+                diagSet("GUI gagal terbuka: " .. tostring(errG), Color3.fromRGB(239, 68, 68))
+                warn("[BALAP] bukaGui error: " .. tostring(errG))
+        end
+end)
 print("[BALAP v" .. VERSI .. "] SIAP ✔ — F = GUI | K×2 = rejoin")
 print("[BALAP] 3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM")
 print("[BALAP] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
 print("[BALAP]           B fall resist • R hide • T cahaya 2-arah • X dinding • K×2 rejoin")
 print("[BALAP] Fitur dinding (X) dari skrip lain sudah jadi 1 dengan script balapan")
+diagSet("BALAP v1.8 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+task.delay(7, function()
+        local function hapusDiag()
+                pcall(function()
+                        local g = game:GetService("CoreGui"):FindFirstChild("BALAP_DIAG")
+                        if g then g:Destroy() end
+                end)
+                pcall(function()
+                        if gethui then
+                                local g = gethui():FindFirstChild("BALAP_DIAG")
+                                if g then g:Destroy() end
+                        end
+                end)
+        end
+        hapusDiag()
+end)
 end -- akhir initLogic()
 
 -- Eksekusi initLogic() sekarang (UI + helpers sudah siap dari part1-4)
 initLogic()
+end, function(e)
+        local teks = tostring(e)
+        print("==================================================")
+        print("[BALAP v1.8] ERROR SAAT LOAD — kirim teks ini ke dev:")
+        print(teks)
+        pcall(function() print(debug.traceback("", 2)) end)
+        print("==================================================")
+        pcall(function()
+                diagSet("ERROR LOAD: " .. teks:sub(1, 260), Color3.fromRGB(239, 68, 68))
+        end)
+end)
+if not __BALAP_LOAD_OK__ then
+        warn("[BALAP v1.8] Script GAGAL load — banner MERAH di layar berisi errornya.")
+end
