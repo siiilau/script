@@ -1,5 +1,7 @@
 --========================================================
---  BALAP v1.2.2 — Script Balapan Gabungan
+--  BALAP v1.0.1 — 
+--  TEMA: SILAU NEON (ungu/biru LED)
+--
 --  3 TAB:
 --    1 🏃 GERAK  : Speed, Jump, Shiftlock, Moonwalk, Fall Assist, Anti-AFK
 --    2 🎨 VISUAL : Hide, Hide Pemain Lain, Cahaya Auto 2 arah, Lightweight, Dinding Batas
@@ -13,7 +15,7 @@
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    K = Rejoin (double-tap)
 --========================================================
-local VERSI = "1.2.2"
+local VERSI = "1.7"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -39,9 +41,18 @@ if not LocalPlayer then
 end
 local Terrain = Workspace:WaitForChild("Terrain")
 
--- anti double-run
-if _G.__BALAP_MAIN__ then return end
-_G.__BALAP_MAIN__ = true
+-- v1.2.3 ANTI DOUBLE-INSTANCE (TAKEOVER) — pengganti "anti double-run" lama:
+-- Dulu: `if _G.__BALAP_MAIN__ then return end` punya 2 lubang:
+--   (a) executor yang SHARE _G: re-execute versi baru DITOLAK diam-diam ->
+--       user tanpa sadar terus memakai instance/versi lama (potongan 30%);
+--   (b) executor yang ISOLASI _G: guard tidak pernah nyala -> 2 instance
+--       jalan bersamaan. GUI lama dihapus sweep, tapi Heartbeat Fall Assist
+--       instance lama TETAP PULSE (30%) -> 0% pun damage tetap terpotong!
+-- Sekarang: eksekusi baru SELALU jalan & memasang token baru. Watchdog di
+-- instance lama melihat token berganti / GUI-nya dihapus -> unload sendiri.
+local MY_TOKEN = {}
+_G.__BALAP_TOKEN__ = MY_TOKEN
+_G.__BALAP_MAIN__ = true  -- penanda lama, tetap dibersihkan unloadScript
 
 -- [2] KONFIGURASI ---------------------------------------------------
 -- Semua konstanta digabung ke dalam 1 table CFG untuk hemat local count
@@ -451,7 +462,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.2.2 ⚡",
+    Text = "⚡ BALAP v1.7 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -727,10 +738,21 @@ State.MoonOn  = false  -- Moonwalk (G)
 State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
 
 -- Config Fall Assist v3.5 "1 FITUR" (v1.2) — TANPA minimal jatuh.
--- Tinggal 1 angka: POTONGAN DEMAGE (%). Potong di X% perjalanan jatuh
--- = damage kira-kira turun X%. 0 = normal total, 30 = ringan, 75 = paling ringan.
+-- Tinggal 1 angka: POTONGAN DEMAGE (%) = % damage jatuh yang DIKEMBALIKAN
+-- ke HP setelah game menghitung damage natural (v1.7 REFUND TEPAT).
+-- Angka GUI = potongan nyata, dijamin 1:1. 0 = 100% natural & senyap.
 cfgFall = {
-    potongan = 30,  -- v1.2: default pilihan user (menggantikan posisi 0.30 + minJatuh 35)
+    potongan = 30,  -- default pilihan user
+    -- v1.7 model pulse TERUKUR (3 titik data: sudahTurun 3.6/10/30 stud ->
+    -- damage 1-3/7-9/29 HP): saat reset pulse terdaftar, game membayar
+    -- ± k x (sudahTurun - t). Dipakai HANYA utk ukuran pulse ANTI-MATI
+    -- (menyelamatkan nyawa — tidak butuh presisi; presisi tetap dari refund).
+    k = 1.06,
+    t = 2.5,
+    -- v1.7 ANTI-MATI: bila proyeksi damage natural >= HP sekarang, SATU pulse
+    -- darurat dipicu supaya game membayar ~45% HP (selamat), lalu refund tetap
+    -- memotong R% dari damage yang benar-benar masuk. false = murni refund.
+    antiMati = true,
 }
 
 -- Original Lighting (untuk restore saat cahaya dimatikan)
@@ -747,14 +769,23 @@ oLight = {
 fallState = {
     jatuh   = false,
     apex    = 0,
+    tinggi  = 0,  -- tinggiTotal jatuh INI (direset 0 tiap mulai jatuh supaya
+                  -- tidak kecampur tinggi jatuh sebelumnya)
     bentur  = false,
     sejak   = 0,
     groundY = nil,
     lastRay = 0,
     conn    = nil,
     pulseSampai = nil,
-    sudahPulse  = false,  -- v1.2.2: latch GLOBAL 1x per terbangan (2 lapis)
+    sudahPulse  = false,  -- v1.2.2: latch GLOBAL 1x pulse per terbangan (2 lapis)
     tanahSejak  = nil,    -- v1.2.2: sejak kapan menempel tanah (untuk re-arm stabil)
+    -- v1.7 REFUND TEPAT:
+    hpHum       = nil,    -- humanoid yang terakhir dipantau (anti respawn bug)
+    hpRef       = nil,    -- HP frame sebelumnya (deteksi damage per frame)
+    terakhirCepat = nil,  -- timestamp terakhir vel.Y < -30 (arming refund)
+    selesaiPada = nil,    -- timestamp jatuh selesai (window refund 1.2 dtk)
+    damJatuh    = 0,      -- total damage natural terukur selama jatuh INI
+    natSampel   = {},     -- sampel kurva natural {h, d} utk proyeksi anti-mati
 }
 
 -- Raycast params khusus Fall Assist
@@ -829,24 +860,34 @@ local function buatNumRow(parent, labelText, default, cb)
         TextSize = 12,
         TextColor3 = Warna.Putih,
         Text = string.format("%.2f", default),
-        ClearTextOnFocus = false,
+        -- v1.2.3: dulu false -> kotak berisi "30.00", ketik "0" jadi "30.000"
+        -- -> terbaca 30! Sekarang tap = field kosong, ketik angka fresh.
+        ClearTextOnFocus = true,
     }, row)
     buat("UICorner", {CornerRadius = UDim.new(0, 6)}, bx)
     buat("UIStroke", {Color = Warna.AbuGelap, Thickness = 1, Transparency = 0.5}, bx)
+    -- v1.2.3: cb(n) mengembalikan nilai FINAL (boleh di-clamp) -> tampilan
+    -- kotak DIJAMIN sama dengan nilai yang benar-benar tersimpan. Koma
+    -- desimal (0,5) juga diterima. Gagal parse -> tampilkan nilai aktual.
     bx.FocusLost:Connect(function()
-        local n = tonumber((bx.Text:gsub("[^%d%.%-]", "")))
+        local n = tonumber((bx.Text:gsub(",", "."):gsub("[^%d%.%-]", "")))
+        if n then n = cb(n) end
         if n then
-            cb(n)
             bx.Text = string.format("%.2f", n)
             toast(labelText .. ": " .. string.format("%.2f", n), Warna.Biru)
         else
-            bx.Text = string.format("%.2f", default)
+            bx.Text = string.format("%.2f", cfgFall.potongan)
         end
     end)
 end
 -- v1.2: 1 fitur — cukup 1 angka (MIN JATUH & POSISI BENTUR dihapus)
+-- v1.2.3: dulu nilai di luar 0-75 DITOLAK diam-diam (kotak tetap menampilkan
+-- angka ketikan -> kelihatan tersimpan padahal tidak). Sekarang di-CLAMP:
+-- 300 -> 75, -5 -> 0, "0,5" -> 0.5. Tampilan selalu jujur.
 buatNumRow(scrollKing, "POTONGAN DEMAGE (0-75%)", cfgFall.potongan, function(n)
-    if n >= 0 and n <= 75 then cfgFall.potongan = n end
+    if n < 0 then n = 0 elseif n > 75 then n = 75 end
+    cfgFall.potongan = n
+    return n
 end)
 
 -- [7d] KONTEN TAB 2: VISUAL -----------------------------------------
@@ -910,7 +951,7 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.2.2\n"
+    Text = "⚡ BALAP v1.7\n"
         .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
@@ -936,7 +977,7 @@ end)
 buatHeader(scrollSistem, "Tentang")
 local infoKredit = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 142),
+    Size = UDim2.new(1, 0, 0, 226),
     FontFace = fnt("med"),
     TextSize = 11,
     TextColor3 = Warna.AbuTeks,
@@ -952,7 +993,13 @@ local infoKredit = buat("TextLabel", {
         .. "v1.0.6: posisi bentur 0.30 — reduksi ringan biar masuk akal\n"
         .. "v1.2: 1 fitur — potongan % (0-75), tanpa minimal jatuh, tanpa soft landing\n"
         .. "v1.2.1: fix reset senyap — cukup 1x per terbangan, ulang setelah injek tanah\n"
-        .. "v1.2.2: fix final — 1x per turunan walau memantul di lereng (tanah stabil 0.3 dtk)",
+        .. "v1.2.2: fix final — 1x per turunan walau memantul di lereng (tanah stabil 0.3 dtk)\n"
+        .. "v1.2.3: fix 0% masih terpotong — input angka diperkuat + takeover anti double-instance\n"
+        .. "v1.3: kalibrasi jujur — angka = % damage berkurang (1 = nyaris tanpa efek, 75 = berat)\n"
+        .. "v1.4: potongan dihitung dari ambang damage game (data uji: 42 HP -> 7-9) + log F9 tinggi jatuh\n"
+        .. "v1.5: fix arah — pulsa digeser ke R% sebelum tanah + kalibrasi otomatis (ternyata masih belum tepat)\n"
+        .. "v1.6: peta posisi terukur + adaptif otomatis — kurva damage game melandai (pulse 30+ stud = nol efek), posisi kini dari data terukur & disetel sendiri tiap jatuh\n"
+        .. "v1.7: REFUND TEPAT — damage natural dibiarkan masuk lalu R% dikembalikan ke HP; angka GUI dijamin 1:1 (uji v1.6: 1% nyatanya memotong 56%), pulse kini cuma utk anti-mati",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
@@ -1917,14 +1964,60 @@ end
 -- FIX v1.0.2: sebelumnya `local char, hum, hrp = getKarakter()` TERTUKAR
 -- (getKarakter mengembalikan char, HRP, Humanoid) sehingga
 -- hrp.AssemblyLinearVelocity ERROR tiap frame dan assist tidak pernah jalan.
--- Alur SILENT: jatuh natural penuh -> di X% perjalanan kirim "pulse Landed"
--- 0.08 dtk (game reset hitungan jatuh, fisika tidak berubah) -> lanjut jatuh natural.
 -- v1.2.1+v1.2.2 LATCH 1x (2 LAPIS): pulse cuma SEKALI per terbangan.
 -- Lapis 1 (per record): bentur. Lapis 2 (GLOBAL): sudahPulse — apa pun yang
 -- menghapus record (state flap / pantulan lereng), pemicu tetap MATI sampai
 -- benar-benar selesai terbangan: menempel tanah >= 0.30 dtk (bukan sentuhan
 -- sekilas!), masuk air, duduk, panjat, atau mati. Dulu di lereng salju bisa
 -- 2-3x karena tiap pantulan singkat dianggap "sudah mendarat".
+--
+-- ===== v1.7 REFUND TEPAT (menggantikan total semua tebakan kurva) =======
+-- HASIL UJI v1.6 (H=50): natural 65-67 | setting 1% -> 29 (potongan nyata
+-- 56%!) | 10% -> 12-65 acak | 30% -> 10-51 acak. Simpulan keras: memasang
+-- pulse berdasar PREDIKSI kurva game tidak akan pernah tepat — kurva natural
+-- berubah bentuk per ketinggian, pulse bisa kalah race dari mendarat asli,
+-- dan adaptasi mengejar target yang salah. Maka v1.7 BERHENTI MELAWAN:
+--   1. Game menghitung damage jatuh SEPENUHNYA (100% natural — jalur normal
+--      TANPA pulse sama sekali).
+--   2. Script memantau HP tiap frame. Setiap HP turun >= 0.5 selama
+--      terbangan cepat / <= 1.2 dtk setelah mendarat = damage jatuh D.
+--   3. Script langsung mengembalikan D x POTONGAN/100 ke HP.
+--      -> damage bersih = D x (1 - R/100) = ANGKA GUI, dijamin 1:1,
+--      di ketinggian apa pun, di lereng apa pun, di setting apa pun.
+--   4. 0% = tidak ada tulis-tulis HP sama sekali (100% natural, senyap).
+--      Damage PvP/sumber lain di luar window jatuh tidak tersentuh.
+-- ANTI-MATI (satu-satunya alasan pulse masih dipertahankan): refund
+-- terjadi SETELAH damage masuk, jadi jatuh yang mematikan tetap membunuh.
+-- Karena itu bila proyeksi damage natural >= HP sekarang, SATU pulse
+-- darurat dipicu duluan supaya game membayar cuma ~45% HP — lalu refund
+-- tetap memotong R% dari damage yang benar-benar masuk. Proyeksi dari
+-- sampel kurva natural yang direkam otomatis (catatNatural).
+-- Model pulse terukur (3 titik: sudahTurun 3.6/10/30 stud -> 1-3/7-9/29 HP):
+-- game membayar ± k x (sudahTurun - t), k=1.06 t=2.5 — dipakai HANYA untuk
+-- menentukan posisi pulse anti-mati (menyelamatkan nyawa, bukan presisi).
+
+local function catatNatural(H, dam)
+    -- sampel kurva damage natural (H -> D) untuk proyeksi anti-mati
+    table.insert(fallState.natSampel, { h = H, d = dam })
+    if #fallState.natSampel > 12 then table.remove(fallState.natSampel, 1) end
+    print(string.format(
+        "[BALAP-CAL] sampel natural: H=%.0f stud, dam=%.0f HP (stok %d)",
+        H, dam, #fallState.natSampel))
+end
+
+local function prediksiLethal(H)
+    -- proyeksi damage natural di tinggi H dari sampel terdekat.
+    -- Skala pangkat 2 (kurva natural cembung: 42 stud = 42.5 HP tapi
+    -- 50 stud = 66 HP — jadi linear PASTI underestimate).
+    local best, bd = nil, math.huge
+    for _, s in ipairs(fallState.natSampel) do
+        local dd = math.abs(s.h - H)
+        if dd < bd then best, bd = s, dd end
+    end
+    if not best or best.h < 1 then return nil end
+    return best.d * (H / best.h) ^ 2 * 1.10
+end
+
 Setters.Fall = function(v, silent)
     if State.FallOn == v then return end
     State.FallOn = v
@@ -1944,6 +2037,40 @@ Setters.Fall = function(v, silent)
             local vel = hrp.AssemblyLinearVelocity
             local st
             pcall(function() st = hum:GetState() end)
+
+            -- ===== v1.7 WATCHER REFUND — jantung fitur ======================
+            -- HP dipantau tiap frame (jalan terus walau tidak sedang jatuh,
+            -- supaya damage yang masuk belakangan setelah mendarat tetap
+            -- tertangkap). HP turun >= 0.5 selama terbangan cepat / <= 1.2 dtk
+            -- setelah mendarat = damage jatuh D -> kembalikan tepat
+            -- POTONGAN% x D. Net = D x (1-R) = angka GUI, dijamin 1:1.
+            -- Di luar window itu (PvP, duduk lama, dll) TIDAK disentuh.
+            if fallState.hpHum ~= hum then
+                fallState.hpHum = hum
+                fallState.hpRef = hum.Health
+            else
+                local hp = hum.Health
+                local delta = fallState.hpRef - hp
+                if delta >= 0.5 then
+                    local armed = (fallState.terakhirCepat and (now - fallState.terakhirCepat) < 1.5)
+                        or (fallState.selesaiPada and (now - fallState.selesaiPada) < 1.2)
+                    if armed and hp > 0 then
+                        -- v1.7: damage natural tercatat apa pun settingnya
+                        -- (0% = data anti-mati tetap hangat, TANPA tulis HP)
+                        fallState.damJatuh = (fallState.damJatuh or 0) + delta
+                        if cfgFall.potongan > 0 then
+                            local refund = delta * cfgFall.potongan / 100
+                            pcall(function() hum.Health = hp + refund end)
+                            hp = hum.Health
+                            print(string.format(
+                                "[BALAP-REFUND] dam masuk %.1f -> kembali %.1f (%d%%) | sisa dam %.1f",
+                                delta, refund, cfgFall.potongan, delta - refund))
+                        end
+                    end
+                end
+                fallState.hpRef = hp
+            end
+
             if st == Enum.HumanoidStateType.Freefall and vel.Y < -4 then
                 if not fallState.jatuh then
                     fallState.jatuh = true
@@ -1955,11 +2082,22 @@ Setters.Fall = function(v, silent)
                     fallState.groundY = nil
                     fallState.lastRay = 0
                     fallState.pulseSampai = nil
+                    -- v1.5: tinggi direset 0 supaya tidak kecampur tinggi lama
+                    fallState.tinggi = 0
+                    -- v1.7: mulai pengukuran damage natural jatuh INI
+                    fallState.damJatuh = 0
+                    fallState.hpHum = hum
+                    fallState.hpRef = hum.Health
                 end
+                -- v1.7: catat terakhir kali jatuh CEPAT (arming window refund —
+                -- damage bisa masuk di frame benturan saat vel sudah 0)
+                if vel.Y < -30 then fallState.terakhirCepat = now end
                 fallState.apex = math.max(fallState.apex, hrp.Position.Y)
                 local sudahTurun = fallState.apex - hrp.Position.Y
                 -- update cache ketinggian tanah: 10Hz saat jauh, tiap frame saat dekat
-                if sudahTurun > 10 and vel.Y < -40 then
+                -- v1.4: gate diturunkan (dulu 10 stud & vel -40) supaya tinggiTotal
+                -- sudah terukur SEBELUM posisi pulse yang jujur (bisa < 10 stud)
+                if sudahTurun > 0.5 and vel.Y < -6 then
                     local dekat = (fallState.groundY ~= nil) and (hrp.Position.Y - fallState.groundY) < 60
                     if dekat or (now - fallState.lastRay) >= 0.1 then
                         fallState.lastRay = now
@@ -1972,26 +2110,32 @@ Setters.Fall = function(v, silent)
                 if fallState.groundY then
                     sisaJatuh = hrp.Position.Y - fallState.groundY
                     tinggiTotal = fallState.apex - fallState.groundY
+                    fallState.tinggi = tinggiTotal  -- v1.4: utk log F9 mendarat
                 end
-                -- VIRTUAL BRANCH: sekali per jatuh di titik potong (POTONGAN %)
-                if not fallState.bentur and not fallState.sudahPulse
-                and sudahTurun > 10 and vel.Y < -40 then
-                    local picu = false
-                    if cfgFall.potongan > 0 and tinggiTotal
-                    and sisaJatuh <= tinggiTotal * (1 - cfgFall.potongan / 100) then
-                        picu = true
-                    end
-                    if not picu and cfgFall.potongan > 0 and not tinggiTotal
-                    and (now - fallState.sejak) > 0.6 and vel.Y < -70 then
-                        picu = true
-                    end
-                    if picu then
-                        fallState.bentur = true
-                        fallState.sudahPulse = true  -- v1.2.2: latch global — 1x per terbangan
-                        toast("🍂 Fall Assist: reset senyap di udara", Warna.Hijau2)
-                        -- v1.0.4 SILENT: TANPA platform fisik = TANPA hentakan.
-                        -- Cukup buka jendela pulse "Landed" selama 0.08 detik.
-                        fallState.pulseSampai = now + 0.08
+                -- v1.7 ANTI-MATI (satu-satunya pulse): refund bekerja SETELAH
+                -- damage masuk, jadi tanpa ini jatuh ekstrem tetap membunuh.
+                -- Bila proyeksi damage natural >= HP sekarang -> SATU pulse
+                -- darurat di titik yang membuat game membayar ~45% HP.
+                -- Latch 2 lapis (bentur + sudahPulse) = 1x per terbangan.
+                if cfgFall.antiMati and cfgFall.potongan > 0
+                and not fallState.bentur and not fallState.sudahPulse
+                and vel.Y < -6 and tinggiTotal then
+                    local pred = prediksiLethal(tinggiTotal)
+                    if pred and pred >= hum.Health then
+                        local targetSudah = math.clamp(
+                            cfgFall.t + 0.45 * hum.Health / cfgFall.k,
+                            3, tinggiTotal - 4)
+                        if sudahTurun >= targetSudah then
+                            fallState.bentur = true
+                            fallState.sudahPulse = true  -- latch 1x per terbangan
+                            toast("🛟 Anti-Mati: pulsa darurat", Warna.Hijau2)
+                            -- v1.0.4 SILENT: TANPA platform fisik = TANPA hentakan.
+                            -- Cukup buka jendela pulse "Landed" selama 0.08 detik.
+                            fallState.pulseSampai = now + 0.08
+                            print(string.format(
+                                "[BALAP-FALL] anti-mati: proyeksi %.0f >= HP %.0f | pulse di %.1f stud (tinggi ±%.1f)",
+                                pred, hum.Health, sudahTurun, tinggiTotal))
+                        end
                     end
                 end
                 -- v1.2: BLEND LEMBUT DIHAPUS — mendarat 100% natural.
@@ -2002,10 +2146,16 @@ Setters.Fall = function(v, silent)
                 -- (a) menempel tanah terus-menerus >= 0.30 dtk (mendarat beneran),
                 -- (b) masuk air / duduk / panjat, atau (c) mati.
                 if st == Enum.HumanoidStateType.Dead then
+                    if fallState.tinggi and fallState.tinggi > 12 then
+                        print(string.format(
+                            "[BALAP-FALL] selesai (mati): jatuh %.1f stud", fallState.tinggi))
+                    end
                     fallState.jatuh = false
                     fallState.bentur = false
                     fallState.sudahPulse = false
                     fallState.tanahSejak = nil
+                    fallState.selesaiPada = nil  -- mati: tidak ada refund
+                    fallState.damJatuh = 0
                 else
                     local okRe, tanah, selesaiMutlak = pcall(function()
                         return hum.FloorMaterial ~= Enum.Material.Air,
@@ -2015,19 +2165,41 @@ Setters.Fall = function(v, silent)
                     end)
                     if okRe then
                         if selesaiMutlak then
+                            if fallState.tinggi and fallState.tinggi > 12 then
+                                print(string.format(
+                                    "[BALAP-FALL] selesai (air/duduk/panjat): jatuh %.1f stud", fallState.tinggi))
+                            end
                             fallState.jatuh = false
                             fallState.bentur = false
                             fallState.sudahPulse = false
                             fallState.tanahSejak = nil
+                            fallState.selesaiPada = now  -- v1.7: window refund 1.2 dtk
+                            fallState.damJatuh = 0
                         elseif tanah then
                             if not fallState.tanahSejak then
                                 fallState.tanahSejak = now
                             end
                             if now - fallState.tanahSejak >= 0.30 then
+                                fallState.selesaiPada = now  -- v1.7: window refund 1.2 dtk
+                                local H = fallState.tinggi
+                                if H and H > 12 then
+                                    -- v1.7: damage natural terukur (pra-refund)
+                                    -- direkam sebagai sampel kurva utk anti-mati
+                                    local dam = fallState.damJatuh
+                                    print(string.format(
+                                        "[BALAP-FALL] mendarat: jatuh %.1f stud, dam natural %s HP%s",
+                                        H,
+                                        dam and string.format("%.0f", dam) or "?",
+                                        fallState.sudahPulse and " (anti-mati)" or ""))
+                                    if dam and dam > 0.5 and not fallState.sudahPulse then
+                                        pcall(catatNatural, H, dam)
+                                    end
+                                end
                                 fallState.jatuh = false
                                 fallState.bentur = false
                                 fallState.sudahPulse = false
                                 fallState.tanahSejak = nil
+                                fallState.damJatuh = 0
                             end
                         else
                             -- udara lagi (pantulan) -> batalkan hitungan tanah
@@ -2046,6 +2218,11 @@ Setters.Fall = function(v, silent)
         fallState.bentur = false
         fallState.sudahPulse = false
         fallState.tanahSejak = nil
+        fallState.pulseSampai = nil  -- v1.2.3: jangan sisakan jendela pulse
+        fallState.terakhirCepat = nil  -- v1.7: arming refund dibersihkan
+        fallState.selesaiPada = nil    -- v1.7: (natSampel sengaja dipertahankan)
+        fallState.damJatuh = 0
+        fallState.tinggi = 0
     end
     syncNotify("Fall", v, silent, "Smart Fall Assist")
 end
@@ -2190,6 +2367,23 @@ unloadScript = function()
     end)
     print("[BALAP] Script dihapus total — semua dibersihkan ✔")
 end
+
+-- v1.2.3 WATCHDOG TAKEOVER: instance lama bunuh diri otomatis begitu ada
+-- eksekusi BALAP yang lebih baru. Pemicu (cukup salah satu, cek tiap 0.5 dtk):
+--   (1) _G.__BALAP_TOKEN__ bukan miliknya      -> executor share _G
+--   (2) screenGui sudah dihapus eksekusi baru  -> executor isolasi _G
+--       (sweep "BalapMain" di awal eksekusi baru yang menghapusnya)
+-- Dulu ini penyebab siluman: Heartbeat Fall Assist instance lama tetap
+-- mem-pulse dengan potongan 30%, walau GUI baru sudah diset 0%.
+task.spawn(function()
+    while not State.Removed do
+        if _G.__BALAP_TOKEN__ ~= MY_TOKEN or not screenGui.Parent then
+            pcall(function() unloadScript() end)
+            break
+        end
+        task.wait(0.5)
+    end
+end)
 
 -- KARAKTER: PASANG ULANG SAAT RESPAWN
 local initedChar
