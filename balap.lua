@@ -133,11 +133,12 @@ local CFG = {
     OFF_JUMP_H  = 6.69,
     ON_JUMP_H   = 8.50,
     -- Moonwalk (F): putaran NATURAL seperti badan orang berbalik arah biasa.
-    --   MOON_TURN_MAX = kecepatan putar maks (rad/dtk). 5 = ±286°/dtk,
-    --     putaran 180° selesai ±0.6 dtk. Lebih lambat? turunkan (mis. 3.5).
+    --   MOON_TURN_MAX = kecepatan putar maks (rad/dtk). 8 = ±458°/dtk,
+    --     putaran 180° selesai ±0.4 dtk. Lebih lambat? turunkan (mis. 5-6).
     --   MOON_SMOOTH = kelembutan mendarat & koreksi kecil (makin kecil makin lembut).
-    MOON_TURN_MAX = 5,
-    MOON_SMOOTH = 4,
+    --   Badan hanya berputar saat karakter BERGERAK; berdiri = diam total.
+    MOON_TURN_MAX = 8,
+    MOON_SMOOTH = 6,
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
 }
@@ -1851,7 +1852,10 @@ Setters.Moon = function(v, silent)
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if h and hrp and h.Health > 0 then
                 local cam = Workspace.CurrentCamera
-                if cam then
+                -- DIAM = TIDAK BEROTASI: badan hanya mengejar kamera saat
+                -- karakter benar-benar bergerak (ada arah input). Berdiri
+                -- tenang = badan tetap di arah terakhir, tidak berputar.
+                if cam and h.MoveDirection.Magnitude > 0.01 then
                     local _, yawCam = cam.CFrame:ToOrientation()
                     -- putar 180 derajat = badan menghadap kamera
                     local target = yawCam + math.pi
