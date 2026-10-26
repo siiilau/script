@@ -1,5 +1,5 @@
 --========================================================
---  BALAP v1.0.11 — 
+--  BALAP v1.0.13 — 
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  3 TAB:
@@ -13,8 +13,15 @@
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
 --    G = Moonwalk    B = Fall Resist (preset 5/20/50/75%)    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
+--    CapsLock = klik kanan NEMPEL; tekan lagi = lepas (revisi v1.0.13)
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab GERAK): simpan lokasi dgn nama bebas — permanen
+--    v1.0.13: (1) CapsLock jadi TOGGLE — tekan sekali = klik kanan nempel
+--            (tidak perlu ditahan), tekan lagi = lepas. (2) Fitur kamera
+--            turun saat Hide Atas DIHAPUS (minta user) — Hide Atas
+--            kembali murni visual seperti v1.0.8.
+--    v1.0.12: FITUR BARU — Tahan Klik Kanan: tahan CapsLock = klik kanan
+--            mouse ditahan (lepas CapsLock = lepas; toggle di tab GERAK)
 --    v1.0.11: titik tengah layar dipastikan di TENGAH/BAWAH kaki saat
 --            Hide Atas (faktor 1.0 x HipHeight, clamp naik ke 4.5)
 --    v1.0.10: kamera turun LEBIH DALAM saat Hide Atas (0.75 x HipHeight,
@@ -26,6 +33,9 @@
 --========================================================
 print("[BALAP v1.8] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN (v1.0.8) --------------------------------
+-- v1.0.13: CapsLock = toggle klik kanan (tekan = nempel, tekan lagi = lepas);
+--          kamera turun saat Hide Atas DIHAPUS (minta user)
+-- v1.0.12: fitur Tahan Klik Kanan (CapsLock ditahan = RMB ditahan)
 -- v1.0.11: titik tengah layar = tengah/bawah kaki (faktor 1.0, clamp 4.5)
 -- v1.0.10: kamera turun lebih dalam saat Hide Atas (0.75 x HipHeight)
 -- v1.0.9: kamera turun saat Hide Atas (CameraOffset, ikut HipHeight)
@@ -820,9 +830,10 @@ State.PlayersOn = false  -- Hide Pemain Lain (baru v2.2)
 State.LightOn = false
 State.FallOn  = false
 State.MoonOn  = false  -- Moonwalk (G)
-State.HideAtasOn = false  -- Hide Badan Atas (v1.0.9, layar sendiri + kamera turun)
+State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
 State.HematOn = false    -- Mode Hemat GUI (v1.0.7)
 State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
+State.HoldRMBOn = true -- Klik Kanan Auto (v1.0.12, TOGGLE sejak v1.0.13): tekan CapsLock = nempel, tekan lagi = lepas
 
 -- ======================================================================
 -- FALL RESIST V1.07 (port script standalone -- menggantikan Smart Fall
@@ -916,6 +927,9 @@ RefreshJump = buatStepperRow(
 )
 buatToggleRow(scrollKing, "Shiftlock Mobile", "C", "Shift")
 buatToggleRow(scrollKing, "Moonwalk", "G", "Moon")
+-- v1.0.12: tahan CapsLock = klik kanan mouse ditahan (untuk kamera/aim)
+-- v1.0.13: direvisi jadi TOGGLE — tekan CapsLock = nempel, tekan lagi = lepas
+buatToggleRow(scrollKing, "🖱 Klik Kanan Auto (tekan CapsLock)", nil, "HoldRMB")
 buatHeader(scrollKing, "Anti AFK")
 local _, afkLbl = buatToggleRow(scrollKing, "👻 Anti-AFK (2 lapis)", nil, "Afk")
 AfkLabel = afkLbl
@@ -1235,8 +1249,8 @@ local infoVersi = buat("TextLabel", {
         .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "TP: simpan lokasi (nama bebas) — tersimpan permanen\n"
-        .. "Hide Atas (VISUAL) + kamera ke kaki • Hemat GUI (SISTEM) • buka/tutup instan\n"
-        .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
+        .. "Hide Atas (VISUAL) • Hemat GUI (SISTEM) • buka/tutup instan\n"
+        .. "Keybind: F panel • Q speed • J jump • C shift • G moon • CapsLock klik kanan\n"
         .. "B fall resist • R hide • T cahaya • X dinding • K×2 rejoin",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
@@ -2071,8 +2085,6 @@ end
 --   Kalau semua gagal -> SEMBUNYI (ragu = sembunyi; yang tampil hanya
 --   kaki/celana/sepatu sesuai permintaan).
 -- Decal (muka, lensa, tekstur) di dalam part sembunyi ikut dihilangkan.
--- BARU v1.0.9: kamera ikut TURUN saat ON (Humanoid.CameraOffset) supaya
--- titik tengah pandangan pindah dari kepala (yang hilang) ke kaki.
 local atasConn, atasT = nil, 0
 local atasDecalOrig = {}
 local ATAS_R15 = {
@@ -2113,37 +2125,6 @@ local function atasCariAcc(part)     -- naik lewat Parent, cari Accessory induk
         hop = hop + 1
     end
     return nil
-end
--- v1.0.11 KAMERA TURUN: saat ON, titik tengah layar WAJIB ada di
--- tengah-tengah kaki atau di bawahnya (permintaan user + screenshot).
--- Humanoid.CameraOffset (bukan memutar-mutar kamera manual). Besarnya
--- ikut skala avatar = 1.0 x HipHeight, dibatasi 0.8-4.5 stud. Untuk
--- avatar user (HipHeight 3.41, pusat HRP ~4.4 stud di atas tanah)
--- fokus kamera mendarat ~1 stud di atas tanah = level lutup/betis,
--- jadi tengah layar pas di tengah kaki ke bawah. Riwayat: v1.0.9 =
--- 0.55 (masih di pinggang), v1.0.10 = 0.75 (masih di paha atas).
--- Dipanggil ulang di loop self-heal 0.3 dtk supaya reset kamera game /
--- respawn otomatis diperbaiki lagi. OFF = kembali ke 0 (normal).
--- Mau atur sendiri? Ganti angka di bawah ini saja:
---   0.55 = pinggang | 0.75 = paha | 1.0 = tengah kaki (sekarang)
---   1.15 = lebih bawah lagi (dekat kaki/sepatu)
-local ATAS_KAM_FAKSI = 1.0
-local function atasKamera(on)
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hum = nil
-    pcall(function() hum = char:FindFirstChildOfClass("Humanoid") end)
-    if not hum then return end
-    pcall(function()
-        if on then
-            local hip = 2.0
-            pcall(function() hip = hum.HipHeight or 2.0 end)
-            local turun = -math.clamp(hip * ATAS_KAM_FAKSI, 0.8, 4.5)
-            hum.CameraOffset = Vector3.new(0, turun, 0)
-        else
-            hum.CameraOffset = Vector3.new(0, 0, 0)
-        end
-    end)
 end
 local function atasSapu(on)
     local char = LocalPlayer.Character
@@ -2219,21 +2200,18 @@ Setters.HideAtas = function(v, silent)
     State.HideAtasOn = v
     if v then
         atasSapu(true)
-        atasKamera(true)   -- v1.0.9: turunkan titik pandang
         atasT = 0
         atasConn = RunService.Heartbeat:Connect(function(dt)
             if not State.HideAtasOn or State.Removed then return end
             atasT = atasT + dt
             if atasT >= 0.3 then
                 atasT = 0
-                atasSapu(true)   -- self-heal: reset kamera/respawn tertangani di sini
-                atasKamera(true) -- v1.0.9: posisi kamera ikut dirawat
+                atasSapu(true)   -- self-heal: reset part/respawn tertangani di sini
             end
         end)
     else
         if atasConn then atasConn:Disconnect() atasConn = nil end
         atasSapu(false)
-        atasKamera(false)  -- v1.0.9: kembalikan kamera normal
     end
     syncNotify("HideAtas", v, silent, "Hide Badan Atas")
 end
@@ -2697,6 +2675,67 @@ Setters.Afk = function(v, silent)
     syncNotify("Afk", v, silent, "Anti-AFK")
 end
 
+-- KLIK KANAN OTOMATIS (v1.0.12, mode TOGGLE sejak v1.0.13) — tekan
+-- CapsLock SEKALI -> klik kanan mouse NEMPEL (kamera/aim bebas tanpa
+-- pegang tombol); tekan CapsLock LAGI -> klik kanan lepas. Tidak perlu
+-- menahan tombolnya. 3 lapis pengirim input (pola sama dgn Anti-AFK):
+-- mouse2press executor -> VirtualUser:Button2Down ->
+-- VirtualInputManager:SendMouseButtonEvent. Fokus hilang (alt-tab)
+-- tetap melepas supaya state tidak ngaco; matikan fitur saat RMB
+-- nempel juga otomatis melepas.
+local rmbDitahan = false
+local function rmbTahan()
+    if rmbDitahan or State.Removed or not State.HoldRMBOn then return end
+    rmbDitahan = true
+    local ok = false
+    if type(mouse2press) == "function" then ok = pcall(mouse2press) end
+    if not ok then
+        ok = pcall(function()
+            local cam = Workspace.CurrentCamera
+            VirtualUser:CaptureController()
+            VirtualUser:Button2Down(Vector2.new(), cam and cam.CFrame or CFrame.new())
+        end)
+    end
+    if not ok then
+        pcall(function()
+            game:GetService("VirtualInputManager"):SendMouseButtonEvent(5, 5, 1, true, game, 0)
+        end)
+    end
+    print("[BALAP][HoldRMB] klik kanan NEMPEL (CapsLock ON)")
+end
+local function rmbLepas()
+    if not rmbDitahan then return end
+    rmbDitahan = false
+    -- lepas di SEMUA lapis sekaligus (harmless kalau memang tidak ditahan)
+    pcall(function() if type(mouse2release) == "function" then mouse2release() end end)
+    pcall(function()
+        local cam = Workspace.CurrentCamera
+        VirtualUser:Button2Up(Vector2.new(), cam and cam.CFrame or CFrame.new())
+    end)
+    pcall(function()
+        game:GetService("VirtualInputManager"):SendMouseButtonEvent(5, 5, 1, false, game, 0)
+    end)
+    print("[BALAP][HoldRMB] klik kanan DILEPAS (CapsLock OFF)")
+end
+Setters.HoldRMB = function(v, silent)
+    if State.HoldRMBOn == v then return end
+    State.HoldRMBOn = v
+    if not v then rmbLepas() end  -- fitur dimatikan saat RMB nempel -> lepas dulu
+    syncNotify("HoldRMB", v, silent, "Klik Kanan Auto")
+end
+catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if State.Removed then return end
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.CapsLock then
+        -- TOGGLE (v1.0.13): tekan sekali = nempel, tekan lagi = lepas.
+        -- Tidak ada handler InputEnded: melepas tombol CapsLock TIDAK melepas klik kanan.
+        if rmbDitahan then rmbLepas() else rmbTahan() end
+    end
+end))
+catat(UserInputService.WindowFocusReleased:Connect(function()
+    rmbLepas()  -- alt-tab / fokus hilang -> lepas, jangan sampai nyangkut
+end))
+
 -- Q — Speed ON/OFF murni (v2.1)
 -- Nilai ON (17.25 / 21.25, atau di antaranya) dipilih via stepper di Tab GERAK.
 -- Keybind Q langsung panggil setFeature("Speed", ...) dari handler [21].
@@ -2715,6 +2754,7 @@ resetAll = function()
     setFeature("Fall", false, true)
     setFeature("HideAtas", false, true)
     setFeature("Hemat", false, true)
+    setFeature("HoldRMB", false, true)
     State.SpeedValue, State.JumpValue, State.JumpHeightValue = CFG.SPEED_ON_1, CFG.ON_JUMP, CFG.ON_JUMP_H
     if RefreshSpeed then RefreshSpeed() end
     if RefreshJump then RefreshJump() end
@@ -2750,6 +2790,7 @@ unloadScript = function()
     pcall(setFeature, "Fall", false, true)
     pcall(setFeature, "HideAtas", false, true)
     pcall(setFeature, "Hemat", false, true)
+    pcall(setFeature, "HoldRMB", false, true)
     -- 2) Unbind semua RenderStep binding
     pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
     pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
@@ -2972,6 +3013,7 @@ print("[BALAP v" .. VERSI .. "] SIAP ✔ — F = GUI | K×2 = rejoin")
 print("[BALAP] 3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM")
 print("[BALAP] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
 print("[BALAP]           B fall resist • R hide • T cahaya 2-arah • X dinding • K×2 rejoin")
+print("[BALAP]           Tekan CapsLock = klik kanan nempel, tekan lagi = lepas (v1.0.13)")
 print("[BALAP] Fitur dinding (X) dari skrip lain sudah jadi 1 dengan script balapan")
 diagSet("BALAP v1.8 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
 task.delay(7, function()
