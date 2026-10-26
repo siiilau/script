@@ -1,5 +1,5 @@
 --========================================================
---  BALAP v1.0.16 — 
+--  BALAP v1.0.1 — 
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  3 TAB:
@@ -19,6 +19,11 @@
 --             hilang saat UI game terbuka (v1.0.15)
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab GERAK): simpan lokasi dgn nama bebas — permanen
+--    v1.0.1: PENOMORAN BARU — nama diseragamkan jadi BALAP v1.0.1
+--            (sebelumnya komentar v1.0.16 / GUI v1.8, dua-duanya beda).
+--            MOONWALK HALUS — badan berputar LEMBUT mengikuti kamera
+--            (lerp sudut terpendek, tidak snap lagi); kecepatan putar
+--            diatur CFG.MOON_SMOOTH. Arah hadap kamera & keybind F tetap.
 --    v1.0.16: TUKAR KEYBIND F & G — G = buka/tutup GUI, F = Moonwalk
 --            (permintaan user; mekanisme & fitur lain tidak berubah)
 --    v1.0.15: CAPSLOCK ON/OFF + SALURAN GANDA — tekan CapsLock = klik kanan
@@ -47,8 +52,9 @@
 --            GUI instan (animasi dihapus biar ringan)
 --    v1.0.7: Hide Badan Atas (VISUAL) + Mode Hemat GUI (SISTEM)
 --========================================================
-print("[BALAP v1.8] load mulai...")
+print("[BALAP v1.0.1] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN (v1.0.8) --------------------------------
+-- v1.0.1: penomoran baru (dari v1.0.16/v1.8) + rotasi moonwalk HALUS (lerp)
 -- v1.0.16: tukar keybind F & G (G = GUI, F = Moonwalk)
 -- v1.0.15: CapsLock ON/OFF + 2 saluran tombol (UIS + CAS, de-dup 0.15 dtk)
 -- v1.0.14: kunci klik kanan TAHAN respawn/alt-tab + denyut jaga 4 detik
@@ -111,7 +117,7 @@ do
         end
 end
 
-local VERSI = "1.8"
+local VERSI = "1.0.1"
 local __BALAP_LOAD_OK__ = xpcall(function()
 -- ================================================================
 -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -181,6 +187,9 @@ local CFG = {
     ON_JUMP     = 65.25,
     OFF_JUMP_H  = 6.69,
     ON_JUMP_H   = 8.50,
+    -- Moonwalk (F): kecepatan putar HALUS — makin besar makin cepat nempel
+    -- (12 = lembut responsif; 6 = lebih lambat cinematis; 25 = nyaris snap)
+    MOON_SMOOTH = 12,
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
 }
@@ -577,7 +586,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.8 ⚡",
+    Text = "⚡ BALAP v1.0.1 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1267,7 +1276,7 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.8\n"
+    Text = "⚡ BALAP v1.0.1\n"
         .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "TP: simpan lokasi (nama bebas) — tersimpan permanen\n"
@@ -1305,9 +1314,9 @@ local infoKredit = buat("TextLabel", {
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
     Text = "Tema SILAU NEON (ungu/biru LED) ⚡\n"
-        .. "Basis: SILAU BALAPAN v1.1 (5 skrip digabung)\n"
-        .. "v1.0.1: rename BALAP — 3 tab fokus balapan\n"
-        .. "v1.0.2: fix fall assist (var tertukar) + dampener\n"
+        .. "Basis: SILAU BALAPAN v1.1 • Riwayat penomoran LAMA:\n"
+        .. "v1.0.1 BARU: nama seragam + moonwalk HALUS (lerp)\n"
+        .. "lama v1.0.1-2: rename BALAP, fix fall assist + dampener\n"
         .. "v1.0.3: potong 50% + soft catch\n"
         .. "v1.0.4: silent fall — tanpa hentakan, tanpa cap kecepatan\n"
         .. "v1.0.6: posisi bentur 0.30 — reduksi ringan biar masuk akal\n"
@@ -1896,22 +1905,31 @@ Setters.Shift = function(v, silent)
 end
 
 -- MOONWALK (F) — badan TERKUNCI menghadap kamera/layar saat jalan
+-- v1.0.1: rotasi HALUS — badan berputar LEMBUT mengikuti kamera
+--         (lerp sudut terpendek, anti muter keliling), bukan snap lagi.
+--         Kecepatan putar = CFG.MOON_SMOOTH (makin besar makin cepat).
 Setters.Moon = function(v, silent)
     if State.MoonOn == v then return end
     State.MoonOn = v
     if v then
         local hum = getHum()
         if hum then hum.AutoRotate = false end
-        RunService:BindToRenderStep("KS_MOONWALK", Enum.RenderPriority.Character.Value + 1, function()
+        RunService:BindToRenderStep("KS_MOONWALK", Enum.RenderPriority.Character.Value + 1, function(dt)
             local char = getChar()
             local h = char and char:FindFirstChildOfClass("Humanoid")
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if h and hrp and h.Health > 0 then
                 local cam = Workspace.CurrentCamera
                 if cam then
-                    local _, yaw = cam.CFrame:ToOrientation()
+                    local _, yawCam = cam.CFrame:ToOrientation()
                     -- putar 180 derajat = badan menghadap kamera
-                    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, yaw + math.pi, 0)
+                    local target = yawCam + math.pi
+                    -- HALUS: lerp sudut TERPENDEK dari arah badan sekarang
+                    -- ke arah target (beda + pi, % 2pi, - pi = anti keliling)
+                    local _, yawSek = hrp.CFrame:ToOrientation()
+                    local selisih = ((target - yawSek + math.pi) % (2 * math.pi)) - math.pi
+                    local yawBaru = yawSek + selisih * math.min(dt * CFG.MOON_SMOOTH, 1)
+                    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, yawBaru, 0)
                 end
             end
         end)
@@ -3126,7 +3144,7 @@ print("[BALAP] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (
 print("[BALAP]           B fall resist • R hide • T cahaya 2-arah • X dinding • K×2 rejoin")
 print("[BALAP]           CapsLock ON/OFF = klik kanan nempel/mati — 2 saluran tombol + kunci tahan respawn/alt-tab (v1.0.15)")
 print("[BALAP] Fitur dinding (X) dari skrip lain sudah jadi 1 dengan script balapan")
-diagSet("BALAP v1.8 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+diagSet("BALAP v1.0.1 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
 task.delay(7, function()
         local function hapusDiag()
                 pcall(function()
@@ -3150,7 +3168,7 @@ getgenv().BALAP_API = { Setters = Setters, State = State }  -- debug/otomasi + h
 end, function(e)
         local teks = tostring(e)
         print("==================================================")
-        print("[BALAP v1.8] ERROR SAAT LOAD — kirim teks ini ke dev:")
+        print("[BALAP v1.0.1] ERROR SAAT LOAD — kirim teks ini ke dev:")
         print(teks)
         pcall(function() print(debug.traceback("", 2)) end)
         print("==================================================")
@@ -3159,5 +3177,5 @@ end, function(e)
         end)
 end)
 if not __BALAP_LOAD_OK__ then
-        warn("[BALAP v1.8] Script GAGAL load — banner MERAH di layar berisi errornya.")
+        warn("[BALAP v1.0.1] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
