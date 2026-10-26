@@ -1,6 +1,9 @@
 --========================================================
---  ACxSIIILAU ALL-IN-ONE V1.0.1
---  TEMA: ACxSIIILAU (ungu/biru LED)
+--  SILAU SCRIPT 👑⚡ — ACxSIIILAU ALL-IN-ONE V2.2.2
+--  TEMA: NEON HOROR (gelap • ungu • magenta • biru muda)
+--  Efek: glitch judul, glow neon, shadow, blur + FADE buka/tutup,
+--        ikon tengkorak (OFF) / merpati (ON), efek suara lengkap
+--  Panel: ukuran 1/10 layar device (PC & mobile), buka/tutup memudar
 --
 --  5 TAB:
 --    1 🏃 GERAK    : Speed, Jump, Shiftlock, Moonwalk, Fall Resist (Pulse), Anti-AFK
@@ -18,7 +21,7 @@
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    V = Rekam jalur    K = Rejoin (double-tap)
 --========================================================
-local VERSI = "2.0-ALLINONE"
+local VERSI = "2.2.2-SILAU"
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -66,7 +69,7 @@ local CFG = {
     MAX_TITIK       = 2500,
     TEBAL_LINE_REK  = 0.08,
     TOLERANSI_REK   = 0.06,
-    LED_TEXT        = "⚡ S I L A U ⚡",
+    LED_TEXT        = "👑 SILAU SCRIPT ⚡",
     SOUND_ON        = true,
     FX_LEVEL        = 1,
     NAMA_FILE_TIANG   = "TiangPath_Silau.json",
@@ -84,32 +87,39 @@ local CFG = {
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
     SND_WHOOSH = "rbxasset://sounds/unsheath.wav",
+    SND_ERR    = "rbxasset://sounds/uuhhh.mp3",
+    PANEL_MIN  = 0.45, -- skala panel minimum (jaga keterbacaan di layar kecil)
+    PANEL_MAX  = 1.60, -- skala panel maksimum (layar besar tetap proporsional)
 }
 -- shorthand alias untuk konstanta yang dipakai banyak (tetap hemat local)
 local Warna = {
-    Ungu      = Color3.fromRGB(124, 58, 237),
-    Ungu2     = Color3.fromRGB(167, 139, 250),
-    UnguMuda  = Color3.fromRGB(237, 233, 254),
-    Biru      = Color3.fromRGB(37, 99, 235),
-    Biru2     = Color3.fromRGB(59, 130, 246),
-    BiruMuda  = Color3.fromRGB(219, 234, 254),
-    Hitam     = Color3.fromRGB(12, 10, 20),
-    Hitam2    = Color3.fromRGB(22, 18, 38),
+    -- NEON HOROR: dasar gelap, aksen ungu/magenta/biru muda menyala
+    Ungu      = Color3.fromRGB(148, 84, 255),
+    Ungu2     = Color3.fromRGB(192, 132, 252),
+    UnguMuda  = Color3.fromRGB(230, 214, 255),
+    Magenta   = Color3.fromRGB(255, 44, 188),
+    MagentaMuda = Color3.fromRGB(255, 150, 226),
+    Biru      = Color3.fromRGB(64, 120, 255),
+    Biru2     = Color3.fromRGB(96, 156, 255),
+    BiruMuda  = Color3.fromRGB(150, 210, 255),
+    BiruLed   = Color3.fromRGB(110, 231, 255),
+    Hitam     = Color3.fromRGB(7, 5, 13),
+    Hitam2    = Color3.fromRGB(17, 13, 28),
     Putih     = Color3.fromRGB(255, 255, 255),
-    PutihLap  = Color3.fromRGB(250, 250, 255),
-    AbuMuda   = Color3.fromRGB(243, 242, 250),
-    AbuItem   = Color3.fromRGB(246, 245, 252),
-    TeksGelap = Color3.fromRGB(28, 24, 46),
-    AbuTeks   = Color3.fromRGB(130, 125, 155),
-    AbuGelap  = Color3.fromRGB(160, 155, 185),
-    Merah     = Color3.fromRGB(239, 68, 68),
-    MerahMuda = Color3.fromRGB(254, 202, 202),
-    Hijau     = Color3.fromRGB(34, 197, 94),
-    Hijau2    = Color3.fromRGB(16, 185, 129),
-    HijauMuda = Color3.fromRGB(187, 247, 208),
-    Kuning    = Color3.fromRGB(250, 204, 21),
-    Gray      = Color3.fromRGB(72, 72, 94),
-    Card2     = Color3.fromRGB(40, 40, 62),
+    PutihLap  = Color3.fromRGB(21, 16, 34),
+    AbuMuda   = Color3.fromRGB(24, 19, 40),
+    AbuItem   = Color3.fromRGB(26, 21, 44),
+    TeksGelap = Color3.fromRGB(255, 255, 255), -- PUTIH murni: teks utama gampang dibaca
+    AbuTeks   = Color3.fromRGB(216, 214, 228), -- terang: teks sekunder tetap kebaca
+    AbuGelap  = Color3.fromRGB(238, 236, 248), -- nyaris putih
+    Merah     = Color3.fromRGB(255, 42, 90),
+    MerahMuda = Color3.fromRGB(255, 176, 196),
+    Hijau     = Color3.fromRGB(0, 230, 118),
+    Hijau2    = Color3.fromRGB(0, 191, 99),
+    HijauMuda = Color3.fromRGB(180, 255, 210),
+    Kuning    = Color3.fromRGB(255, 214, 40),
+    Gray      = Color3.fromRGB(50, 44, 70),
+    Card2     = Color3.fromRGB(40, 33, 66),
 }
 
 -- [3] FONT KOMPATIBEL -----------------------------------------------
@@ -216,7 +226,7 @@ end
 local State = { Removed = false }
 local Original = {}
 local Setters, Switches = {}, {}
-local setFeature, togglePanel, resetAll, rejoin, unloadScript
+local setFeature, togglePanel, resetAll, rejoin, unloadScript, bunyi
 local applySpeed, applyJump, updateJumpLabel
 local toggleRekam
 local RefreshSpeed, RefreshJump, JumpLabel, SpeedLabel, AfkLabel
@@ -331,6 +341,7 @@ local function efekTombol(btn, skalaHover)
     local s = buat("UIScale", {Scale = 1}, btn)
     local target = skalaHover or 1.06
     btn.MouseEnter:Connect(function()
+        bunyi(CFG.SND_PING, 0.1, 1.9)
         tween(s, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = target})
     end)
     btn.MouseLeave:Connect(function()
@@ -341,6 +352,9 @@ local function efekTombol(btn, skalaHover)
     end)
     btn.MouseButton1Up:Connect(function()
         tween(s, TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = target})
+    end)
+    btn.MouseButton1Click:Connect(function()
+        bunyi(CFG.SND_SNAP, 0.25, 1.1)
     end)
 end
 local function sorotInput(box, stroke, rest)
@@ -386,8 +400,12 @@ if not terpasang then
     warn("[SilauNeon] GAGAL: tidak bisa memasang GUI.")
     return
 end
-local function bunyi(id, vol, pitch)
+local bunyiTerakhir = {}
+bunyi = function(id, vol, pitch)
     if not CFG.SOUND_ON then return end
+    local sekarang = os.clock()
+    if bunyiTerakhir[id] and sekarang - bunyiTerakhir[id] < 0.05 then return end
+    bunyiTerakhir[id] = sekarang
     local s = Instance.new("Sound")
     s.SoundId = id
     s.Volume = vol or 0.35
@@ -405,15 +423,71 @@ local screenFx = buat("Frame", {
     ZIndex = 900,
 }, screenGui)
 -- screenFx akan di-akses lintas part (untuk FX overlay teleport)
-local root = buat("Frame", {
-    Size = UDim2.fromOffset(360, 720),
-    Position = UDim2.new(0.5, 0, 0.10, 0),
-    AnchorPoint = Vector2.new(0.5, 0),
-    BackgroundTransparency = 1,
+-- ROOT PAKAI CanvasGroup agar seluruh isi panel bisa MEMUDAR serentak
+-- (GroupTransparency); fallback ke Frame biasa kalau tak tersedia.
+local root
+do
+    local ok = pcall(function()
+        root = buat("CanvasGroup", {
+            Name = "RootPanel",
+            Size = UDim2.fromOffset(360, 720),
+            Position = UDim2.new(0.5, 0, 0.10, 0),
+            AnchorPoint = Vector2.new(0.5, 0),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            GroupTransparency = 0,
+            Visible = false,
+        }, screenGui)
+    end)
+    if not ok then
+        root = buat("Frame", {
+            Size = UDim2.fromOffset(360, 720),
+            Position = UDim2.new(0.5, 0, 0.10, 0),
+            AnchorPoint = Vector2.new(0.5, 0),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Visible = false,
+        }, screenGui)
+    end
+end
+-- BAYANGAN PANEL (efek shadow neon horor)
+local bayanganPanel = buat("Frame", {
+    Name = "BayanganPanel",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(1, 26, 1, 26),
+    BackgroundColor3 = Color3.new(0, 0, 0),
+    BackgroundTransparency = 0.45,
     BorderSizePixel = 0,
-    Visible = false,
-}, screenGui)
+    ZIndex = 0,
+}, root)
 local panelScale = buat("UIScale", {Scale = 1}, root)
+-- UKURAN PANEL = 1/10 LAYAR DEVICE (PC & mobile), aspek 1:2 (desain 360x720)
+local skalaDasar = 1
+local function ukurPanel()
+    local cam = Workspace.CurrentCamera
+    local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+    local luas = (vp.X * vp.Y) / 10          -- target luas panel = 1/10 layar
+    local skW = math.sqrt(luas / 2) / 360    -- aspek panel 1:2
+    local skH = (vp.Y * 0.92) / 720          -- jangan melebihi tinggi layar
+    local skX = (vp.X * 0.92) / 360          -- jangan melebihi lebar layar
+    skalaDasar = math.clamp(math.min(skW, skH, skX), CFG.PANEL_MIN, CFG.PANEL_MAX)
+    -- penjaga muat: layar ekstra kecil tetap utuh walau di bawah skala minimum
+    skalaDasar = math.min(skalaDasar, (vp.X * 0.94) / 360, (vp.Y * 0.94) / 720)
+    if root.Visible then panelScale.Scale = skalaDasar end
+end
+local function ikatUkurKamera()
+    local cam = Workspace.CurrentCamera
+    if cam then
+        catat(cam:GetPropertyChangedSignal("ViewportSize"):Connect(ukurPanel))
+    end
+end
+ikatUkurKamera()
+catat(Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    ikatUkurKamera()
+    task.defer(ukurPanel)
+end))
+ukurPanel()
 local outer = buat("Frame", {
     Size = UDim2.new(1, 0, 1, 0),
     BackgroundColor3 = Warna.Hitam,
@@ -441,8 +515,8 @@ local panel = buat("Frame", {
     BorderSizePixel = 0,
 }, outer)
 buat("UICorner", {CornerRadius = UDim.new(0, 11)}, panel)
-buat("UIStroke", {Color = Warna.UnguMuda, Thickness = 1, Transparency = 0.35}, panel)
-ledSweep(panel, Warna.PutihLap, Warna.Putih, Warna.BiruMuda, 5)
+buat("UIStroke", {Color = Warna.Magenta, Thickness = 1, Transparency = 0.25}, panel)
+ledSweep(panel, Warna.PutihLap, Warna.MagentaMuda, Warna.BiruLed, 6)
 local partBox = buat("Frame", {
     Name = "NoFade",
     Position = UDim2.new(0, 4, 0, 50),
@@ -458,8 +532,8 @@ for i = 1, 3 do
         Position = UDim2.new(0.3 * i, 0, 0.5, 0),
         Size = UDim2.fromOffset(26, 580),
         Rotation = 24,
-        BackgroundColor3 = i % 2 == 0 and Warna.UnguMuda or Warna.BiruMuda,
-        BackgroundTransparency = 0.5,
+        BackgroundColor3 = i % 2 == 0 and Warna.Magenta or Warna.BiruLed,
+        BackgroundTransparency = 0.78,
         BorderSizePixel = 0,
     }, partBox)
     tween(stripe, TweenInfo.new(6 + i * 2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true),
@@ -478,25 +552,69 @@ buat("Frame", {
     BackgroundColor3 = Warna.Hitam2,
     BorderSizePixel = 0,
 }, panel)
+-- JUDUL GLITCH "SILAU SCRIPT" 👑⚡ — lapisan hantu magenta/biru + ledakan acak
+local TEKS_JUDUL = "👑 SILAU SCRIPT ⚡"
+local TEKS_RUSAK = {
+    "👑 SILAU SCRIPT ⚡", "👑 S1LAU SCRIPT ⚡", "👑 S1LAU 5CRIPT ⚡",
+    "👑 5ILAU SCRIPT ⚡", "👑 $ILAU SCR1PT ⚡", "👑 SILAU 5CRIPT ⚡",
+}
+local function buatHantu(z, warna)
+    return buat("TextLabel", {
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 12, 0, 0),
+        Size = UDim2.new(1, -70, 1, 0),
+        FontFace = fnt("judul"),
+        Text = TEKS_JUDUL,
+        TextColor3 = warna,
+        TextSize = 20,
+        TextTransparency = 0.45,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = z,
+    }, header)
+end
+local hantuA = buatHantu(1, Warna.Magenta)
+local hantuB = buatHantu(1, Warna.BiruLed)
 local title = buat("TextLabel", {
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ ACxSIIILAU ⚡",
+    Text = TEKS_JUDUL,
     TextColor3 = Warna.Putih,
-    TextSize = 21,
+    TextSize = 20,
     TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 2,
 }, header)
-ledSweep(title, Warna.Putih, Warna.Ungu2, Warna.Biru2, 2.2)
-local titleGlow = buat("UIStroke", {Name = "NoFade", Color = Warna.Ungu2, Thickness = 1, Transparency = 0.35}, title)
+local titleGlow = buat("UIStroke", {Name = "NoFade", Color = Warna.Magenta, Thickness = 1, Transparency = 0.35}, title)
 task.spawn(function()
     while title.Parent do
-        tween(titleGlow, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.75})
-        task.wait(0.8)
+        -- denyut glow neon
+        tween(titleGlow, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.7})
+        task.wait(0.9)
         if not title.Parent then break end
-        tween(titleGlow, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.35})
-        task.wait(0.8)
+        tween(titleGlow, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.3})
+        task.wait(0.9)
+        if not title.Parent then break end
+        -- LEDAKAN GLITCH acak
+        task.wait(rnd(10, 30) / 10)
+        if not title.Parent then break end
+        bunyi(CFG.SND_SNAP, 0.08, 0.5)
+        for _ = 1, rnd(4, 7) do
+            if not title.Parent then break end
+            local dx = rnd(-2, 2)
+            local dy = rnd(-2, 1)
+            hantuA.Position = UDim2.new(0, 12 + dx, 0, dy)
+            hantuB.Position = UDim2.new(0, 12 - dx, 0, -dy)
+            hantuA.TextTransparency = (rnd(1, 10) > 7) and 1 or 0.45
+            hantuB.TextTransparency = (rnd(1, 10) > 7) and 1 or 0.45
+            title.Text = TEKS_RUSAK[rnd(1, #TEKS_RUSAK)]
+            task.wait(0.04)
+        end
+        hantuA.Position = UDim2.new(0, 12, 0, 0)
+        hantuB.Position = UDim2.new(0, 12, 0, 0)
+        hantuA.TextTransparency = 0.45
+        hantuB.TextTransparency = 0.45
+        title.Text = TEKS_JUDUL
     end
 end)
 local minBtn = buat("TextButton", {
@@ -511,7 +629,8 @@ local minBtn = buat("TextButton", {
     AutoButtonColor = false,
 }, header)
 buat("UICorner", {CornerRadius = UDim.new(0, 9)}, minBtn)
-buat("UIStroke", {Color = Warna.Ungu, Thickness = 1, Transparency = 0.3}, minBtn)
+buat("UIStroke", {Color = Warna.Merah, Thickness = 1, Transparency = 0.3}, minBtn)
+efekTombol(minBtn, 1.08)
 local accent = buat("Frame", {
     Size = UDim2.new(1, 0, 0, 2),
     Position = UDim2.new(0, 0, 0, 46),
@@ -524,7 +643,7 @@ ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
 local function buildUI()
 tabBtns = {}
 local tabLabels = {"🏃 GERAK", "🎨 VISUAL", "🚀 TELEPORT", "📍 TIANG", "⚙️ SISTEM"}
-local tabColors = {Warna.Ungu2, Warna.Biru, Warna.Hijau2, Warna.Ungu, Warna.AbuGelap}
+local tabColors = {Warna.Magenta, Warna.Biru, Warna.Hijau2, Warna.Ungu, Warna.AbuGelap}
 kontenTabs = {}
 for i, lbl in ipairs(tabLabels) do
     local tab = buat("TextButton", {
@@ -636,22 +755,27 @@ local function buatToggleRow(parent, labelText, keyText, featureName)
         AutoButtonColor = false,
     }, row)
     buat("UICorner", {CornerRadius = UDim.new(0, 10)}, sw)
-    local knob = buat("Frame", {
-        BackgroundColor3 = Color3.fromRGB(235, 235, 240),
-        Size = UDim2.new(0, 14, 0, 14),
-        Position = UDim2.new(0, 3, 0.5, -7),
+    -- IKON NEON HOROR: tengkorak = OFF, burung merpati = ON
+    local knob = buat("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 18, 0, 18),
+        Position = UDim2.new(0, 2, 0.5, -9),
+        Font = Enum.Font.SourceSans,
+        Text = "💀",
+        TextSize = 13,
     }, sw)
-    buat("UICorner", {CornerRadius = UDim.new(0, 10)}, knob)
     local api = {}
     function api.set(on)
-        tween(sw, TweenInfo.new(0.15), {BackgroundColor3 = on and Warna.Hijau or Warna.Gray})
+        tween(sw, TweenInfo.new(0.15), {BackgroundColor3 = on and Warna.Magenta or Warna.Gray})
         tween(knob, TweenInfo.new(0.15), {
-            Position = on and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+            Position = on and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
         })
+        knob.Text = on and "🕊️" or "💀"
     end
     Switches[featureName] = api
     api.set(State[featureName .. "On"])
     sw.MouseButton1Click:Connect(function()
+        bunyi(CFG.SND_SNAP, 0.28, State[featureName .. "On"] and 0.9 or 1.25)
         setFeature(featureName, not State[featureName .. "On"])
     end)
     return row, label
@@ -940,7 +1064,7 @@ for i, p in ipairs(FRPreset) do
 end
 RefreshFall = function()
     for i, b in ipairs(fallPresetBtns) do
-        b.BackgroundColor3 = (i == cfgFall.idx) and Warna.Hijau or Warna.Card2
+        b.BackgroundColor3 = (i == cfgFall.idx) and Warna.Magenta or Warna.Card2
     end
     if FallLabel and FallLabel.Parent then
         FallLabel.Text = "Fall Resist (B): "
@@ -1354,7 +1478,7 @@ buat("UIPadding", {PaddingLeft = UDim.new(0, 10)}, searchBoxTiang)
 btnBersih = buat("TextButton", {
     Size = UDim2.new(0.5, -4, 0, 22),
     Position = UDim2.new(0, 12, 0, 72),
-    BackgroundColor3 = Warna.Putih,
+    BackgroundColor3 = Warna.Hitam2,
     BorderSizePixel = 0,
     FontFace = fnt("bold"),
     Text = "🧹 HAPUS SEMUA",
@@ -1562,8 +1686,8 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ ACxSIIILAU ALL-IN-ONE V1.0.1 (2.0-ALLINONE)\n"
-        .. "Gabungan: TIANG PATH + KING + TELEPORT + TRAINING\n"
+    Text = "👑 SILAU SCRIPT — ACxSIIILAU ALL-IN-ONE (" .. VERSI .. ")\n"
+        .. "Tema NEON HOROR: glitch • glow • shadow • blur • ikon tengkorak/merpati\n"
         .. "5 TAB: 🏃 GERAK | 🎨 VISUAL | 🚀 TELEPORT | 📍 TIANG | ⚙️ SISTEM\n"
         .. "Keybind: F panel • Y pasang • Q speed • J jump • C shift • G moon\n"
         .. "B fallresist • R hide • T cahaya • X dinding • V rekam • K×2 rejoin",
@@ -1611,9 +1735,9 @@ local infoKredit = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "Tema ACxSIIILAU (ungu/biru LED) ⚡\n"
-        .. "Merge basis MAIN v1.5 + port TELEPORT GUI v1.0.1\n"
-        .. "+ TP+TRAINING v3.0.0 (search/rename) + fitur baru V1.0.1",
+    Text = "Tema: NEON HOROR — ungu • magenta • biru muda †\n"
+        .. "Panel = 1/10 layar device (PC & HP) • buka/tutup memudar • efek suara\n"
+        .. "Fall Resist V1.07 SILENT PULSE menyatu di Tab GERAK",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
@@ -1876,11 +2000,17 @@ buat("UIListLayout", {
 local notifCounter = 0
 toast = function(teks, aksen)
     notifCounter += 1
+    -- SUARA NOTIFIKASI / PERINGATAN
+    if aksen == Warna.Merah or aksen == Warna.Kuning then
+        bunyi(CFG.SND_ERR, 0.22, 0.55)
+    else
+        bunyi(CFG.SND_PING, 0.2, 1.35)
+    end
     local t = buat("Frame", {
         Name = "NoFade",
         AnchorPoint = Vector2.new(1, 0),
         Size = UDim2.fromOffset(270, 32),
-        BackgroundColor3 = Warna.Putih,
+        BackgroundColor3 = Warna.Hitam2,
         BackgroundTransparency = 1,
         BorderSizePixel = 0,
         ZIndex = 981,
@@ -1943,6 +2073,7 @@ kumpulkanFade = function()
     table.clear(elemenFade)
     local daftar = outer:GetDescendants()
     table.insert(daftar, outer)
+    if bayanganPanel then table.insert(daftar, bayanganPanel) end
     for _, obj in ipairs(daftar) do
         if obj.Name ~= "NoFade" then
             if obj:IsA("Frame") or obj:IsA("TextLabel") or obj:IsA("TextBox") then
@@ -2024,9 +2155,9 @@ local function fxTeleport()
     tween(rs, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Transparency = 1})
     task.delay(0.55, function() r:Destroy() end)
     emojiBurst(screenFx, UDim2.new(0.5, 0, 0.5, 0), {"🚀", "✨", "⚡", "💫", "🌟"}, 10)
-    tween(panelScale, TweenInfo.new(0.09, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 0.965})
+    tween(panelScale, TweenInfo.new(0.09, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = skalaDasar * 0.965})
     task.delay(0.1, function()
-        tween(panelScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
+        tween(panelScale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = skalaDasar})
     end)
 end
 local function teleportKe(cf)
@@ -3291,7 +3422,7 @@ refreshListLokasi = function(animasi)
         local badge = buat("TextLabel", {
             Position = UDim2.new(0, 6, 0.5, -9),
             Size = UDim2.fromOffset(18, 18),
-            BackgroundColor3 = Warna.Putih,
+            BackgroundColor3 = Warna.Ungu,
             BorderSizePixel = 0,
             FontFace = fnt("bold"),
             Text = tostring(i),
@@ -3387,7 +3518,7 @@ refreshListLokasi = function(animasi)
         local delayBox = buat("TextBox", {
             Size = UDim2.fromOffset(34, 24),
             Position = UDim2.new(1, -160, 0.5, -12),
-            BackgroundColor3 = Warna.Putih,
+            BackgroundColor3 = Warna.Hitam2,
             BorderSizePixel = 0,
             FontFace = fnt("bold"),
             PlaceholderText = "auto",
@@ -4544,6 +4675,11 @@ unloadScript = function()
             Lighting.FogEnd = oLight.FogEnd
         end
     end)
+    -- 6b) Hapus blur layar milik menu (neon horor)
+    pcall(function()
+        local b = Lighting:FindFirstChild("SilauBlur_AC")
+        if b then b:Destroy() end
+    end)
     -- 7) Restore Terrain water (kalau LW pernah diaktifkan)
     pcall(function()
         if Original then
@@ -4645,37 +4781,74 @@ end)
 
 -- [19] BUKA / TUTUP GUI ---------------------------------------------
 local sesiAnim = 0
+-- BLUR LAYAR saat panel terbuka (efek sinematik neon horor)
+local blurMenu = nil
+local function blurMenuKe(nilai)
+    pcall(function()
+        if not blurMenu then
+            blurMenu = Instance.new("BlurEffect")
+            blurMenu.Name = "SilauBlur_AC"
+            blurMenu.Size = 0
+            blurMenu.Parent = Lighting
+        end
+        tween(blurMenu, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Size = nilai})
+        if nilai <= 0 then
+            task.delay(0.35, function()
+                pcall(function()
+                    if blurMenu and blurMenu.Size <= 0.5 then
+                        blurMenu:Destroy()
+                        blurMenu = nil
+                    end
+                end)
+            end)
+        end
+    end)
+end
+-- EFEK MEMUDAR (FADE) buka/tutup panel:
+--   utama     : CanvasGroup.GroupTransparency -> SELURUH isi memudar serentak
+--   cadangan  : fade per-elemen lama (fadeVal) bila CanvasGroup tak tersedia
+local function fadePanelKe(nilai, ti)
+    if root:IsA("CanvasGroup") then
+        tween(root, ti, {GroupTransparency = nilai})
+    else
+        tween(fadeVal, ti, {Value = nilai})
+    end
+end
 local function minimizeGui()
     if not root.Visible then return end
     sesiAnim += 1
     local id = sesiAnim
-    bunyi(CFG.SND_PING, 0.3, 0.75)
-    -- icon minimize DIHAPUS — GUI sembunyi total, buka lewat F
-    local ti = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-    tween(panelScale, ti, {Scale = 0.5})
-    tween(root, ti, {Rotation = 8})
-    tween(fadeVal, ti, {Value = 1})
-    task.delay(0.22, function()
+    bunyi(CFG.SND_WHOOSH, 0.35, 0.8)
+    blurMenuKe(0)
+    -- MEMUDAR halus + mengecil dikit (GUI sembunyi total, buka lewat F)
+    fadePanelKe(1, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.In))
+    tween(panelScale, TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Scale = skalaDasar * 0.94})
+    task.delay(0.27, function()
         if sesiAnim ~= id then return end
         root.Visible = false
-        root.Rotation = 0
-        panelScale.Scale = 1
-        fadeVal.Value = 0
+        panelScale.Scale = skalaDasar
+        if root:IsA("CanvasGroup") then root.GroupTransparency = 0 end
     end)
 end
 local function bukaGui()
     sesiAnim += 1
-    bunyi(CFG.SND_PING, 0.35, 1.15)
+    local id = sesiAnim
+    bunyi(CFG.SND_WHOOSH, 0.4, 1.05)
+    blurMenuKe(12)
     root.Visible = true
-    root.Rotation = -8
-    panelScale.Scale = 0.6
-    fadeVal.Value = 1
-    setFade(1)
-    tween(root, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Rotation = 0})
-    tween(panelScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
-    tween(fadeVal, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Value = 0})
-    konfeti(root, UDim2.new(0.5, 0, 0.5, 0), 12)
-    emojiBurst(root, UDim2.new(0.5, 0, 0.5, 0), {"✨", "⚡", "💜", "💙"}, 6)
+    panelScale.Scale = skalaDasar * 0.94
+    if root:IsA("CanvasGroup") then
+        root.GroupTransparency = 1 -- mulai gelap total lalu memudar masuk
+    else
+        fadeVal.Value = 1
+    end
+    fadePanelKe(0, TweenInfo.new(0.30, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+    tween(panelScale, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = skalaDasar})
+    task.delay(0.12, function()
+        if sesiAnim ~= id then return end
+        konfeti(root, UDim2.new(0.5, 0, 0.5, 0), 12)
+        emojiBurst(root, UDim2.new(0.5, 0, 0.5, 0), {"💀", "🕊️", "💜", "⚡"}, 6)
+    end)
 end
 togglePanel = function()
     if root.Visible then minimizeGui() else bukaGui() end
@@ -4687,6 +4860,22 @@ minBtn.MouseButton1Click:Connect(function()
     minimizeGui()
 end)
 buatDraggable(header, root)
+
+-- DENYUT GLITCH PANEL (neon horor): panel tersentak sesaat tiap beberapa detik
+task.spawn(function()
+    while outer.Parent do
+        task.wait(rnd(7, 16))
+        if not outer.Parent or State.Removed then break end
+        for _ = 1, rnd(2, 4) do
+            if not outer.Parent then break end
+            borderStroke.Thickness = rnd(2, 6)
+            outer.Position = UDim2.new(0, rnd(-2, 2), 0, rnd(-2, 2))
+            task.wait(0.045)
+        end
+        borderStroke.Thickness = 3
+        outer.Position = UDim2.new(0, 0, 0, 0)
+    end
+end)
 
 -- TAB TIANG
 saveBtnTiang.MouseButton1Click:Connect(function()
@@ -4791,13 +4980,13 @@ btnBersih.MouseButton1Click:Connect(function()
             bersihSiap = false
             if btnBersih.Parent then
                 btnBersih.Text = "🧹 HAPUS SEMUA"
-                btnBersih.BackgroundColor3 = Warna.Putih
+                btnBersih.BackgroundColor3 = Warna.Hitam2
             end
         end)
     else
         bersihSiap = false
         btnBersih.Text = "🧹 HAPUS SEMUA"
-        btnBersih.BackgroundColor3 = Warna.Putih
+        btnBersih.BackgroundColor3 = Warna.Hitam2
         bunyi(CFG.SND_SNAP, 0.35, 0.6)
         hapusSemuaTiang()
     end
@@ -5013,10 +5202,11 @@ task.delay(1.2, function()
     end
     updateInfoSimpan()
 end)
-print("[SilauNeon v" .. VERSI .. "] SIAP ✔ — F = GUI | Y = pasang tiang | V = rekam jalur | K×2 = rejoin")
-print("[SilauNeon] 5 TAB: 🏃 GERAK | 🎨 VISUAL | 🚀 TELEPORT | 📍 TIANG | ⚙️ SISTEM")
-print("[SilauNeon] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
-print("[SilauNeon]           B fallresist • R hide • T cahaya 2-arah • X dinding • V rekam • K×2 rejoin")
+print("[SILAU SCRIPT v" .. VERSI .. "] SIAP — F = GUI | Y = pasang tiang | V = rekam jalur | K×2 = rejoin")
+print("[SILAU SCRIPT] Tema NEON HOROR aktif: teks putih • glitch • glow • blur • fade buka/tutup • suara • panel 1/10 layar")
+print("[SILAU SCRIPT] 5 TAB: 🏃 GERAK | 🎨 VISUAL | 🚀 TELEPORT | 📍 TIANG | ⚙️ SISTEM")
+print("[SILAU SCRIPT] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
+print("[SILAU SCRIPT]           B fallresist • R hide • T cahaya 2-arah • X dinding • V rekam • K×2 rejoin")
 print("[SilauNeon] Auto TP: MULAI/STOP di Tab 3. Delay per titik di kotak kecil tiap baris (kosong = global).")
 print("[SilauNeon] Penyimpanan: " .. (fileOk
     and ("Tiang='" .. CFG.NAMA_FILE_TIANG .. "' • Lokasi='" .. CFG.NAMA_FILE_LOKASI .. "' (per game: " .. game.PlaceId .. ")")
