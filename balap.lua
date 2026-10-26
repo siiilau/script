@@ -15,9 +15,14 @@
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab GERAK): simpan lokasi dgn nama bebas — permanen
+--    v1.0.8: FIX hide rambut/aksesoris atas (klasifikasi 4 lapis) + buka/tutup
+--            GUI instan (animasi dihapus biar ringan)
+--    v1.0.7: Hide Badan Atas (VISUAL) + Mode Hemat GUI (SISTEM)
 --========================================================
 print("[BALAP v1.8] load mulai...")
--- [0] DIAGNOSTIK ON-SCREEN (v1.0.6) --------------------------------
+-- [0] DIAGNOSTIK ON-SCREEN (v1.0.8) --------------------------------
+-- v1.0.8: FIX hide rambut/aksesoris atas + animasi buka/tutup GUI dihapus
+-- v1.0.7: + Hide Badan Atas (layar sendiri) + Mode Hemat GUI
 -- v1.0.6: + TP — simpan lokasi (nama bebas) & teleport, permanen via BALAP_TP.json
 -- v1.0.5: FIX "Unable to assign property CellPadding. UDim2 expected, got UDim"
 -- (bug ini bikin GUI crash diam-diam sejak v1.0.2 — tertangkap banner merah v1.0.4)
@@ -273,6 +278,7 @@ end
 local State = { Removed = false }
 local Original = {}
 local Setters, Switches = {}, {}
+local effGradients, effTweens = {}, {}   -- registry efek neon utk Mode Hemat
 local setFeature, togglePanel, resetAll, rejoin, unloadScript
 local applySpeed, applyJump, updateJumpLabel
 local RefreshSpeed, RefreshJump, JumpLabel, SpeedLabel, AfkLabel, FallLabel
@@ -314,15 +320,19 @@ local function ledSweep(inst, base, bandA, bandB, dur)
         }),
         Offset = Vector2.new(-1, 0),
     }, inst)
-    tween(g, TweenInfo.new(dur or 2.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+    local tw = tween(g, TweenInfo.new(dur or 2.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
         {Offset = Vector2.new(1, 0)})
+    table.insert(effGradients, g)
+    table.insert(effTweens, tw)
     return g
 end
 local function cycleColor(obj, prop, colors, interval)
     task.spawn(function()
         local i = 1
         while obj.Parent do
-            tween(obj, TweenInfo.new(interval * 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {[prop] = colors[i]})
+            if not State.HematOn then
+                tween(obj, TweenInfo.new(interval * 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {[prop] = colors[i]})
+            end
             task.wait(interval)
             if not obj.Parent then break end
             i = i % #colors + 1
@@ -476,10 +486,10 @@ local borderGrad = buat("UIGradient", {
         ColorSequenceKeypoint.new(1.00, Warna.Ungu),
     }),
 }, borderStroke)
-tween(borderGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = 360})
+table.insert(effTweens, tween(borderGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = 360}))
 local ring2Stroke = buat("UIStroke", {Color = Warna.Putih, Thickness = 1, Transparency = 0.45}, outer)
 local ring2Grad = buat("UIGradient", {Color = ColorSequence.new(Warna.Ungu2, Warna.Biru2)}, ring2Stroke)
-tween(ring2Grad, TweenInfo.new(3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = -360})
+table.insert(effTweens, tween(ring2Grad, TweenInfo.new(3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = -360}))
 local panel = buat("Frame", {
     Size = UDim2.new(1, -10, 1, -10),
     Position = UDim2.new(0, 5, 0, 5),
@@ -508,8 +518,8 @@ for i = 1, 3 do
         BackgroundTransparency = 0.5,
         BorderSizePixel = 0,
     }, partBox)
-    tween(stripe, TweenInfo.new(6 + i * 2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true),
-        {Position = UDim2.new(0.3 * i + 0.25, 0, 0.5, 0)})
+    table.insert(effTweens, tween(stripe, TweenInfo.new(6 + i * 2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true),
+        {Position = UDim2.new(0.3 * i + 0.25, 0, 0.5, 0)}))
 end
 local header = buat("Frame", {
     Size = UDim2.new(1, 0, 0, 46),
@@ -802,6 +812,8 @@ State.PlayersOn = false  -- Hide Pemain Lain (baru v2.2)
 State.LightOn = false
 State.FallOn  = false
 State.MoonOn  = false  -- Moonwalk (G)
+State.HideAtasOn = false  -- Hide Badan Atas (v1.0.8, layar sendiri)
+State.HematOn = false    -- Mode Hemat GUI (v1.0.7)
 State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
 
 -- ======================================================================
@@ -1173,6 +1185,7 @@ buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.Layou
 buatHeader(scrollVisual, "Visual")
 buatToggleRow(scrollVisual, "Hide Player + Kendaraan", "R", "Hide")
 buatToggleRow(scrollVisual, "Hide Pemain Lain", nil, "Players")
+buatToggleRow(scrollVisual, "Hide Badan Atas (kaki tetap)", nil, "HideAtas")
 buatToggleRow(scrollVisual, "Cahaya Auto (2 arah)", "T", "Light")
 buatHeader(scrollVisual, "Lightweight")
 buatToggleRow(scrollVisual, "Partikel / Bayangan / Efek", nil, "LW")
@@ -1203,7 +1216,7 @@ buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.Layou
 buatHeader(scrollSistem, "Info")
 local infoVersi = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 78),
+    Size = UDim2.new(1, 0, 0, 90),
     FontFace = fnt("med"),
     TextSize = 11,
     TextColor3 = Warna.TeksGelap,
@@ -1214,12 +1227,15 @@ local infoVersi = buat("TextLabel", {
         .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "TP: simpan lokasi (nama bebas) — tersimpan permanen\n"
+        .. "Hide Atas (VISUAL) • Hemat GUI (SISTEM) • Buka/tutup instan\n"
         .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
         .. "B fall resist • R hide • T cahaya • X dinding • K×2 rejoin",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
 buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoVersi)
+buatHeader(scrollSistem, "Hemat")
+buatToggleRow(scrollSistem, "🪶 Hemat GUI (neon & animasi)", nil, "Hemat")
 buatHeader(scrollSistem, "Aksi")
 buatActionRow(scrollSistem, "🔄 RESET SCRIPT", Warna.Biru, function() resetAll() end)
 buatActionRow(scrollSistem, "🔁 REJOIN SERVER  [K×2]", Warna.Biru, function() rejoin() end)
@@ -1326,8 +1342,8 @@ local marquee = buat("TextLabel", {
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, marqueeClip)
-tween(marquee, TweenInfo.new(24, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-    {Position = UDim2.fromOffset(-1600, 0)})
+table.insert(effTweens, tween(marquee, TweenInfo.new(24, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+    {Position = UDim2.fromOffset(-1600, 0)}))
 
 -- bracket pojok (dekorasi)
 local posisiTitik = {
@@ -1407,8 +1423,8 @@ task.spawn(function()
             tween(l, TweenInfo.new(0.35), {TextTransparency = 0.55})
             tween(l, TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                 {Position = UDim2.new(x0 + rnd(-6, 6) / 100, 0, -0.08, 0)})
-            tween(l, TweenInfo.new(1.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-                {Rotation = l.Rotation + rnd(16, 30) * (rnd(0, 1) == 0 and 1 or -1)})
+            table.insert(effTweens, tween(l, TweenInfo.new(1.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                {Rotation = l.Rotation + rnd(16, 30) * (rnd(0, 1) == 0 and 1 or -1)}))
             task.delay(dur - 0.4, function()
                 if l.Parent then tween(l, TweenInfo.new(0.4), {TextTransparency = 1}) end
             end)
@@ -1447,6 +1463,7 @@ end)
 -- [10] BURST FX -----------------------------------------------------
 local paletKonfeti = {Warna.Ungu, Warna.Ungu2, Warna.Biru, Warna.Biru2, Warna.Putih, Warna.Hijau2}
 konfeti = function(parent, pos, n)
+    if State.HematOn then return end
     for _ = 1, n do
         local c = buat("Frame", {
             Name = "NoFade",
@@ -1471,6 +1488,7 @@ konfeti = function(parent, pos, n)
     end
 end
 emojiBurst = function(parent, pos, daftar, n)
+    if State.HematOn then return end
     for _ = 1, n do
         local l = buat("TextLabel", {
             Name = "NoFade",
@@ -1557,6 +1575,21 @@ toast = function(teks, aksen)
         TextXAlignment = Enum.TextXAlignment.Left,
     }, t)
     -- animasi masuk: slide dari kanan + fade in
+    if State.HematOn then
+        -- mode hemat: tampil instan tanpa animasi
+        t.Position = UDim2.new(1, 0, 0, 0)
+        t.BackgroundTransparency = 0.05
+        st.Transparency = 0.15
+        dot.BackgroundTransparency = 0
+        lb.TextTransparency = 0
+        task.delay(1.6, function() t:Destroy() end)
+        local listH = {}
+        for _, c in ipairs(notifHolder:GetChildren()) do
+            if c:IsA("Frame") and c.Name == "NoFade" then table.insert(listH, c) end
+        end
+        if #listH > 5 then listH[1]:Destroy() end
+        return
+    end
     t.Position = UDim2.new(1, 20, 0, 0)  -- start offset right
     local ti = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
     tween(t,   ti, {BackgroundTransparency = 0.05, Position = UDim2.new(1, 0, 0, 0)})
@@ -2013,6 +2046,168 @@ Setters.Players = function(v, silent)
         plrHideSapu(false)
     end
     syncNotify("Players", v, silent, "Hide Pemain Lain")
+end
+
+-- HIDE BADAN ATAS (v1.0.8) — sembunyikan KEPALA s/d BADAN & TANGAN milik
+-- DIRI SENDIRI, hanya di layar sendiri (LocalTransparencyModifier).
+-- Tetap tampil: pinggang ke bawah (celana) + kaki + sepatu.
+-- FIX v1.0.8 (rambut/aksesoris atas dulu masih lolos) — klasifikasi 4 LAPIS:
+--   1) nama part tubuh standar (R15/R6) -> langsung diketahui
+--   2) rantai weld/joint (Weld, WeldConstraint, Motor6D, AccessoryWeld)
+--      sampai 6 hop -> part tubuh tempat menempel
+--      (WeldConstraint BARU di v1.0.8 — banyak rambut/topi modern pakai ini)
+--   3) peta attachment: attachment milik aksesoris dicocokkan ke attachment
+--      part tubuh (cara resmi Roblox menentukan posisi aksesoris)
+--   4) posisi dunia: di atas garis pinggang (HRP - 1 stud) = sembunyi,
+--      di bawah = tampil (jaring pengaman rambut/topi tanpa weld)
+--   Kalau semua gagal -> SEMBUNYI (ragu = sembunyi; yang tampil hanya
+--   kaki/celana/sepatu sesuai permintaan).
+-- Decal (muka, lensa, tekstur) di dalam part sembunyi ikut dihilangkan.
+local atasConn, atasT = nil, 0
+local atasDecalOrig = {}
+local ATAS_R15 = {
+    Head = true, UpperTorso = true,
+    LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+    RightUpperArm = true, RightLowerArm = true, RightHand = true,
+}
+local ATAS_R6 = { Head = true, Torso = true, ["Left Arm"] = true, ["Right Arm"] = true }
+local BADAN_KENAL = {
+    Head = true, UpperTorso = true, LowerTorso = true,
+    LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+    RightUpperArm = true, RightLowerArm = true, RightHand = true,
+    LeftUpperLeg = true, LeftLowerLeg = true, LeftFoot = true,
+    RightUpperLeg = true, RightLowerLeg = true, RightFoot = true,
+    Torso = true, ["Left Arm"] = true, ["Right Arm"] = true,
+    ["Left Leg"] = true, ["Right Leg"] = true, HumanoidRootPart = true,
+}
+local function atasIkat(part, hop)   -- telusuri rantai weld/joint -> nama part tubuh
+    if hop > 6 then return nil end
+    for _, w in ipairs(part:GetChildren()) do
+        if w:IsA("Motor6D") or w:IsA("Weld") or w:IsA("AccessoryWeld") or w:IsA("WeldConstraint") then
+            local lain = (w.Part0 == part) and w.Part1 or w.Part0
+            if lain then
+                if BADAN_KENAL[lain.Name] then return lain.Name end
+                local r = atasIkat(lain, hop + 1)
+                if r then return r end
+            end
+        end
+    end
+    return nil
+end
+local function atasCariAcc(part)     -- naik lewat Parent, cari Accessory induk
+    local p = part.Parent
+    local hop = 0
+    while p and hop < 4 do
+        if p:IsA("Accessory") then return p end
+        p = p.Parent
+        hop = hop + 1
+    end
+    return nil
+end
+local function atasSapu(on)
+    local char = LocalPlayer.Character
+    if not char then return end
+    -- garis pinggang: HRP turun 1 stud (kaki/celana/sepatu di bawahnya tetap tampil)
+    local batasY = nil
+    pcall(function()
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then batasY = hrp.Position.Y - 1.0 end
+    end)
+    -- peta attachment part tubuh: nama attachment -> part pemiliknya
+    local petaIkat = {}
+    for _, bp in ipairs(char:GetDescendants()) do
+        pcall(function()
+            if bp:IsA("BasePart") and BADAN_KENAL[bp.Name] then
+                for _, c in ipairs(bp:GetChildren()) do
+                    if c:IsA("Attachment") then petaIkat[c.Name] = bp.Name end
+                end
+            end
+        end)
+    end
+    for _, d in ipairs(char:GetDescendants()) do
+        pcall(function()
+            if d:IsA("BasePart") and d.Name ~= "HumanoidRootPart" then
+                local sembunyi = false
+                if BADAN_KENAL[d.Name] then
+                    sembunyi = (ATAS_R15[d.Name] or ATAS_R6[d.Name]) and true or false
+                else
+                    local tubuh = atasIkat(d, 0)          -- lapis 2: rantai weld
+                    if tubuh then
+                        sembunyi = (ATAS_R15[tubuh] or ATAS_R6[tubuh]) and true or false
+                    else
+                        local acc = atasCariAcc(d)         -- lapis 3: peta attachment
+                        local att = acc and acc:FindFirstChildWhichIsA("Attachment", true) or nil
+                        local owner = att and petaIkat[att.Name] or nil
+                        if owner then
+                            sembunyi = (ATAS_R15[owner] or ATAS_R6[owner]) and true or false
+                        else
+                            local okP, pos = pcall(function() return d.Position end)
+                            if okP and pos and batasY then  -- lapis 4: posisi vs garis pinggang
+                                sembunyi = pos.Y > batasY
+                            else
+                                sembunyi = true             -- ragu = sembunyi
+                            end
+                        end
+                    end
+                end
+                if on then
+                    if sembunyi then
+                        d.LocalTransparencyModifier = 1
+                        for _, c in ipairs(d:GetDescendants()) do
+                            if c:IsA("Decal") then
+                                if atasDecalOrig[c] == nil then atasDecalOrig[c] = c.Transparency end
+                                c.Transparency = 1
+                            end
+                        end
+                    end
+                else
+                    d.LocalTransparencyModifier = 0
+                end
+            end
+        end)
+    end
+    if not on then
+        for c, tr in pairs(atasDecalOrig) do
+            pcall(function() if c.Parent then c.Transparency = tr end end)
+        end
+        table.clear(atasDecalOrig)
+    end
+end
+Setters.HideAtas = function(v, silent)
+    if State.HideAtasOn == v then return end
+    State.HideAtasOn = v
+    if v then
+        atasSapu(true)
+        atasT = 0
+        atasConn = RunService.Heartbeat:Connect(function(dt)
+            if not State.HideAtasOn or State.Removed then return end
+            atasT = atasT + dt
+            if atasT >= 0.3 then
+                atasT = 0
+                atasSapu(true)  -- self-heal: reset kamera/respawn tertangani di sini
+            end
+        end)
+    else
+        if atasConn then atasConn:Disconnect() atasConn = nil end
+        atasSapu(false)
+    end
+    syncNotify("HideAtas", v, silent, "Hide Badan Atas")
+end
+
+-- MODE HEMAT GUI (v1.0.7) — matikan efek neon & animasi berkelanjutan:
+-- gradient LED di-nonaktifkan, tween infinity di-pause, konfeti/emoji burst
+-- tidak jalan, toast tampil instan. Semua reversibel (Enabled/Pause-Play).
+Setters.Hemat = function(v, silent)
+    if State.HematOn == v then return end
+    State.HematOn = v
+    if v then
+        for _, g in ipairs(effGradients) do pcall(function() g.Enabled = false end) end
+        for _, tw in ipairs(effTweens) do pcall(function() tw:Pause() end) end
+    else
+        for _, g in ipairs(effGradients) do pcall(function() g.Enabled = true end) end
+        for _, tw in ipairs(effTweens) do pcall(function() tw:Play() end) end
+    end
+    syncNotify("Hemat", v, silent, "Mode Hemat GUI")
 end
 
 -- LIGHTWEIGHT (Partikel / Bayangan / Efek)
@@ -2474,6 +2669,8 @@ resetAll = function()
     setFeature("Walls", false, true)
     setFeature("Light", false, true)
     setFeature("Fall", false, true)
+    setFeature("HideAtas", false, true)
+    setFeature("Hemat", false, true)
     State.SpeedValue, State.JumpValue, State.JumpHeightValue = CFG.SPEED_ON_1, CFG.ON_JUMP, CFG.ON_JUMP_H
     if RefreshSpeed then RefreshSpeed() end
     if RefreshJump then RefreshJump() end
@@ -2507,6 +2704,8 @@ unloadScript = function()
     pcall(setFeature, "Walls", false, true)
     pcall(setFeature, "Light", false, true)
     pcall(setFeature, "Fall", false, true)
+    pcall(setFeature, "HideAtas", false, true)
+    pcall(setFeature, "Hemat", false, true)
     -- 2) Unbind semua RenderStep binding
     pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
     pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
@@ -2647,38 +2846,24 @@ task.spawn(function()
 end)
 
 -- [19] BUKA / TUTUP GUI ---------------------------------------------
-local sesiAnim = 0
+-- v1.0.8: animasi buka/tutup DIHAPUS TOTAL (tween rotasi/scale/fade +
+-- konfeti + emojiBurst saat muncul) — GUI tampil & hilang INSTAN, lebih
+-- ringan. Permintaan user: "hilangkan animasi muncul script dan tutupnya".
 local function minimizeGui()
     if not root.Visible then return end
-    sesiAnim += 1
-    local id = sesiAnim
     bunyi(CFG.SND_PING, 0.3, 0.75)
-    -- icon minimize DIHAPUS — GUI sembunyi total, buka lewat F
-    local ti = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-    tween(panelScale, ti, {Scale = 0.5})
-    tween(root, ti, {Rotation = 8})
-    tween(fadeVal, ti, {Value = 1})
-    task.delay(0.22, function()
-        if sesiAnim ~= id then return end
-        root.Visible = false
-        root.Rotation = 0
-        panelScale.Scale = 1
-        fadeVal.Value = 0
-    end)
+    root.Visible = false
+    root.Rotation = 0
+    panelScale.Scale = 1
+    fadeVal.Value = 0
 end
 local function bukaGui()
-    sesiAnim += 1
     bunyi(CFG.SND_PING, 0.35, 1.15)
     root.Visible = true
-    root.Rotation = -8
-    panelScale.Scale = 0.6
-    fadeVal.Value = 1
-    setFade(1)
-    tween(root, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Rotation = 0})
-    tween(panelScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
-    tween(fadeVal, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Value = 0})
-    konfeti(root, UDim2.new(0.5, 0, 0.5, 0), 12)
-    emojiBurst(root, UDim2.new(0.5, 0, 0.5, 0), {"✨", "⚡", "💜", "💙"}, 6)
+    root.Rotation = 0
+    panelScale.Scale = 1
+    fadeVal.Value = 0
+    setFade(0)
 end
 togglePanel = function()
     if root.Visible then minimizeGui() else bukaGui() end
@@ -2764,6 +2949,7 @@ end -- akhir initLogic()
 
 -- Eksekusi initLogic() sekarang (UI + helpers sudah siap dari part1-4)
 initLogic()
+getgenv().BALAP_API = { Setters = Setters, State = State }  -- debug/otomasi + harness uji
 end, function(e)
         local teks = tostring(e)
         print("==================================================")
