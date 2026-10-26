@@ -132,13 +132,14 @@ local CFG = {
     ON_JUMP     = 65.25,
     OFF_JUMP_H  = 6.69,
     ON_JUMP_H   = 8.50,
-    -- Moonwalk (F): putaran NATURAL seperti badan orang berbalik arah biasa.
-    --   MOON_TURN_MAX = kecepatan putar maks (rad/dtk). 8 = ±458°/dtk,
-    --     putaran 180° selesai ±0.4 dtk. Lebih lambat? turunkan (mis. 5-6).
-    --   MOON_SMOOTH = kelembutan mendarat & koreksi kecil (makin kecil makin lembut).
+    -- Moonwalk (F): putaran CEPAT + HENTAKAN — badan dibalikkan kencang
+    --   lalu mengunci tegas di arah tujuan (bukan melayang lambat).
+    --   MOON_TURN_MAX = kecepatan putar maks (rad/dtk). 12 = ±688°/dtk,
+    --     putaran 180° selesai ±0.25 dtk. Lebih kencang? naikkan (mis. 15).
+    --   MOON_SMOOTH = kekerasan kunci/pendaratan (makin besar makin hentak).
     --   Badan hanya berputar saat karakter BERGERAK; berdiri = diam total.
-    MOON_TURN_MAX = 8,
-    MOON_SMOOTH = 6,
+    MOON_TURN_MAX = 12,
+    MOON_SMOOTH = 10,
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
 }
@@ -1837,9 +1838,9 @@ Setters.Shift = function(v, silent)
 end
 
 -- MOONWALK (F) — badan TERKUNCI menghadap kamera/layar saat jalan.
--- Rotasi NATURAL: kecepatan putar dibatasi CFG.MOON_TURN_MAX (berjalan
--- konstan seperti badan berbalik arah biasa — tanpa sentakan awal), lalu
--- lerp sudut terpendek utk mendarat lembut (anti muter keliling).
+-- Rotasi CEPAT + HENTAKAN: kecepatan putar dibatasi CFG.MOON_TURN_MAX
+-- (balik badan kencang), lalu kunci tegas ke arah target via lerp sudut
+-- terpendek dgn kekerasan CFG.MOON_SMOOTH (anti muter keliling).
 Setters.Moon = function(v, silent)
     if State.MoonOn == v then return end
     State.MoonOn = v
@@ -1859,9 +1860,8 @@ Setters.Moon = function(v, silent)
                     local _, yawCam = cam.CFrame:ToOrientation()
                     -- putar 180 derajat = badan menghadap kamera
                     local target = yawCam + math.pi
-                    -- NATURAL: langkah lerp + BATAS KECEPATAN PUTAR. Putaran
-                    -- besar = kecepatan konstan (seperti orang berbalik arah),
-                    -- putaran kecil = lerp lembut sampai target.
+                    -- CEPAT + HENTAKAN: putar kencang dgn batas kecepatan,
+                    -- lalu kunci tegas ke target (lerp sudut terpendek).
                     local _, yawSek = hrp.CFrame:ToOrientation()
                     local selisih = ((target - yawSek + math.pi) % (2 * math.pi)) - math.pi
                     local langkah = selisih * math.min(dt * CFG.MOON_SMOOTH, 1)
