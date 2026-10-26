@@ -1,5 +1,5 @@
 --========================================================
---  BALAP v1.0.13 — 
+--  BALAP v1.0.16 — 
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  3 TAB:
@@ -8,14 +8,30 @@
 --    3 ⚙️ SISTEM : reset, rejoin, hapus script
 --
 --  Keybind:
---    F = buka/tutup GUI (saat tutup = hilang total)
+--    G = buka/tutup GUI (saat tutup = hilang total)
 --    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
---    G = Moonwalk    B = Fall Resist (preset 5/20/50/75%)    R = Hide
+--    F = Moonwalk    B = Fall Resist (preset 5/20/50/75%)    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
---    CapsLock = klik kanan NEMPEL; tekan lagi = lepas (revisi v1.0.13)
+--    CapsLock = klik kanan ON/OFF: tekan 1x = klik kanan NEMPEL,
+--             tekan lagi = MATI total — kunci TAHAN walau respawn/mati/
+--             alt-tab; 2 saluran tombol (UIS + CAS) biar tekanan tidak
+--             hilang saat UI game terbuka (v1.0.15)
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab GERAK): simpan lokasi dgn nama bebas — permanen
+--    v1.0.16: TUKAR KEYBIND F & G — G = buka/tutup GUI, F = Moonwalk
+--            (permintaan user; mekanisme & fitur lain tidak berubah)
+--    v1.0.15: CAPSLOCK ON/OFF + SALURAN GANDA — tekan CapsLock = klik kanan
+--            nempel, tekan lagi = mati total (UP dikirim ke semua lapisan).
+--            Tombol CapsLock sekarang lewat 2 saluran (UserInputService +
+--            ContextActionService) dgn de-dup 0.15 detik — tekanan yg duluan
+--            ditelan UI game tetap diterima saluran kedua; 1 tekanan tetap
+--            dihitung 1x (tidak dobel).
+--    v1.0.14: ANTI "KADANG NGGAK JALAN" — kunci klik kanan sekarang TAHAN:
+--            respawn/mati & alt-tab tidak lagi melepas (tekanan dikirim
+--            ulang otomatis), denyut jaga tiap 4 detik, lapisan input yg
+--            dipakai tercatat di F9, ada peringatan kalau semua lapisan
+--            input gagal.
 --    v1.0.13: (1) CapsLock jadi TOGGLE — tekan sekali = klik kanan nempel
 --            (tidak perlu ditahan), tekan lagi = lepas. (2) Fitur kamera
 --            turun saat Hide Atas DIHAPUS (minta user) — Hide Atas
@@ -33,6 +49,10 @@
 --========================================================
 print("[BALAP v1.8] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN (v1.0.8) --------------------------------
+-- v1.0.16: tukar keybind F & G (G = GUI, F = Moonwalk)
+-- v1.0.15: CapsLock ON/OFF + 2 saluran tombol (UIS + CAS, de-dup 0.15 dtk)
+-- v1.0.14: kunci klik kanan TAHAN respawn/alt-tab + denyut jaga 4 detik
+--          + lapisan input tercatat di F9 (anti "kadang nggak jalan")
 -- v1.0.13: CapsLock = toggle klik kanan (tekan = nempel, tekan lagi = lepas);
 --          kamera turun saat Hide Atas DIHAPUS (minta user)
 -- v1.0.12: fitur Tahan Klik Kanan (CapsLock ditahan = RMB ditahan)
@@ -148,7 +168,7 @@ _G.__BALAP_MAIN__ = true  -- penanda lama, tetap dibersihkan unloadScript
 -- (Luau limit 200 local per function)
 local CFG = {
     ICON_SIZE       = 36,
-    TOGGLE_KEY      = Enum.KeyCode.F,
+    TOGGLE_KEY      = Enum.KeyCode.G,
     LED_TEXT        = "⚡ B A L A P ⚡",
     SOUND_ON        = true,
     FX_LEVEL        = 1,
@@ -829,11 +849,11 @@ State.WallsOn = false
 State.PlayersOn = false  -- Hide Pemain Lain (baru v2.2)
 State.LightOn = false
 State.FallOn  = false
-State.MoonOn  = false  -- Moonwalk (G)
+State.MoonOn  = false  -- Moonwalk (F)
 State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
 State.HematOn = false    -- Mode Hemat GUI (v1.0.7)
 State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
-State.HoldRMBOn = true -- Klik Kanan Auto (v1.0.12, TOGGLE sejak v1.0.13): tekan CapsLock = nempel, tekan lagi = lepas
+State.HoldRMBOn = true -- Klik Kanan Auto (ON/OFF; 2 saluran v1.0.15): tekan CapsLock = nempel, tekan lagi = mati
 
 -- ======================================================================
 -- FALL RESIST V1.07 (port script standalone -- menggantikan Smart Fall
@@ -926,9 +946,11 @@ RefreshJump = buatStepperRow(
     end
 )
 buatToggleRow(scrollKing, "Shiftlock Mobile", "C", "Shift")
-buatToggleRow(scrollKing, "Moonwalk", "G", "Moon")
+buatToggleRow(scrollKing, "Moonwalk", "F", "Moon")
 -- v1.0.12: tahan CapsLock = klik kanan mouse ditahan (untuk kamera/aim)
 -- v1.0.13: direvisi jadi TOGGLE — tekan CapsLock = nempel, tekan lagi = lepas
+-- v1.0.14: kunci TAHAN respawn/mati/alt-tab — dikirim ulang otomatis
+-- v1.0.15: ON/OFF tegas + 2 saluran tombol (UIS + CAS) biar tidak telan tekanan
 buatToggleRow(scrollKing, "🖱 Klik Kanan Auto (tekan CapsLock)", nil, "HoldRMB")
 buatHeader(scrollKing, "Anti AFK")
 local _, afkLbl = buatToggleRow(scrollKing, "👻 Anti-AFK (2 lapis)", nil, "Afk")
@@ -1250,7 +1272,7 @@ local infoVersi = buat("TextLabel", {
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "TP: simpan lokasi (nama bebas) — tersimpan permanen\n"
         .. "Hide Atas (VISUAL) • Hemat GUI (SISTEM) • buka/tutup instan\n"
-        .. "Keybind: F panel • Q speed • J jump • C shift • G moon • CapsLock klik kanan\n"
+        .. "Keybind: G panel • Q speed • J jump • C shift • F moon • CapsLock klik kanan on/off\n"
         .. "B fall resist • R hide • T cahaya • X dinding • K×2 rejoin",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
@@ -1359,7 +1381,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1600, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • G Moonwalk • B FallResist   ✦   🎨 R Hide • Hide Pemain Lain • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • F Moonwalk • B FallResist   ✦   🎨 R Hide • Hide Pemain Lain • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1873,7 +1895,7 @@ Setters.Shift = function(v, silent)
     syncNotify("Shift", v, silent, "Shiftlock Mobile")
 end
 
--- MOONWALK (G) — badan TERKUNCI menghadap kamera/layar saat jalan
+-- MOONWALK (F) — badan TERKUNCI menghadap kamera/layar saat jalan
 Setters.Moon = function(v, silent)
     if State.MoonOn == v then return end
     State.MoonOn = v
@@ -2675,37 +2697,57 @@ Setters.Afk = function(v, silent)
     syncNotify("Afk", v, silent, "Anti-AFK")
 end
 
--- KLIK KANAN OTOMATIS (v1.0.12, mode TOGGLE sejak v1.0.13) — tekan
--- CapsLock SEKALI -> klik kanan mouse NEMPEL (kamera/aim bebas tanpa
--- pegang tombol); tekan CapsLock LAGI -> klik kanan lepas. Tidak perlu
--- menahan tombolnya. 3 lapis pengirim input (pola sama dgn Anti-AFK):
--- mouse2press executor -> VirtualUser:Button2Down ->
--- VirtualInputManager:SendMouseButtonEvent. Fokus hilang (alt-tab)
--- tetap melepas supaya state tidak ngaco; matikan fitur saat RMB
--- nempel juga otomatis melepas.
+-- KLIK KANAN OTOMATIS (v1.0.12; TOGGLE v1.0.13; ANTI-PUTUS v1.0.14; 2 SALURAN v1.0.15)
+-- CAPSLOCK ON/OFF: tekan CapsLock SEKALI -> klik kanan mouse NEMPEL; tekan
+-- CapsLock LAGI -> klik kanan MATI total (UP dikirim ke semua lapisan).
+-- Kunci TAHAN: respawn/mati, alt-tab, atau game yang melepas state diam-diam
+-- TIDAK bikin kunci hilang — tekanan dikirim ulang otomatis (respawn + balik
+-- fokus + denyut jaga tiap 4 detik).
+-- 3 lapis pengirim input (pola sama dgn Anti-AFK):
+--   mouse2press executor -> VirtualUser:Button2Down ->
+--   VirtualInputManager:SendMouseButtonEvent.
+-- Lapisan yang sukses DICATAT (tercetak di F9) dan dipakai lagi saat kirim
+-- ulang; kalau SEMUA lapisan gagal, ada peringatan (tidak diam-diam lagi).
+-- v1.0.15 — TEKANAN CAPSLOCK lewat 2 SALURAN sekaligus:
+--   saluran 1: UserInputService.InputBegan (standar)
+--   saluran 2: ContextActionService (masih dapat tekanan walau UI game/
+--              core terbuka — kondisi yg bikin saluran 1 di-skip)
+--   De-dup 0.15 detik: 1 tekanan fisik yang sampai di 2 saluran dihitung
+--   SATU kali (tanpa ini, 1 tekanan ke-toggle 2x = kelihatan "tidak berfungsi").
 local rmbDitahan = false
+local rmbLapis = 0 -- lapisan yg sukses terakhir: 1=executor, 2=VirtualUser, 3=VIM
 local function rmbTahan()
     if rmbDitahan or State.Removed or not State.HoldRMBOn then return end
     rmbDitahan = true
-    local ok = false
-    if type(mouse2press) == "function" then ok = pcall(mouse2press) end
-    if not ok then
-        ok = pcall(function()
+    local lapis, nama = 0, nil
+    if type(mouse2press) == "function" and pcall(mouse2press) then
+        lapis, nama = 1, "executor"
+    end
+    if lapis == 0 then
+        local ok = pcall(function()
             local cam = Workspace.CurrentCamera
             VirtualUser:CaptureController()
             VirtualUser:Button2Down(Vector2.new(), cam and cam.CFrame or CFrame.new())
         end)
+        if ok then lapis, nama = 2, "VirtualUser" end
     end
-    if not ok then
-        pcall(function()
+    if lapis == 0 then
+        local ok = pcall(function()
             game:GetService("VirtualInputManager"):SendMouseButtonEvent(5, 5, 1, true, game, 0)
         end)
+        if ok then lapis, nama = 3, "VirtualInputManager" end
     end
-    print("[BALAP][HoldRMB] klik kanan NEMPEL (CapsLock ON)")
+    if lapis == 0 then
+        -- v1.0.14: semua lapisan gagal -> JANGAN diam-diam
+        rmbDitahan = false
+        print("[BALAP][HoldRMB] GAGAL: semua lapisan input ditolak game (coba lagi; cek CEK_XENO utk lihat API executor)")
+        pcall(function() toast("⚠️ Klik kanan gagal dikirim — coba tekan CapsLock lagi", Warna.Merah) end)
+    else
+        rmbLapis = lapis
+        print("[BALAP][HoldRMB] klik kanan NEMPEL (CapsLock ON, lapisan " .. nama .. ")")
+    end
 end
-local function rmbLepas()
-    if not rmbDitahan then return end
-    rmbDitahan = false
+local function rmbKirimSemuaUp()
     -- lepas di SEMUA lapis sekaligus (harmless kalau memang tidak ditahan)
     pcall(function() if type(mouse2release) == "function" then mouse2release() end end)
     pcall(function()
@@ -2715,7 +2757,43 @@ local function rmbLepas()
     pcall(function()
         game:GetService("VirtualInputManager"):SendMouseButtonEvent(5, 5, 1, false, game, 0)
     end)
+end
+local function rmbLepas()
+    if not rmbDitahan then return end
+    rmbDitahan = false
+    rmbLapis = 0
+    rmbKirimSemuaUp()
     print("[BALAP][HoldRMB] klik kanan DILEPAS (CapsLock OFF)")
+end
+-- KIRIM ULANG TEKANAN (v1.0.14): dipakai respawn + balik fokus + denyut jaga.
+-- Senyap (tanpa print) supaya F9 tidak kebanjiran tiap 4 detik.
+local function rmbUlang()
+    if not rmbDitahan or State.Removed or not State.HoldRMBOn then return end
+    if rmbLapis == 1 then
+        pcall(function() if type(mouse2press) == "function" then mouse2press() end end)
+    elseif rmbLapis == 2 then
+        pcall(function()
+            local cam = Workspace.CurrentCamera
+            VirtualUser:CaptureController()
+            VirtualUser:Button2Down(Vector2.new(), cam and cam.CFrame or CFrame.new())
+        end)
+    elseif rmbLapis == 3 then
+        pcall(function()
+            game:GetService("VirtualInputManager"):SendMouseButtonEvent(5, 5, 1, true, game, 0)
+        end)
+    end
+end
+-- TEKANAN CAPSLOCK (v1.0.15): pintu masuk tunggal utk 2 saluran (UIS + CAS).
+-- De-dup 0.15 detik: tekanan yang sama yang tercatat lewat saluran lain
+-- dianggap duplikat dan dilewati. Manusia tidak mungkin menekan CapsLock 2x
+-- dalam 0.15 detik, jadi tekanan asli selalu lolos.
+local rmbTekanTerakhir = 0
+local function rmbTekan()
+    if State.Removed or not State.HoldRMBOn then return end
+    local sekarang = tick()
+    if sekarang - rmbTekanTerakhir < 0.15 then return end -- duplikat saluran lain
+    rmbTekanTerakhir = sekarang
+    if rmbDitahan then rmbLepas() else rmbTahan() end
 end
 Setters.HoldRMB = function(v, silent)
     if State.HoldRMBOn == v then return end
@@ -2727,14 +2805,47 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if State.Removed then return end
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.CapsLock then
-        -- TOGGLE (v1.0.13): tekan sekali = nempel, tekan lagi = lepas.
-        -- Tidak ada handler InputEnded: melepas tombol CapsLock TIDAK melepas klik kanan.
-        if rmbDitahan then rmbLepas() else rmbTahan() end
+        -- SALURAN 1 (UIS): tekan = ON ⇄ OFF. Melepas tombol CapsLock tidak
+        -- melakukan apa-apa — hanya TEKANAN BERIKUTNYA yang mengubah keadaan.
+        rmbTekan()
     end
 end))
-catat(UserInputService.WindowFocusReleased:Connect(function()
-    rmbLepas()  -- alt-tab / fokus hilang -> lepas, jangan sampai nyangkut
+-- SALURAN 2 (v1.0.15): ContextActionService — tetap dapat tekanan CapsLock
+-- saat UI game/core terbuka (kondisi yang bikin saluran 1 di-skip sebagai
+-- gameProcessed). De-dup di rmbTekan() mencegah 1 tekanan dihitung 2x.
+pcall(function()
+    game:GetService("ContextActionService"):BindAction("BALAP_CapsRMB", function(_nama, keadaan)
+        if keadaan == Enum.UserInputState.Begin then rmbTekan() end
+        return Enum.ContextActionResult.Pass -- jangan ditelan; game tetap dapat CapsLock
+    end, false, Enum.KeyCode.CapsLock)
+    catat({ Disconnect = function()
+        pcall(function() game:GetService("ContextActionService"):UnbindAction("BALAP_CapsRMB") end)
+    end })
+end)
+catat(LocalPlayer.CharacterAdded:Connect(function()
+    -- v1.0.14: respawn/mati -> game reset semua tombol; kunci dikirim ulang
+    if rmbDitahan then rmbUlang() end
 end))
+catat(UserInputService.WindowFocusReleased:Connect(function()
+    -- v1.0.14: alt-tab TIDAK lagi melepas kunci — state game dibersihkan
+    -- dulu (biar tidak nyangkut), lalu saat fokus balik dikirim ulang.
+    if rmbDitahan then
+        rmbKirimSemuaUp()
+        print("[BALAP][HoldRMB] fokus hilang — kunci dipertahankan, aktif lagi saat balik ke Roblox")
+    end
+end))
+catat(UserInputService.WindowFocused:Connect(function()
+    if rmbDitahan then rmbUlang() end  -- v1.0.14: balik fokus -> kunci langsung kembali
+end))
+-- DENYUT JAGA (v1.0.14): tiap 4 detik kirim ulang tekanan kalau masih
+-- nempel — ngaman kalau game/anticheat melepas state diam-diam, atau
+-- kalau klik kanan fisik sempat menimpa kunci (kunci balik sendiri).
+task.spawn(function()
+    while not State.Removed do
+        task.wait(4)
+        if rmbDitahan and State.HoldRMBOn and not State.Removed then rmbUlang() end
+    end
+end)
 
 -- Q — Speed ON/OFF murni (v2.1)
 -- Nilai ON (17.25 / 21.25, atau di antaranya) dipilih via stepper di Tab GERAK.
@@ -2975,7 +3086,7 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
         setFeature("Jump", not State.JumpOn)
     elseif input.KeyCode == Enum.KeyCode.C then
         setFeature("Shift", not State.ShiftOn)
-    elseif input.KeyCode == Enum.KeyCode.G then
+    elseif input.KeyCode == Enum.KeyCode.F then
         setFeature("Moon", not State.MoonOn)
     elseif input.KeyCode == Enum.KeyCode.B then
         setFeature("Fall", not State.FallOn)
@@ -3009,11 +3120,11 @@ task.delay(0.15, function()
                 warn("[BALAP] bukaGui error: " .. tostring(errG))
         end
 end)
-print("[BALAP v" .. VERSI .. "] SIAP ✔ — F = GUI | K×2 = rejoin")
+print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
 print("[BALAP] 3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM")
-print("[BALAP] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
+print("[BALAP] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • F moonwalk")
 print("[BALAP]           B fall resist • R hide • T cahaya 2-arah • X dinding • K×2 rejoin")
-print("[BALAP]           Tekan CapsLock = klik kanan nempel, tekan lagi = lepas (v1.0.13)")
+print("[BALAP]           CapsLock ON/OFF = klik kanan nempel/mati — 2 saluran tombol + kunci tahan respawn/alt-tab (v1.0.15)")
 print("[BALAP] Fitur dinding (X) dari skrip lain sudah jadi 1 dengan script balapan")
 diagSet("BALAP v1.8 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
 task.delay(7, function()
