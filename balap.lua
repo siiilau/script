@@ -16,7 +16,7 @@
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab GERAK): simpan lokasi dgn nama bebas — permanen
 --
---  v1.0.1: Moonwalk halus (lerp, CFG.MOON_SMOOTH)
+--  v1.0.1: Moonwalk halus (putaran natural, CFG.MOON_TURN_MAX)
 --========================================================
 print("[BALAP v1.0.1] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
@@ -132,9 +132,12 @@ local CFG = {
     ON_JUMP     = 65.25,
     OFF_JUMP_H  = 6.69,
     ON_JUMP_H   = 8.50,
-    -- Moonwalk (F): kecepatan putar HALUS — makin besar makin cepat nempel
-    -- (12 = lembut responsif; 6 = lebih lambat cinematis; 25 = nyaris snap)
-    MOON_SMOOTH = 12,
+    -- Moonwalk (F): putaran NATURAL seperti badan orang berbalik arah biasa.
+    --   MOON_TURN_MAX = kecepatan putar maks (rad/dtk). 5 = ±286°/dtk,
+    --     putaran 180° selesai ±0.6 dtk. Lebih lambat? turunkan (mis. 3.5).
+    --   MOON_SMOOTH = kelembutan mendarat & koreksi kecil (makin kecil makin lembut).
+    MOON_TURN_MAX = 5,
+    MOON_SMOOTH = 4,
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
 }
@@ -1254,7 +1257,7 @@ local infoKredit = buat("TextLabel", {
     TextWrapped = true,
     Text = "Tema SILAU NEON (ungu/biru LED) ⚡\n"
         .. "Basis: SILAU BALAPAN v1.1 — 5 skrip digabung jadi 1\n"
-        .. "v1.0.1: Moonwalk halus (lerp)\n"
+        .. "v1.0.1: Moonwalk putaran natural (lembut & terukur)\n"
         .. "Fitur jatuh: FALL RESIST V1.07 — silent pulse + planner\n"
         .. "kurva demage, preset S.RINGAN 5% s/d BERAT 75%\n"
         .. "TP permanen via BALAP_TP.json • anti double-instance",
@@ -1833,8 +1836,9 @@ Setters.Shift = function(v, silent)
 end
 
 -- MOONWALK (F) — badan TERKUNCI menghadap kamera/layar saat jalan.
--- Rotasi HALUS: lerp sudut terpendek (anti muter keliling); kecepatan
--- putar = CFG.MOON_SMOOTH (makin besar makin cepat).
+-- Rotasi NATURAL: kecepatan putar dibatasi CFG.MOON_TURN_MAX (berjalan
+-- konstan seperti badan berbalik arah biasa — tanpa sentakan awal), lalu
+-- lerp sudut terpendek utk mendarat lembut (anti muter keliling).
 Setters.Moon = function(v, silent)
     if State.MoonOn == v then return end
     State.MoonOn = v
@@ -1851,12 +1855,15 @@ Setters.Moon = function(v, silent)
                     local _, yawCam = cam.CFrame:ToOrientation()
                     -- putar 180 derajat = badan menghadap kamera
                     local target = yawCam + math.pi
-                    -- HALUS: lerp sudut TERPENDEK dari arah badan sekarang
-                    -- ke arah target (beda + pi, % 2pi, - pi = anti keliling)
+                    -- NATURAL: langkah lerp + BATAS KECEPATAN PUTAR. Putaran
+                    -- besar = kecepatan konstan (seperti orang berbalik arah),
+                    -- putaran kecil = lerp lembut sampai target.
                     local _, yawSek = hrp.CFrame:ToOrientation()
                     local selisih = ((target - yawSek + math.pi) % (2 * math.pi)) - math.pi
-                    local yawBaru = yawSek + selisih * math.min(dt * CFG.MOON_SMOOTH, 1)
-                    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, yawBaru, 0)
+                    local langkah = selisih * math.min(dt * CFG.MOON_SMOOTH, 1)
+                    local maks = CFG.MOON_TURN_MAX * dt
+                    if langkah > maks then langkah = maks elseif langkah < -maks then langkah = -maks end
+                    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, yawSek + langkah, 0)
                 end
             end
         end)
