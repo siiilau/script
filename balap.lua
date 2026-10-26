@@ -1,5 +1,5 @@
 --========================================================
---  BALAP v1.0.1 — 
+--  BALAP v1.0.11 — 
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  3 TAB:
@@ -15,12 +15,20 @@
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab GERAK): simpan lokasi dgn nama bebas — permanen
+--    v1.0.11: titik tengah layar dipastikan di TENGAH/BAWAH kaki saat
+--            Hide Atas (faktor 1.0 x HipHeight, clamp naik ke 4.5)
+--    v1.0.10: kamera turun LEBIH DALAM saat Hide Atas (0.75 x HipHeight,
+--            sebelumnya 0.55 — sesuai feedback: pandangan masih kurang ke bawah)
+--    v1.0.9: kamera ikut turun saat Hide Atas ON (pandangan ke kaki)
 --    v1.0.8: FIX hide rambut/aksesoris atas (klasifikasi 4 lapis) + buka/tutup
 --            GUI instan (animasi dihapus biar ringan)
 --    v1.0.7: Hide Badan Atas (VISUAL) + Mode Hemat GUI (SISTEM)
 --========================================================
 print("[BALAP v1.8] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN (v1.0.8) --------------------------------
+-- v1.0.11: titik tengah layar = tengah/bawah kaki (faktor 1.0, clamp 4.5)
+-- v1.0.10: kamera turun lebih dalam saat Hide Atas (0.75 x HipHeight)
+-- v1.0.9: kamera turun saat Hide Atas (CameraOffset, ikut HipHeight)
 -- v1.0.8: FIX hide rambut/aksesoris atas + animasi buka/tutup GUI dihapus
 -- v1.0.7: + Hide Badan Atas (layar sendiri) + Mode Hemat GUI
 -- v1.0.6: + TP — simpan lokasi (nama bebas) & teleport, permanen via BALAP_TP.json
@@ -812,7 +820,7 @@ State.PlayersOn = false  -- Hide Pemain Lain (baru v2.2)
 State.LightOn = false
 State.FallOn  = false
 State.MoonOn  = false  -- Moonwalk (G)
-State.HideAtasOn = false  -- Hide Badan Atas (v1.0.8, layar sendiri)
+State.HideAtasOn = false  -- Hide Badan Atas (v1.0.9, layar sendiri + kamera turun)
 State.HematOn = false    -- Mode Hemat GUI (v1.0.7)
 State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
 
@@ -1227,7 +1235,7 @@ local infoVersi = buat("TextLabel", {
         .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
         .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
         .. "TP: simpan lokasi (nama bebas) — tersimpan permanen\n"
-        .. "Hide Atas (VISUAL) • Hemat GUI (SISTEM) • Buka/tutup instan\n"
+        .. "Hide Atas (VISUAL) + kamera ke kaki • Hemat GUI (SISTEM) • buka/tutup instan\n"
         .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
         .. "B fall resist • R hide • T cahaya • X dinding • K×2 rejoin",
     LayoutOrder = nextOrder(),
@@ -2048,7 +2056,7 @@ Setters.Players = function(v, silent)
     syncNotify("Players", v, silent, "Hide Pemain Lain")
 end
 
--- HIDE BADAN ATAS (v1.0.8) — sembunyikan KEPALA s/d BADAN & TANGAN milik
+-- HIDE BADAN ATAS (v1.0.9) — sembunyikan KEPALA s/d BADAN & TANGAN milik
 -- DIRI SENDIRI, hanya di layar sendiri (LocalTransparencyModifier).
 -- Tetap tampil: pinggang ke bawah (celana) + kaki + sepatu.
 -- FIX v1.0.8 (rambut/aksesoris atas dulu masih lolos) — klasifikasi 4 LAPIS:
@@ -2063,6 +2071,8 @@ end
 --   Kalau semua gagal -> SEMBUNYI (ragu = sembunyi; yang tampil hanya
 --   kaki/celana/sepatu sesuai permintaan).
 -- Decal (muka, lensa, tekstur) di dalam part sembunyi ikut dihilangkan.
+-- BARU v1.0.9: kamera ikut TURUN saat ON (Humanoid.CameraOffset) supaya
+-- titik tengah pandangan pindah dari kepala (yang hilang) ke kaki.
 local atasConn, atasT = nil, 0
 local atasDecalOrig = {}
 local ATAS_R15 = {
@@ -2103,6 +2113,37 @@ local function atasCariAcc(part)     -- naik lewat Parent, cari Accessory induk
         hop = hop + 1
     end
     return nil
+end
+-- v1.0.11 KAMERA TURUN: saat ON, titik tengah layar WAJIB ada di
+-- tengah-tengah kaki atau di bawahnya (permintaan user + screenshot).
+-- Humanoid.CameraOffset (bukan memutar-mutar kamera manual). Besarnya
+-- ikut skala avatar = 1.0 x HipHeight, dibatasi 0.8-4.5 stud. Untuk
+-- avatar user (HipHeight 3.41, pusat HRP ~4.4 stud di atas tanah)
+-- fokus kamera mendarat ~1 stud di atas tanah = level lutup/betis,
+-- jadi tengah layar pas di tengah kaki ke bawah. Riwayat: v1.0.9 =
+-- 0.55 (masih di pinggang), v1.0.10 = 0.75 (masih di paha atas).
+-- Dipanggil ulang di loop self-heal 0.3 dtk supaya reset kamera game /
+-- respawn otomatis diperbaiki lagi. OFF = kembali ke 0 (normal).
+-- Mau atur sendiri? Ganti angka di bawah ini saja:
+--   0.55 = pinggang | 0.75 = paha | 1.0 = tengah kaki (sekarang)
+--   1.15 = lebih bawah lagi (dekat kaki/sepatu)
+local ATAS_KAM_FAKSI = 1.0
+local function atasKamera(on)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = nil
+    pcall(function() hum = char:FindFirstChildOfClass("Humanoid") end)
+    if not hum then return end
+    pcall(function()
+        if on then
+            local hip = 2.0
+            pcall(function() hip = hum.HipHeight or 2.0 end)
+            local turun = -math.clamp(hip * ATAS_KAM_FAKSI, 0.8, 4.5)
+            hum.CameraOffset = Vector3.new(0, turun, 0)
+        else
+            hum.CameraOffset = Vector3.new(0, 0, 0)
+        end
+    end)
 end
 local function atasSapu(on)
     local char = LocalPlayer.Character
@@ -2178,18 +2219,21 @@ Setters.HideAtas = function(v, silent)
     State.HideAtasOn = v
     if v then
         atasSapu(true)
+        atasKamera(true)   -- v1.0.9: turunkan titik pandang
         atasT = 0
         atasConn = RunService.Heartbeat:Connect(function(dt)
             if not State.HideAtasOn or State.Removed then return end
             atasT = atasT + dt
             if atasT >= 0.3 then
                 atasT = 0
-                atasSapu(true)  -- self-heal: reset kamera/respawn tertangani di sini
+                atasSapu(true)   -- self-heal: reset kamera/respawn tertangani di sini
+                atasKamera(true) -- v1.0.9: posisi kamera ikut dirawat
             end
         end)
     else
         if atasConn then atasConn:Disconnect() atasConn = nil end
         atasSapu(false)
+        atasKamera(false)  -- v1.0.9: kembalikan kamera normal
     end
     syncNotify("HideAtas", v, silent, "Hide Badan Atas")
 end
