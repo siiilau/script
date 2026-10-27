@@ -1,5 +1,5 @@
 --========================================================
---  BALAP v1.3.1 — 
+--  BALAP v1.3.3 — 
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  4 TAB:
@@ -12,7 +12,7 @@
 --    G = buka/tutup GUI (saat tutup = hilang total)
 --    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
---    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor bawaan)
+--    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor lingkaran mini)
 --    F = Moonwalk    B = Fall Resist (preset 5/20/50/75%)    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    K = Rejoin (double-tap)
@@ -29,8 +29,13 @@
 --          (file penanda_titik.json — titik dari script lama ikut kebaca)
 --  v1.3.1: Tiang TANPA nomor — muncul tiang polos saja (nomor di atas
 --          tiang dihapus; daftar di tab tetap ada urutannya)
+--  v1.3.2: Shiftlock Tengah — titik bidik TURUN ke pinggang/bawah badan
+--          (CFG.SLT_TURUN) + kursor jadi lingkaran mini (panah komputer
+--          disembunyikan)
+--  v1.3.3: Kamera TIDAK diubah (efek kamera v1.3.2 dibatalkan) — cuma LETAK
+--          lingkaran kursor digeser ke bawah (CFG.SLT_DOT_Y, 0.5 = tengah)
 --========================================================
-print("[BALAP v1.3.1] load mulai...")
+print("[BALAP v1.3.3] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -79,7 +84,7 @@ do
         end
 end
 
-local VERSI = "1.3.1"
+local VERSI = "1.3.3"
 local __BALAP_LOAD_OK__ = xpcall(function()
 -- ================================================================
 -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -151,8 +156,13 @@ local CFG = {
     --   Badan hanya berputar saat karakter BERGERAK; berdiri = diam total.
     MOON_TURN_MAX = 12,
     MOON_SMOOTH = 10,
-    -- Shiftlock Tengah (v1.2.0): kamera persis di TENGAH karakter
+    -- Shiftlock Tengah (v1.2.0): kamera persis di TENGAH karakter.
+    -- v1.3.3: kamera TIDAK diubah sama sekali — yang digeser ke bawah cuma
+    --         letak lingkaran kursornya (posisi diatur SLT_DOT_Y)
     SLT_WAKTU   = 0.25,  -- durasi transisi halus kamera (detik)
+    SLT_DOT     = 7,     -- ukuran lingkaran kursor (px, mini biar ga ganggu)
+    SLT_DOT_Y   = 0.60,  -- letak vertikal lingkaran: 0.5 = tengah layar,
+                         -- makin besar makin ke bawah (0.60 = bawah pinggang)
     -- Penanda Titik (tab TITIK, v1.3.0): tiang checkpoint + teleport
     TITIK_WARNA    = Color3.fromRGB(255, 200, 40), -- kuning neon tiang
     TITIK_TINGGI   = 1.5,   -- tinggi tiang (stud)
@@ -553,7 +563,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.3.1 ⚡",
+    Text = "⚡ BALAP v1.3.3 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1466,7 +1476,7 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.3.1\n"
+    Text = "⚡ BALAP v1.3.3\n"
         .. "Fitur:\n"
         .. "GERAK  : Speed (Q) • Jump (J) • Shiftlock (C) • Moonwalk (F)\n"
         .. "Shiftlock Tengah (LShift) • Fall Resist (B, 4 preset) • TP\n"
@@ -2006,16 +2016,60 @@ Setters.Moon = function(v, silent)
     syncNotify("Moon", v, silent, "Moonwalk")
 end
 
--- SHIFTLOCK TENGAH (v1.2.0) — port "SHIFT LOCK TENGAH v2"
--- Kamera persis di TENGAH karakter: Humanoid.CameraOffset di-tween halus ke
--- Vector3.zero, kursor bawaan komputer, TANPA notifikasi Roblox. Mekanisme
--- native: MouseBehavior.LockCenter + RotationType.CameraRelative dijaga tiap
--- frame via RenderStep (Camera+1). Toggle: LShift / RShift / switch GUI.
--- Auto OFF saat mati/respawn (matikanGerak) + saling menonaktif dengan
--- Shiftlock Mobile & Moonwalk (sama-sama pegang orientasi badan).
+-- SHIFTLOCK TENGAH (v1.2.0, revisi v1.3.3) — port "SHIFT LOCK TENGAH v2"
+-- Kamera TIDAK diubah sama sekali (CameraOffset tetap di-tween ke
+-- Vector3.zero seperti v1.2.0). Yang digeser cuma LETAK lingkaran kursor:
+-- panah komputer disembunyikan (MouseIconEnabled false) dan diganti
+-- lingkaran mini (CFG.SLT_DOT px) yang letaknya digeser ke bawah layar
+-- (CFG.SLT_DOT_Y, default 0.60 = sekitar pinggang/bawah badan karakter),
+-- kecil biar ga ganggu. Mekanisme native: MouseBehavior.LockCenter +
+-- RotationType.CameraRelative dijaga tiap frame via RenderStep (Camera+1).
+-- Toggle: LShift / RShift / switch GUI. Auto OFF saat mati/respawn
+-- (matikanGerak) + saling menonaktif dgn Shiftlock Mobile & Moonwalk.
 local sltTween, sltTweening, sltOffsetAsli = nil, false, nil
+local sltDotGui, sltDot  -- lingkaran kursor mini (revisi v1.3.2/v1.3.3)
 local sltUGS
 pcall(function() sltUGS = UserSettings():GetService("UserGameSettings") end)
+-- [v1.3.2/v1.3.3] lingkaran kursor mini, letaknya digeser ke bawah layar
+local function sltDotShow()
+    if sltDot then sltDot.Visible = true return end
+    sltDotGui = buat("ScreenGui", {
+        Name = "BALAP_TengahDot",
+        ResetOnSpawn = false,
+        DisplayOrder = 99999,
+        IgnoreGuiInset = true, -- skala Y dihitung dari seluruh layar
+    })
+    sltDot = buat("Frame", {
+        Name = "Lingkaran",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, CFG.SLT_DOT_Y), -- digeser ke bawah
+        Size = UDim2.fromOffset(CFG.SLT_DOT, CFG.SLT_DOT),
+        BackgroundColor3 = Warna.Putih,
+        BackgroundTransparency = 0.1,
+        BorderSizePixel = 0,
+    }, sltDotGui)
+    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, sltDot) -- jadi lingkaran
+    buat("UIStroke", {Color = Color3.fromRGB(0, 0, 0), Thickness = 1,
+        Transparency = 0.35}, sltDot)
+    -- pasang ke tempat aman (gethui/CoreGui/PlayerGui), buang sisa lama dulu
+    local kandidat = {}
+    pcall(function() if gethui then table.insert(kandidat, gethui()) end end)
+    pcall(function() table.insert(kandidat, game:GetService("CoreGui")) end)
+    pcall(function() table.insert(kandidat, LocalPlayer:WaitForChild("PlayerGui")) end)
+    for _, t in ipairs(kandidat) do
+        pcall(function()
+            local lama = t:FindFirstChild("BALAP_TengahDot")
+            if lama and lama ~= sltDotGui then lama:Destroy() end
+        end)
+    end
+    for _, t in ipairs(kandidat) do
+        local ok = pcall(function() sltDotGui.Parent = t end)
+        if ok and sltDotGui.Parent == t then break end
+    end
+end
+local function sltDotHide()
+    if sltDot then sltDot.Visible = false end
+end
 Setters.Tengah = function(v, silent)
     if State.TengahOn == v then return end
     State.TengahOn = v
@@ -2042,12 +2096,15 @@ Setters.Tengah = function(v, silent)
                 if sltUGS then
                     pcall(function() sltUGS.RotationType = Enum.RotationType.CameraRelative end)
                 end
-                -- jaga offset tetap 0 setelah tween selesai
+                -- jaga offset tetap 0 setelah tween selesai (kamera standar)
                 if not sltTweening and h.CameraOffset ~= Vector3.zero then
                     h.CameraOffset = Vector3.zero
                 end
             end
         end)
+        -- v1.3.2: sembunyikan panah komputer, tampilkan lingkaran mini
+        pcall(function() UserInputService.MouseIconEnabled = false end)
+        sltDotShow()
     else
         pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
         UserInputService.MouseBehavior = Enum.MouseBehavior.Default
@@ -2058,6 +2115,9 @@ Setters.Tengah = function(v, silent)
         local hum = getHum()
         if hum and sltOffsetAsli then hum.CameraOffset = sltOffsetAsli end
         sltOffsetAsli = nil
+        -- v1.3.2: panah komputer balik, lingkaran disembunyikan
+        pcall(function() UserInputService.MouseIconEnabled = true end)
+        sltDotHide()
     end
     syncNotify("Tengah", v, silent, "Shiftlock Tengah")
 end
@@ -2821,6 +2881,11 @@ unloadScript = function()
     pcall(function()
         UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.MovementRelative
     end)
+    pcall(function() UserInputService.MouseIconEnabled = true end)
+    pcall(function()
+        if sltDotGui then sltDotGui:Destroy() end
+        sltDotGui, sltDot = nil, nil
+    end)
     -- 3) Cancel semua task/thread yang masih jalan
     if lightConn then pcall(function() task.cancel(lightConn) end) lightConn = nil end
     if fallState and fallState.conn then
@@ -3028,7 +3093,7 @@ task.delay(0.15, function()
 end)
 print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
 print("[BALAP] GERAK | VISUAL | SISTEM • Q speed • J jump • C shift • F moon • B fallresist • R hide • T cahaya • X dinding • K×2 rejoin")
-diagSet("BALAP v1.3.1 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+diagSet("BALAP v1.3.3 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
 task.delay(7, function()
         local function hapusDiag()
                 pcall(function()
@@ -3052,7 +3117,7 @@ getgenv().BALAP_API = { Setters = Setters, State = State }  -- debug/otomasi + h
 end, function(e)
         local teks = tostring(e)
         print("==================================================")
-        print("[BALAP v1.3.1] ERROR SAAT LOAD — kirim teks ini ke dev:")
+        print("[BALAP v1.3.3] ERROR SAAT LOAD — kirim teks ini ke dev:")
         print(teks)
         pcall(function() print(debug.traceback("", 2)) end)
         print("==================================================")
@@ -3061,5 +3126,5 @@ end, function(e)
         end)
 end)
 if not __BALAP_LOAD_OK__ then
-        warn("[BALAP v1.3.1] Script GAGAL load — banner MERAH di layar berisi errornya.")
+        warn("[BALAP v1.3.3] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
