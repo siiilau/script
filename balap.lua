@@ -1,11 +1,11 @@
 --========================================================
---  BALAP v1.0.1 — 
+--  BALAP v1.0.2 — 
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  3 TAB:
---    1 🏃 GERAK  : Speed, Jump, Shiftlock, Moonwalk, Fall Resist, Anti-AFK
---    2 🎨 VISUAL : Hide, Hide Pemain Lain, Cahaya Auto 2 arah, Lightweight, Dinding Batas
---    3 ⚙️ SISTEM : reset, rejoin, hapus script
+--    1 🏃 GERAK  : Speed, Jump, Shiftlock, Moonwalk, Fall Resist, TP
+--    2 🎨 VISUAL : Hide, Hide Badan Atas, Cahaya Auto 2 arah, Lightweight, Dinding Batas
+--    3 ⚙️ SISTEM : rejoin, hapus script
 --
 --  Keybind:
 --    G = buka/tutup GUI (saat tutup = hilang total)
@@ -17,8 +17,9 @@
 --    TP = via GUI (tab GERAK): simpan lokasi dgn nama bebas — permanen
 --
 --  v1.0.1: Moonwalk halus (putaran natural, CFG.MOON_TURN_MAX)
+--  v1.0.2: Anti-AFK, Reset Script, Hemat GUI, Hide Pemain Lain dihapus
 --========================================================
-print("[BALAP v1.0.1] load mulai...")
+print("[BALAP v1.0.2] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -67,7 +68,7 @@ do
         end
 end
 
-local VERSI = "1.0.1"
+local VERSI = "1.0.2"
 local __BALAP_LOAD_OK__ = xpcall(function()
 -- ================================================================
 -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -91,7 +92,6 @@ local HttpService      = game:GetService("HttpService")
 local TeleportService  = game:GetService("TeleportService")
 local Lighting         = game:GetService("Lighting")
 local Workspace        = game:GetService("Workspace")
-local VirtualUser      = game:GetService("VirtualUser")
 diagSet("menunggu LocalPlayer...")
 local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
 if not LocalPlayer then
@@ -275,10 +275,9 @@ end
 local State = { Removed = false }
 local Original = {}
 local Setters, Switches = {}, {}
-local effGradients, effTweens = {}, {}   -- registry efek neon utk Mode Hemat
-local setFeature, togglePanel, resetAll, rejoin, unloadScript
+local setFeature, togglePanel, rejoin, unloadScript
 local applySpeed, applyJump, updateJumpLabel
-local RefreshSpeed, RefreshJump, JumpLabel, SpeedLabel, AfkLabel, FallLabel
+local RefreshSpeed, RefreshJump, JumpLabel, SpeedLabel, FallLabel
 local cfgFall, oLight, fallState, fallRay, lightConn, refreshFallPreset, PRESET_FALL
 
 -- Forward declare untuk part3 (FX/footer/icon) — di-expose via buildFX()
@@ -317,19 +316,15 @@ local function ledSweep(inst, base, bandA, bandB, dur)
         }),
         Offset = Vector2.new(-1, 0),
     }, inst)
-    local tw = tween(g, TweenInfo.new(dur or 2.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+    tween(g, TweenInfo.new(dur or 2.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
         {Offset = Vector2.new(1, 0)})
-    table.insert(effGradients, g)
-    table.insert(effTweens, tw)
     return g
 end
 local function cycleColor(obj, prop, colors, interval)
     task.spawn(function()
         local i = 1
         while obj.Parent do
-            if not State.HematOn then
-                tween(obj, TweenInfo.new(interval * 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {[prop] = colors[i]})
-            end
+            tween(obj, TweenInfo.new(interval * 0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {[prop] = colors[i]})
             task.wait(interval)
             if not obj.Parent then break end
             i = i % #colors + 1
@@ -483,10 +478,10 @@ local borderGrad = buat("UIGradient", {
         ColorSequenceKeypoint.new(1.00, Warna.Ungu),
     }),
 }, borderStroke)
-table.insert(effTweens, tween(borderGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = 360}))
+tween(borderGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = 360})
 local ring2Stroke = buat("UIStroke", {Color = Warna.Putih, Thickness = 1, Transparency = 0.45}, outer)
 local ring2Grad = buat("UIGradient", {Color = ColorSequence.new(Warna.Ungu2, Warna.Biru2)}, ring2Stroke)
-table.insert(effTweens, tween(ring2Grad, TweenInfo.new(3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = -360}))
+tween(ring2Grad, TweenInfo.new(3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = -360})
 local panel = buat("Frame", {
     Size = UDim2.new(1, -10, 1, -10),
     Position = UDim2.new(0, 5, 0, 5),
@@ -515,8 +510,8 @@ for i = 1, 3 do
         BackgroundTransparency = 0.5,
         BorderSizePixel = 0,
     }, partBox)
-    table.insert(effTweens, tween(stripe, TweenInfo.new(6 + i * 2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true),
-        {Position = UDim2.new(0.3 * i + 0.25, 0, 0.5, 0)}))
+    tween(stripe, TweenInfo.new(6 + i * 2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true),
+        {Position = UDim2.new(0.3 * i + 0.25, 0, 0.5, 0)})
 end
 local header = buat("Frame", {
     Size = UDim2.new(1, 0, 0, 46),
@@ -536,7 +531,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.0.1 ⚡",
+    Text = "⚡ BALAP v1.0.2 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -805,13 +800,10 @@ State.IsSwimming = false
 State.HideOn  = false
 State.LWOn    = false
 State.WallsOn = false
-State.PlayersOn = false  -- Hide Pemain Lain (baru v2.2)
 State.LightOn = false
 State.FallOn  = false
 State.MoonOn  = false  -- Moonwalk (F)
 State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
-State.HematOn = false    -- Mode Hemat GUI
-State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
 
 -- ======================================================================
 -- FALL RESIST V1.07 (port script standalone -- menggantikan Smart Fall
@@ -905,9 +897,6 @@ RefreshJump = buatStepperRow(
 )
 buatToggleRow(scrollKing, "Shiftlock Mobile", "C", "Shift")
 buatToggleRow(scrollKing, "Moonwalk", "F", "Moon")
-buatHeader(scrollKing, "Anti AFK")
-local _, afkLbl = buatToggleRow(scrollKing, "👻 Anti-AFK (2 lapis)", nil, "Afk")
-AfkLabel = afkLbl
 -- ===== FALL RESIST V1.07 — toggle + 4 preset potongan demage =====
 buatHeader(scrollKing, "Fall Resist")
 local _, fallLbl = buatToggleRow(scrollKing, "Fall Resist", "B", "Fall")
@@ -1181,7 +1170,6 @@ scrollVisual = buat("ScrollingFrame", {
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollVisual)
 buatHeader(scrollVisual, "Visual")
 buatToggleRow(scrollVisual, "Hide Player + Kendaraan", "R", "Hide")
-buatToggleRow(scrollVisual, "Hide Pemain Lain", nil, "Players")
 buatToggleRow(scrollVisual, "Hide Badan Atas (kaki tetap)", nil, "HideAtas")
 buatToggleRow(scrollVisual, "Cahaya Auto (2 arah)", "T", "Light")
 buatHeader(scrollVisual, "Lightweight")
@@ -1213,28 +1201,22 @@ buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.Layou
 buatHeader(scrollSistem, "Info")
 local infoVersi = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 90),
+    Size = UDim2.new(1, 0, 0, 110),
     FontFace = fnt("med"),
     TextSize = 11,
     TextColor3 = Warna.TeksGelap,
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.0.1\n"
-        .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
-        .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
-        .. "TP: simpan lokasi (nama bebas) — tersimpan permanen\n"
-        .. "Hide Atas (VISUAL) • Hemat GUI (SISTEM) • buka/tutup instan\n"
-        .. "Keybind: G panel • Q speed • J jump • C shift • F moon\n"
-        .. "B fall resist • R hide • T cahaya • X dinding • K×2 rejoin",
+    Text = "⚡ BALAP v1.0.2 — 3 TAB\n"
+        .. "GERAK: Speed Q • Jump J • Shiftlock C • Moonwalk F • Fall Resist B • TP\n"
+        .. "VISUAL: Hide R • Hide Atas • Cahaya T • Lightweight • Dinding X\n"
+        .. "SISTEM: Rejoin K×2 • Hapus Script • TP lokasi tersimpan permanen",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
 buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoVersi)
-buatHeader(scrollSistem, "Hemat")
-buatToggleRow(scrollSistem, "🪶 Hemat GUI (neon & animasi)", nil, "Hemat")
 buatHeader(scrollSistem, "Aksi")
-buatActionRow(scrollSistem, "🔄 RESET SCRIPT", Warna.Biru, function() resetAll() end)
 buatActionRow(scrollSistem, "🔁 REJOIN SERVER  [K×2]", Warna.Biru, function() rejoin() end)
 buatActionRow(scrollSistem, "🗑️ HAPUS SCRIPT", Warna.Merah, function()
     if not _G.__KS_DELETE_ARMED__ then
@@ -1247,26 +1229,6 @@ buatActionRow(scrollSistem, "🗑️ HAPUS SCRIPT", Warna.Merah, function()
         unloadScript()
     end
 end)
-buatHeader(scrollSistem, "Tentang")
-local infoKredit = buat("TextLabel", {
-    BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 132),
-    FontFace = fnt("med"),
-    TextSize = 11,
-    TextColor3 = Warna.AbuTeks,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    TextYAlignment = Enum.TextYAlignment.Top,
-    TextWrapped = true,
-    Text = "Tema SILAU NEON (ungu/biru LED) ⚡\n"
-        .. "Basis: SILAU BALAPAN v1.1 — 5 skrip digabung jadi 1\n"
-        .. "v1.0.1: Moonwalk putaran natural (lembut & terukur)\n"
-        .. "Fitur jatuh: FALL RESIST V1.07 — silent pulse + planner\n"
-        .. "kurva demage, preset S.RINGAN 5% s/d BERAT 75%\n"
-        .. "TP permanen via BALAP_TP.json • anti double-instance",
-    LayoutOrder = nextOrder(),
-}, scrollSistem)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
-buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoKredit)
 
 end -- akhir buildUI()
 
@@ -1323,13 +1285,13 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1600, 13),
     FontFace = fnt("med"),
-    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • F Moonwalk • B FallResist   ✦   🎨 R Hide • Hide Pemain Lain • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • F Moonwalk • B FallResist   ✦   🎨 R Hide • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, marqueeClip)
-table.insert(effTweens, tween(marquee, TweenInfo.new(24, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-    {Position = UDim2.fromOffset(-1600, 0)}))
+tween(marquee, TweenInfo.new(24, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+    {Position = UDim2.fromOffset(-1600, 0)})
 
 -- bracket pojok (dekorasi)
 local posisiTitik = {
@@ -1409,8 +1371,8 @@ task.spawn(function()
             tween(l, TweenInfo.new(0.35), {TextTransparency = 0.55})
             tween(l, TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                 {Position = UDim2.new(x0 + rnd(-6, 6) / 100, 0, -0.08, 0)})
-            table.insert(effTweens, tween(l, TweenInfo.new(1.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-                {Rotation = l.Rotation + rnd(16, 30) * (rnd(0, 1) == 0 and 1 or -1)}))
+            tween(l, TweenInfo.new(1.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                {Rotation = l.Rotation + rnd(16, 30) * (rnd(0, 1) == 0 and 1 or -1)})
             task.delay(dur - 0.4, function()
                 if l.Parent then tween(l, TweenInfo.new(0.4), {TextTransparency = 1}) end
             end)
@@ -1449,7 +1411,6 @@ end)
 -- [10] BURST FX -----------------------------------------------------
 local paletKonfeti = {Warna.Ungu, Warna.Ungu2, Warna.Biru, Warna.Biru2, Warna.Putih, Warna.Hijau2}
 konfeti = function(parent, pos, n)
-    if State.HematOn then return end
     for _ = 1, n do
         local c = buat("Frame", {
             Name = "NoFade",
@@ -1474,7 +1435,6 @@ konfeti = function(parent, pos, n)
     end
 end
 emojiBurst = function(parent, pos, daftar, n)
-    if State.HematOn then return end
     for _ = 1, n do
         local l = buat("TextLabel", {
             Name = "NoFade",
@@ -1561,21 +1521,6 @@ toast = function(teks, aksen)
         TextXAlignment = Enum.TextXAlignment.Left,
     }, t)
     -- animasi masuk: slide dari kanan + fade in
-    if State.HematOn then
-        -- mode hemat: tampil instan tanpa animasi
-        t.Position = UDim2.new(1, 0, 0, 0)
-        t.BackgroundTransparency = 0.05
-        st.Transparency = 0.15
-        dot.BackgroundTransparency = 0
-        lb.TextTransparency = 0
-        task.delay(1.6, function() t:Destroy() end)
-        local listH = {}
-        for _, c in ipairs(notifHolder:GetChildren()) do
-            if c:IsA("Frame") and c.Name == "NoFade" then table.insert(listH, c) end
-        end
-        if #listH > 5 then listH[1]:Destroy() end
-        return
-    end
     t.Position = UDim2.new(1, 20, 0, 0)  -- start offset right
     local ti = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
     tween(t,   ti, {BackgroundTransparency = 0.05, Position = UDim2.new(1, 0, 0, 0)})
@@ -1640,92 +1585,6 @@ diagSet("efek OK — pasang logika fitur...")
 -- Bungkus part logika dengan function untuk hemat local count (Luau limit 200)
 local function initLogic()
 
-
--- [17C] MESIN ANTI-AFK 2 LAPIS — port dari A ------------------------
--- Lapis 1: VirtualUser CaptureController + ClickButton2 (event Idled + jadwal)
--- Lapis 2: gerakan mikro (opsional, jumpMode)
-local AFK_CFG = {
-    interval     = 240,   -- detik antar intervensi terjadwal (4 menit)
-    jitter       = 60,    -- + acak, biar polanya tidak kaku
-    jumpMode     = false, -- ubah ke true HANYA kalau game punya anti-AFK sendiri
-    jumpInterval = 45,
-}
-local afkState = { aktif = State.AfkOn, jumlah = 0, terakhir = 0, sudahIngatkan = false }
-local inputTerakhir = os.time()
-catat(UserInputService.InputBegan:Connect(function() inputTerakhir = os.time() end))
-local function afkStatusUpdate()
-    if AfkLabel and AfkLabel.Parent then
-        if afkState.aktif then
-            if afkState.terakhir > 0 then
-                AfkLabel.Text = string.format("👻 Anti-AFK (2 lapis) • %dx • %dm lalu",
-                    afkState.jumlah, math.floor((os.time() - afkState.terakhir) / 60))
-            else
-                AfkLabel.Text = string.format("👻 Anti-AFK (2 lapis) • %dx • siaga", afkState.jumlah)
-            end
-        else
-            AfkLabel.Text = "👻 Anti-AFK (2 lapis) • MATI"
-        end
-    end
-end
-local function afkIntervensi(alasan)
-    local ok = pcall(function()
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
-    end)
-    if not ok then
-        pcall(function()
-            local vim = game:GetService("VirtualInputManager")
-            vim:SendMouseButtonEvent(5, 5, 1, true, game, 0)
-            vim:SendMouseButtonEvent(5, 5, 1, false, game, 0)
-        end)
-    end
-    afkState.jumlah += 1
-    afkState.terakhir = os.time()
-    print("[BALAP][Anti-AFK] intervensi #" .. afkState.jumlah .. " (" .. tostring(alasan) .. ")")
-    afkStatusUpdate()
-end
-catat(LocalPlayer.Idled:Connect(function()
-    if afkState.aktif then afkIntervensi("event Idled") end
-end))
-
--- lapis 1: jadwal berkala (hanya kalau user lama tidak input apa pun)
-task.spawn(function()
-    while screenGui.Parent do
-        if afkState.aktif then
-            local tunggu = AFK_CFG.interval + rnd(0, AFK_CFG.jitter)
-            task.wait(tunggu)
-            if afkState.aktif and screenGui.Parent
-            and (os.time() - inputTerakhir) >= AFK_CFG.interval then
-                afkIntervensi("jadwal " .. tunggu .. "s")
-            end
-        else
-            task.wait(2)
-        end
-    end
-end)
-
--- lapis 2: gerakan mikro (default OFF, aktifkan via jumpMode)
-if AFK_CFG.jumpMode then
-    task.spawn(function()
-        while screenGui.Parent do
-            task.wait(AFK_CFG.jumpInterval)
-            if afkState.aktif then
-                local _, _, hum = getKarakter()
-                if hum and hum.Health > 0 then
-                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jump) end)
-                end
-            end
-        end
-    end)
-end
-
--- refresh tampilan status anti-afk tiap 30 detik
-task.spawn(function()
-    while screenGui.Parent do
-        task.wait(30)
-        afkStatusUpdate()
-    end
-end)
 
 -- [18] LOGIKA KING ---------------------------------------------------
 -- SPEED & JUMP
@@ -2003,51 +1862,6 @@ Setters.Hide = function(v, silent)
     syncNotify("Hide", v, silent, "Hide Player + Kendaraan")
 end
 
--- HIDE PEMAIN LAIN (baru v2.2 — toggle terpisah dari Hide R)
--- Hanya pemain lain (tanpa kendaraan), pakai LocalTransparencyModifier
--- supaya tidak konflik dengan fitur Hide (R) yang memakai Transparency.
--- LTM bisa di-reset kamera/respawn -> loop penjaga Heartbeat tiap ~0.3s.
-local plrHideConn, plrHideT = nil, 0
-local function plrHideSapu(on)
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if pl ~= LocalPlayer and pl.Character then
-            for _, d in ipairs(pl.Character:GetDescendants()) do
-                pcall(function()
-                    if d:IsA("BasePart") or d:IsA("Decal") then
-                        d.LocalTransparencyModifier = on and 1 or 0
-                    elseif d:IsA("Humanoid") and not (not on and State.HideOn) then
-                        -- saat OFF, jangan ganggu Humanoid kalau Hide (R) masih pegang kendali
-                        d.DisplayDistanceType = on and Enum.HumanoidDisplayDistanceType.None
-                            or Enum.HumanoidDisplayDistanceType.Viewer
-                        d.HealthDisplayType = on and Enum.HumanoidHealthDisplayType.AlwaysOff
-                            or Enum.HumanoidHealthDisplayType.WhenDamaged
-                    end
-                end)
-            end
-        end
-    end
-end
-Setters.Players = function(v, silent)
-    if State.PlayersOn == v then return end
-    State.PlayersOn = v
-    if v then
-        plrHideSapu(true)
-        plrHideT = 0
-        plrHideConn = RunService.Heartbeat:Connect(function(dt)
-            if not State.PlayersOn or State.Removed then return end
-            plrHideT = plrHideT + dt
-            if plrHideT >= 0.3 then
-                plrHideT = 0
-                plrHideSapu(true)
-            end
-        end)
-    else
-        if plrHideConn then plrHideConn:Disconnect() plrHideConn = nil end
-        plrHideSapu(false)
-    end
-    syncNotify("Players", v, silent, "Hide Pemain Lain")
-end
-
 -- HIDE BADAN ATAS — sembunyikan KEPALA s/d BADAN & TANGAN milik
 -- DIRI SENDIRI, hanya di layar sendiri (LocalTransparencyModifier).
 -- Tetap tampil: pinggang ke bawah (celana) + kaki + sepatu.
@@ -2192,22 +2006,6 @@ Setters.HideAtas = function(v, silent)
         atasSapu(false)
     end
     syncNotify("HideAtas", v, silent, "Hide Badan Atas")
-end
-
--- MODE HEMAT GUI — matikan efek neon & animasi berkelanjutan:
--- gradient LED di-nonaktifkan, tween infinity di-pause, konfeti/emoji burst
--- tidak jalan, toast tampil instan. Semua reversibel (Enabled/Pause-Play).
-Setters.Hemat = function(v, silent)
-    if State.HematOn == v then return end
-    State.HematOn = v
-    if v then
-        for _, g in ipairs(effGradients) do pcall(function() g.Enabled = false end) end
-        for _, tw in ipairs(effTweens) do pcall(function() tw:Pause() end) end
-    else
-        for _, g in ipairs(effGradients) do pcall(function() g.Enabled = true end) end
-        for _, tw in ipairs(effTweens) do pcall(function() tw:Play() end) end
-    end
-    syncNotify("Hemat", v, silent, "Mode Hemat GUI")
 end
 
 -- LIGHTWEIGHT (Partikel / Bayangan / Efek)
@@ -2644,39 +2442,11 @@ Setters.Fall = function(v, silent)
     if refreshFallPreset then refreshFallPreset() end
 end
 
--- ANTI-AFK (port dari A) — toggle via Tab 1, sinkron dengan afkState
-Setters.Afk = function(v, silent)
-    State.AfkOn = v
-    afkState.aktif = v
-    if v then afkState.sudahIngatkan = false end
-    afkStatusUpdate()
-    syncNotify("Afk", v, silent, "Anti-AFK")
-end
-
 -- Q — Speed ON/OFF murni
 -- Nilai ON (17.25 / 21.25, atau di antaranya) dipilih via stepper di Tab GERAK.
 -- Keybind Q langsung panggil setFeature("Speed", ...) dari handler [21].
 
--- RESET & REJOIN
-resetAll = function()
-    setFeature("Speed", false, true)
-    setFeature("Jump", false, true)
-    setFeature("Shift", false, true)
-    setFeature("Moon", false, true)
-    setFeature("Hide", false, true)
-    setFeature("Players", false, true)
-    setFeature("LW", false, true)
-    setFeature("Walls", false, true)
-    setFeature("Light", false, true)
-    setFeature("Fall", false, true)
-    setFeature("HideAtas", false, true)
-    setFeature("Hemat", false, true)
-    State.SpeedValue, State.JumpValue, State.JumpHeightValue = CFG.SPEED_ON_1, CFG.ON_JUMP, CFG.ON_JUMP_H
-    if RefreshSpeed then RefreshSpeed() end
-    if RefreshJump then RefreshJump() end
-    updateSpeedLabel()
-    toast("🔄 Reset: semua OFF (Speed " .. fmtNum(CFG.SPEED_OFF) .. " / Jump " .. fmtNum(CFG.OFF_JUMP) .. ")", Warna.Biru)
-end
+-- REJOIN
 rejoin = function()
     toast("🔁 Rejoin: balik ke server dalam 3 detik...", Warna.Biru)
     task.delay(3, function()
@@ -2699,13 +2469,11 @@ unloadScript = function()
     pcall(setFeature, "Shift", false, true)
     pcall(setFeature, "Moon", false, true)
     pcall(setFeature, "Hide", false, true)
-    pcall(setFeature, "Players", false, true)
     pcall(setFeature, "LW", false, true)
     pcall(setFeature, "Walls", false, true)
     pcall(setFeature, "Light", false, true)
     pcall(setFeature, "Fall", false, true)
     pcall(setFeature, "HideAtas", false, true)
-    pcall(setFeature, "Hemat", false, true)
     -- 2) Unbind semua RenderStep binding
     pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
     pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
@@ -2755,24 +2523,8 @@ unloadScript = function()
             end
         end
     end)
-    -- 7) Restore player lain yang di-hide
-    pcall(function()
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                for _, d in ipairs(plr.Character:GetDescendants()) do
-                    if d:IsA("BasePart") then
-                        d.LocalTransparencyModifier = 0
-                    elseif d:IsA("BillboardGui") then
-                        d.Enabled = true
-                    end
-                end
-                local h = plr.Character:FindFirstChildOfClass("Humanoid")
-                if h then
-                    h.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
-                end
-            end
-        end
-    end)
+    -- 7) Restore visual pemain lain ditangani setFeature("Hide", false)
+    --    via unhideAll() — LTM terpisah sudah tidak ada sejak v1.0.2
     -- 8) Reset status label
     -- 9) Hapus ScreenGui (parent dari semua UI: panel, notif, footer, dll)
     pcall(function() if screenGui then screenGui:Destroy() end end)
@@ -2912,7 +2664,6 @@ end))
 
 diagSet("keybind OK — finalisasi...")
 -- [22] MULAI ---------------------------------------------------------
-afkStatusUpdate()
 updateSpeedLabel()
 setTab(1)  -- 🏃 GERAK jadi tab pertama
 task.delay(0.15, function()
@@ -2924,7 +2675,7 @@ task.delay(0.15, function()
 end)
 print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
 print("[BALAP] GERAK | VISUAL | SISTEM • Q speed • J jump • C shift • F moon • B fallresist • R hide • T cahaya • X dinding • K×2 rejoin")
-diagSet("BALAP v1.0.1 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+diagSet("BALAP v1.0.2 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
 task.delay(7, function()
         local function hapusDiag()
                 pcall(function()
@@ -2948,7 +2699,7 @@ getgenv().BALAP_API = { Setters = Setters, State = State }  -- debug/otomasi + h
 end, function(e)
         local teks = tostring(e)
         print("==================================================")
-        print("[BALAP v1.0.1] ERROR SAAT LOAD — kirim teks ini ke dev:")
+        print("[BALAP v1.0.2] ERROR SAAT LOAD — kirim teks ini ke dev:")
         print(teks)
         pcall(function() print(debug.traceback("", 2)) end)
         print("==================================================")
@@ -2957,5 +2708,5 @@ end, function(e)
         end)
 end)
 if not __BALAP_LOAD_OK__ then
-        warn("[BALAP v1.0.1] Script GAGAL load — banner MERAH di layar berisi errornya.")
+        warn("[BALAP v1.0.2] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
