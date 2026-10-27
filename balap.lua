@@ -1,11 +1,12 @@
 --========================================================
---  BALAP v1.2.0 — 
+--  BALAP v1.3.1 — 
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
---  3 TAB:
+--  4 TAB:
 --    1 🏃 GERAK  : Speed, Jump, Shiftlock, Tengah, Moonwalk, Fall Resist, TP
 --    2 🎨 VISUAL : Hide Player+Kendaraan, Hide Badan Atas, Cahaya Auto 2 arah, Lightweight, Dinding Batas
 --    3 ⚙️ SISTEM : rejoin, hapus script
+--    4 📍 TITIK  : tiang checkpoint + daftar teleport (tersimpan permanen)
 --
 --  Keybind:
 --    G = buka/tutup GUI (saat tutup = hilang total)
@@ -23,8 +24,13 @@
 --  v1.2.0: FITUR BARU — Shiftlock Tengah (LShift/RShift): kamera persis di
 --          TENGAH karakter (CameraOffset 0), kursor bawaan komputer,
 --          transisi halus. Shiftlock/Moonwalk/Tengah saling menonaktifkan.
+--  v1.3.0: TAB BARU 📍 TITIK — penanda checkpoint: tiang neon bernomor +
+--          daftar teleport, tiang bisa hide/show, titik TERSIMPAN PERMANEN
+--          (file penanda_titik.json — titik dari script lama ikut kebaca)
+--  v1.3.1: Tiang TANPA nomor — muncul tiang polos saja (nomor di atas
+--          tiang dihapus; daftar di tab tetap ada urutannya)
 --========================================================
-print("[BALAP v1.2.0] load mulai...")
+print("[BALAP v1.3.1] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -73,7 +79,7 @@ do
         end
 end
 
-local VERSI = "1.2.0"
+local VERSI = "1.3.1"
 local __BALAP_LOAD_OK__ = xpcall(function()
 -- ================================================================
 -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -147,6 +153,11 @@ local CFG = {
     MOON_SMOOTH = 10,
     -- Shiftlock Tengah (v1.2.0): kamera persis di TENGAH karakter
     SLT_WAKTU   = 0.25,  -- durasi transisi halus kamera (detik)
+    -- Penanda Titik (tab TITIK, v1.3.0): tiang checkpoint + teleport
+    TITIK_WARNA    = Color3.fromRGB(255, 200, 40), -- kuning neon tiang
+    TITIK_TINGGI   = 1.5,   -- tinggi tiang (stud)
+    TITIK_DIAMETER = 0.3,   -- diameter tiang (stud)
+    TITIK_FILE     = "penanda_titik.json", -- sama dgn script standalone lama
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
 }
@@ -296,6 +307,7 @@ local kumpulkanFade, setFade, fadeVal
 local tabBtns, kontenTabs, setTab
 local kontenKing, scrollKing, kontenVisual, scrollVisual
 local kontenSistem, scrollSistem
+local kontenTitik, scrollTitik
 setFeature = function(name, v, silent)
     local f = Setters[name]
     if f then f(v, silent) end
@@ -541,7 +553,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.2.0 ⚡",
+    Text = "⚡ BALAP v1.3.1 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -577,17 +589,195 @@ local accent = buat("Frame", {
 }, panel)
 ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
 
--- [7b] TAB BAR (3 TAB) ----------------------------------------------
+-- [7a2] MODUL PENANDA TITIK (tab TITIK, v1.3.0) ---------------------
+-- Port standalone "PENANDA TITIK" ke dalam GUI BALAP:
+--   • Tiang neon kuning polos TANPA nomor, nempel tanah (raycast ke bawah)
+--   • Daftar titik: klik = teleport, X = hapus titik itu
+--   • TERSIMPAN PERMANEN: writefile penanda_titik.json (nama file SAMA
+--     dgn script lama -> titik lama otomatis kebaca). Executor tanpa
+--     writefile -> cadangan getgenv (selamat saat re-execute).
+--   • Tiang bisa hide/show via switch "Tampilkan Tiang"
+local titikList       = {}
+local titikFolder     = nil   -- Folder berisi tiang di Workspace
+local titikHolder     = nil   -- frame daftar titik di tab TITIK (di-buildUI)
+local titikLabelJumlah = nil
+local titikRefreshDaftar -- forward declare (didefinisikan di bawah)
+local titikBisaFile   = (type(writefile) == "function") and (type(readfile) == "function")
+    and (type(isfile) == "function")
+
+local function titikSimpan()
+    getgenv().BALAP_TITIK_DATA = titikList        -- cadangan sesi (re-execute)
+    if not titikBisaFile then return false end
+    local data = {}
+    for i = 1, #titikList do
+        local p = titikList[i]
+        data[i] = { x = p.X, y = p.Y, z = p.Z }
+    end
+    local ok, err = pcall(function()
+        writefile(CFG.TITIK_FILE, HttpService:JSONEncode(data))
+    end)
+    if not ok then warn("[BALAP-TITIK] gagal simpan: " .. tostring(err)) return false end
+    return true
+end
+
+local function titikMuat()
+    local data, ada = nil, false
+    if titikBisaFile then
+        pcall(function() ada = isfile(CFG.TITIK_FILE) end)
+        if ada then
+            local ok, isi = pcall(readfile, CFG.TITIK_FILE)
+            if ok and type(isi) == "string" then
+                pcall(function() data = HttpService:JSONDecode(isi) end)
+            end
+        end
+    end
+    if not data then
+        data = rawget(getgenv(), "BALAP_TITIK_DATA")  -- fallback: sesi yang sama
+    end
+    if type(data) == "table" then
+        for _, e in ipairs(data) do
+            if type(e) == "table" and e.x and e.y and e.z then
+                titikList[#titikList + 1] = Vector3.new(e.x, e.y, e.z)
+            end
+        end
+    end
+    getgenv().BALAP_TITIK_DATA = titikList
+    print("[BALAP-TITIK] muat " .. #titikList .. " titik"
+        .. (titikBisaFile and " (file: " .. CFG.TITIK_FILE .. ")" or " (mode SESI — executor tanpa writefile)"))
+end
+
+local function titikBuatTiang(index, pos)
+    buat("Part", {
+        Name = "Titik_" .. index,
+        Shape = Enum.PartType.Cylinder,
+        Size = Vector3.new(CFG.TITIK_TINGGI, CFG.TITIK_DIAMETER, CFG.TITIK_DIAMETER),
+        CFrame = CFrame.new(pos.X, pos.Y + CFG.TITIK_TINGGI / 2, pos.Z)
+            * CFrame.Angles(0, 0, math.rad(90)),
+        Anchored = true,
+        CanCollide = false,
+        CanTouch = false,
+        CanQuery = false,
+        CastShadow = false,
+        Material = Enum.Material.Neon,
+        Color = CFG.TITIK_WARNA,
+    }, titikFolder)
+    -- v1.3.1: TANPA nomor — muncul tiang polos saja
+end
+
+-- render ulang semua tiang (dipakai juga Setters.Tiang saat toggle)
+local function titikRender()
+    if titikFolder then titikFolder:Destroy() titikFolder = nil end
+    if not State.TiangOn then return end
+    if #titikList == 0 then return end
+    titikFolder = Instance.new("Folder")
+    titikFolder.Name = "BALAP_TitikPenanda"
+    titikFolder.Parent = Workspace
+    for i, pos in ipairs(titikList) do
+        titikBuatTiang(i, pos)
+    end
+end
+
+local function titikTeleport(pos)
+    local char = getChar()
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then toast("Karakter tidak ketemu!", Warna.Merah) return end
+    bunyi(CFG.SND_PING, 0.3, 1.1)
+    hrp.CFrame = CFrame.new(pos.X, pos.Y + 3.5, pos.Z)
+end
+
+local function titikTambahDiSini()
+    local char = getChar()
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then toast("Karakter tidak ketemu!", Warna.Merah) return end
+    -- cari tanah di bawah kaki biar tiang nempel lantai
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { char }
+    local hit = Workspace:Raycast(hrp.Position, Vector3.new(0, -100, 0), params)
+    local groundY = hit and hit.Position.Y or (hrp.Position.Y - 3)
+    titikList[#titikList + 1] = Vector3.new(hrp.Position.X, groundY, hrp.Position.Z)
+    titikSimpan()
+    titikRender()
+    titikRefreshDaftar()
+    toast("+ Titik #" .. #titikList .. " ditambahkan"
+        .. (titikBisaFile and " (tersimpan)" or " (sesi saja)"), Warna.Hijau)
+end
+
+local function titikHapusSemua()
+    if #titikList == 0 then toast("Belum ada titik", Warna.Kuning) return end
+    table.clear(titikList)
+    titikSimpan()
+    titikRender()
+    titikRefreshDaftar()
+    toast("Semua titik dihapus", Warna.Merah)
+end
+
+-- gambar ulang daftar titik di tab TITIK
+titikRefreshDaftar = function()
+    if not titikHolder then return end
+    for _, c in ipairs(titikHolder:GetChildren()) do
+        if c:IsA("TextButton") then c:Destroy() end
+    end
+    for i, pos in ipairs(titikList) do
+        local idx = i
+        local item = buat("TextButton", {
+            Name = "TitikItem_" .. idx,
+            Size = UDim2.new(1, -6, 0, 26),
+            BackgroundColor3 = Warna.AbuItem,
+            Text = "",
+            AutoButtonColor = false,
+            LayoutOrder = idx,
+        }, titikHolder)
+        buat("UICorner", {CornerRadius = UDim.new(0, 6)}, item)
+        efekTombol(item, 1.02)
+        buat("TextLabel", {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 8, 0, 0),
+            Size = UDim2.new(1, -40, 1, 0),
+            FontFace = fnt("med"),
+            TextSize = 12,
+            TextColor3 = Warna.TeksGelap,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = ("%d.  (%.1f, %.1f, %.1f)"):format(idx, pos.X, pos.Y, pos.Z),
+        }, item)
+        local hx = buat("TextButton", {
+            Size = UDim2.new(0, 22, 0, 22),
+            Position = UDim2.new(1, -26, 0.5, -11),
+            BackgroundColor3 = Warna.Merah,
+            FontFace = fnt("bold"),
+            TextSize = 12,
+            TextColor3 = Warna.Putih,
+            Text = "X",
+            AutoButtonColor = false,
+        }, item)
+        buat("UICorner", {CornerRadius = UDim.new(0, 6)}, hx)
+        hx.MouseButton1Click:Connect(function()
+            table.remove(titikList, idx)
+            titikSimpan()
+            titikRender()
+            titikRefreshDaftar()
+            toast("Titik " .. idx .. " dihapus", Warna.Merah)
+        end)
+        item.MouseButton1Click:Connect(function()
+            titikTeleport(pos)
+        end)
+    end
+    if titikLabelJumlah then
+        titikLabelJumlah.Text = ("Total: %d titik • klik item = teleport"):format(#titikList)
+    end
+end
+
+-- [7b] TAB BAR (4 TAB) ----------------------------------------------
 -- Bungkus dengan function untuk hemat local count (Luau limit 200)
 local function buildUI()
 tabBtns = {}
-local tabLabels = {"🏃 GERAK", "🎨 VISUAL", "⚙️ SISTEM"}
-local tabColors = {Warna.Ungu2, Warna.Biru, Warna.AbuGelap}
+local tabLabels = {"🏃 GERAK", "🎨 VISUAL", "⚙️ SISTEM", "📍 TITIK"}
+local tabColors = {Warna.Ungu2, Warna.Biru, Warna.AbuGelap, Warna.Kuning}
 kontenTabs = {}
 for i, lbl in ipairs(tabLabels) do
     local tab = buat("TextButton", {
-        Size = UDim2.new(1 / 3, -3.4, 0, 24),
-        Position = UDim2.new((i - 1) * (1 / 3), 3.5 + (i - 1) * 2, 0, 50),
+        Size = UDim2.new(1 / 4, -3.6, 0, 24),
+        Position = UDim2.new((i - 1) * (1 / 4), 3.2 + (i - 1) * 1.6, 0, 50),
         BackgroundColor3 = (i == 1) and tabColors[i] or Warna.AbuMuda,
         BorderSizePixel = 0,
         FontFace = fnt("bold"),
@@ -816,6 +1006,7 @@ State.LightOn = false
 State.FallOn  = false
 State.MoonOn  = false  -- Moonwalk (F)
 State.TengahOn = false -- Shiftlock Tengah (LShift/RShift)
+State.TiangOn  = true  -- Tiang Penanda (tab TITIK, default TAMPIL)
 State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
 
 -- ======================================================================
@@ -1212,22 +1403,76 @@ scrollSistem = buat("ScrollingFrame", {
     AutomaticCanvasSize = Enum.AutomaticSize.Y,
 }, kontenSistem)
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollSistem)
+
+-- [7f] KONTEN TAB 4: TITIK ------------------------------------------
+kontenTitik = buat("Frame", {
+    Position = UDim2.new(0, 0, 0, 80),
+    Size = UDim2.new(1, 0, 1, -110),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Visible = false,
+}, panel)
+table.insert(kontenTabs, kontenTitik)
+scrollTitik = buat("ScrollingFrame", {
+    Position = UDim2.new(0, 12, 0, 2),
+    Size = UDim2.new(1, -24, 1, -6),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Warna.Kuning,
+    ScrollingDirection = Enum.ScrollingDirection.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, kontenTitik)
+buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTitik)
+buatHeader(scrollTitik, "Tiang Penanda")
+buatToggleRow(scrollTitik, "Tampilkan Tiang", nil, "Tiang")
+buatActionRow(scrollTitik, "📍 + TAMBAH TITIK DI SINI", Warna.Hijau, function()
+    titikTambahDiSini()
+end)
+buatActionRow(scrollTitik, "🗑️ HAPUS SEMUA TITIK", Warna.Merah, function()
+    titikHapusSemua()
+end)
+buatHeader(scrollTitik, "Daftar Titik")
+titikHolder = buat("Frame", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 0),
+    AutomaticSize = Enum.AutomaticSize.Y,
+    LayoutOrder = nextOrder(),
+}, scrollTitik)
+buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, titikHolder)
+titikLabelJumlah = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 14),
+    FontFace = fnt("med"),
+    TextSize = 10,
+    TextColor3 = Warna.AbuTeks,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "Total: 0 titik • klik item = teleport",
+    LayoutOrder = nextOrder(),
+}, scrollTitik)
+-- muat data lama (file / getgenv) lalu render pertama
+titikMuat()
+titikRender()
+titikRefreshDaftar()
+
 buatHeader(scrollSistem, "Info")
 local infoVersi = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 124),
+    Size = UDim2.new(1, 0, 0, 137),
     FontFace = fnt("med"),
     TextSize = 11,
     TextColor3 = Warna.TeksGelap,
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.2.0\n"
+    Text = "⚡ BALAP v1.3.1\n"
         .. "Fitur:\n"
         .. "GERAK  : Speed (Q) • Jump (J) • Shiftlock (C) • Moonwalk (F)\n"
         .. "Shiftlock Tengah (LShift) • Fall Resist (B, 4 preset) • TP\n"
         .. "VISUAL : Hide Player+Kendaraan (R) • Hide Badan Atas\n"
         .. "Cahaya Auto (T) • Lightweight • Dinding Batas (X)\n"
+        .. "TITIK  : Tiang checkpoint + teleport • tiang bisa hide\n"
         .. "SISTEM : Rejoin (K×2) • Hapus Script\n"
         .. "Shift/Moonwalk/Tengah otomatis OFF saat mati/respawn",
     LayoutOrder = nextOrder(),
@@ -1303,7 +1548,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1600, 13),
     FontFace = fnt("med"),
-    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • F Moonwalk • LShift Tengah • B FallResist   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • F Moonwalk • LShift Tengah • B FallResist • 📍 Titik   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1815,6 +2060,19 @@ Setters.Tengah = function(v, silent)
         sltOffsetAsli = nil
     end
     syncNotify("Tengah", v, silent, "Shiftlock Tengah")
+end
+
+-- TIANG PENANDA (tab TITIK) — tampilkan/sembunyikan tiang checkpoint.
+-- Daftar titik & data file TIDAK ikut hilang, cuma tiangnya yang dihide.
+Setters.Tiang = function(v, silent)
+    if State.TiangOn == v then return end
+    State.TiangOn = v
+    if v then
+        titikRender()
+    else
+        if titikFolder then titikFolder:Destroy() titikFolder = nil end
+    end
+    syncNotify("Tiang", v, silent, "Tampilkan Tiang")
 end
 
 -- HIDE PLAYER + KENDARAAN
@@ -2548,6 +2806,7 @@ unloadScript = function()
     pcall(setFeature, "Shift", false, true)
     pcall(setFeature, "Moon", false, true)
     pcall(setFeature, "Tengah", false, true)
+    pcall(setFeature, "Tiang", false, true)
     pcall(setFeature, "Hide", false, true)
     pcall(setFeature, "LW", false, true)
     pcall(setFeature, "Walls", false, true)
@@ -2769,7 +3028,7 @@ task.delay(0.15, function()
 end)
 print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
 print("[BALAP] GERAK | VISUAL | SISTEM • Q speed • J jump • C shift • F moon • B fallresist • R hide • T cahaya • X dinding • K×2 rejoin")
-diagSet("BALAP v1.2.0 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+diagSet("BALAP v1.3.1 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
 task.delay(7, function()
         local function hapusDiag()
                 pcall(function()
@@ -2793,7 +3052,7 @@ getgenv().BALAP_API = { Setters = Setters, State = State }  -- debug/otomasi + h
 end, function(e)
         local teks = tostring(e)
         print("==================================================")
-        print("[BALAP v1.2.0] ERROR SAAT LOAD — kirim teks ini ke dev:")
+        print("[BALAP v1.3.1] ERROR SAAT LOAD — kirim teks ini ke dev:")
         print(teks)
         pcall(function() print(debug.traceback("", 2)) end)
         print("==================================================")
@@ -2802,5 +3061,5 @@ end, function(e)
         end)
 end)
 if not __BALAP_LOAD_OK__ then
-        warn("[BALAP v1.2.0] Script GAGAL load — banner MERAH di layar berisi errornya.")
+        warn("[BALAP v1.3.1] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
