@@ -1,9 +1,9 @@
 --========================================================
---  BALAP v1.1.0 — 
+--  BALAP v1.2.0 — 
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  3 TAB:
---    1 🏃 GERAK  : Speed, Jump, Shiftlock, Moonwalk, Fall Resist, TP
+--    1 🏃 GERAK  : Speed, Jump, Shiftlock, Tengah, Moonwalk, Fall Resist, TP
 --    2 🎨 VISUAL : Hide Player+Kendaraan, Hide Badan Atas, Cahaya Auto 2 arah, Lightweight, Dinding Batas
 --    3 ⚙️ SISTEM : rejoin, hapus script
 --
@@ -11,6 +11,7 @@
 --    G = buka/tutup GUI (saat tutup = hilang total)
 --    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
+--    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor bawaan)
 --    F = Moonwalk    B = Fall Resist (preset 5/20/50/75%)    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    K = Rejoin (double-tap)
@@ -19,8 +20,11 @@
 --  v1.0.1: Moonwalk halus (putaran natural, CFG.MOON_TURN_MAX)
 --  v1.1.0: Anti-AFK / Reset / Hemat GUI / Hide Pemain Lain dihapus
 --          Shiftlock & Moonwalk OTOMATIS OFF saat mati / respawn
+--  v1.2.0: FITUR BARU — Shiftlock Tengah (LShift/RShift): kamera persis di
+--          TENGAH karakter (CameraOffset 0), kursor bawaan komputer,
+--          transisi halus. Shiftlock/Moonwalk/Tengah saling menonaktifkan.
 --========================================================
-print("[BALAP v1.1.0] load mulai...")
+print("[BALAP v1.2.0] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -69,7 +73,7 @@ do
         end
 end
 
-local VERSI = "1.1.0"
+local VERSI = "1.2.0"
 local __BALAP_LOAD_OK__ = xpcall(function()
 -- ================================================================
 -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -141,6 +145,8 @@ local CFG = {
     --   Badan hanya berputar saat karakter BERGERAK; berdiri = diam total.
     MOON_TURN_MAX = 12,
     MOON_SMOOTH = 10,
+    -- Shiftlock Tengah (v1.2.0): kamera persis di TENGAH karakter
+    SLT_WAKTU   = 0.25,  -- durasi transisi halus kamera (detik)
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
 }
@@ -535,7 +541,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -70, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.1.0 ⚡",
+    Text = "⚡ BALAP v1.2.0 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -669,10 +675,12 @@ local function buatToggleRow(parent, labelText, keyText, featureName)
         Text = labelText,
     }, row)
     if keyText then
+        -- lebar chip keybind menyesuaikan teks (1 huruf = 22px, "Shift" lebih lebar)
+        local cw = math.max(22, 12 + #keyText * 7)
         local chip = buat("TextLabel", {
             BackgroundColor3 = Warna.Card2,
-            Size = UDim2.new(0, 22, 0, 20),
-            Position = UDim2.new(1, -80, 0.5, -10),
+            Size = UDim2.new(0, cw, 0, 20),
+            Position = UDim2.new(1, -58 - cw, 0.5, -10),
             FontFace = fnt("bold"),
             TextSize = 11,
             TextColor3 = Warna.AbuGelap,
@@ -807,6 +815,7 @@ State.WallsOn = false
 State.LightOn = false
 State.FallOn  = false
 State.MoonOn  = false  -- Moonwalk (F)
+State.TengahOn = false -- Shiftlock Tengah (LShift/RShift)
 State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
 
 -- ======================================================================
@@ -901,6 +910,7 @@ RefreshJump = buatStepperRow(
 )
 buatToggleRow(scrollKing, "Shiftlock Mobile", "C", "Shift")
 buatToggleRow(scrollKing, "Moonwalk", "F", "Moon")
+buatToggleRow(scrollKing, "Shiftlock Tengah", "Shift", "Tengah")
 -- ===== FALL RESIST V1.07 — toggle + 4 preset potongan demage =====
 buatHeader(scrollKing, "Fall Resist")
 local _, fallLbl = buatToggleRow(scrollKing, "Fall Resist", "B", "Fall")
@@ -1212,14 +1222,14 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.1.0\n"
+    Text = "⚡ BALAP v1.2.0\n"
         .. "Fitur:\n"
         .. "GERAK  : Speed (Q) • Jump (J) • Shiftlock (C) • Moonwalk (F)\n"
-        .. "Fall Resist (B, 4 preset) • TP simpan lokasi permanen\n"
+        .. "Shiftlock Tengah (LShift) • Fall Resist (B, 4 preset) • TP\n"
         .. "VISUAL : Hide Player+Kendaraan (R) • Hide Badan Atas\n"
         .. "Cahaya Auto (T) • Lightweight • Dinding Batas (X)\n"
         .. "SISTEM : Rejoin (K×2) • Hapus Script\n"
-        .. "Shiftlock & Moonwalk otomatis OFF saat mati/respawn",
+        .. "Shift/Moonwalk/Tengah otomatis OFF saat mati/respawn",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
@@ -1293,7 +1303,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1600, 13),
     FontFace = fnt("med"),
-    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • F Moonwalk • B FallResist   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • F Moonwalk • LShift Tengah • B FallResist   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1684,6 +1694,8 @@ Setters.Shift = function(v, silent)
     if State.ShiftOn == v then return end
     State.ShiftOn = v
     if v then
+        -- anti bentrok orientasi: Shiftlock Tengah dimatikan dulu
+        if State.TengahOn then setFeature("Tengah", false, true) end
         local hum = getHum()
         if hum then hum.AutoRotate = false end
         RunService:BindToRenderStep("KS_SHIFTLOCK", Enum.RenderPriority.Character.Value + 1, function()
@@ -1713,6 +1725,8 @@ Setters.Moon = function(v, silent)
     if State.MoonOn == v then return end
     State.MoonOn = v
     if v then
+        -- anti bentrok orientasi: Shiftlock Tengah dimatikan dulu
+        if State.TengahOn then setFeature("Tengah", false, true) end
         local hum = getHum()
         if hum then hum.AutoRotate = false end
         RunService:BindToRenderStep("KS_MOONWALK", Enum.RenderPriority.Character.Value + 1, function(dt)
@@ -1745,6 +1759,62 @@ Setters.Moon = function(v, silent)
         if hum then hum.AutoRotate = true end
     end
     syncNotify("Moon", v, silent, "Moonwalk")
+end
+
+-- SHIFTLOCK TENGAH (v1.2.0) — port "SHIFT LOCK TENGAH v2"
+-- Kamera persis di TENGAH karakter: Humanoid.CameraOffset di-tween halus ke
+-- Vector3.zero, kursor bawaan komputer, TANPA notifikasi Roblox. Mekanisme
+-- native: MouseBehavior.LockCenter + RotationType.CameraRelative dijaga tiap
+-- frame via RenderStep (Camera+1). Toggle: LShift / RShift / switch GUI.
+-- Auto OFF saat mati/respawn (matikanGerak) + saling menonaktif dengan
+-- Shiftlock Mobile & Moonwalk (sama-sama pegang orientasi badan).
+local sltTween, sltTweening, sltOffsetAsli = nil, false, nil
+local sltUGS
+pcall(function() sltUGS = UserSettings():GetService("UserGameSettings") end)
+Setters.Tengah = function(v, silent)
+    if State.TengahOn == v then return end
+    State.TengahOn = v
+    if v then
+        -- anti bentrok: matikan Shiftlock Mobile & Moonwalk dulu
+        if State.ShiftOn then setFeature("Shift", false, true) end
+        if State.MoonOn then setFeature("Moon", false, true) end
+        local hum = getHum()
+        if hum then
+            sltOffsetAsli = hum.CameraOffset  -- simpan offset asli game
+            sltTweening = true
+            if sltTween then sltTween:Cancel() end
+            sltTween = TweenService:Create(hum,
+                TweenInfo.new(CFG.SLT_WAKTU, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {CameraOffset = Vector3.zero})
+            sltTween:Play()
+            sltTween.Completed:Connect(function() sltTweening = false end)
+        end
+        pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
+        RunService:BindToRenderStep("KS_TENGAH", Enum.RenderPriority.Camera.Value + 1, function()
+            local h = getHum()
+            if h and h.Health > 0 then
+                UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+                if sltUGS then
+                    pcall(function() sltUGS.RotationType = Enum.RotationType.CameraRelative end)
+                end
+                -- jaga offset tetap 0 setelah tween selesai
+                if not sltTweening and h.CameraOffset ~= Vector3.zero then
+                    h.CameraOffset = Vector3.zero
+                end
+            end
+        end)
+    else
+        pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        if sltUGS then
+            pcall(function() sltUGS.RotationType = Enum.RotationType.MovementRelative end)
+        end
+        if sltTween then sltTween:Cancel() end
+        local hum = getHum()
+        if hum and sltOffsetAsli then hum.CameraOffset = sltOffsetAsli end
+        sltOffsetAsli = nil
+    end
+    syncNotify("Tengah", v, silent, "Shiftlock Tengah")
 end
 
 -- HIDE PLAYER + KENDARAAN
@@ -2477,6 +2547,7 @@ unloadScript = function()
     pcall(setFeature, "Jump", false, true)
     pcall(setFeature, "Shift", false, true)
     pcall(setFeature, "Moon", false, true)
+    pcall(setFeature, "Tengah", false, true)
     pcall(setFeature, "Hide", false, true)
     pcall(setFeature, "LW", false, true)
     pcall(setFeature, "Walls", false, true)
@@ -2486,6 +2557,11 @@ unloadScript = function()
     -- 2) Unbind semua RenderStep binding
     pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
     pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
+    pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
+    pcall(function() UserInputService.MouseBehavior = Enum.MouseBehavior.Default end)
+    pcall(function()
+        UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.MovementRelative
+    end)
     -- 3) Cancel semua task/thread yang masih jalan
     if lightConn then pcall(function() task.cancel(lightConn) end) lightConn = nil end
     if fallState and fallState.conn then
@@ -2573,12 +2649,14 @@ local function initCharacter(char)
     local hum = char:WaitForChild("Humanoid", 10)
     if not hum then return end
     updateJumpLabel()
-    -- REVISI v1.1.0: Shiftlock & Moonwalk OTOMATIS OFF saat mati/respawn.
-    -- Dua lapis: langsung saat humanoid mati (Died) + jaga-jaga saat
-    -- spawn baru (karakter diganti tanpa event Died sempat jalan).
+    -- REVISI v1.1.0 + v1.2.0: Shiftlock, Moonwalk & Shiftlock Tengah
+    -- OTOMATIS OFF saat mati/respawn. Dua lapis: langsung saat humanoid
+    -- mati (Died) + jaga-jaga saat spawn baru (karakter diganti tanpa
+    -- event Died sempat jalan).
     local function matikanGerak()
         if State.ShiftOn then setFeature("Shift", false) end
         if State.MoonOn then setFeature("Moon", false) end
+        if State.TengahOn then setFeature("Tengah", false) end
     end
     matikanGerak()
     catat(hum.Died:Connect(matikanGerak))
@@ -2656,6 +2734,8 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
         setFeature("Shift", not State.ShiftOn)
     elseif input.KeyCode == Enum.KeyCode.F then
         setFeature("Moon", not State.MoonOn)
+    elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+        setFeature("Tengah", not State.TengahOn)
     elseif input.KeyCode == Enum.KeyCode.B then
         setFeature("Fall", not State.FallOn)
     elseif input.KeyCode == Enum.KeyCode.R then
@@ -2689,7 +2769,7 @@ task.delay(0.15, function()
 end)
 print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
 print("[BALAP] GERAK | VISUAL | SISTEM • Q speed • J jump • C shift • F moon • B fallresist • R hide • T cahaya • X dinding • K×2 rejoin")
-diagSet("BALAP v1.1.0 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+diagSet("BALAP v1.2.0 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
 task.delay(7, function()
         local function hapusDiag()
                 pcall(function()
@@ -2713,7 +2793,7 @@ getgenv().BALAP_API = { Setters = Setters, State = State }  -- debug/otomasi + h
 end, function(e)
         local teks = tostring(e)
         print("==================================================")
-        print("[BALAP v1.1.0] ERROR SAAT LOAD — kirim teks ini ke dev:")
+        print("[BALAP v1.2.0] ERROR SAAT LOAD — kirim teks ini ke dev:")
         print(teks)
         pcall(function() print(debug.traceback("", 2)) end)
         print("==================================================")
@@ -2722,5 +2802,5 @@ end, function(e)
         end)
 end)
 if not __BALAP_LOAD_OK__ then
-        warn("[BALAP v1.1.0] Script GAGAL load — banner MERAH di layar berisi errornya.")
+        warn("[BALAP v1.2.0] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
