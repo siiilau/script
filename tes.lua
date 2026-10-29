@@ -1,33 +1,109 @@
 --========================================================
---  BALAP v1.3 — Script Balapan Gabungan
---  v1.0.2: FIX Fall Assist (variabel hrp/hum tertukar) + Velocity Dampener
---  v1.0.3: Fall HALUS — potong 50% + napi awal (-72) + jeda platform singkat
---  v1.0.4: SILENT FALL — tanpa hentakan & tanpa pengurangan kecepatan jatuh
---  v1.0.6: POSISI BENTUR default 0.30 — reduksi damage ringan (±-30%)
---  v1.2: FALL ASSIST 1 FITUR — tanpa minimal jatuh, POTONGAN DEMAGE % (0-75), tanpa soft landing
---  v1.2.1: FIX — reset senyap cukup 1x per terbangan; aktif lagi setelah injek tanah
---  v1.2.2: FIX final — latch global + re-arm cuma saat tanah stabil 0.3 dtk
---  v1.2.3: FIX "0% kok masih dipotong" — input angka diperkuat (tap = kosong,
---          koma desimal, clamp) + TAKEOVER anti double-instance
---  v1.3: KALIBRASI JUJUR — angka di GUI = perkiraan % damage berkurang
---        (dulu: % posisi pulse -> efek beneran jauh lebih besar dari angka)
---
+--  BALAP v1.3.4 — 
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
---  3 TAB:
---    1 🏃 GERAK  : Speed, Jump, Shiftlock, Moonwalk, Fall Assist, Anti-AFK
---    2 🎨 VISUAL : Hide, Hide Pemain Lain, Cahaya Auto 2 arah, Lightweight, Dinding Batas
---    3 ⚙️ SISTEM : reset, rejoin, hapus script
+--  4 TAB:
+--    1 🏃 GERAK  : Speed, Jump, Shiftlock, Tengah, Moonwalk, Fall Resist, TP
+--    2 🎨 VISUAL : Hide Player+Kendaraan, Hide Badan Atas, Cahaya Auto 2 arah, Lightweight, Dinding Batas
+--    3 ⚙️ SISTEM : rejoin, hapus script
+--    4 📍 TITIK  : tiang checkpoint + daftar teleport (tersimpan permanen)
 --
 --  Keybind:
---    F = buka/tutup GUI (saat tutup = hilang total)
+--    G = buka/tutup GUI (saat tutup = hilang total)
 --    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
---    G = Moonwalk    B = Smart Fall Assist    R = Hide
+--    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor lingkaran mini)
+--    F = Moonwalk    B = Fall Resist (preset 5/20/50/75%)    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
+--    V = Tambah titik di posisi karakter (tanpa buka GUI)
 --    K = Rejoin (double-tap)
+--    TP = via GUI (tab GERAK): simpan lokasi dgn nama bebas — permanen
+--
+--  v1.0.1: Moonwalk halus (putaran natural, CFG.MOON_TURN_MAX)
+--  v1.1.0: Anti-AFK / Reset / Hemat GUI / Hide Pemain Lain dihapus
+--          Shiftlock & Moonwalk OTOMATIS OFF saat mati / respawn
+--  v1.2.0: FITUR BARU — Shiftlock Tengah (LShift/RShift): kamera persis di
+--          TENGAH karakter (CameraOffset 0), kursor bawaan komputer,
+--          transisi halus. Shiftlock/Moonwalk/Tengah saling menonaktifkan.
+--  v1.3.0: TAB BARU 📍 TITIK — penanda checkpoint: tiang neon bernomor +
+--          daftar teleport, tiang bisa hide/show, titik TERSIMPAN PERMANEN
+--          (file penanda_titik.json — titik dari script lama ikut kebaca)
+--  v1.3.1: Tiang TANPA nomor — muncul tiang polos saja (nomor di atas
+--          tiang dihapus; daftar di tab tetap ada urutannya)
+--  v1.3.2: Shiftlock Tengah — titik bidik TURUN ke pinggang/bawah badan
+--          (CFG.SLT_TURUN) + kursor jadi lingkaran mini (panah komputer
+--          disembunyikan)
+--  v1.3.3: Kamera TIDAK diubah (efek kamera v1.3.2 dibatalkan) — cuma LETAK
+--          lingkaran kursor digeser ke bawah (CFG.SLT_DOT_Y, 0.5 = tengah)
+--  v1.3.4: ☁ SINKRON — TP & titik ikut tersinkron LINTAS DEVICE via
+--          jsonblob.com (gratis, tanpa login). Kode sync angka dibuat
+--          otomatis, selalu tampil di kartu ☁ SINKRON (tab TITIK) +
+--          tombol SALIN. MASUKKAN KODE = nyambung ke device lain,
+--          GANTI KODE = buat loker baru. Merge pintar: TP per nama,
+--          titik <1 stud = dianggap kembar, DAFTAR HAPUS ikut
+--          tersinkron (max 200) supaya hapusan tidak "bangkit" lagi.
+--          Upload jeda 30 dtk • download saat load + tiap 3 menit •
+--          offline = diam, data aman di lokal, retry otomatis.
+--          Lain-lain: fix hotkey saat mengetik • V = tambah titik •
+--          rename TP (✎) • jarak + urut terdekat • hapus semua =
+--          konfirmasi 2 langkah • Speed OFF 17.15 • berenang saat
+--          Shiftlock Tengah aktif = speed aktif × 1.025
 --========================================================
-local VERSI = "1.3"
+print("[BALAP v1.3.4] load mulai...")
+-- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
+-- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
+-- banner berubah MERAH dan menampilkan teks errornya di layar.
+do
+        local __dGui, __dLbl
+        pcall(function()
+                __dGui = Instance.new("ScreenGui")
+                __dGui.Name = "BALAP_DIAG"
+                __dGui.ResetOnSpawn = false
+                __dGui.DisplayOrder = 1000000
+                __dLbl = Instance.new("TextLabel")
+                __dLbl.Size = UDim2.new(0, 480, 0, 38)
+                __dLbl.Position = UDim2.new(0, 8, 0, 120)
+                __dLbl.BackgroundColor3 = Color3.fromRGB(30, 30, 46)
+                __dLbl.BackgroundTransparency = 0.1
+                __dLbl.BorderSizePixel = 0
+                __dLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+                __dLbl.Font = Enum.Font.GothamBold
+                __dLbl.TextSize = 13
+                __dLbl.TextWrapped = true
+                __dLbl.Text = "BALAP: memulai..."
+                __dLbl.Parent = __dGui
+                local cr = Instance.new("UICorner")
+                cr.CornerRadius = UDim.new(0, 8)
+                cr.Parent = __dLbl
+                local dipasang = false
+                pcall(function() if gethui then __dGui.Parent = gethui(); dipasang = true end end)
+                if not dipasang then
+                        pcall(function() __dGui.Parent = game:GetService("CoreGui"); dipasang = true end)
+                end
+                if not dipasang then
+                        pcall(function()
+                                __dGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui", 5)
+                                dipasang = true
+                        end)
+                end
+        end)
+        function diagSet(teks, warna)
+                print("[BALAP-DIAG] " .. tostring(teks))
+                pcall(function()
+                        if __dGui and __dGui.Parent and __dLbl then
+                                __dLbl.Text = tostring(teks)
+                                if warna then __dLbl.BackgroundColor3 = warna end
+                        end
+                end)
+        end
+end
+
+local VERSI = "1.3.4"
+local __BALAP_LOAD_OK__ = xpcall(function()
+-- ================================================================
+-- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
+-- error + nomor baris LANGSUNG tampil di layar (tidak hilang diam).
+-- ================================================================
 
 -- [1] PENGAMAN DASAR -----------------------------------------------
 local RunService = game:GetService("RunService")
@@ -36,7 +112,8 @@ if not RunService:IsClient() then
     return
 end
 if not game:IsLoaded() then
-    game.Loaded:Wait()
+       diagSet("menunggu game load... (nyangkut di sini = game belum selesai load)")
+       game.Loaded:Wait()
 end
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -45,23 +122,24 @@ local HttpService      = game:GetService("HttpService")
 local TeleportService  = game:GetService("TeleportService")
 local Lighting         = game:GetService("Lighting")
 local Workspace        = game:GetService("Workspace")
-local VirtualUser      = game:GetService("VirtualUser")
+diagSet("menunggu LocalPlayer...")
 local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
 if not LocalPlayer then
-    warn("[BALAP] GAGAL: LocalPlayer belum ada.")
+        warn("[BALAP] GAGAL: LocalPlayer belum ada.")
+        diagSet("GAGAL: LocalPlayer tidak ada (dapat nil)", Color3.fromRGB(239, 68, 68))
     return
 end
-local Terrain = Workspace:WaitForChild("Terrain")
+diagSet("cek Terrain...")
+local Terrain = Workspace:FindFirstChildOfClass("Terrain") or Workspace:WaitForChild("Terrain", 10)
+if not Terrain then
+       warn("[BALAP] Terrain tidak ketemu (10 dtk) — lanjut tanpa Terrain.")
+       diagSet("Terrain tidak ketemu — lanjut tanpa Terrain")
+end
 
--- v1.2.3 ANTI DOUBLE-INSTANCE (TAKEOVER) — pengganti "anti double-run" lama:
--- Dulu: `if _G.__BALAP_MAIN__ then return end` punya 2 lubang:
---   (a) executor yang SHARE _G: re-execute versi baru DITOLAK diam-diam ->
---       user tanpa sadar terus memakai instance/versi lama (potongan 30%);
---   (b) executor yang ISOLASI _G: guard tidak pernah nyala -> 2 instance
---       jalan bersamaan. GUI lama dihapus sweep, tapi Heartbeat Fall Assist
---       instance lama TETAP PULSE (30%) -> 0% pun damage tetap terpotong!
--- Sekarang: eksekusi baru SELALU jalan & memasang token baru. Watchdog di
--- instance lama melihat token berganti / GUI-nya dihapus -> unload sendiri.
+-- ANTI DOUBLE-INSTANCE (TAKEOVER): eksekusi baru SELALU jalan & memasang
+-- token baru; instance lama melihat token berganti / GUI-nya dihapus ->
+-- unload sendiri (guard `if _G.__BALAP_MAIN__` lama bisa menolak versi
+-- baru diam-diam atau membiarkan 2 instance jalan bersamaan).
 local MY_TOKEN = {}
 _G.__BALAP_TOKEN__ = MY_TOKEN
 _G.__BALAP_MAIN__ = true  -- penanda lama, tetap dibersihkan unloadScript
@@ -71,12 +149,12 @@ _G.__BALAP_MAIN__ = true  -- penanda lama, tetap dibersihkan unloadScript
 -- (Luau limit 200 local per function)
 local CFG = {
     ICON_SIZE       = 36,
-    TOGGLE_KEY      = Enum.KeyCode.F,
+    TOGGLE_KEY      = Enum.KeyCode.G,
     LED_TEXT        = "⚡ B A L A P ⚡",
     SOUND_ON        = true,
     FX_LEVEL        = 1,
-    -- Speed cycle 3 state (17.10 → 17.25 → 21.25 → balik OFF)
-    SPEED_OFF   = 17.10,
+    -- Speed cycle 3 state (17.15 → 17.25 → 21.25 → balik OFF)
+    SPEED_OFF   = 17.15,
     SPEED_ON_1  = 17.25,
     SPEED_ON_2  = 21.25,
     -- Jump: OFF 51.25 ⇄ ON 65.25 (kondisional UseJumpPower / JumpHeight)
@@ -84,6 +162,34 @@ local CFG = {
     ON_JUMP     = 65.25,
     OFF_JUMP_H  = 6.69,
     ON_JUMP_H   = 8.50,
+    -- Moonwalk (F): putaran CEPAT + HENTAKAN — badan dibalikkan kencang
+    --   lalu mengunci tegas di arah tujuan (bukan melayang lambat).
+    --   MOON_TURN_MAX = kecepatan putar maks (rad/dtk). 12 = ±688°/dtk,
+    --     putaran 180° selesai ±0.25 dtk. Lebih kencang? naikkan (mis. 15).
+    --   MOON_SMOOTH = kekerasan kunci/pendaratan (makin besar makin hentak).
+    --   Badan hanya berputar saat karakter BERGERAK; berdiri = diam total.
+    MOON_TURN_MAX = 12,
+    MOON_SMOOTH = 10,
+    -- Shiftlock Tengah (v1.2.0): kamera persis di TENGAH karakter.
+    -- v1.3.3: kamera TIDAK diubah sama sekali — yang digeser ke bawah cuma
+    --         letak lingkaran kursornya (posisi diatur SLT_DOT_Y)
+    SLT_WAKTU   = 0.25,  -- durasi transisi halus kamera (detik)
+    SLT_DOT     = 7,     -- ukuran lingkaran kursor (px, mini biar ga ganggu)
+    SLT_DOT_Y   = 0.60,  -- letak vertikal lingkaran: 0.5 = tengah layar,
+                         -- makin besar makin ke bawah (0.60 = bawah pinggang)
+    -- Penanda Titik (tab TITIK, v1.3.0): tiang checkpoint + teleport
+    TITIK_WARNA    = Color3.fromRGB(255, 200, 40), -- kuning neon tiang
+    TITIK_TINGGI   = 1.5,   -- tinggi tiang (stud)
+    TITIK_DIAMETER = 0.3,   -- diameter tiang (stud)
+    TITIK_FILE     = "penanda_titik.json", -- sama dgn script standalone lama
+    -- ☁ SINKRON (v1.3.4): TP + titik lintas device via jsonblob.com
+    SYNC_FILE          = "BALAP_SYNC.json", -- kode sync + daftar hapus
+    SYNC_URL           = "https://jsonblob.com/api/jsonBlob",
+    SYNC_TOMBSTONE_MAX = 200,   -- batas daftar hapus yang ikut disinkron
+    SYNC_UNGGAH_JEDA   = 30,    -- dtk tunda upload setelah perubahan terakhir
+    SYNC_UNDUH_TIAP    = 180,   -- dtk antar unduhan berkala (3 menit)
+    TITIK_MAX          = 5000,  -- cap keras titik (praktis unlimited, anti crash)
+    SWIM_BONUS         = 1.025, -- berenang + Shiftlock Tengah: speed aktif × 1.025
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
 }
@@ -190,6 +296,11 @@ local function fmtNum(v)
     s = s:gsub("%.$", "")
     return s
 end
+-- format jarak utk daftar TP & titik (v1.3.4)
+local function fmtJarak(d)
+    if d >= 1000 then return string.format("%.2fkm", d / 1000) end
+    return string.format("%.1fm", d)
+end
 local function nomorBebas(prefix, daftarNama)
     local pakai = {}
     for _, nama in ipairs(daftarNama) do
@@ -204,6 +315,7 @@ local function idBaru()
     return tostring(os.time()) .. "-" .. tostring(rnd(100000, 999999))
 end
 
+diagSet("dasar OK — siapkan helper GUI...")
 -- [4b] REGISTRY KONEKSI & FORWARD DECLARE ---------------------------
 local semuaKoneksi = {}
 local function catat(conn)
@@ -218,19 +330,26 @@ end
 local State = { Removed = false }
 local Original = {}
 local Setters, Switches = {}, {}
-local setFeature, togglePanel, resetAll, rejoin, unloadScript
+local effGradients, effTweens = {}, {}   -- registry efek neon (internal FX)
+local setFeature, togglePanel, rejoin, unloadScript
 local applySpeed, applyJump, updateJumpLabel
-local RefreshSpeed, RefreshJump, JumpLabel, SpeedLabel, AfkLabel
-local cfgFall, oLight, fallState, fallRay, lightConn
+local RefreshSpeed, RefreshJump, JumpLabel, SpeedLabel, FallLabel
+local cfgFall, oLight, fallState, fallRay, lightConn, refreshFallPreset, PRESET_FALL
 
 -- Forward declare untuk part3 (FX/footer/icon) — di-expose via buildFX()
 local konfeti, emojiBurst, pusatDiRoot, toast
 local kumpulkanFade, setFade, fadeVal
+-- Forward declare data TP + modul ☁ SINKRON (didefinisikan di [7a3])
+local TP_MAX, TP_FILE, TP_LOKASI, tpBisaFile
+local tpBulat, tpTulisFile, tpMuat, tpRefresh
+local syncTandai, syncCatatHapusTp, syncCatatHapusTiang
+local syncBuangHapusTp, syncBuangHapusTiang, syncRefreshKartu
 
 -- Forward declare untuk part2 (UI builder) — di-expose via buildUI()
 local tabBtns, kontenTabs, setTab
 local kontenKing, scrollKing, kontenVisual, scrollVisual
 local kontenSistem, scrollSistem
+local kontenTitik, scrollTitik
 setFeature = function(name, v, silent)
     local f = Setters[name]
     if f then f(v, silent) end
@@ -259,8 +378,10 @@ local function ledSweep(inst, base, bandA, bandB, dur)
         }),
         Offset = Vector2.new(-1, 0),
     }, inst)
-    tween(g, TweenInfo.new(dur or 2.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+    local tw = tween(g, TweenInfo.new(dur or 2.4, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
         {Offset = Vector2.new(1, 0)})
+    table.insert(effGradients, g)
+    table.insert(effTweens, tw)
     return g
 end
 local function cycleColor(obj, prop, colors, interval)
@@ -421,10 +542,10 @@ local borderGrad = buat("UIGradient", {
         ColorSequenceKeypoint.new(1.00, Warna.Ungu),
     }),
 }, borderStroke)
-tween(borderGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = 360})
+table.insert(effTweens, tween(borderGrad, TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = 360}))
 local ring2Stroke = buat("UIStroke", {Color = Warna.Putih, Thickness = 1, Transparency = 0.45}, outer)
 local ring2Grad = buat("UIGradient", {Color = ColorSequence.new(Warna.Ungu2, Warna.Biru2)}, ring2Stroke)
-tween(ring2Grad, TweenInfo.new(3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = -360})
+table.insert(effTweens, tween(ring2Grad, TweenInfo.new(3.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), {Rotation = -360}))
 local panel = buat("Frame", {
     Size = UDim2.new(1, -10, 1, -10),
     Position = UDim2.new(0, 5, 0, 5),
@@ -453,8 +574,8 @@ for i = 1, 3 do
         BackgroundTransparency = 0.5,
         BorderSizePixel = 0,
     }, partBox)
-    tween(stripe, TweenInfo.new(6 + i * 2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true),
-        {Position = UDim2.new(0.3 * i + 0.25, 0, 0.5, 0)})
+    table.insert(effTweens, tween(stripe, TweenInfo.new(6 + i * 2, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1, true),
+        {Position = UDim2.new(0.3 * i + 0.25, 0, 0.5, 0)}))
 end
 local header = buat("Frame", {
     Size = UDim2.new(1, 0, 0, 46),
@@ -472,9 +593,9 @@ buat("Frame", {
 local title = buat("TextLabel", {
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 12, 0, 0),
-    Size = UDim2.new(1, -70, 1, 0),
+    Size = UDim2.new(1, -104, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.3 ⚡",
+    Text = "⚡ BALAP v1.3.4 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -509,18 +630,931 @@ local accent = buat("Frame", {
     BorderSizePixel = 0,
 }, panel)
 ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
+-- ☁ mini di header (v1.3.4): warna = status sinkron, klik = buka tab TITIK
+local btnCloud = buat("TextButton", {
+    Size = UDim2.fromOffset(24, 24),
+    Position = UDim2.new(1, -72, 0.5, -12),
+    BackgroundTransparency = 1,
+    FontFace = fnt("bold"),
+    Text = "☁",
+    TextColor3 = Warna.AbuGelap,
+    TextSize = 15,
+    AutoButtonColor = false,
+}, header)
+btnCloud.MouseButton1Click:Connect(function()
+    ripple(btnCloud, Warna.Ungu2)
+    setTab(4)
+end)
 
--- [7b] TAB BAR (3 TAB) ----------------------------------------------
+-- [7a2] MODUL PENANDA TITIK (tab TITIK, v1.3.0) ---------------------
+-- Port standalone "PENANDA TITIK" ke dalam GUI BALAP:
+--   • Tiang neon kuning polos TANPA nomor, nempel tanah (raycast ke bawah)
+--   • Daftar titik: klik = teleport, X = hapus titik itu
+--   • TERSIMPAN PERMANEN: writefile penanda_titik.json (nama file SAMA
+--     dgn script lama -> titik lama otomatis kebaca). Executor tanpa
+--     writefile -> cadangan getgenv (selamat saat re-execute).
+--   • Tiang bisa hide/show via switch "Tampilkan Tiang"
+local titikList       = {}
+local titikFolder     = nil   -- Folder berisi tiang di Workspace
+local titikHolder     = nil   -- frame daftar titik di tab TITIK (di-buildUI)
+local titikLabelJumlah = nil
+local titikRefreshDaftar -- forward declare (didefinisikan di bawah)
+local titikBisaFile   = (type(writefile) == "function") and (type(readfile) == "function")
+    and (type(isfile) == "function")
+
+local function titikSimpan()
+    getgenv().BALAP_TITIK_DATA = titikList        -- cadangan sesi (re-execute)
+    if not titikBisaFile then return false end
+    local data = {}
+    for i = 1, #titikList do
+        local p = titikList[i]
+        data[i] = { x = p.X, y = p.Y, z = p.Z }
+    end
+    local ok, err = pcall(function()
+        writefile(CFG.TITIK_FILE, HttpService:JSONEncode(data))
+    end)
+    if not ok then warn("[BALAP-TITIK] gagal simpan: " .. tostring(err)) return false end
+    return true
+end
+
+local function titikMuat()
+    local data, ada = nil, false
+    if titikBisaFile then
+        pcall(function() ada = isfile(CFG.TITIK_FILE) end)
+        if ada then
+            local ok, isi = pcall(readfile, CFG.TITIK_FILE)
+            if ok and type(isi) == "string" then
+                pcall(function() data = HttpService:JSONDecode(isi) end)
+            end
+        end
+    end
+    if not data then
+        data = rawget(getgenv(), "BALAP_TITIK_DATA")  -- fallback: sesi yang sama
+    end
+    if type(data) == "table" then
+        for _, e in ipairs(data) do
+            if type(e) == "table" and e.x and e.y and e.z then
+                titikList[#titikList + 1] = Vector3.new(e.x, e.y, e.z)
+            end
+        end
+    end
+    getgenv().BALAP_TITIK_DATA = titikList
+    print("[BALAP-TITIK] muat " .. #titikList .. " titik"
+        .. (titikBisaFile and " (file: " .. CFG.TITIK_FILE .. ")" or " (mode SESI — executor tanpa writefile)"))
+end
+
+local function titikBuatTiang(index, pos)
+    buat("Part", {
+        Name = "Titik_" .. index,
+        Shape = Enum.PartType.Cylinder,
+        Size = Vector3.new(CFG.TITIK_TINGGI, CFG.TITIK_DIAMETER, CFG.TITIK_DIAMETER),
+        CFrame = CFrame.new(pos.X, pos.Y + CFG.TITIK_TINGGI / 2, pos.Z)
+            * CFrame.Angles(0, 0, math.rad(90)),
+        Anchored = true,
+        CanCollide = false,
+        CanTouch = false,
+        CanQuery = false,
+        CastShadow = false,
+        Material = Enum.Material.Neon,
+        Color = CFG.TITIK_WARNA,
+    }, titikFolder)
+    -- v1.3.1: TANPA nomor — muncul tiang polos saja
+end
+
+-- render ulang semua tiang (dipakai juga Setters.Tiang saat toggle)
+local function titikRender()
+    if titikFolder then titikFolder:Destroy() titikFolder = nil end
+    if not State.TiangOn then return end
+    if #titikList == 0 then return end
+    titikFolder = Instance.new("Folder")
+    titikFolder.Name = "BALAP_TitikPenanda"
+    titikFolder.Parent = Workspace
+    for i, pos in ipairs(titikList) do
+        titikBuatTiang(i, pos)
+    end
+end
+
+local function titikTeleport(pos)
+    local char = getChar()
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then toast("Karakter tidak ketemu!", Warna.Merah) return end
+    bunyi(CFG.SND_PING, 0.3, 1.1)
+    hrp.CFrame = CFrame.new(pos.X, pos.Y + 3.5, pos.Z)
+end
+
+local function titikTambahDiSini()
+    local char = getChar()
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then toast("Karakter tidak ketemu!", Warna.Merah) return end
+    if #titikList >= CFG.TITIK_MAX then
+        toast("Penuh (max " .. CFG.TITIK_MAX .. " titik)", Warna.Kuning)
+        return
+    end
+    -- cari tanah di bawah kaki biar tiang nempel lantai
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { char }
+    local hit = Workspace:Raycast(hrp.Position, Vector3.new(0, -100, 0), params)
+    local groundY = hit and hit.Position.Y or (hrp.Position.Y - 3)
+    local pos = Vector3.new(clamp2(hrp.Position.X), clamp2(groundY), clamp2(hrp.Position.Z))
+    -- anti titik kembar (v1.3.4): ada titik < 1 stud -> tolak
+    for _, p in ipairs(titikList) do
+        local dx, dy, dz = p.X - pos.X, p.Y - pos.Y, p.Z - pos.Z
+        if dx*dx + dy*dy + dz*dz < 1 then
+            toast("titik sudah ada di sini", Warna.Kuning)
+            return
+        end
+    end
+    syncBuangHapusTiang(pos)   -- titik dipasang lagi -> hapus tombstone lamanya
+    titikList[#titikList + 1] = pos
+    titikSimpan()
+    titikRender()
+    titikRefreshDaftar()
+    syncTandai()
+    toast("+ Titik #" .. #titikList .. " ditambahkan"
+        .. (titikBisaFile and " (tersimpan)" or " (sesi saja)"), Warna.Hijau)
+end
+
+local function titikHapusSemua()
+    if #titikList == 0 then toast("Belum ada titik", Warna.Kuning) return end
+    for _, p in ipairs(titikList) do syncCatatHapusTiang(p) end  -- tombstone ikut sync
+    table.clear(titikList)
+    titikSimpan()
+    titikRender()
+    titikRefreshDaftar()
+    syncTandai()
+    toast("Semua titik dihapus", Warna.Merah)
+end
+
+-- gambar ulang daftar titik di tab TITIK (v1.3.4: + jarak & sync)
+titikRefreshDaftar = function()
+    if not titikHolder then return end
+    for _, c in ipairs(titikHolder:GetChildren()) do
+        if c:IsA("TextButton") then c:Destroy() end
+    end
+    local char = getChar()
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    for i, pos in ipairs(titikList) do
+        local idx = i
+        local item = buat("TextButton", {
+            Name = "TitikItem_" .. idx,
+            Size = UDim2.new(1, -6, 0, 26),
+            BackgroundColor3 = Warna.AbuItem,
+            Text = "",
+            AutoButtonColor = false,
+            LayoutOrder = idx,
+        }, titikHolder)
+        buat("UICorner", {CornerRadius = UDim.new(0, 6)}, item)
+        efekTombol(item, 1.02)
+        local teks
+        if hrp then
+            teks = ("%d.  (%s)  (%.1f, %.1f, %.1f)"):format(
+                idx, fmtJarak((pos - hrp.Position).Magnitude), pos.X, pos.Y, pos.Z)
+        else
+            teks = ("%d.  (%.1f, %.1f, %.1f)"):format(idx, pos.X, pos.Y, pos.Z)
+        end
+        buat("TextLabel", {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 8, 0, 0),
+            Size = UDim2.new(1, -40, 1, 0),
+            FontFace = fnt("med"),
+            TextSize = 12,
+            TextColor3 = Warna.TeksGelap,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = teks,
+        }, item)
+        local hx = buat("TextButton", {
+            Size = UDim2.new(0, 22, 0, 22),
+            Position = UDim2.new(1, -26, 0.5, -11),
+            BackgroundColor3 = Warna.Merah,
+            FontFace = fnt("bold"),
+            TextSize = 12,
+            TextColor3 = Warna.Putih,
+            Text = "X",
+            AutoButtonColor = false,
+        }, item)
+        buat("UICorner", {CornerRadius = UDim.new(0, 6)}, hx)
+        hx.MouseButton1Click:Connect(function()
+            syncCatatHapusTiang(pos)   -- tombstone: hapusan tidak bangkit dari cloud
+            table.remove(titikList, idx)
+            titikSimpan()
+            titikRender()
+            titikRefreshDaftar()
+            syncTandai()
+            toast("Titik " .. idx .. " dihapus", Warna.Merah)
+        end)
+        item.MouseButton1Click:Connect(function()
+            titikTeleport(pos)
+        end)
+    end
+    if titikLabelJumlah then
+        titikLabelJumlah.Text = ("Total: %d titik • klik item = teleport"):format(#titikList)
+    end
+    syncRefreshKartu()
+end
+
+-- [7a3] DATA TP + MODUL ☁ SINKRON (v1.3.4) ---------------------------
+-- Data TP dipindah keluar buildUI supaya modul sync bisa mengaksesnya.
+TP_MAX     = 40
+TP_FILE    = "BALAP_TP.json"
+TP_LOKASI  = {}
+tpBisaFile = (type(writefile) == "function") and (type(readfile) == "function")
+
+tpBulat = function(v)
+    return math.floor(v * 100 + 0.5) / 100
+end
+
+tpTulisFile = function()
+    getgenv().BALAP_TP_DATA = TP_LOKASI            -- cadangan sesi (re-execute)
+    if not tpBisaFile then return end
+    local data = {}
+    for i = 1, #TP_LOKASI do
+        local L = TP_LOKASI[i]
+        data[i] = { nama = L.nama, x = tpBulat(L.x), y = tpBulat(L.y), z = tpBulat(L.z) }
+    end
+    local ok, err = pcall(function()
+        writefile(TP_FILE, HttpService:JSONEncode(data))
+    end)
+    if not ok then warn("[BALAP-TP] gagal tulis file: " .. tostring(err)) end
+end
+
+tpMuat = function()
+    local data
+    if tpBisaFile then
+        local ada = false
+        pcall(function() ada = isfile(TP_FILE) end)
+        if ada then
+            pcall(function() data = HttpService:JSONDecode(readfile(TP_FILE)) end)
+        end
+    end
+    if type(data) ~= "table" then
+        data = rawget(getgenv(), "BALAP_TP_DATA")   -- fallback: sesi yang sama
+    end
+    if type(data) == "table" then
+        for _, v in ipairs(data) do
+            if type(v) == "table" and type(v.nama) == "string" and #v.nama > 0
+                and type(v.x) == "number" and type(v.y) == "number" and type(v.z) == "number" then
+                TP_LOKASI[#TP_LOKASI + 1] = { nama = v.nama, x = v.x, y = v.y, z = v.z }
+            end
+        end
+    end
+    getgenv().BALAP_TP_DATA = TP_LOKASI
+    print("[BALAP-TP] muat " .. #TP_LOKASI .. " lokasi"
+        .. (tpBisaFile and " (file: " .. TP_FILE .. ")" or " (mode SESI — executor tanpa writefile)"))
+end
+tpMuat()
+
+-- ======================================================================
+-- ☁ SINKRON (v1.3.4) — TP + titik lintas device
+-- Layanan : jsonblob.com — gratis, tanpa login, langsung jalan.
+-- Kode    : angka otomatis dari layanan (ID loker). Selalu tampil di
+--           kartu ☁ SINKRON (tab TITIK) + tombol SALIN. Device lain
+--           bergabung lewat MASUKKAN KODE. GANTI KODE = loker baru.
+-- Isi sync: HANYA titik tiang + TP (pengaturan tidak ikut).
+-- Merge   : TP per nama (nama sama = posisi di-update) • titik per
+--           posisi (< 1 stud = kembar, ditolak) • DAFTAR HAPUS ikut
+--           tersinkron (max 200) — hapusan tidak bangkit lagi.
+-- Ritme   : upload ditunda 30 dtk setelah perubahan terakhir •
+--           download saat load + tiap 3 menit • anti ping-pong.
+-- Offline : diam + toast sekali, data aman di lokal, retry otomatis.
+-- File    : BALAP_SYNC.json (kode + daftar hapus, tersimpan permanen).
+-- ======================================================================
+local SYNC = {
+    kode          = nil,   -- ID loker jsonblob (string angka)
+    hapus         = {},    -- tombstone: {t="tp", n=nama} / {t="tiang", x,y,z}
+    bisaHttp      = false,
+    sibuk         = false, -- mutex: cuma 1 operasi jaringan
+    pending       = false, -- ada perubahan menunggu diunggah
+    status        = "load",-- load | ok | kirim | terima | offline
+    labelPerangkat = "",
+    lastDari      = "",    -- device pengirim terakhir (dari cloud)
+    lastPayload   = nil,   -- teks payload terakhir (anti ping-pong)
+    waktuUbah     = 0,
+    waktuUnduh    = 0,
+    waktuCoba     = 0,
+    offSudahToast = false,
+    ui            = nil,   -- diisi buildUI (kartu status)
+}
+
+-- label perangkat: "PC (NamaRoblox)" / "HP (NamaRoblox)"
+do
+    local hp = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+    SYNC.labelPerangkat = (hp and "HP" or "PC") .. " (" .. tostring(LocalPlayer.Name or "?") .. ")"
+end
+
+-- deteksi fungsi HTTP executor (bertingkat; BUKAN HttpService Roblox
+-- jadi tidak kelihatan oleh server game)
+local syncReq = nil
+do
+    local kandidat = {
+        function() if type(request) == "function" then return request end end,
+        function() if type(http_request) == "function" then return http_request end end,
+        function() if type(syn) == "table" and type(syn.request) == "function" then return syn.request end end,
+        function() if type(http) == "table" and type(http.request) == "function" then return http.request end end,
+    }
+    for _, c in ipairs(kandidat) do
+        local ok, f = pcall(c)
+        if ok and type(f) == "function" then
+            syncReq = f
+            break
+        end
+    end
+end
+SYNC.bisaHttp = (syncReq ~= nil)
+if not SYNC.bisaHttp then
+    print("[BALAP-SYNC] executor tidak punya HTTP request — sinkron nonaktif (fitur lain normal)")
+end
+
+-- ---- file BALAP_SYNC.json: kode + daftar hapus ----
+local function syncSimpanFile()
+    getgenv().BALAP_SYNC_DATA = { kode = SYNC.kode, hapus = SYNC.hapus }
+    if not titikBisaFile then return end
+    pcall(function()
+        writefile(CFG.SYNC_FILE, HttpService:JSONEncode({
+            kode  = SYNC.kode,
+            hapus = SYNC.hapus,
+            dari  = SYNC.labelPerangkat,
+            waktu = os.time(),
+        }))
+    end)
+end
+
+local function syncMuatFile()
+    local data
+    if titikBisaFile then
+        local ada = false
+        pcall(function() ada = isfile(CFG.SYNC_FILE) end)
+        if ada then
+            pcall(function() data = HttpService:JSONDecode(readfile(CFG.SYNC_FILE)) end)
+        end
+    end
+    if type(data) ~= "table" then
+        data = rawget(getgenv(), "BALAP_SYNC_DATA")
+    end
+    if type(data) == "table" then
+        if type(data.kode) == "string" and data.kode:match("^%d+$") then
+            SYNC.kode = data.kode
+        end
+        if type(data.hapus) == "table" then
+            for _, h in ipairs(data.hapus) do
+                if type(h) == "table" and h.t == "tp" and type(h.n) == "string" and #h.n > 0 then
+                    SYNC.hapus[#SYNC.hapus + 1] = { t = "tp", n = h.n }
+                elseif type(h) == "table" and h.t == "tiang"
+                    and type(h.x) == "number" and type(h.y) == "number" and type(h.z) == "number" then
+                    SYNC.hapus[#SYNC.hapus + 1] = { t = "tiang", x = h.x, y = h.y, z = h.z }
+                end
+            end
+        end
+    end
+    print("[BALAP-SYNC] muat file: kode=" .. tostring(SYNC.kode or "-")
+        .. " • daftar hapus=" .. #SYNC.hapus)
+end
+syncMuatFile()
+
+-- ---- daftar hapus (tombstone) ----
+local function syncPotongHapus()
+    while #SYNC.hapus > CFG.SYNC_TOMBSTONE_MAX do
+        table.remove(SYNC.hapus, 1)   -- buang yang tertua
+    end
+end
+local function syncHapusTpAda(nama)
+    for _, h in ipairs(SYNC.hapus) do
+        if h.t == "tp" and h.n == nama then return true end
+    end
+    return false
+end
+-- titik dianggap terhapus kalau ada tombstone < 1 stud darinya
+local function syncHapusTiangAda(px, py, pz)
+    for _, h in ipairs(SYNC.hapus) do
+        if h.t == "tiang" then
+            local dx, dy, dz = h.x - px, h.y - py, h.z - pz
+            if dx*dx + dy*dy + dz*dz < 1 then return true end
+        end
+    end
+    return false
+end
+syncCatatHapusTp = function(nama)
+    if syncHapusTpAda(nama) then return end
+    SYNC.hapus[#SYNC.hapus + 1] = { t = "tp", n = nama }
+    syncPotongHapus()
+end
+syncCatatHapusTiang = function(pos)
+    if syncHapusTiangAda(pos.X, pos.Y, pos.Z) then return end
+    SYNC.hapus[#SYNC.hapus + 1] = { t = "tiang", x = clamp2(pos.X), y = clamp2(pos.Y), z = clamp2(pos.Z) }
+    syncPotongHapus()
+end
+syncBuangHapusTp = function(nama)
+    for i = #SYNC.hapus, 1, -1 do
+        local h = SYNC.hapus[i]
+        if h.t == "tp" and h.n == nama then table.remove(SYNC.hapus, i) end
+    end
+end
+syncBuangHapusTiang = function(pos)
+    for i = #SYNC.hapus, 1, -1 do
+        local h = SYNC.hapus[i]
+        if h.t == "tiang" then
+            local dx, dy, dz = h.x - pos.X, h.y - pos.Y, h.z - pos.Z
+            if dx*dx + dy*dy + dz*dz < 1 then table.remove(SYNC.hapus, i) end
+        end
+    end
+end
+
+-- ---- kartu status (UI dibangun di buildUI) ----
+syncRefreshKartu = function()
+    local ui = SYNC.ui
+    if not ui then return end
+    local warna = Warna.AbuGelap
+    if SYNC.status == "ok" then warna = Warna.Hijau2
+    elseif SYNC.status == "kirim" or SYNC.status == "terima" then warna = Warna.Kuning end
+    if ui.dot then ui.dot.BackgroundColor3 = warna end
+    if ui.ikon then ui.ikon.TextColor3 = warna end
+    if ui.info then
+        if not SYNC.bisaHttp then
+            ui.info.Text = ("%d TP • %d titik • executor tanpa HTTP — sync nonaktif")
+                :format(#TP_LOKASI, #titikList)
+        else
+            local kodeTeks = SYNC.kode and ("Kode: " .. SYNC.kode) or "Kode: belum dibuat"
+            ui.info.Text = ("%d TP • %d titik • %s"):format(#TP_LOKASI, #titikList, kodeTeks)
+        end
+    end
+    if ui.dari then
+        if SYNC.lastDari ~= "" then
+            ui.dari.Text = "terakhir disimpan dari: " .. SYNC.lastDari
+        elseif SYNC.kode then
+            ui.dari.Text = "cloud siap — salin kode ke device lain"
+        else
+            ui.dari.Text = "menyambung ke cloud (butuh internet)..."
+        end
+    end
+end
+
+local function syncSetStatus(s)
+    SYNC.status = s
+    if s == "offline" then
+        if not SYNC.offSudahToast then
+            SYNC.offSudahToast = true
+            toast("☁ offline — data aman di lokal", Warna.Kuning)
+        end
+    else
+        SYNC.offSudahToast = false
+    end
+    syncRefreshKartu()
+end
+
+syncTandai = function()
+    syncSimpanFile()               -- tombstone langsung aman di file
+    SYNC.pending = true
+    SYNC.waktuUbah = os.clock()
+    SYNC.status = "kirim"
+    syncRefreshKartu()
+end
+
+-- ---- payload & validasi ----
+local function syncPayload()
+    local tp = {}
+    for i = 1, #TP_LOKASI do
+        local L = TP_LOKASI[i]
+        tp[i] = { n = L.nama, x = tpBulat(L.x), y = tpBulat(L.y), z = tpBulat(L.z) }
+    end
+    local tg = {}
+    for i = 1, #titikList do
+        local p = titikList[i]
+        tg[i] = { x = clamp2(p.X), y = clamp2(p.Y), z = clamp2(p.Z) }
+    end
+    return {
+        v     = 1,
+        tp    = tp,
+        tiang = tg,
+        hapus = SYNC.hapus,
+        dari  = SYNC.labelPerangkat,
+        waktu = os.time(),
+    }
+end
+
+-- validasi struktur data cloud (anti sabotase — kode bisa tersebar)
+local function syncValidasi(data)
+    if type(data) ~= "table" or data.v ~= 1 then return nil end
+    if type(data.tp) ~= "table" or type(data.tiang) ~= "table"
+        or type(data.hapus) ~= "table" then return nil end
+    local function num(v)
+        return type(v) == "number" and v == v and math.abs(v) < 100000
+    end
+    local tp = {}
+    for _, e in ipairs(data.tp) do
+        if type(e) == "table" and type(e.n) == "string" and #e.n > 0 and #e.n <= 60
+            and num(e.x) and num(e.y) and num(e.z) then
+            tp[#tp + 1] = { n = e.n, x = e.x, y = e.y, z = e.z }
+        end
+    end
+    local tg = {}
+    for _, e in ipairs(data.tiang) do
+        if type(e) == "table" and num(e.x) and num(e.y) and num(e.z) then
+            tg[#tg + 1] = { x = e.x, y = e.y, z = e.z }
+        end
+    end
+    local hp = {}
+    for _, e in ipairs(data.hapus) do
+        if type(e) == "table" and e.t == "tp" and type(e.n) == "string" and #e.n > 0 and #e.n <= 60 then
+            hp[#hp + 1] = { t = "tp", n = e.n }
+        elseif type(e) == "table" and e.t == "tiang" and num(e.x) and num(e.y) and num(e.z) then
+            hp[#hp + 1] = { t = "tiang", x = e.x, y = e.y, z = e.z }
+        end
+    end
+    if #tp > 5000 or #tg > 5000 or #hp > 500 then return nil end
+    return {
+        tp = tp, tiang = tg, hapus = hp,
+        dari  = type(data.dari) == "string" and data.dari:sub(1, 60) or "?",
+        waktu = tonumber(data.waktu) or 0,
+    }
+end
+
+-- ---- merge cloud -> lokal (dipakai saat unduh & sebelum unggah) ----
+local function syncMerge(cloud)
+    local nTambahTp, nUpdateTp, nTambahTg, nHapusTp, nHapusTg = 0, 0, 0, 0, 0
+    local hapusSebelum = #SYNC.hapus
+    -- 1) gabungkan daftar hapus (union dua arah)
+    for _, h in ipairs(cloud.hapus) do
+        if h.t == "tp" then
+            if not syncHapusTpAda(h.n) then SYNC.hapus[#SYNC.hapus + 1] = h end
+        else
+            if not syncHapusTiangAda(h.x, h.y, h.z) then SYNC.hapus[#SYNC.hapus + 1] = h end
+        end
+    end
+    syncPotongHapus()
+    -- 2) terapkan hapusan ke data lokal
+    for i = #TP_LOKASI, 1, -1 do
+        if syncHapusTpAda(TP_LOKASI[i].nama) then
+            table.remove(TP_LOKASI, i)
+            nHapusTp += 1
+        end
+    end
+    for i = #titikList, 1, -1 do
+        if syncHapusTiangAda(titikList[i].X, titikList[i].Y, titikList[i].Z) then
+            table.remove(titikList, i)
+            nHapusTg += 1
+        end
+    end
+    -- 3) terima data cloud yang lolos daftar hapus
+    for _, c in ipairs(cloud.tp) do
+        if not syncHapusTpAda(c.n) then
+            local ketemu = false
+            for _, L in ipairs(TP_LOKASI) do
+                if L.nama == c.n then
+                    ketemu = true
+                    if tpBulat(L.x) ~= tpBulat(c.x) or tpBulat(L.y) ~= tpBulat(c.y)
+                        or tpBulat(L.z) ~= tpBulat(c.z) then
+                        L.x, L.y, L.z = c.x, c.y, c.z   -- nama sama = posisi di-update
+                        nUpdateTp += 1
+                    end
+                    break
+                end
+            end
+            if not ketemu and #TP_LOKASI < TP_MAX then
+                TP_LOKASI[#TP_LOKASI + 1] = { nama = c.n, x = c.x, y = c.y, z = c.z }
+                nTambahTp += 1
+            end
+        end
+    end
+    for _, c in ipairs(cloud.tiang) do
+        if not syncHapusTiangAda(c.x, c.y, c.z) then
+            local kembar = false
+            for _, p in ipairs(titikList) do
+                local dx, dy, dz = p.X - c.x, p.Y - c.y, p.Z - c.z
+                if dx*dx + dy*dy + dz*dz < 1 then
+                    kembar = true
+                    break
+                end
+            end
+            if not kembar and #titikList < CFG.TITIK_MAX then
+                titikList[#titikList + 1] = Vector3.new(c.x, c.y, c.z)
+                nTambahTg += 1
+            end
+        end
+    end
+    -- 4) simpan & gambar ulang bila ada yang berubah
+    local berubah = nTambahTp + nUpdateTp + nTambahTg + nHapusTp + nHapusTg
+        + (#SYNC.hapus - hapusSebelum)
+    if berubah > 0 then
+        titikSimpan()
+        tpTulisFile()
+        titikRender()
+        titikRefreshDaftar()
+        tpRefresh()
+    end
+    return berubah, {
+        tambahTp = nTambahTp, updateTp = nUpdateTp, tambahTg = nTambahTg,
+        hapusTp = nHapusTp, hapusTg = nHapusTg,
+    }
+end
+
+local function syncRingkas(d)
+    local b = {}
+    if d.tambahTg > 0 then b[#b + 1] = "+" .. d.tambahTg .. " titik" end
+    if d.tambahTp > 0 then b[#b + 1] = "+" .. d.tambahTp .. " TP" end
+    if d.updateTp > 0 then b[#b + 1] = d.updateTp .. " TP diperbarui" end
+    if d.hapusTp + d.hapusTg > 0 then b[#b + 1] = (d.hapusTp + d.hapusTg) .. " terhapus" end
+    return table.concat(b, ", ")
+end
+
+-- ---- HTTP wrapper (format beda-beda antar executor) ----
+local function syncHttp(method, url, body)
+    if not syncReq then return nil end
+    local opts = {
+        Url     = url,
+        Method  = method,
+        Headers = {
+            ["Content-Type"] = "application/json",
+            ["Accept"]       = "application/json",
+            -- UA netral: beberapa jaringan menolak request tanpa User-Agent
+            ["User-Agent"]   = "Mozilla/5.0 (BALAP v1.3.4)",
+        },
+    }
+    if body then opts.Body = body end
+    local ok, resp = pcall(syncReq, opts)
+    if not ok or type(resp) ~= "table" then return nil end
+    return {
+        code    = tonumber(resp.StatusCode or resp.code or resp.status),
+        body    = resp.Body or resp.body,
+        headers = resp.Headers or resp.headers or {},
+    }
+end
+
+-- kode loker ada di header X-jsonblob / Location (beda antar executor)
+local function syncKodeDariHeader(headers)
+    local kandidat = { headers["X-jsonblob"], headers["x-jsonblob"], headers.location, headers.Location }
+    for _, v in ipairs(kandidat) do
+        if type(v) == "string" then
+            local kode = v:match("(%d+)%s*$")
+            if kode then return kode end
+        end
+    end
+    for k, v in pairs(headers) do
+        local kl = tostring(k):lower()
+        if kl == "x-jsonblob" or kl == "location" then
+            local kode = tostring(v):match("(%d+)%s*$")
+            if kode then return kode end
+        end
+    end
+    return nil
+end
+
+-- buat loker baru (device pertama kali / belum punya kode)
+local function syncBuatLoker()
+    if SYNC.sibuk or State.Removed or SYNC.kode then return end
+    SYNC.sibuk = true
+    SYNC.status = "kirim"
+    syncRefreshKartu()
+    local teks = HttpService:JSONEncode(syncPayload())
+    local hasil = syncHttp("POST", CFG.SYNC_URL, teks)
+    local kode
+    if hasil and (hasil.code == 200 or hasil.code == 201) then
+        kode = syncKodeDariHeader(hasil.headers)
+    end
+    if kode then
+        SYNC.kode = kode
+        SYNC.lastPayload = teks
+        SYNC.pending = false
+        SYNC.lastDari = SYNC.labelPerangkat
+        SYNC.waktuUnduh = os.clock()
+        syncSimpanFile()
+        syncSetStatus("ok")
+        toast("☁ Loker cloud siap — kode: " .. kode, Warna.Hijau)
+        print("[BALAP-SYNC] loker dibuat: " .. kode)
+    else
+        SYNC.waktuCoba = os.clock()
+        syncSetStatus("offline")
+    end
+    SYNC.sibuk = false
+end
+
+-- unduh + merge (dipanggil saat load & tiap 3 menit)
+local function syncUnduh()
+    if SYNC.sibuk or State.Removed or not SYNC.kode then return end
+    SYNC.sibuk = true
+    SYNC.status = "terima"
+    syncRefreshKartu()
+    local sukses = false
+    local hasil = syncHttp("GET", CFG.SYNC_URL .. "/" .. SYNC.kode)
+    if hasil and hasil.code == 200 and type(hasil.body) == "string" then
+        local data
+        pcall(function() data = HttpService:JSONDecode(hasil.body) end)
+        local cloud = data and syncValidasi(data) or nil
+        if cloud then
+            SYNC.lastDari = cloud.dari
+            local berubah, rincian = syncMerge(cloud)
+            if berubah > 0 then
+                toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
+                syncTandai()   -- tombstone gabungan diunggah balik sekali
+            end
+            sukses = true
+        else
+            SYNC.offSudahToast = true   -- toast offline kembar tidak perlu
+            toast("☁ data cloud tidak valid — diabaikan", Warna.Merah)
+        end
+    end
+    if sukses then
+        syncSetStatus(SYNC.pending and "kirim" or "ok")
+    else
+        syncSetStatus("offline")
+    end
+    SYNC.waktuUnduh = sukses and os.clock()
+        or (os.clock() - CFG.SYNC_UNDUH_TIAP + 20)   -- gagal: coba lagi 20 dtk
+    SYNC.sibuk = false
+end
+
+-- unggah = unduh -> merge -> PUT (supaya tidak menimpa device lain)
+local function syncUnggah()
+    if SYNC.sibuk or State.Removed or not SYNC.kode then return end
+    SYNC.sibuk = true
+    SYNC.status = "kirim"
+    syncRefreshKartu()
+    local sukses = false
+    local hasil = syncHttp("GET", CFG.SYNC_URL .. "/" .. SYNC.kode)
+    if hasil and hasil.code == 200 and type(hasil.body) == "string" then
+        local data
+        pcall(function() data = HttpService:JSONDecode(hasil.body) end)
+        local cloud = data and syncValidasi(data) or nil
+        if cloud then
+            SYNC.lastDari = cloud.dari
+            local berubah, rincian = syncMerge(cloud)
+            if berubah > 0 then
+                toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
+            end
+            local teks = HttpService:JSONEncode(syncPayload())
+            if teks == SYNC.lastPayload then
+                SYNC.pending = false      -- isinya sama -> jangan upload ulang
+                syncSimpanFile()
+                sukses = true
+            else
+                local put = syncHttp("PUT", CFG.SYNC_URL .. "/" .. SYNC.kode, teks)
+                if put and (put.code == 200 or put.code == 201) then
+                    SYNC.lastPayload = teks
+                    SYNC.pending = false
+                    SYNC.lastDari = SYNC.labelPerangkat
+                    syncSimpanFile()
+                    sukses = true
+                    print("[BALAP-SYNC] terkirim (" .. #teks .. " byte)")
+                end
+            end
+        else
+            SYNC.offSudahToast = true
+            toast("☁ data cloud tidak valid — diabaikan", Warna.Merah)
+        end
+    end
+    if sukses then
+        syncSetStatus("ok")
+    else
+        syncSetStatus("offline")
+    end
+    SYNC.sibuk = false
+end
+
+-- bergabung ke loker milik device lain (MASUKKAN KODE)
+local function syncPakaiKode(kodeBaru)
+    if SYNC.sibuk or State.Removed then return end
+    if not kodeBaru:match("^%d+$") then
+        toast("Kode harus angka", Warna.Kuning)
+        return
+    end
+    SYNC.sibuk = true
+    SYNC.status = "terima"
+    syncRefreshKartu()
+    local hasil = syncHttp("GET", CFG.SYNC_URL .. "/" .. kodeBaru)
+    if hasil and hasil.code == 200 and type(hasil.body) == "string" then
+        local data
+        pcall(function() data = HttpService:JSONDecode(hasil.body) end)
+        local cloud = data and syncValidasi(data) or nil
+        if cloud then
+            SYNC.kode = kodeBaru
+            SYNC.lastPayload = nil
+            SYNC.lastDari = cloud.dari
+            syncSimpanFile()
+            local berubah, rincian = syncMerge(cloud)
+            if berubah > 0 then
+                toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
+            end
+            syncTandai()   -- data device ini ikut digabung ke loker
+            syncSetStatus("ok")
+            toast("☁ Tersambung ke loker " .. kodeBaru, Warna.Hijau)
+            print("[BALAP-SYNC] pakai kode: " .. kodeBaru)
+            SYNC.sibuk = false
+            return
+        end
+    end
+    SYNC.sibuk = false
+    syncSetStatus("offline")
+    toast("☁ Kode tidak valid / tidak bisa dijangkau", Warna.Merah)
+end
+
+-- ganti kode = buat loker baru berisi data sekarang
+local function syncGantiKode()
+    if SYNC.sibuk or State.Removed then return end
+    SYNC.sibuk = true
+    SYNC.status = "kirim"
+    syncRefreshKartu()
+    local teks = HttpService:JSONEncode(syncPayload())
+    local hasil = syncHttp("POST", CFG.SYNC_URL, teks)
+    local kode
+    if hasil and (hasil.code == 200 or hasil.code == 201) then
+        kode = syncKodeDariHeader(hasil.headers)
+    end
+    if kode then
+        SYNC.kode = kode
+        SYNC.lastPayload = teks
+        SYNC.pending = false
+        SYNC.lastDari = SYNC.labelPerangkat
+        syncSimpanFile()
+        syncSetStatus("ok")
+        toast("☁ Kode baru siap: " .. kode, Warna.Hijau)
+        print("[BALAP-SYNC] kode diganti: " .. kode)
+    else
+        syncSetStatus("offline")
+        toast("☁ Gagal ganti kode (offline?) — kode lama tetap", Warna.Kuning)
+    end
+    SYNC.sibuk = false
+end
+
+-- set ulang cloud = samakan cloud dengan device ini + kosongkan
+-- daftar hapus (penyelamat kalau data cloud kacau)
+local function syncSetUlang()
+    if SYNC.sibuk or State.Removed or not SYNC.kode then return end
+    SYNC.sibuk = true
+    SYNC.status = "kirim"
+    syncRefreshKartu()
+    local cadanganHapus = SYNC.hapus
+    SYNC.hapus = {}
+    local teks = HttpService:JSONEncode(syncPayload())
+    local put = syncHttp("PUT", CFG.SYNC_URL .. "/" .. SYNC.kode, teks)
+    if put and (put.code == 200 or put.code == 201) then
+        SYNC.lastPayload = teks
+        SYNC.pending = false
+        SYNC.lastDari = SYNC.labelPerangkat
+        syncSimpanFile()
+        syncSetStatus("ok")
+        toast("☁ Cloud disamakan dengan device ini", Warna.Hijau)
+    else
+        SYNC.hapus = cadanganHapus   -- gagal: kembalikan daftar hapus
+        syncSetStatus("offline")
+        toast("☁ Set ulang gagal (offline?) — coba lagi", Warna.Kuning)
+    end
+    SYNC.sibuk = false
+end
+
+-- mesin sync: dipanggil dari initLogic setelah semua siap
+local function syncMulai()
+    syncRefreshKartu()
+    if not SYNC.bisaHttp then return end
+    print("[BALAP-SYNC] mesin jalan — kode: " .. tostring(SYNC.kode or "belum ada"))
+    task.spawn(function()
+        task.wait(2.5)                 -- beri waktu GUI & data lokal siap
+        if State.Removed then return end
+        if SYNC.kode then syncUnduh() else syncBuatLoker() end
+        while not State.Removed do
+            task.wait(1)
+            if State.Removed then break end
+            local now = os.clock()
+            if not SYNC.kode then
+                if now - SYNC.waktuCoba >= 60 then syncBuatLoker() end
+            else
+                if now - SYNC.waktuUnduh >= CFG.SYNC_UNDUH_TIAP then
+                    syncUnduh()
+                    now = os.clock()
+                end
+                if SYNC.pending and not SYNC.sibuk
+                    and now - SYNC.waktuUbah >= CFG.SYNC_UNGGAH_JEDA then
+                    syncUnggah()
+                end
+            end
+        end
+    end)
+    -- kedip kuning saat kirim/terima (status titik berwarna)
+    task.spawn(function()
+        while not State.Removed do
+            local ui = SYNC.ui
+            if ui and ui.dot and ui.dot.Parent then
+                if SYNC.status == "kirim" or SYNC.status == "terima" then
+                    ui.dot.BackgroundTransparency =
+                        (math.floor(os.clock() * 2.5) % 2 == 0) and 0 or 0.55
+                else
+                    ui.dot.BackgroundTransparency = 0
+                end
+            end
+            task.wait(0.2)
+        end
+    end)
+end
+
+-- [7b] TAB BAR (4 TAB) ----------------------------------------------
 -- Bungkus dengan function untuk hemat local count (Luau limit 200)
 local function buildUI()
 tabBtns = {}
-local tabLabels = {"🏃 GERAK", "🎨 VISUAL", "⚙️ SISTEM"}
-local tabColors = {Warna.Ungu2, Warna.Biru, Warna.AbuGelap}
+local tabLabels = {"🏃 GERAK", "🎨 VISUAL", "⚙️ SISTEM", "📍 TITIK"}
+local tabColors = {Warna.Ungu2, Warna.Biru, Warna.AbuGelap, Warna.Kuning}
 kontenTabs = {}
 for i, lbl in ipairs(tabLabels) do
     local tab = buat("TextButton", {
-        Size = UDim2.new(1 / 3, -3.4, 0, 24),
-        Position = UDim2.new((i - 1) * (1 / 3), 3.5 + (i - 1) * 2, 0, 50),
+        Size = UDim2.new(1 / 4, -3.6, 0, 24),
+        Position = UDim2.new((i - 1) * (1 / 4), 3.2 + (i - 1) * 1.6, 0, 50),
         BackgroundColor3 = (i == 1) and tabColors[i] or Warna.AbuMuda,
         BorderSizePixel = 0,
         FontFace = fnt("bold"),
@@ -608,10 +1642,12 @@ local function buatToggleRow(parent, labelText, keyText, featureName)
         Text = labelText,
     }, row)
     if keyText then
+        -- lebar chip keybind menyesuaikan teks (1 huruf = 22px, "Shift" lebih lebar)
+        local cw = math.max(22, 12 + #keyText * 7)
         local chip = buat("TextLabel", {
             BackgroundColor3 = Warna.Card2,
-            Size = UDim2.new(0, 22, 0, 20),
-            Position = UDim2.new(1, -80, 0.5, -10),
+            Size = UDim2.new(0, cw, 0, 20),
+            Position = UDim2.new(1, -58 - cw, 0.5, -10),
             FontFace = fnt("bold"),
             TextSize = 11,
             TextColor3 = Warna.AbuGelap,
@@ -743,24 +1779,37 @@ State.IsSwimming = false
 State.HideOn  = false
 State.LWOn    = false
 State.WallsOn = false
-State.PlayersOn = false  -- Hide Pemain Lain (baru v2.2)
 State.LightOn = false
 State.FallOn  = false
-State.MoonOn  = false  -- Moonwalk (G)
-State.AfkOn   = true   -- Anti-AFK (port dari A, default ON)
+State.MoonOn  = false  -- Moonwalk (F)
+State.TengahOn = false -- Shiftlock Tengah (LShift/RShift)
+State.TiangOn  = true  -- Tiang Penanda (tab TITIK, default TAMPIL)
+State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
 
--- Config Fall Assist v3.5 "1 FITUR" (v1.2) — TANPA minimal jatuh.
--- Tinggal 1 angka: POTONGAN DEMAGE (%) = perkiraan % damage berkurang (v1.3).
--- 0 = normal total, 1 = nyaris tanpa efek, 20 = ringan, 75 = paling berat.
+-- ======================================================================
+-- FALL RESIST V1.07 (port script standalone -- menggantikan Smart Fall
+-- Assist model REFUND v1.7 yang ternyata visual-only: Health milik
+-- server, tulisan HP dari client langsung tertimpa replikasi).
+-- 1 angka: POTONGAN DEMAGE jatuh %, dipilih lewat 4 tombol preset.
+-- Mekanisme: SILENT PULSE "Landed" 0.08 dtk + PLANNER kurva demage
+-- (data tes user) -- fisika & kecepatan TIDAK disentuh, HP TIDAK
+-- ditulis; damage server beneran berkurang karena hitungan tinggi
+-- jatuh game tereset oleh pulse. TANPA batas tinggi (v1.07): semua
+-- lompatan/jatuh diawasi & bisa langsung ke-trigger.
+-- ======================================================================
+PRESET_FALL = {
+    { nama = "S.RINGAN", pct = 5  },
+    { nama = "RINGAN",   pct = 20 },  -- DEFAULT
+    { nama = "SEDANG",   pct = 50 },
+    { nama = "BERAT",    pct = 75 },
+}
 cfgFall = {
-    potongan = 30,  -- v1.2: default pilihan user (menggantikan posisi 0.30 + minJatuh 35)
-    -- v1.3 KALIBRASI JUJUR: posisi pulse = potongan/kalibrasi (% perjalanan).
-    -- Damage game TIDAK linear terhadap tinggi jatuh (ada ambang + kurva),
-    -- jadi kalau pulse di X% perjalanan, damage yang hilang BANYAK lebih
-    -- dari X% (di 75% dulu = hampir kebal). Dengan kalibrasi 2, angka di GUI
-    -- jadi perkiraan % DAMAGE berkurang: 1 = nyaris tanpa efek, 20 = +-20%,
-    -- 75 = berat tapi masih kena. Toggle B murni ON/OFF tanpa power ekstra.
-    kalibrasi = 2,
+    potongan = 20,        -- DEFAULT POTONGAN = 20% (RINGAN)
+    idx      = 2,         -- preset terpilih: RINGAN
+    VEL_MIN      = -10,   -- gerbang kecepatan turun (tercapai ~0.25 stud setelah mulai jatuh)
+    BATAS_RIIL   = 30,    -- jatuh >= 30 stud = "riil" (pulse mengunci + notif); di bawah = sia-sia
+    PULSE_DURASI = 0.08,  -- jendela pulse "Landed" (port SILENT PULSE v1.3)
+    JEDA_RAY     = 0.10,  -- raycast tanah 10Hz saat jauh, tiap frame saat dekat (<60 stud)
 }
 
 -- Original Lighting (untuk restore saat cahaya dimatikan)
@@ -773,18 +1822,20 @@ oLight = {
     FogEnd = Lighting.FogEnd,
 }
 
--- State Fall Assist
+-- State Fall Resist V1.07
 fallState = {
-    jatuh   = false,
-    apex    = 0,
-    bentur  = false,
-    sejak   = 0,
-    groundY = nil,
-    lastRay = 0,
-    conn    = nil,
-    pulseSampai = nil,
-    sudahPulse  = false,  -- v1.2.2: latch GLOBAL 1x per terbangan (2 lapis)
-    tanahSejak  = nil,    -- v1.2.2: sejak kapan menempel tanah (untuk re-arm stabil)
+    jatuh         = false, -- sedang terbangan (record aktif)
+    apex          = 0,     -- titik tertinggi sejak freefall
+    bentur        = false, -- LATCH per-record: 1x pulse per jatuh
+    sejak         = 0,     -- os.clock() saat freefall mulai
+    groundY       = nil,   -- cache ketinggian tanah (raycast)
+    lastRay       = 0,
+    conn          = nil,   -- koneksi Heartbeat (dipakai unloadScript)
+    pulseSampai   = nil,   -- jendela pulse aktif sampai waktu ini
+    sudahPulse    = false, -- LATCH global: 1x per jatuh RIIL (anti pantulan lereng)
+    pulseHarmless = false, -- pulse terakhir cuma di jatuh kecil (sia-sia)
+    tanahSejak    = nil,   -- re-arm stabil: menempel tanah >= 0.30 dtk
+    hum           = nil,   -- humanoid pemilik record (anti record basi saat respawn)
 }
 
 -- Raycast params khusus Fall Assist
@@ -794,7 +1845,7 @@ lightConn = nil
 
 -- ===== baris TAB 1: GERAK =====
 buatHeader(scrollKing, "Player")
-local _, speedLbl = buatToggleRow(scrollKing, "Speed (Q): OFF (17.10)", "Q", "Speed")
+local _, speedLbl = buatToggleRow(scrollKing, "Speed (Q): OFF (" .. fmtNum(CFG.SPEED_OFF) .. ")", "Q", "Speed")
 SpeedLabel = speedLbl
 -- Nilai ON dipilih via stepper: rentang 17.25 - 21.25 (Q = ON/OFF saja)
 RefreshSpeed = buatStepperRow(
@@ -826,67 +1877,354 @@ RefreshJump = buatStepperRow(
     end
 )
 buatToggleRow(scrollKing, "Shiftlock Mobile", "C", "Shift")
-buatToggleRow(scrollKing, "Moonwalk", "G", "Moon")
-buatHeader(scrollKing, "Anti AFK")
-local _, afkLbl = buatToggleRow(scrollKing, "👻 Anti-AFK (2 lapis)", nil, "Afk")
-AfkLabel = afkLbl
-buatHeader(scrollKing, "Jatuh Cerdas")
-buatToggleRow(scrollKing, "Smart Fall Assist", "B", "Fall")
-
--- King number row (untuk pengaturan fall assist — number row tetap ada)
-local function buatNumRow(parent, labelText, default, cb)
-    local row = buat("Frame", {
+buatToggleRow(scrollKing, "Moonwalk", "F", "Moon")
+buatToggleRow(scrollKing, "Shiftlock Tengah", "Shift", "Tengah")
+-- ===== FALL RESIST V1.07 — toggle + 4 preset potongan demage =====
+buatHeader(scrollKing, "Fall Resist")
+local _, fallLbl = buatToggleRow(scrollKing, "Fall Resist", "B", "Fall")
+FallLabel = fallLbl
+local gridFall = buat("Frame", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 64),
+    LayoutOrder = nextOrder(),
+}, scrollKing)
+buat("UIGridLayout", {
+    CellSize = UDim2.new(0.5, -3, 0, 29),
+    CellPadding = UDim2.new(0, 6, 0, 6),
+    SortOrder = Enum.SortOrder.LayoutOrder,
+}, gridFall)
+local presetFallBtns = {}
+for i, p in ipairs(PRESET_FALL) do
+    local b = buat("TextButton", {
         BackgroundColor3 = Warna.AbuItem,
-        Size = UDim2.new(1, 0, 0, 30),
-        LayoutOrder = nextOrder(),
-    }, parent)
-    buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
-    buat("TextLabel", {
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0, 10, 0, 0),
-        Size = UDim2.new(1, -100, 1, 0),
-        FontFace = fnt("med"),
-        TextSize = 11,
-        TextColor3 = Warna.TeksGelap,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Text = labelText,
-    }, row)
-    local bx = buat("TextBox", {
-        BackgroundColor3 = Warna.Hitam2,
-        Size = UDim2.fromOffset(70, 22),
-        Position = UDim2.new(1, -80, 0.5, -11),
-        FontFace = fnt("reg"),
-        TextSize = 12,
-        TextColor3 = Warna.Putih,
-        Text = string.format("%.2f", default),
-        -- v1.2.3: dulu false -> kotak berisi "30.00", ketik "0" jadi "30.000"
-        -- -> terbaca 30! Sekarang tap = field kosong, ketik angka fresh.
-        ClearTextOnFocus = true,
-    }, row)
-    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, bx)
-    buat("UIStroke", {Color = Warna.AbuGelap, Thickness = 1, Transparency = 0.5}, bx)
-    -- v1.2.3: cb(n) mengembalikan nilai FINAL (boleh di-clamp) -> tampilan
-    -- kotak DIJAMIN sama dengan nilai yang benar-benar tersimpan. Koma
-    -- desimal (0,5) juga diterima. Gagal parse -> tampilkan nilai aktual.
-    bx.FocusLost:Connect(function()
-        local n = tonumber((bx.Text:gsub(",", "."):gsub("[^%d%.%-]", "")))
-        if n then n = cb(n) end
-        if n then
-            bx.Text = string.format("%.2f", n)
-            toast(labelText .. ": " .. string.format("%.2f", n), Warna.Biru)
-        else
-            bx.Text = string.format("%.2f", cfgFall.potongan)
-        end
+        BorderSizePixel = 0,
+        FontFace = fnt("bold"),
+        TextSize = 10,
+        TextColor3 = Warna.AbuTeks,
+        Text = p.nama .. " " .. p.pct .. "%",
+        AutoButtonColor = false,
+        LayoutOrder = i,
+    }, gridFall)
+    buat("UICorner", {CornerRadius = UDim.new(0, 8)}, b)
+    presetFallBtns[i] = b
+    b.MouseButton1Click:Connect(function()
+        cfgFall.idx = i
+        cfgFall.potongan = p.pct
+        if refreshFallPreset then refreshFallPreset() end
+        toast("Fall Resist: " .. p.nama .. " " .. p.pct .. "%", Warna.Biru)
     end)
 end
--- v1.2: 1 fitur — cukup 1 angka (MIN JATUH & POSISI BENTUR dihapus)
--- v1.2.3: dulu nilai di luar 0-75 DITOLAK diam-diam (kotak tetap menampilkan
--- angka ketikan -> kelihatan tersimpan padahal tidak). Sekarang di-CLAMP:
--- 300 -> 75, -5 -> 0, "0,5" -> 0.5. Tampilan selalu jujur.
-buatNumRow(scrollKing, "POTONGAN DEMAGE (0-75%)", cfgFall.potongan, function(n)
-    if n < 0 then n = 0 elseif n > 75 then n = 75 end
-    cfgFall.potongan = n
-    return n
+refreshFallPreset = function()
+    local pr = PRESET_FALL[cfgFall.idx or 2] or PRESET_FALL[2]
+    if FallLabel and FallLabel.Parent then
+        FallLabel.Text = "Fall Resist: "
+            .. (State.FallOn and (pr.nama .. " " .. pr.pct .. "%") or "OFF")
+    end
+    for bi, bb in ipairs(presetFallBtns) do
+        local aktif = (bi == cfgFall.idx)
+        bb.BackgroundColor3 = aktif and Warna.Hijau or Warna.AbuItem
+        bb.TextColor3 = aktif and Warna.HijauMuda or Warna.AbuTeks
+    end
+end
+refreshFallPreset()
+
+-- ===== TP — TELEPORT + SIMPAN LOKASI (nama bebas, permanen) ==========
+-- Berdiri di tempat -> ketik nama -> 💾 SIMPAN -> muncul di daftar.
+-- Tombol TP = teleport, ✎ = rename (posisi tetap), X = hapus.
+-- Daftar menampilkan JARAK dari posisi sekarang + bisa diurutkan
+-- dari terdekat. Data TP (TP_MAX/TP_FILE/TP_LOKASI/tpTulisFile)
+-- didefinisikan di [7a3] bersama modul ☁ SINKRON. Perubahan TP
+-- otomatis masuk antrean sinkron cloud (syncTandai).
+
+buatHeader(scrollKing, "Teleport (TP)")
+
+-- baris input: [nama bebas] [💾 SIMPAN]
+local tpInputRow = buat("Frame", {
+    BackgroundColor3 = Warna.AbuItem,
+    Size = UDim2.new(1, 0, 0, 30),
+    LayoutOrder = nextOrder(),
+}, scrollKing)
+buat("UICorner", {CornerRadius = UDim.new(0, 8)}, tpInputRow)
+local tpInput = buat("TextBox", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0.5, -11),
+    Size = UDim2.new(1, -118, 0, 22),
+    FontFace = fnt("med"),
+    TextSize = 11,
+    TextColor3 = Warna.TeksGelap,
+    PlaceholderText = "Nama lokasi (bebas)...",
+    PlaceholderColor3 = Warna.AbuTeks,
+    Text = "",
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ClearTextOnFocus = false,
+}, tpInputRow)
+local tpSaveBtn = buat("TextButton", {
+    BackgroundColor3 = Warna.Hijau,
+    Position = UDim2.new(1, -100, 0.5, -11),
+    Size = UDim2.new(0, 92, 0, 22),
+    FontFace = fnt("bold"),
+    TextSize = 10,
+    TextColor3 = Warna.HijauMuda,
+    Text = "SIMPAN",
+    AutoButtonColor = false,
+}, tpInputRow)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, tpSaveBtn)
+
+-- daftar lokasi (membesar otomatis, ikut scroll tab GERAK)
+local tpList = buat("Frame", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 0),
+    AutomaticSize = Enum.AutomaticSize.Y,
+    LayoutOrder = nextOrder(),
+}, scrollKing)
+buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, tpList)
+
+local tpRenameIdx = nil   -- indeks TP yang sedang direname (✎)
+local function jarakMeter(x, y, z)
+    local char = getChar()
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local dx, dy, dz = x - hrp.Position.X, y - hrp.Position.Y, z - hrp.Position.Z
+    return math.sqrt(dx*dx + dy*dy + dz*dz)
+end
+
+tpRefresh = function()
+    for _, c in ipairs(tpList:GetChildren()) do
+        if c:IsA("TextButton") or c:IsA("TextLabel") or c:IsA("Frame") then c:Destroy() end
+    end
+    if #TP_LOKASI == 0 then
+        buat("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 18),
+            FontFace = fnt("reg"),
+            TextSize = 10,
+            TextColor3 = Warna.AbuTeks,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = "Belum ada lokasi — berdiri di tempat, ketik nama, tekan SIMPAN",
+            LayoutOrder = 0,
+        }, tpList)
+        syncRefreshKartu()
+        return
+    end
+    for i, L in ipairs(TP_LOKASI) do
+        if i == tpRenameIdx then
+            -- ===== MODE RENAME (v1.3.4): [nama baru] [SIMPAN] [✕] =====
+            local row = buat("Frame", {
+                BackgroundColor3 = Warna.BiruMuda,
+                Size = UDim2.new(1, 0, 0, 28),
+                LayoutOrder = i,
+            }, tpList)
+            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
+            local box = buat("TextBox", {
+                BackgroundColor3 = Warna.Putih,
+                Position = UDim2.new(0, 8, 0.5, -10),
+                Size = UDim2.new(1, -128, 0, 20),
+                FontFace = fnt("med"),
+                TextSize = 10,
+                TextColor3 = Warna.TeksGelap,
+                Text = L.nama,
+                ClearTextOnFocus = false,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, box)
+            local btnOk = buat("TextButton", {
+                BackgroundColor3 = Warna.Hijau,
+                Position = UDim2.new(1, -92, 0.5, -10),
+                Size = UDim2.new(0, 54, 0, 20),
+                FontFace = fnt("bold"),
+                TextSize = 9,
+                TextColor3 = Warna.HijauMuda,
+                Text = "SIMPAN",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnOk)
+            local btnNo = buat("TextButton", {
+                BackgroundColor3 = Warna.Merah,
+                Position = UDim2.new(1, -32, 0.5, -10),
+                Size = UDim2.new(0, 26, 0, 20),
+                FontFace = fnt("bold"),
+                TextSize = 10,
+                TextColor3 = Warna.Putih,
+                Text = "✕",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnNo)
+            btnOk.MouseButton1Click:Connect(function()
+                local namaBaru = tostring(box.Text):gsub("^%s+", ""):gsub("%s+$", "")
+                if #namaBaru == 0 then toast("Tulis dulu nama barunya", Warna.Kuning) return end
+                if namaBaru ~= L.nama then
+                    for j, O in ipairs(TP_LOKASI) do
+                        if j ~= i and O.nama == namaBaru then
+                            toast("Nama '" .. namaBaru .. "' sudah dipakai", Warna.Kuning)
+                            return
+                        end
+                    end
+                end
+                local lama = L.nama
+                L.nama = namaBaru          -- posisi (x,y,z) TETAP
+                tpRenameIdx = nil
+                if namaBaru ~= lama then
+                    syncCatatHapusTp(lama)        -- nama lama = dihapus di cloud
+                    syncBuangHapusTp(namaBaru)    -- nama baru = tambahan baru
+                    tpTulisFile()
+                    syncTandai()
+                else
+                    tpTulisFile()
+                end
+                tpRefresh()
+                toast("Diubah: " .. lama .. " → " .. namaBaru, Warna.Hijau)
+            end)
+            btnNo.MouseButton1Click:Connect(function()
+                tpRenameIdx = nil
+                tpRefresh()
+            end)
+        else
+            local jarak = jarakMeter(L.x, L.y, L.z)
+            local row = buat("Frame", {
+                BackgroundColor3 = Warna.AbuItem,
+                Size = UDim2.new(1, 0, 0, 28),
+                LayoutOrder = i,
+            }, tpList)
+            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
+            buat("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 10, 0, 0),
+                Size = UDim2.new(1, -150, 1, 0),
+                FontFace = fnt("med"),
+                TextSize = 10,
+                TextColor3 = Warna.TeksGelap,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = L.nama .. (jarak and ("  (" .. fmtJarak(jarak) .. ")") or ""),
+            }, row)
+            local btnRen = buat("TextButton", {
+                BackgroundColor3 = Warna.Card2,
+                Position = UDim2.new(1, -94, 0.5, -10),
+                Size = UDim2.new(0, 22, 0, 20),
+                FontFace = fnt("bold"),
+                TextSize = 11,
+                TextColor3 = Warna.Putih,
+                Text = "✎",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnRen)
+            local btnTp = buat("TextButton", {
+                BackgroundColor3 = Warna.Biru,
+                Position = UDim2.new(1, -68, 0.5, -10),
+                Size = UDim2.new(0, 40, 0, 20),
+                FontFace = fnt("bold"),
+                TextSize = 10,
+                TextColor3 = Warna.Putih,
+                Text = "TP",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnTp)
+            local btnHps = buat("TextButton", {
+                BackgroundColor3 = Warna.Merah,
+                Position = UDim2.new(1, -32, 0.5, -10),
+                Size = UDim2.new(0, 26, 0, 20),
+                FontFace = fnt("bold"),
+                TextSize = 10,
+                TextColor3 = Warna.Putih,
+                Text = "X",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnHps)
+            btnRen.MouseButton1Click:Connect(function()
+                tpRenameIdx = i
+                tpRefresh()
+            end)
+            btnTp.MouseButton1Click:Connect(function()
+                local _, hrp = getKarakter()
+                if not hrp then toast("TP gagal — karakter belum ada", Warna.Merah) return end
+                hrp.CFrame = CFrame.new(L.x, L.y + 3, L.z)
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                print("[BALAP-TP] teleport ke '" .. L.nama .. "'")
+                toast("TP: " .. L.nama, Warna.Biru)
+            end)
+            btnHps.MouseButton1Click:Connect(function()
+                syncCatatHapusTp(L.nama)   -- tombstone: tidak bangkit dari cloud
+                table.remove(TP_LOKASI, i)
+                tpTulisFile()
+                tpRefresh()
+                syncTandai()
+                print("[BALAP-TP] hapus '" .. L.nama .. "' (sisa " .. #TP_LOKASI .. ")")
+                toast("Hapus: " .. L.nama, Warna.Merah)
+            end)
+        end
+    end
+    syncRefreshKartu()
+end
+
+tpSaveBtn.MouseButton1Click:Connect(function()
+    local nama = tostring(tpInput.Text):gsub("^%s+", ""):gsub("%s+$", "")
+    if #nama == 0 then toast("Tulis dulu nama lokasinya", Warna.Kuning) return end
+    local _, hrp = getKarakter()
+    if not hrp then toast("Karakter belum ada — coba lagi", Warna.Merah) return end
+    local p = hrp.Position
+    for _, L in ipairs(TP_LOKASI) do
+        if L.nama == nama then                    -- nama sama = update posisi
+            L.x, L.y, L.z = p.X, p.Y, p.Z
+            tpTulisFile()
+            tpRefresh()
+            tpInput.Text = ""
+            syncTandai()
+            print("[BALAP-TP] update '" .. nama .. "' (total " .. #TP_LOKASI .. ")")
+            toast("Diperbarui: " .. nama, Warna.Hijau)
+            return
+        end
+    end
+    if #TP_LOKASI >= TP_MAX then toast("Penuh (max " .. TP_MAX .. " lokasi)", Warna.Kuning) return end
+    syncBuangHapusTp(nama)   -- dipasang lagi -> hapus tombstone lamanya
+    TP_LOKASI[#TP_LOKASI + 1] = { nama = nama, x = p.X, y = p.Y, z = p.Z }
+    tpTulisFile()
+    tpRefresh()
+    tpInput.Text = ""
+    syncTandai()
+    print("[BALAP-TP] simpan '" .. nama .. "' (total " .. #TP_LOKASI .. ")"
+        .. (tpBisaFile and " -> file" or " -> SESI SAJA (executor tanpa writefile)"))
+    toast("Tersimpan: " .. nama, Warna.Hijau)
+end)
+
+tpRefresh()
+
+-- ⇅ urutkan TP dari terdekat + hapus semua TP (konfirmasi 2 langkah)
+local armTp = 0
+buatActionRow(scrollKing, "⇅ URUTKAN TP TERDEKAT", Warna.Biru, function()
+    local _, hrp = getKarakter()
+    if not hrp then toast("Karakter belum ada", Warna.Merah) return end
+    if #TP_LOKASI < 2 then toast("Butuh minimal 2 TP", Warna.Kuning) return end
+    table.sort(TP_LOKASI, function(a, b)
+        local da = (a.x - hrp.Position.X)^2 + (a.y - hrp.Position.Y)^2 + (a.z - hrp.Position.Z)^2
+        local db = (b.x - hrp.Position.X)^2 + (b.y - hrp.Position.Y)^2 + (b.z - hrp.Position.Z)^2
+        return da < db
+    end)
+    tpTulisFile()
+    tpRefresh()
+    toast("TP diurutkan dari yang terdekat", Warna.Biru)
+end)
+local btnHapusTpSemua = buatActionRow(scrollKing, "🗑️ HAPUS SEMUA TP", Warna.Merah, function()
+    local now = os.clock()
+    if now - armTp > 3 then
+        armTp = now
+        btnHapusTpSemua.Text = "⚠️ YAKIN? TEKAN LAGI (3 dtk)"
+        toast("Tekan LAGI dalam 3 dtk — semua TP terhapus", Warna.Merah)
+        task.delay(3, function()
+            if btnHapusTpSemua.Parent and btnHapusTpSemua.Text ~= "🗑️ HAPUS SEMUA TP" then
+                btnHapusTpSemua.Text = "🗑️ HAPUS SEMUA TP"
+            end
+        end)
+    else
+        armTp = 0
+        btnHapusTpSemua.Text = "🗑️ HAPUS SEMUA TP"
+        if #TP_LOKASI == 0 then toast("Belum ada TP", Warna.Kuning) return end
+        for _, L in ipairs(TP_LOKASI) do syncCatatHapusTp(L.nama) end
+        table.clear(TP_LOKASI)
+        tpTulisFile()
+        tpRefresh()
+        syncTandai()
+        toast("Semua TP dihapus", Warna.Merah)
+    end
 end)
 
 -- [7d] KONTEN TAB 2: VISUAL -----------------------------------------
@@ -912,7 +2250,7 @@ scrollVisual = buat("ScrollingFrame", {
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollVisual)
 buatHeader(scrollVisual, "Visual")
 buatToggleRow(scrollVisual, "Hide Player + Kendaraan", "R", "Hide")
-buatToggleRow(scrollVisual, "Hide Pemain Lain", nil, "Players")
+buatToggleRow(scrollVisual, "Hide Badan Atas (kaki tetap)", nil, "HideAtas")
 buatToggleRow(scrollVisual, "Cahaya Auto (2 arah)", "T", "Light")
 buatHeader(scrollVisual, "Lightweight")
 buatToggleRow(scrollVisual, "Partikel / Bayangan / Efek", nil, "LW")
@@ -940,27 +2278,356 @@ scrollSistem = buat("ScrollingFrame", {
     AutomaticCanvasSize = Enum.AutomaticSize.Y,
 }, kontenSistem)
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollSistem)
+
+-- [7f] KONTEN TAB 4: TITIK ------------------------------------------
+kontenTitik = buat("Frame", {
+    Position = UDim2.new(0, 0, 0, 80),
+    Size = UDim2.new(1, 0, 1, -110),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Visible = false,
+}, panel)
+table.insert(kontenTabs, kontenTitik)
+scrollTitik = buat("ScrollingFrame", {
+    Position = UDim2.new(0, 12, 0, 2),
+    Size = UDim2.new(1, -24, 1, -6),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Warna.Kuning,
+    ScrollingDirection = Enum.ScrollingDirection.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, kontenTitik)
+buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTitik)
+
+-- ===== kartu ☁ SINKRON (v1.3.4) — status sinkronisasi cloud =====
+local kartuSync = buat("Frame", {
+    BackgroundColor3 = Warna.Card2,
+    Size = UDim2.new(1, 0, 0, 102),
+    LayoutOrder = nextOrder(),
+}, scrollTitik)
+buat("UICorner", {CornerRadius = UDim.new(0, 8)}, kartuSync)
+buat("UIStroke", {Color = Warna.Ungu2, Thickness = 1, Transparency = 0.55}, kartuSync)
+local syncJudul = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 5),
+    Size = UDim2.new(1, -30, 0, 15),
+    FontFace = fnt("bold"),
+    TextSize = 11,
+    TextColor3 = Warna.BiruMuda,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "☁ SINKRON — TP + titik lintas device",
+}, kartuSync)
+local syncDot = buat("Frame", {
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -9, 0, 8),
+    Size = UDim2.fromOffset(9, 9),
+    BackgroundColor3 = Warna.AbuGelap,
+    BorderSizePixel = 0,
+}, kartuSync)
+buat("UICorner", {CornerRadius = UDim.new(1, 0)}, syncDot)
+local syncInfo = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 22),
+    Size = UDim2.new(1, -20, 0, 14),
+    FontFace = fnt("med"),
+    TextSize = 10,
+    TextColor3 = Warna.Putih,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+    Text = "menyambung ke cloud...",
+}, kartuSync)
+local syncDari = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 37),
+    Size = UDim2.new(1, -20, 0, 12),
+    FontFace = fnt("reg"),
+    TextSize = 9,
+    TextColor3 = Warna.AbuGelap,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+    Text = "menyambung ke cloud (butuh internet)...",
+}, kartuSync)
+-- baris input kode (disembunyikan; muncul saat MASUKKAN KODE)
+local syncRowInput = buat("Frame", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 53),
+    Size = UDim2.new(1, -20, 0, 24),
+    Visible = false,
+}, kartuSync)
+local boxKode = buat("TextBox", {
+    BackgroundColor3 = Warna.Hitam2,
+    Size = UDim2.new(1, -76, 1, 0),
+    FontFace = fnt("med"),
+    TextSize = 10,
+    TextColor3 = Warna.Putih,
+    PlaceholderText = "Tempel kode sync (angka)...",
+    PlaceholderColor3 = Warna.AbuTeks,
+    Text = "",
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, syncRowInput)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, boxKode)
+local btnPakaiKode = buat("TextButton", {
+    BackgroundColor3 = Warna.Hijau,
+    Position = UDim2.new(1, -70, 0, 0),
+    Size = UDim2.new(0, 46, 1, 0),
+    FontFace = fnt("bold"),
+    TextSize = 9,
+    TextColor3 = Warna.HijauMuda,
+    Text = "PAKAI",
+    AutoButtonColor = false,
+}, syncRowInput)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnPakaiKode)
+local btnBatalKode = buat("TextButton", {
+    BackgroundColor3 = Warna.Merah,
+    Position = UDim2.new(1, -20, 0, 0),
+    Size = UDim2.new(0, 20, 1, 0),
+    FontFace = fnt("bold"),
+    TextSize = 10,
+    TextColor3 = Warna.Putih,
+    Text = "✕",
+    AutoButtonColor = false,
+}, syncRowInput)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnBatalKode)
+-- baris tombol utama
+local syncRowTombol = buat("Frame", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 53),
+    Size = UDim2.new(1, -20, 0, 24),
+}, kartuSync)
+local btnSalinKode = buat("TextButton", {
+    BackgroundColor3 = Warna.Biru,
+    Size = UDim2.new(0, 150, 1, 0),
+    FontFace = fnt("bold"),
+    TextSize = 9,
+    TextColor3 = Warna.Putih,
+    Text = "⧉ SALIN KODE",
+    AutoButtonColor = false,
+}, syncRowTombol)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnSalinKode)
+efekTombol(btnSalinKode, 1.03)
+local btnMasukKode = buat("TextButton", {
+    BackgroundColor3 = Warna.Card2,
+    Position = UDim2.new(0, 156, 0, 0),
+    Size = UDim2.new(0, 150, 1, 0),
+    FontFace = fnt("bold"),
+    TextSize = 9,
+    TextColor3 = Warna.Ungu2,
+    Text = "MASUKKAN KODE",
+    AutoButtonColor = false,
+}, syncRowTombol)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnMasukKode)
+efekTombol(btnMasukKode, 1.03)
+local btnGantiKode = buat("TextButton", {
+    BackgroundColor3 = Warna.AbuItem,
+    Position = UDim2.new(0, 10, 0, 81),
+    Size = UDim2.new(0, 150, 0, 16),
+    FontFace = fnt("bold"),
+    TextSize = 8,
+    TextColor3 = Warna.AbuTeks,
+    Text = "GANTI KODE (loker baru)",
+    AutoButtonColor = false,
+}, kartuSync)
+buat("UICorner", {CornerRadius = UDim.new(0, 5)}, btnGantiKode)
+local btnResetCloud = buat("TextButton", {
+    BackgroundColor3 = Warna.AbuItem,
+    Position = UDim2.new(0, 166, 0, 81),
+    Size = UDim2.new(0, 150, 0, 16),
+    FontFace = fnt("bold"),
+    TextSize = 8,
+    TextColor3 = Warna.AbuTeks,
+    Text = "SET ULANG CLOUD",
+    AutoButtonColor = false,
+}, kartuSync)
+buat("UICorner", {CornerRadius = UDim.new(0, 5)}, btnResetCloud)
+SYNC.ui = { dot = syncDot, ikon = btnCloud, info = syncInfo, dari = syncDari }
+
+local function modeInputKode(on)
+    syncRowTombol.Visible = not on
+    syncRowInput.Visible = on
+    if on then pcall(function() boxKode:CaptureFocus() end) end
+end
+btnSalinKode.MouseButton1Click:Connect(function()
+    if not SYNC.kode then
+        toast("Kode belum ada — tunggu internet / pakai MASUKKAN KODE", Warna.Kuning)
+        return
+    end
+    local ok = pcall(function() setclipboard(SYNC.kode) end)
+    if ok then
+        toast("Kode disalin: " .. SYNC.kode, Warna.Hijau)
+    else
+        toast("Gagal salin — kode: " .. SYNC.kode, Warna.Kuning)
+    end
+end)
+btnMasukKode.MouseButton1Click:Connect(function() modeInputKode(true) end)
+btnBatalKode.MouseButton1Click:Connect(function()
+    boxKode.Text = ""
+    modeInputKode(false)
+end)
+btnPakaiKode.MouseButton1Click:Connect(function()
+    local kode = tostring(boxKode.Text):gsub("^%s+", ""):gsub("%s+$", "")
+    if not kode:match("^%d+$") then
+        toast("Kode harus angka (lihat kartu ☁ di device lain)", Warna.Kuning)
+        return
+    end
+    boxKode.Text = ""
+    modeInputKode(false)
+    syncPakaiKode(kode)
+end)
+boxKode.FocusLost:Connect(function(enter)
+    if enter then
+        local kode = tostring(boxKode.Text):gsub("^%s+", ""):gsub("%s+$", "")
+        if kode:match("^%d+$") then
+            boxKode.Text = ""
+            modeInputKode(false)
+            syncPakaiKode(kode)
+        end
+    end
+end)
+-- GANTI KODE — konfirmasi 2 langkah (3 dtk)
+local armGanti = 0
+btnGantiKode.MouseButton1Click:Connect(function()
+    local now = os.clock()
+    if now - armGanti > 3 then
+        armGanti = now
+        btnGantiKode.Text = "⚠️ YAKIN? TEKAN LAGI"
+        btnGantiKode.BackgroundColor3 = Warna.Merah
+        btnGantiKode.TextColor3 = Warna.Putih
+        toast("Kode baru = loker baru — tekan lagi untuk konfirmasi", Warna.Kuning)
+        task.delay(3, function()
+            if btnGantiKode.Parent and btnGantiKode.Text ~= "GANTI KODE (loker baru)" then
+                btnGantiKode.Text = "GANTI KODE (loker baru)"
+                btnGantiKode.BackgroundColor3 = Warna.AbuItem
+                btnGantiKode.TextColor3 = Warna.AbuTeks
+            end
+        end)
+    else
+        armGanti = 0
+        btnGantiKode.Text = "GANTI KODE (loker baru)"
+        btnGantiKode.BackgroundColor3 = Warna.AbuItem
+        btnGantiKode.TextColor3 = Warna.AbuTeks
+        if not SYNC.kode then toast("Belum punya kode — tunggu loker dibuat", Warna.Kuning) return end
+        syncGantiKode()
+    end
+end)
+-- SET ULANG CLOUD — konfirmasi 2 langkah (3 dtk)
+local armReset = 0
+btnResetCloud.MouseButton1Click:Connect(function()
+    local now = os.clock()
+    if now - armReset > 3 then
+        armReset = now
+        btnResetCloud.Text = "⚠️ YAKIN? TEKAN LAGI"
+        btnResetCloud.BackgroundColor3 = Warna.Merah
+        btnResetCloud.TextColor3 = Warna.Putih
+        toast("Cloud akan disamakan dengan device ini — tekan lagi", Warna.Kuning)
+        task.delay(3, function()
+            if btnResetCloud.Parent and btnResetCloud.Text ~= "SET ULANG CLOUD" then
+                btnResetCloud.Text = "SET ULANG CLOUD"
+                btnResetCloud.BackgroundColor3 = Warna.AbuItem
+                btnResetCloud.TextColor3 = Warna.AbuTeks
+            end
+        end)
+    else
+        armReset = 0
+        btnResetCloud.Text = "SET ULANG CLOUD"
+        btnResetCloud.BackgroundColor3 = Warna.AbuItem
+        btnResetCloud.TextColor3 = Warna.AbuTeks
+        if not SYNC.kode then toast("Belum ada cloud untuk diset ulang", Warna.Kuning) return end
+        syncSetUlang()
+    end
+end)
+syncRefreshKartu()
+
+buatHeader(scrollTitik, "Tiang Penanda")
+buatToggleRow(scrollTitik, "Tampilkan Tiang", nil, "Tiang")
+buatActionRow(scrollTitik, "📍 + TAMBAH TITIK DI SINI", Warna.Hijau, function()
+    titikTambahDiSini()
+end)
+-- HAPUS SEMUA — konfirmasi 2 langkah (rawan kepencet kalau 1 tekan)
+local armTg = 0
+local btnHapusTgSemua = buatActionRow(scrollTitik, "🗑️ HAPUS SEMUA TITIK", Warna.Merah, function()
+    local now = os.clock()
+    if now - armTg > 3 then
+        armTg = now
+        btnHapusTgSemua.Text = "⚠️ YAKIN? TEKAN LAGI (3 dtk)"
+        toast("Tekan LAGI dalam 3 dtk — semua titik terhapus", Warna.Merah)
+        task.delay(3, function()
+            if btnHapusTgSemua.Parent and btnHapusTgSemua.Text ~= "🗑️ HAPUS SEMUA TITIK" then
+                btnHapusTgSemua.Text = "🗑️ HAPUS SEMUA TITIK"
+            end
+        end)
+    else
+        armTg = 0
+        btnHapusTgSemua.Text = "🗑️ HAPUS SEMUA TITIK"
+        titikHapusSemua()
+    end
+end)
+buatActionRow(scrollTitik, "⇅ URUTKAN TITIK TERDEKAT", Warna.Biru, function()
+    local _, hrp = getKarakter()
+    if not hrp then toast("Karakter belum ada", Warna.Merah) return end
+    if #titikList < 2 then toast("Butuh minimal 2 titik", Warna.Kuning) return end
+    table.sort(titikList, function(a, b)
+        local da = (a.X - hrp.Position.X)^2 + (a.Y - hrp.Position.Y)^2 + (a.Z - hrp.Position.Z)^2
+        local db = (b.X - hrp.Position.X)^2 + (b.Y - hrp.Position.Y)^2 + (b.Z - hrp.Position.Z)^2
+        return da < db
+    end)
+    titikSimpan()
+    titikRender()
+    titikRefreshDaftar()
+    toast("Titik diurutkan dari yang terdekat", Warna.Biru)
+end)
+buatHeader(scrollTitik, "Daftar Titik")
+titikHolder = buat("Frame", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 0),
+    AutomaticSize = Enum.AutomaticSize.Y,
+    LayoutOrder = nextOrder(),
+}, scrollTitik)
+buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, titikHolder)
+titikLabelJumlah = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 14),
+    FontFace = fnt("med"),
+    TextSize = 10,
+    TextColor3 = Warna.AbuTeks,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "Total: 0 titik • klik item = teleport",
+    LayoutOrder = nextOrder(),
+}, scrollTitik)
+-- muat data lama (file / getgenv) lalu render pertama
+titikMuat()
+titikRender()
+titikRefreshDaftar()
+
 buatHeader(scrollSistem, "Info")
 local infoVersi = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 64),
+    Size = UDim2.new(1, 0, 0, 168),
     FontFace = fnt("med"),
     TextSize = 11,
     TextColor3 = Warna.TeksGelap,
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.3\n"
-        .. "Script balapan gabungan — fitur dinding skrip lain melebur di sini\n"
-        .. "3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM\n"
-        .. "Keybind: F panel • Q speed • J jump • C shift • G moon\n"
-        .. "B fall • R hide • T cahaya • X dinding • K×2 rejoin",
+    Text = "⚡ BALAP v1.3.4\n"
+        .. "Fitur:\n"
+        .. "GERAK  : Speed (Q) • Jump (J) • Shiftlock (C) • Moonwalk (F)\n"
+        .. "Shiftlock Tengah (LShift) • Fall Resist (B, 4 preset) • TP\n"
+        .. "(✎ rename, jarak, urut terdekat) • V = +titik cepat\n"
+        .. "VISUAL : Hide Player+Kendaraan (R) • Hide Badan Atas\n"
+        .. "Cahaya Auto (T) • Lightweight • Dinding Batas (X)\n"
+        .. "TITIK  : Tiang checkpoint + teleport • V = tambah titik\n"
+        .. "☁ SINKRON : TP + titik lintas device — kode di kartu TITIK,\n"
+        .. "salin ke device lain (MASUKKAN KODE untuk nyambung)\n"
+        .. "SISTEM : Rejoin (K×2) • Hapus Script\n"
+        .. "Shift/Moonwalk/Tengah otomatis OFF saat mati/respawn",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
 buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoVersi)
 buatHeader(scrollSistem, "Aksi")
-buatActionRow(scrollSistem, "🔄 RESET SCRIPT", Warna.Biru, function() resetAll() end)
 buatActionRow(scrollSistem, "🔁 REJOIN SERVER  [K×2]", Warna.Biru, function() rejoin() end)
 buatActionRow(scrollSistem, "🗑️ HAPUS SCRIPT", Warna.Merah, function()
     if not _G.__KS_DELETE_ARMED__ then
@@ -973,37 +2640,12 @@ buatActionRow(scrollSistem, "🗑️ HAPUS SCRIPT", Warna.Merah, function()
         unloadScript()
     end
 end)
-buatHeader(scrollSistem, "Tentang")
-local infoKredit = buat("TextLabel", {
-    BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 170),
-    FontFace = fnt("med"),
-    TextSize = 11,
-    TextColor3 = Warna.AbuTeks,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    TextYAlignment = Enum.TextYAlignment.Top,
-    TextWrapped = true,
-    Text = "Tema SILAU NEON (ungu/biru LED) ⚡\n"
-        .. "Basis: SILAU BALAPAN v1.1 (5 skrip digabung)\n"
-        .. "v1.0.1: rename BALAP — 3 tab fokus balapan\n"
-        .. "v1.0.2: fix fall assist (var tertukar) + dampener\n"
-        .. "v1.0.3: potong 50% + soft catch\n"
-        .. "v1.0.4: silent fall — tanpa hentakan, tanpa cap kecepatan\n"
-        .. "v1.0.6: posisi bentur 0.30 — reduksi ringan biar masuk akal\n"
-        .. "v1.2: 1 fitur — potongan % (0-75), tanpa minimal jatuh, tanpa soft landing\n"
-        .. "v1.2.1: fix reset senyap — cukup 1x per terbangan, ulang setelah injek tanah\n"
-        .. "v1.2.2: fix final — 1x per turunan walau memantul di lereng (tanah stabil 0.3 dtk)\n"
-        .. "v1.2.3: fix 0% masih terpotong — input angka diperkuat + takeover anti double-instance\n"
-        .. "v1.3: kalibrasi jujur — angka = % damage berkurang (1 = nyaris tanpa efek, 75 = berat)",
-    LayoutOrder = nextOrder(),
-}, scrollSistem)
-buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoKredit)
-buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoKredit)
 
 end -- akhir buildUI()
 
 -- Eksekusi buildUI() sekarang (panel, root, outer, Warna, buat sudah ada dari part1)
 buildUI()
+diagSet("GUI utama OK — bikin efek & notif...")
 
 -- [8] FOOTER + LED + MARQUEE ---------------------------------------
 -- Bungkus dengan function untuk hemat local count (Luau limit 200)
@@ -1054,13 +2696,13 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1600, 13),
     FontFace = fnt("med"),
-    Text = "⌨ F = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • G Moonwalk • B FallAssist   ✦   🎨 R Hide • Hide Pemain Lain • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • F Moonwalk • LShift Tengah • B FallResist • V +Titik   ✦   📍 Titik + ☁ Sinkron lintas device (kode di tab TITIK)   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, marqueeClip)
-tween(marquee, TweenInfo.new(24, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-    {Position = UDim2.fromOffset(-1600, 0)})
+table.insert(effTweens, tween(marquee, TweenInfo.new(24, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+    {Position = UDim2.fromOffset(-1600, 0)}))
 
 -- bracket pojok (dekorasi)
 local posisiTitik = {
@@ -1140,8 +2782,8 @@ task.spawn(function()
             tween(l, TweenInfo.new(0.35), {TextTransparency = 0.55})
             tween(l, TweenInfo.new(dur, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
                 {Position = UDim2.new(x0 + rnd(-6, 6) / 100, 0, -0.08, 0)})
-            tween(l, TweenInfo.new(1.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-                {Rotation = l.Rotation + rnd(16, 30) * (rnd(0, 1) == 0 and 1 or -1)})
+            table.insert(effTweens, tween(l, TweenInfo.new(1.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                {Rotation = l.Rotation + rnd(16, 30) * (rnd(0, 1) == 0 and 1 or -1)}))
             task.delay(dur - 0.4, function()
                 if l.Parent then tween(l, TweenInfo.new(0.4), {TextTransparency = 1}) end
             end)
@@ -1348,97 +2990,13 @@ end -- akhir buildFX()
 
 -- Eksekusi buildFX() sekarang (panel, root, outer sudah ada dari part1)
 buildFX()
+diagSet("efek OK — pasang logika fitur...")
 
 -- [14] LOGIKA UTAMA -------------------------------------------------
 -- Bungkus part logika dengan function untuk hemat local count (Luau limit 200)
 local function initLogic()
 
 
--- [17C] MESIN ANTI-AFK 2 LAPIS — port dari A ------------------------
--- Lapis 1: VirtualUser CaptureController + ClickButton2 (event Idled + jadwal)
--- Lapis 2: gerakan mikro (opsional, jumpMode)
-local AFK_CFG = {
-    interval     = 240,   -- detik antar intervensi terjadwal (4 menit)
-    jitter       = 60,    -- + acak, biar polanya tidak kaku
-    jumpMode     = false, -- ubah ke true HANYA kalau game punya anti-AFK sendiri
-    jumpInterval = 45,
-}
-local afkState = { aktif = State.AfkOn, jumlah = 0, terakhir = 0, sudahIngatkan = false }
-local inputTerakhir = os.time()
-catat(UserInputService.InputBegan:Connect(function() inputTerakhir = os.time() end))
-local function afkStatusUpdate()
-    if AfkLabel and AfkLabel.Parent then
-        if afkState.aktif then
-            if afkState.terakhir > 0 then
-                AfkLabel.Text = string.format("👻 Anti-AFK (2 lapis) • %dx • %dm lalu",
-                    afkState.jumlah, math.floor((os.time() - afkState.terakhir) / 60))
-            else
-                AfkLabel.Text = string.format("👻 Anti-AFK (2 lapis) • %dx • siaga", afkState.jumlah)
-            end
-        else
-            AfkLabel.Text = "👻 Anti-AFK (2 lapis) • MATI"
-        end
-    end
-end
-local function afkIntervensi(alasan)
-    local ok = pcall(function()
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
-    end)
-    if not ok then
-        pcall(function()
-            local vim = game:GetService("VirtualInputManager")
-            vim:SendMouseButtonEvent(5, 5, 1, true, game, 0)
-            vim:SendMouseButtonEvent(5, 5, 1, false, game, 0)
-        end)
-    end
-    afkState.jumlah += 1
-    afkState.terakhir = os.time()
-    print("[BALAP][Anti-AFK] intervensi #" .. afkState.jumlah .. " (" .. tostring(alasan) .. ")")
-    afkStatusUpdate()
-end
-catat(LocalPlayer.Idled:Connect(function()
-    if afkState.aktif then afkIntervensi("event Idled") end
-end))
-
--- lapis 1: jadwal berkala (hanya kalau user lama tidak input apa pun)
-task.spawn(function()
-    while screenGui.Parent do
-        if afkState.aktif then
-            local tunggu = AFK_CFG.interval + rnd(0, AFK_CFG.jitter)
-            task.wait(tunggu)
-            if afkState.aktif and screenGui.Parent
-            and (os.time() - inputTerakhir) >= AFK_CFG.interval then
-                afkIntervensi("jadwal " .. tunggu .. "s")
-            end
-        else
-            task.wait(2)
-        end
-    end
-end)
-
--- lapis 2: gerakan mikro (default OFF, aktifkan via jumpMode)
-if AFK_CFG.jumpMode then
-    task.spawn(function()
-        while screenGui.Parent do
-            task.wait(AFK_CFG.jumpInterval)
-            if afkState.aktif then
-                local _, _, hum = getKarakter()
-                if hum and hum.Health > 0 then
-                    pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jump) end)
-                end
-            end
-        end
-    end)
-end
-
--- refresh tampilan status anti-afk tiap 30 detik
-task.spawn(function()
-    while screenGui.Parent do
-        task.wait(30)
-        afkStatusUpdate()
-    end
-end)
 
 -- [18] LOGIKA KING ---------------------------------------------------
 -- SPEED & JUMP
@@ -1446,8 +3004,10 @@ applySpeed = function()
     local hum = getHum()
     if not hum then return end
     local base = State.SpeedOn and State.SpeedValue or CFG.SPEED_OFF
-    if State.ShiftOn and State.IsSwimming then
-        base = base * 1.10
+    -- v1.3.4: bonus berenang HANYA saat Shiftlock Tengah aktif —
+    -- speed aktif × 1.025 (di darat & saat Tengah OFF = tanpa efek)
+    if State.TengahOn and State.IsSwimming then
+        base = base * CFG.SWIM_BONUS
     end
     hum.WalkSpeed = base
 end
@@ -1529,6 +3089,8 @@ Setters.Shift = function(v, silent)
     if State.ShiftOn == v then return end
     State.ShiftOn = v
     if v then
+        -- anti bentrok orientasi: Shiftlock Tengah dimatikan dulu
+        if State.TengahOn then setFeature("Tengah", false, true) end
         local hum = getHum()
         if hum then hum.AutoRotate = false end
         RunService:BindToRenderStep("KS_SHIFTLOCK", Enum.RenderPriority.Character.Value + 1, function()
@@ -1550,23 +3112,39 @@ Setters.Shift = function(v, silent)
     syncNotify("Shift", v, silent, "Shiftlock Mobile")
 end
 
--- MOONWALK (G) — badan TERKUNCI menghadap kamera/layar saat jalan
+-- MOONWALK (F) — badan TERKUNCI menghadap kamera/layar saat jalan.
+-- Rotasi CEPAT + HENTAKAN: kecepatan putar dibatasi CFG.MOON_TURN_MAX
+-- (balik badan kencang), lalu kunci tegas ke arah target via lerp sudut
+-- terpendek dgn kekerasan CFG.MOON_SMOOTH (anti muter keliling).
 Setters.Moon = function(v, silent)
     if State.MoonOn == v then return end
     State.MoonOn = v
     if v then
+        -- anti bentrok orientasi: Shiftlock Tengah dimatikan dulu
+        if State.TengahOn then setFeature("Tengah", false, true) end
         local hum = getHum()
         if hum then hum.AutoRotate = false end
-        RunService:BindToRenderStep("KS_MOONWALK", Enum.RenderPriority.Character.Value + 1, function()
+        RunService:BindToRenderStep("KS_MOONWALK", Enum.RenderPriority.Character.Value + 1, function(dt)
             local char = getChar()
             local h = char and char:FindFirstChildOfClass("Humanoid")
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             if h and hrp and h.Health > 0 then
                 local cam = Workspace.CurrentCamera
-                if cam then
-                    local _, yaw = cam.CFrame:ToOrientation()
+                -- DIAM = TIDAK BEROTASI: badan hanya mengejar kamera saat
+                -- karakter benar-benar bergerak (ada arah input). Berdiri
+                -- tenang = badan tetap di arah terakhir, tidak berputar.
+                if cam and h.MoveDirection.Magnitude > 0.01 then
+                    local _, yawCam = cam.CFrame:ToOrientation()
                     -- putar 180 derajat = badan menghadap kamera
-                    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, yaw + math.pi, 0)
+                    local target = yawCam + math.pi
+                    -- CEPAT + HENTAKAN: putar kencang dgn batas kecepatan,
+                    -- lalu kunci tegas ke target (lerp sudut terpendek).
+                    local _, yawSek = hrp.CFrame:ToOrientation()
+                    local selisih = ((target - yawSek + math.pi) % (2 * math.pi)) - math.pi
+                    local langkah = selisih * math.min(dt * CFG.MOON_SMOOTH, 1)
+                    local maks = CFG.MOON_TURN_MAX * dt
+                    if langkah > maks then langkah = maks elseif langkah < -maks then langkah = -maks end
+                    hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, yawSek + langkah, 0)
                 end
             end
         end)
@@ -1576,6 +3154,126 @@ Setters.Moon = function(v, silent)
         if hum then hum.AutoRotate = true end
     end
     syncNotify("Moon", v, silent, "Moonwalk")
+end
+
+-- SHIFTLOCK TENGAH (v1.2.0, revisi v1.3.3) — port "SHIFT LOCK TENGAH v2"
+-- Kamera TIDAK diubah sama sekali (CameraOffset tetap di-tween ke
+-- Vector3.zero seperti v1.2.0). Yang digeser cuma LETAK lingkaran kursor:
+-- panah komputer disembunyikan (MouseIconEnabled false) dan diganti
+-- lingkaran mini (CFG.SLT_DOT px) yang letaknya digeser ke bawah layar
+-- (CFG.SLT_DOT_Y, default 0.60 = sekitar pinggang/bawah badan karakter),
+-- kecil biar ga ganggu. Mekanisme native: MouseBehavior.LockCenter +
+-- RotationType.CameraRelative dijaga tiap frame via RenderStep (Camera+1).
+-- Toggle: LShift / RShift / switch GUI. Auto OFF saat mati/respawn
+-- (matikanGerak) + saling menonaktif dgn Shiftlock Mobile & Moonwalk.
+local sltTween, sltTweening, sltOffsetAsli = nil, false, nil
+local sltDotGui, sltDot  -- lingkaran kursor mini (revisi v1.3.2/v1.3.3)
+local sltUGS
+pcall(function() sltUGS = UserSettings():GetService("UserGameSettings") end)
+-- [v1.3.2/v1.3.3] lingkaran kursor mini, letaknya digeser ke bawah layar
+local function sltDotShow()
+    if sltDot then sltDot.Visible = true return end
+    sltDotGui = buat("ScreenGui", {
+        Name = "BALAP_TengahDot",
+        ResetOnSpawn = false,
+        DisplayOrder = 99999,
+        IgnoreGuiInset = true, -- skala Y dihitung dari seluruh layar
+    })
+    sltDot = buat("Frame", {
+        Name = "Lingkaran",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.fromScale(0.5, CFG.SLT_DOT_Y), -- digeser ke bawah
+        Size = UDim2.fromOffset(CFG.SLT_DOT, CFG.SLT_DOT),
+        BackgroundColor3 = Warna.Putih,
+        BackgroundTransparency = 0.1,
+        BorderSizePixel = 0,
+    }, sltDotGui)
+    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, sltDot) -- jadi lingkaran
+    buat("UIStroke", {Color = Color3.fromRGB(0, 0, 0), Thickness = 1,
+        Transparency = 0.35}, sltDot)
+    -- pasang ke tempat aman (gethui/CoreGui/PlayerGui), buang sisa lama dulu
+    local kandidat = {}
+    pcall(function() if gethui then table.insert(kandidat, gethui()) end end)
+    pcall(function() table.insert(kandidat, game:GetService("CoreGui")) end)
+    pcall(function() table.insert(kandidat, LocalPlayer:WaitForChild("PlayerGui")) end)
+    for _, t in ipairs(kandidat) do
+        pcall(function()
+            local lama = t:FindFirstChild("BALAP_TengahDot")
+            if lama and lama ~= sltDotGui then lama:Destroy() end
+        end)
+    end
+    for _, t in ipairs(kandidat) do
+        local ok = pcall(function() sltDotGui.Parent = t end)
+        if ok and sltDotGui.Parent == t then break end
+    end
+end
+local function sltDotHide()
+    if sltDot then sltDot.Visible = false end
+end
+Setters.Tengah = function(v, silent)
+    if State.TengahOn == v then return end
+    State.TengahOn = v
+    if v then
+        -- anti bentrok: matikan Shiftlock Mobile & Moonwalk dulu
+        if State.ShiftOn then setFeature("Shift", false, true) end
+        if State.MoonOn then setFeature("Moon", false, true) end
+        local hum = getHum()
+        if hum then
+            sltOffsetAsli = hum.CameraOffset  -- simpan offset asli game
+            sltTweening = true
+            if sltTween then sltTween:Cancel() end
+            sltTween = TweenService:Create(hum,
+                TweenInfo.new(CFG.SLT_WAKTU, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {CameraOffset = Vector3.zero})
+            sltTween:Play()
+            sltTween.Completed:Connect(function() sltTweening = false end)
+        end
+        pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
+        RunService:BindToRenderStep("KS_TENGAH", Enum.RenderPriority.Camera.Value + 1, function()
+            local h = getHum()
+            if h and h.Health > 0 then
+                UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+                if sltUGS then
+                    pcall(function() sltUGS.RotationType = Enum.RotationType.CameraRelative end)
+                end
+                -- jaga offset tetap 0 setelah tween selesai (kamera standar)
+                if not sltTweening and h.CameraOffset ~= Vector3.zero then
+                    h.CameraOffset = Vector3.zero
+                end
+            end
+        end)
+        -- v1.3.2: sembunyikan panah komputer, tampilkan lingkaran mini
+        pcall(function() UserInputService.MouseIconEnabled = false end)
+        sltDotShow()
+    else
+        pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        if sltUGS then
+            pcall(function() sltUGS.RotationType = Enum.RotationType.MovementRelative end)
+        end
+        if sltTween then sltTween:Cancel() end
+        local hum = getHum()
+        if hum and sltOffsetAsli then hum.CameraOffset = sltOffsetAsli end
+        sltOffsetAsli = nil
+        -- v1.3.2: panah komputer balik, lingkaran disembunyikan
+        pcall(function() UserInputService.MouseIconEnabled = true end)
+        sltDotHide()
+    end
+    applySpeed()   -- v1.3.4: bonus berenang langsung menyesuaikan / pulih
+    syncNotify("Tengah", v, silent, "Shiftlock Tengah")
+end
+
+-- TIANG PENANDA (tab TITIK) — tampilkan/sembunyikan tiang checkpoint.
+-- Daftar titik & data file TIDAK ikut hilang, cuma tiangnya yang dihide.
+Setters.Tiang = function(v, silent)
+    if State.TiangOn == v then return end
+    State.TiangOn = v
+    if v then
+        titikRender()
+    else
+        if titikFolder then titikFolder:Destroy() titikFolder = nil end
+    end
+    syncNotify("Tiang", v, silent, "Tampilkan Tiang")
 end
 
 -- HIDE PLAYER + KENDARAAN
@@ -1702,49 +3400,150 @@ Setters.Hide = function(v, silent)
     syncNotify("Hide", v, silent, "Hide Player + Kendaraan")
 end
 
--- HIDE PEMAIN LAIN (baru v2.2 — toggle terpisah dari Hide R)
--- Hanya pemain lain (tanpa kendaraan), pakai LocalTransparencyModifier
--- supaya tidak konflik dengan fitur Hide (R) yang memakai Transparency.
--- LTM bisa di-reset kamera/respawn -> loop penjaga Heartbeat tiap ~0.3s.
-local plrHideConn, plrHideT = nil, 0
-local function plrHideSapu(on)
-    for _, pl in ipairs(Players:GetPlayers()) do
-        if pl ~= LocalPlayer and pl.Character then
-            for _, d in ipairs(pl.Character:GetDescendants()) do
-                pcall(function()
-                    if d:IsA("BasePart") or d:IsA("Decal") then
-                        d.LocalTransparencyModifier = on and 1 or 0
-                    elseif d:IsA("Humanoid") and not (not on and State.HideOn) then
-                        -- saat OFF, jangan ganggu Humanoid kalau Hide (R) masih pegang kendali
-                        d.DisplayDistanceType = on and Enum.HumanoidDisplayDistanceType.None
-                            or Enum.HumanoidDisplayDistanceType.Viewer
-                        d.HealthDisplayType = on and Enum.HumanoidHealthDisplayType.AlwaysOff
-                            or Enum.HumanoidHealthDisplayType.WhenDamaged
-                    end
-                end)
+-- HIDE BADAN ATAS — sembunyikan KEPALA s/d BADAN & TANGAN milik
+-- DIRI SENDIRI, hanya di layar sendiri (LocalTransparencyModifier).
+-- Tetap tampil: pinggang ke bawah (celana) + kaki + sepatu.
+-- klasifikasi 4 LAPIS (rambut/aksesoris atas sering lolos):
+--   1) nama part tubuh standar (R15/R6) -> langsung diketahui
+--   2) rantai weld/joint (Weld, WeldConstraint, Motor6D, AccessoryWeld)
+--      sampai 6 hop -> part tubuh tempat menempel
+--      (banyak rambut/topi modern pakai WeldConstraint)
+--   3) peta attachment: attachment milik aksesoris dicocokkan ke attachment
+--      part tubuh (cara resmi Roblox menentukan posisi aksesoris)
+--   4) posisi dunia: di atas garis pinggang (HRP - 1 stud) = sembunyi,
+--      di bawah = tampil (jaring pengaman rambut/topi tanpa weld)
+--   Kalau semua gagal -> SEMBUNYI (ragu = sembunyi; yang tampil hanya
+--   kaki/celana/sepatu sesuai permintaan).
+-- Decal (muka, lensa, tekstur) di dalam part sembunyi ikut dihilangkan.
+local atasConn, atasT = nil, 0
+local atasDecalOrig = {}
+local ATAS_R15 = {
+    Head = true, UpperTorso = true,
+    LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+    RightUpperArm = true, RightLowerArm = true, RightHand = true,
+}
+local ATAS_R6 = { Head = true, Torso = true, ["Left Arm"] = true, ["Right Arm"] = true }
+local BADAN_KENAL = {
+    Head = true, UpperTorso = true, LowerTorso = true,
+    LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+    RightUpperArm = true, RightLowerArm = true, RightHand = true,
+    LeftUpperLeg = true, LeftLowerLeg = true, LeftFoot = true,
+    RightUpperLeg = true, RightLowerLeg = true, RightFoot = true,
+    Torso = true, ["Left Arm"] = true, ["Right Arm"] = true,
+    ["Left Leg"] = true, ["Right Leg"] = true, HumanoidRootPart = true,
+}
+local function atasIkat(part, hop)   -- telusuri rantai weld/joint -> nama part tubuh
+    if hop > 6 then return nil end
+    for _, w in ipairs(part:GetChildren()) do
+        if w:IsA("Motor6D") or w:IsA("Weld") or w:IsA("AccessoryWeld") or w:IsA("WeldConstraint") then
+            local lain = (w.Part0 == part) and w.Part1 or w.Part0
+            if lain then
+                if BADAN_KENAL[lain.Name] then return lain.Name end
+                local r = atasIkat(lain, hop + 1)
+                if r then return r end
             end
         end
     end
+    return nil
 end
-Setters.Players = function(v, silent)
-    if State.PlayersOn == v then return end
-    State.PlayersOn = v
+local function atasCariAcc(part)     -- naik lewat Parent, cari Accessory induk
+    local p = part.Parent
+    local hop = 0
+    while p and hop < 4 do
+        if p:IsA("Accessory") then return p end
+        p = p.Parent
+        hop = hop + 1
+    end
+    return nil
+end
+local function atasSapu(on)
+    local char = LocalPlayer.Character
+    if not char then return end
+    -- garis pinggang: HRP turun 1 stud (kaki/celana/sepatu di bawahnya tetap tampil)
+    local batasY = nil
+    pcall(function()
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then batasY = hrp.Position.Y - 1.0 end
+    end)
+    -- peta attachment part tubuh: nama attachment -> part pemiliknya
+    local petaIkat = {}
+    for _, bp in ipairs(char:GetDescendants()) do
+        pcall(function()
+            if bp:IsA("BasePart") and BADAN_KENAL[bp.Name] then
+                for _, c in ipairs(bp:GetChildren()) do
+                    if c:IsA("Attachment") then petaIkat[c.Name] = bp.Name end
+                end
+            end
+        end)
+    end
+    for _, d in ipairs(char:GetDescendants()) do
+        pcall(function()
+            if d:IsA("BasePart") and d.Name ~= "HumanoidRootPart" then
+                local sembunyi = false
+                if BADAN_KENAL[d.Name] then
+                    sembunyi = (ATAS_R15[d.Name] or ATAS_R6[d.Name]) and true or false
+                else
+                    local tubuh = atasIkat(d, 0)          -- lapis 2: rantai weld
+                    if tubuh then
+                        sembunyi = (ATAS_R15[tubuh] or ATAS_R6[tubuh]) and true or false
+                    else
+                        local acc = atasCariAcc(d)         -- lapis 3: peta attachment
+                        local att = acc and acc:FindFirstChildWhichIsA("Attachment", true) or nil
+                        local owner = att and petaIkat[att.Name] or nil
+                        if owner then
+                            sembunyi = (ATAS_R15[owner] or ATAS_R6[owner]) and true or false
+                        else
+                            local okP, pos = pcall(function() return d.Position end)
+                            if okP and pos and batasY then  -- lapis 4: posisi vs garis pinggang
+                                sembunyi = pos.Y > batasY
+                            else
+                                sembunyi = true             -- ragu = sembunyi
+                            end
+                        end
+                    end
+                end
+                if on then
+                    if sembunyi then
+                        d.LocalTransparencyModifier = 1
+                        for _, c in ipairs(d:GetDescendants()) do
+                            if c:IsA("Decal") then
+                                if atasDecalOrig[c] == nil then atasDecalOrig[c] = c.Transparency end
+                                c.Transparency = 1
+                            end
+                        end
+                    end
+                else
+                    d.LocalTransparencyModifier = 0
+                end
+            end
+        end)
+    end
+    if not on then
+        for c, tr in pairs(atasDecalOrig) do
+            pcall(function() if c.Parent then c.Transparency = tr end end)
+        end
+        table.clear(atasDecalOrig)
+    end
+end
+Setters.HideAtas = function(v, silent)
+    if State.HideAtasOn == v then return end
+    State.HideAtasOn = v
     if v then
-        plrHideSapu(true)
-        plrHideT = 0
-        plrHideConn = RunService.Heartbeat:Connect(function(dt)
-            if not State.PlayersOn or State.Removed then return end
-            plrHideT = plrHideT + dt
-            if plrHideT >= 0.3 then
-                plrHideT = 0
-                plrHideSapu(true)
+        atasSapu(true)
+        atasT = 0
+        atasConn = RunService.Heartbeat:Connect(function(dt)
+            if not State.HideAtasOn or State.Removed then return end
+            atasT = atasT + dt
+            if atasT >= 0.3 then
+                atasT = 0
+                atasSapu(true)   -- self-heal: reset part/respawn tertangani di sini
             end
         end)
     else
-        if plrHideConn then plrHideConn:Disconnect() plrHideConn = nil end
-        plrHideSapu(false)
+        if atasConn then atasConn:Disconnect() atasConn = nil end
+        atasSapu(false)
     end
-    syncNotify("Players", v, silent, "Hide Pemain Lain")
+    syncNotify("HideAtas", v, silent, "Hide Badan Atas")
 end
 
 -- LIGHTWEIGHT (Partikel / Bayangan / Efek)
@@ -1948,27 +3747,83 @@ Setters.Light = function(v, silent)
     syncNotify("Light", v, silent, "Cahaya Auto")
 end
 
--- SMART FALL ASSIST v3.5 "1 FITUR" (v1.2)
--- TANPA minimal jatuh — semua ketinggian masuk (batas alami cuma fisika:
--- pemicu butuh jatuh >10 stud & vel < -40; jatuh sekecil itu memang 0 damage).
--- Tinggal 1 angka: POTONGAN DEMAGE % (0-75). Potong di X% perjalanan jatuh =
--- damage kira-kira turun X%. Soft landing -30 DIHAPUS di v1.2 supaya angka %
--- JUJUR (bantalan -30 dulu bikin rasa "terlalu kebal") — mendarat 100% natural.
--- Reset dipalsukan lewat "pulse" state Landed 0.08 dtk di titik potong:
--- game menganggap kita sudah mendarat, padahal fisika tidak tersentuh sama sekali.
--- FIX v1.0.2: sebelumnya `local char, hum, hrp = getKarakter()` TERTUKAR
--- (getKarakter mengembalikan char, HRP, Humanoid) sehingga
--- hrp.AssemblyLinearVelocity ERROR tiap frame dan assist tidak pernah jalan.
--- Alur SILENT: jatuh natural penuh -> di X/2% perjalanan kirim "pulse Landed"
--- 0.08 dtk (game reset hitungan jatuh, fisika tidak berubah) -> lanjut jatuh natural.
--- v1.3: angka GUI = perkiraan % damage berkurang; pulse dipindah ke X/2%
--- perjalanan karena kurva damage game bikin efek sebenarnya > posisi pulse.
--- v1.2.1+v1.2.2 LATCH 1x (2 LAPIS): pulse cuma SEKALI per terbangan.
--- Lapis 1 (per record): bentur. Lapis 2 (GLOBAL): sudahPulse — apa pun yang
--- menghapus record (state flap / pantulan lereng), pemicu tetap MATI sampai
--- benar-benar selesai terbangan: menempel tanah >= 0.30 dtk (bukan sentuhan
--- sekilas!), masuk air, duduk, panjat, atau mati. Dulu di lereng salju bisa
--- 2-3x karena tiap pantulan singkat dianggap "sudah mendarat".
+-- ======================================================================
+-- FALL RESIST V1.07 — fitur jatuh BARU (port script standalone)
+-- Menggantikan Smart Fall Assist model REFUND v1.7.
+-- ======================================================================
+-- KENAPA DIGANTI: refund menulis hum.Health dari client — Health milik
+-- server, tulisan client langsung tertimpa replikasi (hasil uji v1.6:
+-- setting 1% nyatanya memotong 56%, 10%/30% hasilnya acak). Satu-satunya
+-- mekanisme yang TERBUKTI REAL di server (bukti data uji user) adalah
+-- pulsa state "Landed": game mengira kita sudah mendarat -> hitungan
+-- tinggi jatuh server TERRESET -> demage dihitung dari sisa jatuh.
+--
+-- KURVA DEMAGE GAME (tracked stud -> demage, kalibrasi tes user H=60):
+--   30->0 | 37.5->20 | 45->27 | 48->44 | 50->51 | 60->93 (ekstra 4.2/stud)
+--
+-- CARA KERJA (v1.07):
+--   1. SEMUA lompatan/jatuh diawasi tiap frame — TANPA batas minimal.
+--      Trigger bisa sedini ~0.25 stud setelah badan mulai turun.
+--   2. PLANNER: tPlan = tinggi tracked yang menghasilkan demage target
+--      (normal x (1 - potongan/100)). Pulse ditembak saat sisaJatuh <=
+--      tPlan + margin dinamis (|velY|/60 — kompensasi kuantisasi frame).
+--      Level ringan -> trigger hampir langsung di awal jatuh; level
+--      berat -> menunggu posisi tepat dekat tanah (kalau semua langsung,
+--      semua level jadi sama).
+--   3. PULSE: jendela 0.08 dtk state dipaksa "Landed" tiap frame.
+--      Fisika & kecepatan TIDAK diubah, HP TIDAK ditulis -> 100% natural.
+--   4. Latch 2 lapis + re-arm pintar: pulse di lompatan kecil (<30 stud,
+--      0 demage) TIDAK mengunci jatuh besar berikutnya; pulse jatuh riil
+--      cuma 1x per terbangan (anti pantulan lereng, tanah stabil 0.30 dtk).
+--   5. Notif hanya untuk jatuh riil >= 30 stud (anti spam saat hop).
+-- ======================================================================
+
+local KURVA = {
+    { t = 30,   d = 0  },  -- ambang 0 demage (perkiraan)
+    { t = 37.5, d = 20 },  -- tes 75%: pulse di 22.5 stud -> tracked 37.5 -> 20 dmg
+    { t = 45,   d = 27 },  -- tes 50%: pulse di 15 stud   -> tracked 45   -> 27 dmg
+    { t = 48,   d = 44 },  -- tes 20%: pulse di gerbang   -> tracked ~48  -> 44 dmg
+    { t = 50,   d = 51 },  -- tes 5% : pulse di gerbang   -> tracked ~50  -> 51 dmg
+    { t = 60,   d = 93 },  -- tanpa pulse                 -> tracked 60   -> 93 dmg
+}
+local SLOPE_EKSTRA = (93 - 51) / (60 - 50) -- 4.2 dmg/stud utk tracked > 60
+
+-- demage dari tinggi tracked t (interpolar linear + ekstrapolasi)
+local function fDmg(t)
+    if t <= KURVA[1].t then return 0 end
+    for i = 2, #KURVA do
+        local a, b = KURVA[i - 1], KURVA[i]
+        if t <= b.t then
+            local f = (t - a.t) / (b.t - a.t)
+            return a.d + f * (b.d - a.d)
+        end
+    end
+    local b = KURVA[#KURVA]
+    return b.d + (t - b.t) * SLOPE_EKSTRA
+end
+
+-- kebalikan fDmg: tinggi tracked yang menghasilkan demage d
+local function fInv(d)
+    if d <= 0 then return KURVA[1].t end
+    for i = 2, #KURVA do
+        local a, b = KURVA[i - 1], KURVA[i]
+        if d <= b.d then
+            local f = (d - a.d) / (b.d - a.d)
+            return a.t + f * (b.t - a.t)
+        end
+    end
+    local b = KURVA[#KURVA]
+    return b.t + (d - b.d) / SLOPE_EKSTRA
+end
+
+local function resetFallRecord()
+    fallState.jatuh         = false
+    fallState.bentur        = false
+    fallState.sudahPulse    = false
+    fallState.pulseHarmless = false
+    fallState.tanahSejak    = nil
+end
+
 Setters.Fall = function(v, silent)
     if State.FallOn == v then return end
     State.FallOn = v
@@ -1976,82 +3831,118 @@ Setters.Fall = function(v, silent)
         if fallState.conn then return end  -- sudah jalan
         fallState.conn = RunService.Heartbeat:Connect(function()
             if not State.FallOn or State.Removed then return end
-            local char, hrp, hum = getKarakter()  -- FIX v1.0.2: urutan benar (HRP dulu, baru Humanoid)
+            local char, hrp, hum = getKarakter()  -- urutan benar: char, HRP, Humanoid
             if not hum or not hrp then return end
+
+            -- anti record basi: ganti karakter (respawn) -> buang record lama
+            if fallState.hum and fallState.hum ~= hum then
+                resetFallRecord()
+                fallState.pulseSampai = nil
+                fallState.hum = nil
+            end
+
             local now = os.clock()
-            -- v1.0.4 SILENT PULSE: selama jendela pulse, paksa state "Landed"
-            -- tiap frame. Kecepatan & fisika jatuh TIDAK diubah sama sekali —
-            -- game hanya menerima event mendarat (penghitung jatuh tereset).
+
+            -- SILENT PULSE: selama jendela pulse, paksa state "Landed" tiap
+            -- frame. Kecepatan & fisika jatuh TIDAK diubah sama sekali —
+            -- game hanya menerima event mendarat (penghitung tinggi tereset).
             if fallState.pulseSampai and now < fallState.pulseSampai then
                 pcall(function() hum:ChangeState(Enum.HumanoidStateType.Landed) end)
             end
+
             local vel = hrp.AssemblyLinearVelocity
             local st
             pcall(function() st = hum:GetState() end)
+
             if st == Enum.HumanoidStateType.Freefall and vel.Y < -4 then
                 if not fallState.jatuh then
-                    fallState.jatuh = true
-                    fallState.apex = hrp.Position.Y
-                    fallState.bentur = false
-                    -- v1.2.2: sudahPulse sengaja TIDAK direset di sini — latch
-                    -- global cuma dibuka saat mendarat sungguhan (tanah stabil)
-                    fallState.sejak = now
-                    fallState.groundY = nil
-                    fallState.lastRay = 0
+                    fallState.jatuh       = true
+                    fallState.apex        = hrp.Position.Y
+                    fallState.bentur      = false
+                    fallState.sejak       = now
+                    fallState.groundY     = nil
+                    fallState.lastRay     = 0
                     fallState.pulseSampai = nil
+                    fallState.hum         = hum
                 end
                 fallState.apex = math.max(fallState.apex, hrp.Position.Y)
-                local sudahTurun = fallState.apex - hrp.Position.Y
-                -- update cache ketinggian tanah: 10Hz saat jauh, tiap frame saat dekat
-                if sudahTurun > 10 and vel.Y < -40 then
-                    local dekat = (fallState.groundY ~= nil) and (hrp.Position.Y - fallState.groundY) < 60
-                    if dekat or (now - fallState.lastRay) >= 0.1 then
+
+                -- cache ketinggian tanah: 10Hz saat jauh, tiap frame saat dekat
+                if vel.Y < cfgFall.VEL_MIN then
+                    local dekat = (fallState.groundY ~= nil)
+                        and (hrp.Position.Y - fallState.groundY) < 60
+                    if dekat or (now - fallState.lastRay) >= cfgFall.JEDA_RAY then
                         fallState.lastRay = now
                         fallRay.FilterDescendantsInstances = char and {char} or {}
-                        local r = workspace:Raycast(hrp.Position, Vector3.new(0, -800, 0), fallRay)
+                        local r = Workspace:Raycast(hrp.Position, Vector3.new(0, -800, 0), fallRay)
                         if r then fallState.groundY = r.Position.Y else fallState.groundY = nil end
                     end
                 end
+
                 local tinggiTotal, sisaJatuh
                 if fallState.groundY then
-                    sisaJatuh = hrp.Position.Y - fallState.groundY
+                    sisaJatuh   = hrp.Position.Y - fallState.groundY
                     tinggiTotal = fallState.apex - fallState.groundY
                 end
-                -- VIRTUAL BRANCH: sekali per jatuh, pulse di POTONGAN/KALIBRASI %
-                -- perjalanan (v1.3: angka GUI = % damage, bukan % posisi)
-                if not fallState.bentur and not fallState.sudahPulse
-                and sudahTurun > 10 and vel.Y < -40 then
+
+                -- RE-ARM PINTAR: pulse sebelumnya cuma di jatuh kecil (sia-sia),
+                -- tapi sekarang jatuhnya ternyata besar (mis. melangkah dari hop
+                -- ke tepi jurang) -> buka latch per-record supaya pulse ulang
+                -- tetap jalan di posisi tepat.
+                if fallState.bentur and fallState.pulseHarmless
+                and tinggiTotal and tinggiTotal >= cfgFall.BATAS_RIIL then
+                    fallState.bentur        = false
+                    fallState.pulseHarmless = false
+                end
+
+                -- =========================================================
+                -- PLANNER KURVA DEMAGE (TANPA GERBANG — inti v1.07)
+                -- Target: demage akhir ~= (100 - potongan)% x demage normal.
+                -- tPlan = tinggi tracked yang menghasilkan demage target.
+                -- Pulse ditembak saat sisa jatuh <= tPlan + margin dinamis
+                -- (kecepatan/60 = jarak per frame, kompensasi kuantisasi).
+                -- =========================================================
+                if (not fallState.bentur) and vel.Y < cfgFall.VEL_MIN then
                     local picu = false
-                    if cfgFall.potongan > 0 and tinggiTotal
-                    and sisaJatuh <= tinggiTotal
-                    * (1 - cfgFall.potongan / (100 * (cfgFall.kalibrasi or 2))) then
-                        picu = true
+                    if cfgFall.potongan > 0 and tinggiTotal then
+                        local dNormal = fDmg(tinggiTotal)
+                        local dTarget = dNormal * (1 - cfgFall.potongan / 100)
+                        local tPlan   = fInv(dTarget)
+                        local margin  = math.abs(vel.Y) / 60
+                        if sisaJatuh <= tPlan + margin then picu = true end
                     end
-                    if not picu and cfgFall.potongan > 0 and not tinggiTotal
+                    -- fallback: tanah tidak terdeteksi raycast (jatuh sangat dalam)
+                    if (not picu) and cfgFall.potongan > 0 and (not tinggiTotal)
                     and (now - fallState.sejak) > 0.6 and vel.Y < -70 then
                         picu = true
                     end
                     if picu then
-                        fallState.bentur = true
-                        fallState.sudahPulse = true  -- v1.2.2: latch global — 1x per terbangan
-                        toast("🍂 Fall Assist: reset senyap di udara", Warna.Hijau2)
-                        -- v1.0.4 SILENT: TANPA platform fisik = TANPA hentakan.
-                        -- Cukup buka jendela pulse "Landed" selama 0.08 detik.
-                        fallState.pulseSampai = now + 0.08
+                        fallState.bentur = true -- latch per-record (anti pulse beruntun)
+                        local riil = (tinggiTotal or 0) >= cfgFall.BATAS_RIIL
+                        if riil then
+                            fallState.sudahPulse = true -- latch global (anti pantulan lereng)
+                            print(string.format(
+                                "[BALAP-FALL] pulse Landed terkirim — potongan %d%% | H=%.0f stud",
+                                cfgFall.potongan, tinggiTotal or 0))
+                            toast("Fall Resist: reset senyap di udara (" .. cfgFall.potongan .. "%)",
+                                Warna.Hijau2)
+                        else
+                            -- jatuh kecil (0 demage): pulse tetap jalan sesuai
+                            -- permintaan (tiap lompatan langsung bisa trigger),
+                            -- tapi tanpa notif & tidak mengunci jatuh besar
+                            -- berikutnya.
+                            fallState.pulseHarmless = true
+                        end
+                        fallState.pulseSampai = now + cfgFall.PULSE_DURASI
                     end
                 end
-                -- v1.2: BLEND LEMBUT DIHAPUS — mendarat 100% natural.
-                -- Bantalan -30 dulu bikin rasa "terlalu kebal" + angka % tak akurat.
             elseif fallState.jatuh then
-                -- v1.2.2 RE-ARM STABIL: sentuhan tanah sesaat (memantul/menyenggol
-                -- lereng salju) TIDAK menghidupkan ulang pemicu. Re-arm HANYA jika:
-                -- (a) menempel tanah terus-menerus >= 0.30 dtk (mendarat beneran),
+                -- RE-ARM STABIL: sentuhan tanah sesaat (pantulan / menyenggol
+                -- lereng) TIDAK menghidupkan ulang pemicu. Re-arm HANYA jika:
+                -- (a) menempel tanah terus >= 0.30 dtk (mendarat beneran),
                 -- (b) masuk air / duduk / panjat, atau (c) mati.
                 if st == Enum.HumanoidStateType.Dead then
-                    fallState.jatuh = false
-                    fallState.bentur = false
-                    fallState.sudahPulse = false
-                    fallState.tanahSejak = nil
+                    resetFallRecord()
                 else
                     local okRe, tanah, selesaiMutlak = pcall(function()
                         return hum.FloorMaterial ~= Enum.Material.Air,
@@ -2061,23 +3952,16 @@ Setters.Fall = function(v, silent)
                     end)
                     if okRe then
                         if selesaiMutlak then
-                            fallState.jatuh = false
-                            fallState.bentur = false
-                            fallState.sudahPulse = false
-                            fallState.tanahSejak = nil
+                            resetFallRecord()
                         elseif tanah then
                             if not fallState.tanahSejak then
                                 fallState.tanahSejak = now
                             end
                             if now - fallState.tanahSejak >= 0.30 then
-                                fallState.jatuh = false
-                                fallState.bentur = false
-                                fallState.sudahPulse = false
-                                fallState.tanahSejak = nil
+                                resetFallRecord()
                             end
                         else
-                            -- udara lagi (pantulan) -> batalkan hitungan tanah
-                            fallState.tanahSejak = nil
+                            fallState.tanahSejak = nil -- udara lagi (pantulan)
                         end
                     end
                 end
@@ -2088,46 +3972,19 @@ Setters.Fall = function(v, silent)
             fallState.conn:Disconnect()
             fallState.conn = nil
         end
-        fallState.jatuh = false
-        fallState.bentur = false
-        fallState.sudahPulse = false
-        fallState.tanahSejak = nil
-        fallState.pulseSampai = nil  -- v1.2.3: jangan sisakan jendela pulse
+        resetFallRecord()
+        fallState.pulseSampai = nil -- jangan sisakan jendela pulse
+        fallState.hum = nil
     end
-    syncNotify("Fall", v, silent, "Smart Fall Assist")
+    syncNotify("Fall", v, silent, "Fall Resist")
+    if refreshFallPreset then refreshFallPreset() end
 end
 
--- ANTI-AFK (port dari A) — toggle via Tab 1, sinkron dengan afkState
-Setters.Afk = function(v, silent)
-    State.AfkOn = v
-    afkState.aktif = v
-    if v then afkState.sudahIngatkan = false end
-    afkStatusUpdate()
-    syncNotify("Afk", v, silent, "Anti-AFK")
-end
-
--- Q — Speed ON/OFF murni (v2.1)
+-- Q — Speed ON/OFF murni
 -- Nilai ON (17.25 / 21.25, atau di antaranya) dipilih via stepper di Tab GERAK.
 -- Keybind Q langsung panggil setFeature("Speed", ...) dari handler [21].
 
--- RESET & REJOIN
-resetAll = function()
-    setFeature("Speed", false, true)
-    setFeature("Jump", false, true)
-    setFeature("Shift", false, true)
-    setFeature("Moon", false, true)
-    setFeature("Hide", false, true)
-    setFeature("Players", false, true)
-    setFeature("LW", false, true)
-    setFeature("Walls", false, true)
-    setFeature("Light", false, true)
-    setFeature("Fall", false, true)
-    State.SpeedValue, State.JumpValue, State.JumpHeightValue = CFG.SPEED_ON_1, CFG.ON_JUMP, CFG.ON_JUMP_H
-    if RefreshSpeed then RefreshSpeed() end
-    if RefreshJump then RefreshJump() end
-    updateSpeedLabel()
-    toast("🔄 Reset: semua OFF (Speed " .. fmtNum(CFG.SPEED_OFF) .. " / Jump " .. fmtNum(CFG.OFF_JUMP) .. ")", Warna.Biru)
-end
+-- REJOIN
 rejoin = function()
     toast("🔁 Rejoin: balik ke server dalam 3 detik...", Warna.Biru)
     task.delay(3, function()
@@ -2149,15 +4006,27 @@ unloadScript = function()
     pcall(setFeature, "Jump", false, true)
     pcall(setFeature, "Shift", false, true)
     pcall(setFeature, "Moon", false, true)
+    pcall(setFeature, "Tengah", false, true)
+    pcall(setFeature, "Tiang", false, true)
     pcall(setFeature, "Hide", false, true)
-    pcall(setFeature, "Players", false, true)
     pcall(setFeature, "LW", false, true)
     pcall(setFeature, "Walls", false, true)
     pcall(setFeature, "Light", false, true)
     pcall(setFeature, "Fall", false, true)
+    pcall(setFeature, "HideAtas", false, true)
     -- 2) Unbind semua RenderStep binding
     pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
     pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
+    pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
+    pcall(function() UserInputService.MouseBehavior = Enum.MouseBehavior.Default end)
+    pcall(function()
+        UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.MovementRelative
+    end)
+    pcall(function() UserInputService.MouseIconEnabled = true end)
+    pcall(function()
+        if sltDotGui then sltDotGui:Destroy() end
+        sltDotGui, sltDot = nil, nil
+    end)
     -- 3) Cancel semua task/thread yang masih jalan
     if lightConn then pcall(function() task.cancel(lightConn) end) lightConn = nil end
     if fallState and fallState.conn then
@@ -2204,31 +4073,12 @@ unloadScript = function()
             end
         end
     end)
-    -- 7) Restore player lain yang di-hide
-    pcall(function()
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer and plr.Character then
-                for _, d in ipairs(plr.Character:GetDescendants()) do
-                    if d:IsA("BasePart") then
-                        d.LocalTransparencyModifier = 0
-                    elseif d:IsA("BillboardGui") then
-                        d.Enabled = true
-                    end
-                end
-                local h = plr.Character:FindFirstChildOfClass("Humanoid")
-                if h then
-                    h.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
-                end
-            end
-        end
-    end)
-    -- 8) Reset status label
-    -- 9) Hapus ScreenGui (parent dari semua UI: panel, notif, footer, dll)
+    -- 7) Hapus ScreenGui (parent dari semua UI: panel, notif, footer, dll)
     pcall(function() if screenGui then screenGui:Destroy() end end)
-    -- 10) Clear global flag supaya script bisa di-execute lagi
+    -- 8) Clear global flag supaya script bisa di-execute lagi
     _G.__BALAP_MAIN__ = nil
     _G.__KS_DELETE_ARMED__ = nil
-    -- 11) Destroy script itu sendiri (kalau via LocalScript)
+    -- 9) Destroy script itu sendiri (kalau via LocalScript)
     pcall(function()
         if script and script.Parent then
             script.Disabled = true
@@ -2264,18 +4114,29 @@ local function initCharacter(char)
     local hum = char:WaitForChild("Humanoid", 10)
     if not hum then return end
     updateJumpLabel()
+    -- REVISI v1.1.0 + v1.2.0: Shiftlock, Moonwalk & Shiftlock Tengah
+    -- OTOMATIS OFF saat mati/respawn. Dua lapis: langsung saat humanoid
+    -- mati (Died) + jaga-jaga saat spawn baru (karakter diganti tanpa
+    -- event Died sempat jalan).
+    local function matikanGerak()
+        if State.ShiftOn then setFeature("Shift", false) end
+        if State.MoonOn then setFeature("Moon", false) end
+        if State.TengahOn then setFeature("Tengah", false) end
+    end
+    matikanGerak()
+    catat(hum.Died:Connect(matikanGerak))
     hum.StateChanged:Connect(function(_, newState)
         local swimming = (newState == Enum.HumanoidStateType.Swimming)
         if swimming ~= State.IsSwimming then
             State.IsSwimming = swimming
-            if State.ShiftOn then applySpeed() end
+            -- v1.3.4: bonus berenang ikut Shiftlock Tengah; pulih otomatis
+            applySpeed()
         end
     end)
     task.wait(0.25)
     if State.Removed then return end
     if State.SpeedOn then applySpeed() end
     if State.JumpOn then applyJump() end
-    if State.ShiftOn then hum.AutoRotate = false end
 end
 LocalPlayer.CharacterAdded:Connect(initCharacter)
 task.spawn(function()
@@ -2295,38 +4156,22 @@ task.spawn(function()
 end)
 
 -- [19] BUKA / TUTUP GUI ---------------------------------------------
-local sesiAnim = 0
+-- GUI tampil & hilang INSTAN (tanpa animasi buka/tutup) — lebih ringan.
 local function minimizeGui()
     if not root.Visible then return end
-    sesiAnim += 1
-    local id = sesiAnim
     bunyi(CFG.SND_PING, 0.3, 0.75)
-    -- icon minimize DIHAPUS — GUI sembunyi total, buka lewat F
-    local ti = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-    tween(panelScale, ti, {Scale = 0.5})
-    tween(root, ti, {Rotation = 8})
-    tween(fadeVal, ti, {Value = 1})
-    task.delay(0.22, function()
-        if sesiAnim ~= id then return end
-        root.Visible = false
-        root.Rotation = 0
-        panelScale.Scale = 1
-        fadeVal.Value = 0
-    end)
+    root.Visible = false
+    root.Rotation = 0
+    panelScale.Scale = 1
+    fadeVal.Value = 0
 end
 local function bukaGui()
-    sesiAnim += 1
     bunyi(CFG.SND_PING, 0.35, 1.15)
     root.Visible = true
-    root.Rotation = -8
-    panelScale.Scale = 0.6
-    fadeVal.Value = 1
-    setFade(1)
-    tween(root, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Rotation = 0})
-    tween(panelScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1})
-    tween(fadeVal, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Value = 0})
-    konfeti(root, UDim2.new(0.5, 0, 0.5, 0), 12)
-    emojiBurst(root, UDim2.new(0.5, 0, 0.5, 0), {"✨", "⚡", "💜", "💙"}, 6)
+    root.Rotation = 0
+    panelScale.Scale = 1
+    fadeVal.Value = 0
+    setFade(0)
 end
 togglePanel = function()
     if root.Visible then minimizeGui() else bukaGui() end
@@ -2345,6 +4190,9 @@ local lastK = 0
 catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if State.Removed then return end
+    -- v1.3.4 FIX: jangan picu hotkey saat sedang mengetik di kotak teks
+    -- (G/Q dst. tidak lagi nyasar saat isi nama TP / stepper / kode sync)
+    if UserInputService:GetFocusedTextBox() then return end
     if input.KeyCode == CFG.TOGGLE_KEY then
         togglePanel()
     elseif input.KeyCode == Enum.KeyCode.Q then
@@ -2353,8 +4201,10 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
         setFeature("Jump", not State.JumpOn)
     elseif input.KeyCode == Enum.KeyCode.C then
         setFeature("Shift", not State.ShiftOn)
-    elseif input.KeyCode == Enum.KeyCode.G then
+    elseif input.KeyCode == Enum.KeyCode.F then
         setFeature("Moon", not State.MoonOn)
+    elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+        setFeature("Tengah", not State.TengahOn)
     elseif input.KeyCode == Enum.KeyCode.B then
         setFeature("Fall", not State.FallOn)
     elseif input.KeyCode == Enum.KeyCode.R then
@@ -2363,6 +4213,8 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
         setFeature("Light", not State.LightOn)
     elseif input.KeyCode == Enum.KeyCode.X then
         setFeature("Walls", not State.WallsOn)
+    elseif input.KeyCode == Enum.KeyCode.V then
+        titikTambahDiSini()   -- v1.3.4: + titik cepat, tanpa buka GUI
     elseif input.KeyCode == Enum.KeyCode.K then
         local now = os.clock()
         if now - lastK < 0.45 then
@@ -2375,17 +4227,53 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end))
 
+diagSet("keybind OK — finalisasi...")
+-- [21b] MESIN ☁ SINKRON (v1.3.4) — mulai setelah semua siap
+syncMulai()
 -- [22] MULAI ---------------------------------------------------------
-afkStatusUpdate()
 updateSpeedLabel()
 setTab(1)  -- 🏃 GERAK jadi tab pertama
-task.delay(0.15, bukaGui)
-print("[BALAP v" .. VERSI .. "] SIAP ✔ — F = GUI | K×2 = rejoin")
-print("[BALAP] 3 TAB: 🏃 GERAK | 🎨 VISUAL | ⚙️ SISTEM")
-print("[BALAP] Keybind: Q speed ON/OFF (nilai di panel 17.25-21.25) • J jump (51.25/65.25) • C shift • G moonwalk")
-print("[BALAP]           B fall assist • R hide • T cahaya 2-arah • X dinding • K×2 rejoin")
-print("[BALAP] Fitur dinding (X) dari skrip lain sudah jadi 1 dengan script balapan")
+task.delay(0.15, function()
+        local okG, errG = pcall(bukaGui)
+        if not okG then
+                diagSet("GUI gagal terbuka: " .. tostring(errG), Color3.fromRGB(239, 68, 68))
+                warn("[BALAP] bukaGui error: " .. tostring(errG))
+        end
+end)
+print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
+print("[BALAP] GERAK | VISUAL | SISTEM • Q speed • J jump • C shift • F moon • B fallresist • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sinkron")
+diagSet("BALAP v1.3.4 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+task.delay(7, function()
+        local function hapusDiag()
+                pcall(function()
+                        local g = game:GetService("CoreGui"):FindFirstChild("BALAP_DIAG")
+                        if g then g:Destroy() end
+                end)
+                pcall(function()
+                        if gethui then
+                                local g = gethui():FindFirstChild("BALAP_DIAG")
+                                if g then g:Destroy() end
+                        end
+                end)
+        end
+        hapusDiag()
+end)
 end -- akhir initLogic()
 
 -- Eksekusi initLogic() sekarang (UI + helpers sudah siap dari part1-4)
 initLogic()
+getgenv().BALAP_API = { Setters = Setters, State = State, Sync = SYNC }  -- debug/otomasi + harness uji
+end, function(e)
+        local teks = tostring(e)
+        print("==================================================")
+        print("[BALAP v1.3.4] ERROR SAAT LOAD — kirim teks ini ke dev:")
+        print(teks)
+        pcall(function() print(debug.traceback("", 2)) end)
+        print("==================================================")
+        pcall(function()
+                diagSet("ERROR LOAD: " .. teks:sub(1, 260), Color3.fromRGB(239, 68, 68))
+        end)
+end)
+if not __BALAP_LOAD_OK__ then
+        warn("[BALAP v1.3.4] Script GAGAL load — banner MERAH di layar berisi errornya.")
+end
