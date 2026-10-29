@@ -1,5 +1,5 @@
 --========================================================
---  BALAP v1.3.3 — 
+--  BALAP v1.3.5 — 
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  4 TAB:
@@ -15,6 +15,7 @@
 --    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor lingkaran mini)
 --    F = Moonwalk    B = Fall Resist (preset 5/20/50/75%)    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
+--    V = Tambah titik di posisi karakter (tanpa buka GUI)
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab GERAK): simpan lokasi dgn nama bebas — permanen
 --
@@ -34,8 +35,28 @@
 --          disembunyikan)
 --  v1.3.3: Kamera TIDAK diubah (efek kamera v1.3.2 dibatalkan) — cuma LETAK
 --          lingkaran kursor digeser ke bawah (CFG.SLT_DOT_Y, 0.5 = tengah)
+--  v1.3.4: ☁ SINKRON — TP & titik ikut tersinkron LINTAS DEVICE via
+--          jsonblob.com (gratis, tanpa login). Kode sync angka dibuat
+--          otomatis, selalu tampil di kartu ☁ SINKRON (tab TITIK) +
+--          tombol SALIN. MASUKKAN KODE = nyambung ke device lain,
+--          GANTI KODE = buat loker baru. Merge pintar: TP per nama,
+--          titik <1 stud = dianggap kembar, DAFTAR HAPUS ikut
+--          tersinkron (max 200) supaya hapusan tidak "bangkit" lagi.
+--          Upload jeda 30 dtk • download saat load + tiap 3 menit •
+--          offline = diam, data aman di lokal, retry otomatis.
+--          Lain-lain: fix hotkey saat mengetik • V = tambah titik •
+--          rename TP (✎) • jarak + urut terdekat • hapus semua =
+--          konfirmasi 2 langkah • Speed OFF 17.15 • berenang saat
+--          Shiftlock Tengah aktif = speed aktif × 1.025
+--  v1.3.5: FIX SYNC — jsonblob.com ternyata MEMBLOKIR request dari
+--          executor (Cloudflare anti-bot, balasan 403) sehingga kode
+--          tidak pernah terbentuk ("Kode belum dibuat"). Layanan
+--          diganti ke textdb.dev — sudah diuji: tulis/baca/update OK,
+--          payload 320KB aman, tanpa blokir. BONUS: kode sync sekarang
+--          bisa dibaca manusia (contoh: balap-7k2m-9xq4) — dulu cuma
+--          bisa angka. Cara pakai tidak berubah sama sekali.
 --========================================================
-print("[BALAP v1.3.3] load mulai...")
+print("[BALAP v1.3.5] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -84,7 +105,7 @@ do
         end
 end
 
-local VERSI = "1.3.3"
+local VERSI = "1.3.5"
 local __BALAP_LOAD_OK__ = xpcall(function()
 -- ================================================================
 -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -139,8 +160,8 @@ local CFG = {
     LED_TEXT        = "⚡ B A L A P ⚡",
     SOUND_ON        = true,
     FX_LEVEL        = 1,
-    -- Speed cycle 3 state (17.10 → 17.25 → 21.25 → balik OFF)
-    SPEED_OFF   = 17.10,
+    -- Speed cycle 3 state (17.15 → 17.25 → 21.25 → balik OFF)
+    SPEED_OFF   = 17.15,
     SPEED_ON_1  = 17.25,
     SPEED_ON_2  = 21.25,
     -- Jump: OFF 51.25 ⇄ ON 65.25 (kondisional UseJumpPower / JumpHeight)
@@ -168,6 +189,15 @@ local CFG = {
     TITIK_TINGGI   = 1.5,   -- tinggi tiang (stud)
     TITIK_DIAMETER = 0.3,   -- diameter tiang (stud)
     TITIK_FILE     = "penanda_titik.json", -- sama dgn script standalone lama
+    -- ☁ SINKRON (v1.3.5): TP + titik lintas device via textdb.dev
+    -- (jsonblob.com diblokir Cloudflare untuk request executor -> 403)
+    SYNC_FILE          = "BALAP_SYNC.json", -- kode sync + daftar hapus
+    SYNC_URL           = "https://textdb.dev/api/data/", -- .. kode
+    SYNC_TOMBSTONE_MAX = 200,   -- batas daftar hapus yang ikut disinkron
+    SYNC_UNGGAH_JEDA   = 30,    -- dtk tunda upload setelah perubahan terakhir
+    SYNC_UNDUH_TIAP    = 180,   -- dtk antar unduhan berkala (3 menit)
+    TITIK_MAX          = 5000,  -- cap keras titik (praktis unlimited, anti crash)
+    SWIM_BONUS         = 1.025, -- berenang + Shiftlock Tengah: speed aktif × 1.025
     SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
     SND_SNAP   = "rbxasset://sounds/snap.mp3",
 }
@@ -274,6 +304,11 @@ local function fmtNum(v)
     s = s:gsub("%.$", "")
     return s
 end
+-- format jarak utk daftar TP & titik (v1.3.4)
+local function fmtJarak(d)
+    if d >= 1000 then return string.format("%.2fkm", d / 1000) end
+    return string.format("%.1fm", d)
+end
 local function nomorBebas(prefix, daftarNama)
     local pakai = {}
     for _, nama in ipairs(daftarNama) do
@@ -312,6 +347,11 @@ local cfgFall, oLight, fallState, fallRay, lightConn, refreshFallPreset, PRESET_
 -- Forward declare untuk part3 (FX/footer/icon) — di-expose via buildFX()
 local konfeti, emojiBurst, pusatDiRoot, toast
 local kumpulkanFade, setFade, fadeVal
+-- Forward declare data TP + modul ☁ SINKRON (didefinisikan di [7a3])
+local TP_MAX, TP_FILE, TP_LOKASI, tpBisaFile
+local tpBulat, tpTulisFile, tpMuat, tpRefresh
+local syncTandai, syncCatatHapusTp, syncCatatHapusTiang
+local syncBuangHapusTp, syncBuangHapusTiang, syncRefreshKartu
 
 -- Forward declare untuk part2 (UI builder) — di-expose via buildUI()
 local tabBtns, kontenTabs, setTab
@@ -561,9 +601,9 @@ buat("Frame", {
 local title = buat("TextLabel", {
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 12, 0, 0),
-    Size = UDim2.new(1, -70, 1, 0),
+    Size = UDim2.new(1, -104, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.3.3 ⚡",
+    Text = "⚡ BALAP v1.3.5 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -598,6 +638,21 @@ local accent = buat("Frame", {
     BorderSizePixel = 0,
 }, panel)
 ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
+-- ☁ mini di header (v1.3.4): warna = status sinkron, klik = buka tab TITIK
+local btnCloud = buat("TextButton", {
+    Size = UDim2.fromOffset(24, 24),
+    Position = UDim2.new(1, -72, 0.5, -12),
+    BackgroundTransparency = 1,
+    FontFace = fnt("bold"),
+    Text = "☁",
+    TextColor3 = Warna.AbuGelap,
+    TextSize = 15,
+    AutoButtonColor = false,
+}, header)
+btnCloud.MouseButton1Click:Connect(function()
+    ripple(btnCloud, Warna.Ungu2)
+    setTab(4)
+end)
 
 -- [7a2] MODUL PENANDA TITIK (tab TITIK, v1.3.0) ---------------------
 -- Port standalone "PENANDA TITIK" ke dalam GUI BALAP:
@@ -699,35 +754,54 @@ local function titikTambahDiSini()
     local char = getChar()
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then toast("Karakter tidak ketemu!", Warna.Merah) return end
+    if #titikList >= CFG.TITIK_MAX then
+        toast("Penuh (max " .. CFG.TITIK_MAX .. " titik)", Warna.Kuning)
+        return
+    end
     -- cari tanah di bawah kaki biar tiang nempel lantai
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
     params.FilterDescendantsInstances = { char }
     local hit = Workspace:Raycast(hrp.Position, Vector3.new(0, -100, 0), params)
     local groundY = hit and hit.Position.Y or (hrp.Position.Y - 3)
-    titikList[#titikList + 1] = Vector3.new(hrp.Position.X, groundY, hrp.Position.Z)
+    local pos = Vector3.new(clamp2(hrp.Position.X), clamp2(groundY), clamp2(hrp.Position.Z))
+    -- anti titik kembar (v1.3.4): ada titik < 1 stud -> tolak
+    for _, p in ipairs(titikList) do
+        local dx, dy, dz = p.X - pos.X, p.Y - pos.Y, p.Z - pos.Z
+        if dx*dx + dy*dy + dz*dz < 1 then
+            toast("titik sudah ada di sini", Warna.Kuning)
+            return
+        end
+    end
+    syncBuangHapusTiang(pos)   -- titik dipasang lagi -> hapus tombstone lamanya
+    titikList[#titikList + 1] = pos
     titikSimpan()
     titikRender()
     titikRefreshDaftar()
+    syncTandai()
     toast("+ Titik #" .. #titikList .. " ditambahkan"
         .. (titikBisaFile and " (tersimpan)" or " (sesi saja)"), Warna.Hijau)
 end
 
 local function titikHapusSemua()
     if #titikList == 0 then toast("Belum ada titik", Warna.Kuning) return end
+    for _, p in ipairs(titikList) do syncCatatHapusTiang(p) end  -- tombstone ikut sync
     table.clear(titikList)
     titikSimpan()
     titikRender()
     titikRefreshDaftar()
+    syncTandai()
     toast("Semua titik dihapus", Warna.Merah)
 end
 
--- gambar ulang daftar titik di tab TITIK
+-- gambar ulang daftar titik di tab TITIK (v1.3.4: + jarak & sync)
 titikRefreshDaftar = function()
     if not titikHolder then return end
     for _, c in ipairs(titikHolder:GetChildren()) do
         if c:IsA("TextButton") then c:Destroy() end
     end
+    local char = getChar()
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
     for i, pos in ipairs(titikList) do
         local idx = i
         local item = buat("TextButton", {
@@ -740,6 +814,13 @@ titikRefreshDaftar = function()
         }, titikHolder)
         buat("UICorner", {CornerRadius = UDim.new(0, 6)}, item)
         efekTombol(item, 1.02)
+        local teks
+        if hrp then
+            teks = ("%d.  (%s)  (%.1f, %.1f, %.1f)"):format(
+                idx, fmtJarak((pos - hrp.Position).Magnitude), pos.X, pos.Y, pos.Z)
+        else
+            teks = ("%d.  (%.1f, %.1f, %.1f)"):format(idx, pos.X, pos.Y, pos.Z)
+        end
         buat("TextLabel", {
             BackgroundTransparency = 1,
             Position = UDim2.new(0, 8, 0, 0),
@@ -748,7 +829,7 @@ titikRefreshDaftar = function()
             TextSize = 12,
             TextColor3 = Warna.TeksGelap,
             TextXAlignment = Enum.TextXAlignment.Left,
-            Text = ("%d.  (%.1f, %.1f, %.1f)"):format(idx, pos.X, pos.Y, pos.Z),
+            Text = teks,
         }, item)
         local hx = buat("TextButton", {
             Size = UDim2.new(0, 22, 0, 22),
@@ -762,10 +843,12 @@ titikRefreshDaftar = function()
         }, item)
         buat("UICorner", {CornerRadius = UDim.new(0, 6)}, hx)
         hx.MouseButton1Click:Connect(function()
+            syncCatatHapusTiang(pos)   -- tombstone: hapusan tidak bangkit dari cloud
             table.remove(titikList, idx)
             titikSimpan()
             titikRender()
             titikRefreshDaftar()
+            syncTandai()
             toast("Titik " .. idx .. " dihapus", Warna.Merah)
         end)
         item.MouseButton1Click:Connect(function()
@@ -775,6 +858,747 @@ titikRefreshDaftar = function()
     if titikLabelJumlah then
         titikLabelJumlah.Text = ("Total: %d titik • klik item = teleport"):format(#titikList)
     end
+    syncRefreshKartu()
+end
+
+-- [7a3] DATA TP + MODUL ☁ SINKRON (v1.3.4) ---------------------------
+-- Data TP dipindah keluar buildUI supaya modul sync bisa mengaksesnya.
+TP_MAX     = 40
+TP_FILE    = "BALAP_TP.json"
+TP_LOKASI  = {}
+tpBisaFile = (type(writefile) == "function") and (type(readfile) == "function")
+
+tpBulat = function(v)
+    return math.floor(v * 100 + 0.5) / 100
+end
+
+tpTulisFile = function()
+    getgenv().BALAP_TP_DATA = TP_LOKASI            -- cadangan sesi (re-execute)
+    if not tpBisaFile then return end
+    local data = {}
+    for i = 1, #TP_LOKASI do
+        local L = TP_LOKASI[i]
+        data[i] = { nama = L.nama, x = tpBulat(L.x), y = tpBulat(L.y), z = tpBulat(L.z) }
+    end
+    local ok, err = pcall(function()
+        writefile(TP_FILE, HttpService:JSONEncode(data))
+    end)
+    if not ok then warn("[BALAP-TP] gagal tulis file: " .. tostring(err)) end
+end
+
+tpMuat = function()
+    local data
+    if tpBisaFile then
+        local ada = false
+        pcall(function() ada = isfile(TP_FILE) end)
+        if ada then
+            pcall(function() data = HttpService:JSONDecode(readfile(TP_FILE)) end)
+        end
+    end
+    if type(data) ~= "table" then
+        data = rawget(getgenv(), "BALAP_TP_DATA")   -- fallback: sesi yang sama
+    end
+    if type(data) == "table" then
+        for _, v in ipairs(data) do
+            if type(v) == "table" and type(v.nama) == "string" and #v.nama > 0
+                and type(v.x) == "number" and type(v.y) == "number" and type(v.z) == "number" then
+                TP_LOKASI[#TP_LOKASI + 1] = { nama = v.nama, x = v.x, y = v.y, z = v.z }
+            end
+        end
+    end
+    getgenv().BALAP_TP_DATA = TP_LOKASI
+    print("[BALAP-TP] muat " .. #TP_LOKASI .. " lokasi"
+        .. (tpBisaFile and " (file: " .. TP_FILE .. ")" or " (mode SESI — executor tanpa writefile)"))
+end
+tpMuat()
+
+-- ======================================================================
+-- ☁ SINKRON (v1.3.5) — TP + titik lintas device
+-- Layanan : textdb.dev — gratis, tanpa login, TANPA blokir executor.
+--           (jsonblob.com diblokir Cloudflare utk request executor ->
+--           selalu 403; itulah sebabnya v1.3.4 gagal membentuk kode)
+-- Kode    : balap-xxxx-xxxx — dibaca manusia, mudah diketik. Selalu
+--           tampil di kartu ☁ SINKRON (tab TITIK) + tombol SALIN.
+--           Device lain bergabung lewat MASUKKAN KODE. GANTI KODE =
+--           loker baru.
+-- Isi sync: HANYA titik tiang + TP (pengaturan tidak ikut).
+-- Merge   : TP per nama (nama sama = posisi di-update) • titik per
+--           posisi (< 1 stud = kembar, ditolak) • DAFTAR HAPUS ikut
+--           tersinkron (max 200) — hapusan tidak bangkit lagi.
+-- Ritme   : upload ditunda 30 dtk setelah perubahan terakhir •
+--           download saat load + tiap 3 menit • anti ping-pong.
+-- Offline : diam + toast sekali, data aman di lokal, retry otomatis.
+-- File    : BALAP_SYNC.json (kode + daftar hapus, tersimpan permanen).
+-- ======================================================================
+local SYNC = {
+    kode          = nil,   -- ID loker (contoh: balap-7k2m-9xq4)
+    hapus         = {},    -- tombstone: {t="tp", n=nama} / {t="tiang", x,y,z}
+    bisaHttp      = false,
+    sibuk         = false, -- mutex: cuma 1 operasi jaringan
+    pending       = false, -- ada perubahan menunggu diunggah
+    status        = "load",-- load | ok | kirim | terima | offline
+    labelPerangkat = "",
+    lastDari      = "",    -- device pengirim terakhir (dari cloud)
+    lastPayload   = nil,   -- teks payload terakhir (anti ping-pong)
+    waktuUbah     = 0,
+    waktuUnduh    = 0,
+    waktuCoba     = 0,
+    offSudahToast = false,
+    kosongSudah   = false, -- toast "loker kosong" cukup sekali
+    ui            = nil,   -- diisi buildUI (kartu status)
+}
+
+-- label perangkat: "PC (NamaRoblox)" / "HP (NamaRoblox)"
+do
+    local hp = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+    SYNC.labelPerangkat = (hp and "HP" or "PC") .. " (" .. tostring(LocalPlayer.Name or "?") .. ")"
+end
+
+-- deteksi fungsi HTTP executor (bertingkat; BUKAN HttpService Roblox
+-- jadi tidak kelihatan oleh server game)
+local syncReq = nil
+do
+    local kandidat = {
+        function() if type(request) == "function" then return request end end,
+        function() if type(http_request) == "function" then return http_request end end,
+        function() if type(syn) == "table" and type(syn.request) == "function" then return syn.request end end,
+        function() if type(http) == "table" and type(http.request) == "function" then return http.request end end,
+    }
+    for _, c in ipairs(kandidat) do
+        local ok, f = pcall(c)
+        if ok and type(f) == "function" then
+            syncReq = f
+            break
+        end
+    end
+end
+SYNC.bisaHttp = (syncReq ~= nil)
+if not SYNC.bisaHttp then
+    print("[BALAP-SYNC] executor tidak punya HTTP request — sinkron nonaktif (fitur lain normal)")
+end
+
+-- ---- file BALAP_SYNC.json: kode + daftar hapus ----
+local function syncSimpanFile()
+    getgenv().BALAP_SYNC_DATA = { kode = SYNC.kode, hapus = SYNC.hapus }
+    if not titikBisaFile then return end
+    pcall(function()
+        writefile(CFG.SYNC_FILE, HttpService:JSONEncode({
+            kode  = SYNC.kode,
+            hapus = SYNC.hapus,
+            dari  = SYNC.labelPerangkat,
+            waktu = os.time(),
+        }))
+    end)
+end
+
+local function syncMuatFile()
+    local data
+    if titikBisaFile then
+        local ada = false
+        pcall(function() ada = isfile(CFG.SYNC_FILE) end)
+        if ada then
+            pcall(function() data = HttpService:JSONDecode(readfile(CFG.SYNC_FILE)) end)
+        end
+    end
+    if type(data) ~= "table" then
+        data = rawget(getgenv(), "BALAP_SYNC_DATA")
+    end
+    if type(data) == "table" then
+        if type(data.kode) == "string" then
+            local k = data.kode:lower()
+            if k:match("^%d+$") then
+                -- kode lama v1.3.4 (jsonblob, sudah mati) -> abaikan
+            elseif #k >= 6 and #k <= 40 and k:match("^[a-z0-9%-]+$") then
+                SYNC.kode = k
+            end
+        end
+        if type(data.hapus) == "table" then
+            for _, h in ipairs(data.hapus) do
+                if type(h) == "table" and h.t == "tp" and type(h.n) == "string" and #h.n > 0 then
+                    SYNC.hapus[#SYNC.hapus + 1] = { t = "tp", n = h.n }
+                elseif type(h) == "table" and h.t == "tiang"
+                    and type(h.x) == "number" and type(h.y) == "number" and type(h.z) == "number" then
+                    SYNC.hapus[#SYNC.hapus + 1] = { t = "tiang", x = h.x, y = h.y, z = h.z }
+                end
+            end
+        end
+    end
+    print("[BALAP-SYNC] muat file: kode=" .. tostring(SYNC.kode or "-")
+        .. " • daftar hapus=" .. #SYNC.hapus)
+end
+syncMuatFile()
+
+-- ---- daftar hapus (tombstone) ----
+local function syncPotongHapus()
+    while #SYNC.hapus > CFG.SYNC_TOMBSTONE_MAX do
+        table.remove(SYNC.hapus, 1)   -- buang yang tertua
+    end
+end
+local function syncHapusTpAda(nama)
+    for _, h in ipairs(SYNC.hapus) do
+        if h.t == "tp" and h.n == nama then return true end
+    end
+    return false
+end
+-- titik dianggap terhapus kalau ada tombstone < 1 stud darinya
+local function syncHapusTiangAda(px, py, pz)
+    for _, h in ipairs(SYNC.hapus) do
+        if h.t == "tiang" then
+            local dx, dy, dz = h.x - px, h.y - py, h.z - pz
+            if dx*dx + dy*dy + dz*dz < 1 then return true end
+        end
+    end
+    return false
+end
+syncCatatHapusTp = function(nama)
+    if syncHapusTpAda(nama) then return end
+    SYNC.hapus[#SYNC.hapus + 1] = { t = "tp", n = nama }
+    syncPotongHapus()
+end
+syncCatatHapusTiang = function(pos)
+    if syncHapusTiangAda(pos.X, pos.Y, pos.Z) then return end
+    SYNC.hapus[#SYNC.hapus + 1] = { t = "tiang", x = clamp2(pos.X), y = clamp2(pos.Y), z = clamp2(pos.Z) }
+    syncPotongHapus()
+end
+syncBuangHapusTp = function(nama)
+    for i = #SYNC.hapus, 1, -1 do
+        local h = SYNC.hapus[i]
+        if h.t == "tp" and h.n == nama then table.remove(SYNC.hapus, i) end
+    end
+end
+syncBuangHapusTiang = function(pos)
+    for i = #SYNC.hapus, 1, -1 do
+        local h = SYNC.hapus[i]
+        if h.t == "tiang" then
+            local dx, dy, dz = h.x - pos.X, h.y - pos.Y, h.z - pos.Z
+            if dx*dx + dy*dy + dz*dz < 1 then table.remove(SYNC.hapus, i) end
+        end
+    end
+end
+
+-- ---- kartu status (UI dibangun di buildUI) ----
+syncRefreshKartu = function()
+    local ui = SYNC.ui
+    if not ui then return end
+    local warna = Warna.AbuGelap
+    if SYNC.status == "ok" then warna = Warna.Hijau2
+    elseif SYNC.status == "kirim" or SYNC.status == "terima" then warna = Warna.Kuning end
+    if ui.dot then ui.dot.BackgroundColor3 = warna end
+    if ui.ikon then ui.ikon.TextColor3 = warna end
+    if ui.info then
+        if not SYNC.bisaHttp then
+            ui.info.Text = ("%d TP • %d titik • executor tanpa HTTP — sync nonaktif")
+                :format(#TP_LOKASI, #titikList)
+        else
+            local kodeTeks = SYNC.kode and ("Kode: " .. SYNC.kode) or "Kode: belum dibuat"
+            ui.info.Text = ("%d TP • %d titik • %s"):format(#TP_LOKASI, #titikList, kodeTeks)
+        end
+    end
+    if ui.dari then
+        if SYNC.lastDari ~= "" then
+            ui.dari.Text = "terakhir disimpan dari: " .. SYNC.lastDari
+        elseif SYNC.kode then
+            ui.dari.Text = "cloud siap — salin kode ke device lain"
+        else
+            ui.dari.Text = "menyambung ke cloud (butuh internet)..."
+        end
+    end
+end
+
+local function syncSetStatus(s)
+    SYNC.status = s
+    if s == "offline" then
+        if not SYNC.offSudahToast then
+            SYNC.offSudahToast = true
+            toast("☁ offline — data aman di lokal", Warna.Kuning)
+        end
+    else
+        SYNC.offSudahToast = false
+    end
+    syncRefreshKartu()
+end
+
+syncTandai = function()
+    syncSimpanFile()               -- tombstone langsung aman di file
+    SYNC.pending = true
+    SYNC.waktuUbah = os.clock()
+    SYNC.status = "kirim"
+    syncRefreshKartu()
+end
+
+-- ---- payload & validasi ----
+local function syncPayload()
+    local tp = {}
+    for i = 1, #TP_LOKASI do
+        local L = TP_LOKASI[i]
+        tp[i] = { n = L.nama, x = tpBulat(L.x), y = tpBulat(L.y), z = tpBulat(L.z) }
+    end
+    local tg = {}
+    for i = 1, #titikList do
+        local p = titikList[i]
+        tg[i] = { x = clamp2(p.X), y = clamp2(p.Y), z = clamp2(p.Z) }
+    end
+    return {
+        v     = 1,
+        tp    = tp,
+        tiang = tg,
+        hapus = SYNC.hapus,
+        dari  = SYNC.labelPerangkat,
+        waktu = os.time(),
+    }
+end
+
+-- validasi struktur data cloud (anti sabotase — kode bisa tersebar)
+local function syncValidasi(data)
+    if type(data) ~= "table" or data.v ~= 1 then return nil end
+    if type(data.tp) ~= "table" or type(data.tiang) ~= "table"
+        or type(data.hapus) ~= "table" then return nil end
+    local function num(v)
+        return type(v) == "number" and v == v and math.abs(v) < 100000
+    end
+    local tp = {}
+    for _, e in ipairs(data.tp) do
+        if type(e) == "table" and type(e.n) == "string" and #e.n > 0 and #e.n <= 60
+            and num(e.x) and num(e.y) and num(e.z) then
+            tp[#tp + 1] = { n = e.n, x = e.x, y = e.y, z = e.z }
+        end
+    end
+    local tg = {}
+    for _, e in ipairs(data.tiang) do
+        if type(e) == "table" and num(e.x) and num(e.y) and num(e.z) then
+            tg[#tg + 1] = { x = e.x, y = e.y, z = e.z }
+        end
+    end
+    local hp = {}
+    for _, e in ipairs(data.hapus) do
+        if type(e) == "table" and e.t == "tp" and type(e.n) == "string" and #e.n > 0 and #e.n <= 60 then
+            hp[#hp + 1] = { t = "tp", n = e.n }
+        elseif type(e) == "table" and e.t == "tiang" and num(e.x) and num(e.y) and num(e.z) then
+            hp[#hp + 1] = { t = "tiang", x = e.x, y = e.y, z = e.z }
+        end
+    end
+    if #tp > 5000 or #tg > 5000 or #hp > 500 then return nil end
+    return {
+        tp = tp, tiang = tg, hapus = hp,
+        dari  = type(data.dari) == "string" and data.dari:sub(1, 60) or "?",
+        waktu = tonumber(data.waktu) or 0,
+    }
+end
+
+-- ---- merge cloud -> lokal (dipakai saat unduh & sebelum unggah) ----
+local function syncMerge(cloud)
+    local nTambahTp, nUpdateTp, nTambahTg, nHapusTp, nHapusTg = 0, 0, 0, 0, 0
+    local hapusSebelum = #SYNC.hapus
+    -- 1) gabungkan daftar hapus (union dua arah)
+    for _, h in ipairs(cloud.hapus) do
+        if h.t == "tp" then
+            if not syncHapusTpAda(h.n) then SYNC.hapus[#SYNC.hapus + 1] = h end
+        else
+            if not syncHapusTiangAda(h.x, h.y, h.z) then SYNC.hapus[#SYNC.hapus + 1] = h end
+        end
+    end
+    syncPotongHapus()
+    -- 2) terapkan hapusan ke data lokal
+    for i = #TP_LOKASI, 1, -1 do
+        if syncHapusTpAda(TP_LOKASI[i].nama) then
+            table.remove(TP_LOKASI, i)
+            nHapusTp += 1
+        end
+    end
+    for i = #titikList, 1, -1 do
+        if syncHapusTiangAda(titikList[i].X, titikList[i].Y, titikList[i].Z) then
+            table.remove(titikList, i)
+            nHapusTg += 1
+        end
+    end
+    -- 3) terima data cloud yang lolos daftar hapus
+    for _, c in ipairs(cloud.tp) do
+        if not syncHapusTpAda(c.n) then
+            local ketemu = false
+            for _, L in ipairs(TP_LOKASI) do
+                if L.nama == c.n then
+                    ketemu = true
+                    if tpBulat(L.x) ~= tpBulat(c.x) or tpBulat(L.y) ~= tpBulat(c.y)
+                        or tpBulat(L.z) ~= tpBulat(c.z) then
+                        L.x, L.y, L.z = c.x, c.y, c.z   -- nama sama = posisi di-update
+                        nUpdateTp += 1
+                    end
+                    break
+                end
+            end
+            if not ketemu and #TP_LOKASI < TP_MAX then
+                TP_LOKASI[#TP_LOKASI + 1] = { nama = c.n, x = c.x, y = c.y, z = c.z }
+                nTambahTp += 1
+            end
+        end
+    end
+    for _, c in ipairs(cloud.tiang) do
+        if not syncHapusTiangAda(c.x, c.y, c.z) then
+            local kembar = false
+            for _, p in ipairs(titikList) do
+                local dx, dy, dz = p.X - c.x, p.Y - c.y, p.Z - c.z
+                if dx*dx + dy*dy + dz*dz < 1 then
+                    kembar = true
+                    break
+                end
+            end
+            if not kembar and #titikList < CFG.TITIK_MAX then
+                titikList[#titikList + 1] = Vector3.new(c.x, c.y, c.z)
+                nTambahTg += 1
+            end
+        end
+    end
+    -- 4) simpan & gambar ulang bila ada yang berubah
+    local berubah = nTambahTp + nUpdateTp + nTambahTg + nHapusTp + nHapusTg
+        + (#SYNC.hapus - hapusSebelum)
+    if berubah > 0 then
+        titikSimpan()
+        tpTulisFile()
+        titikRender()
+        titikRefreshDaftar()
+        tpRefresh()
+    end
+    return berubah, {
+        tambahTp = nTambahTp, updateTp = nUpdateTp, tambahTg = nTambahTg,
+        hapusTp = nHapusTp, hapusTg = nHapusTg,
+    }
+end
+
+local function syncRingkas(d)
+    local b = {}
+    if d.tambahTg > 0 then b[#b + 1] = "+" .. d.tambahTg .. " titik" end
+    if d.tambahTp > 0 then b[#b + 1] = "+" .. d.tambahTp .. " TP" end
+    if d.updateTp > 0 then b[#b + 1] = d.updateTp .. " TP diperbarui" end
+    if d.hapusTp + d.hapusTg > 0 then b[#b + 1] = (d.hapusTp + d.hapusTg) .. " terhapus" end
+    return table.concat(b, ", ")
+end
+
+-- ---- HTTP wrapper (format beda-beda antar executor) ----
+local function syncHttp(method, url, body)
+    if not syncReq then return nil end
+    local opts = {
+        Url     = url,
+        Method  = method,
+        Headers = {
+            -- textdb.dev: tulis = form, baca = biasa
+            ["Content-Type"] = body and "application/x-www-form-urlencoded"
+                or "text/plain",
+            -- UA netral: beberapa jaringan menolak request tanpa User-Agent
+            ["User-Agent"]   = "Mozilla/5.0 (BALAP v1.3.5)",
+        },
+    }
+    if body then opts.Body = body end
+    local ok, resp = pcall(syncReq, opts)
+    if not ok or type(resp) ~= "table" then return nil end
+    return {
+        code    = tonumber(resp.StatusCode or resp.code or resp.Code or resp.status),
+        body    = resp.Body or resp.body,
+        headers = resp.Headers or resp.headers or {},
+    }
+end
+
+-- textdb.dev: tulis = POST "__data=<json>" (form), baca = GET balik
+-- teks "__data=<json>" juga. Kode %XX biar aman lewat parser form
+-- (sudah diuji: payload 320KB lolos 100% utuh).
+local function syncUrlEncode(s)
+    return (s:gsub("[^%w%-_%.~]", function(c)
+        return string.format("%%%02X", string.byte(c))
+    end))
+end
+
+local function syncBodyForm(teks)
+    return "__data=" .. syncUrlEncode(teks)
+end
+
+-- kode baru: balap-xxxx-xxxx — tanpa o/0/i/l biar tidak ketukar
+local function syncKodeBaru()
+    local abjad = "abcdefghjkmnpqrstuvwxyz23456789"
+    local function rnd4()
+        local a = {}
+        for _ = 1, 4 do
+            local n = math.random(#abjad)
+            a[#a + 1] = abjad:sub(n, n)
+        end
+        return table.concat(a)
+    end
+    return "balap-" .. rnd4() .. "-" .. rnd4()
+end
+
+-- isi loker dari balasan GET: buang awalan "__data=" (7 karakter)
+local function syncIsiDariBody(body)
+    if type(body) ~= "string" then return nil end
+    local isi = body:match("^%s*__data=(.-)%s*$")
+    if isi == nil then isi = body:gsub("^%s+", ""):gsub("%s+$", "") end
+    return isi
+end
+
+-- ambil + validasi isi loker:
+--   tabel  = data siap merge
+--   "kosong" = kode ada tapi belum ada isinya
+--   "rusak"  = isinya bukan data BALAP
+--   nil      = jaringan / layanan gagal
+local function syncAmbilCloud(kode)
+    local hasil = syncHttp("GET", CFG.SYNC_URL .. kode)
+    if not (hasil and hasil.code == 200) then return nil end
+    local isi = syncIsiDariBody(hasil.body)
+    if isi == nil then return nil end
+    if isi == "" then return "kosong" end
+    local data
+    pcall(function() data = HttpService:JSONDecode(isi) end)
+    return data and syncValidasi(data) or "rusak"
+end
+
+-- buat loker baru (device pertama kali / belum punya kode)
+local function syncBuatLoker()
+    if SYNC.sibuk or State.Removed or SYNC.kode then return end
+    SYNC.sibuk = true
+    SYNC.status = "kirim"
+    syncRefreshKartu()
+    local teks = HttpService:JSONEncode(syncPayload())
+    local kode = syncKodeBaru()   -- kode dipilih sendiri, langsung dipakai
+    local hasil = syncHttp("POST", CFG.SYNC_URL .. kode, syncBodyForm(teks))
+    if hasil and (hasil.code == 200 or hasil.code == 201) then
+        SYNC.kode = kode
+        SYNC.lastPayload = teks
+        SYNC.pending = false
+        SYNC.lastDari = SYNC.labelPerangkat
+        SYNC.waktuUnduh = os.clock()
+        syncSimpanFile()
+        syncSetStatus("ok")
+        toast("☁ Loker cloud siap — kode: " .. kode, Warna.Hijau)
+        print("[BALAP-SYNC] loker dibuat: " .. kode)
+    else
+        SYNC.waktuCoba = os.clock()
+        syncSetStatus("offline")
+    end
+    SYNC.sibuk = false
+end
+
+-- unduh + merge (dipanggil saat load & tiap 3 menit)
+local function syncUnduh()
+    if SYNC.sibuk or State.Removed or not SYNC.kode then return end
+    SYNC.sibuk = true
+    SYNC.status = "terima"
+    syncRefreshKartu()
+    local sukses = false
+    local cloud = syncAmbilCloud(SYNC.kode)
+    if cloud == "kosong" then
+        -- loker ada tapi belum berisi -> tandai biar diisi data lokal
+        if not SYNC.kosongSudah then
+            SYNC.kosongSudah = true
+            toast("☁ loker kosong — data device ini akan diunggah", Warna.Kuning)
+        end
+        SYNC.pending = true
+        sukses = true
+    elseif type(cloud) == "table" then
+        SYNC.lastDari = cloud.dari
+        local berubah, rincian = syncMerge(cloud)
+        if berubah > 0 then
+            toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
+            syncTandai()   -- tombstone gabungan diunggah balik sekali
+        end
+        sukses = true
+    elseif cloud == "rusak" then
+        SYNC.offSudahToast = true   -- toast offline kembar tidak perlu
+        toast("☁ data cloud tidak valid — diabaikan", Warna.Merah)
+    end
+    if sukses then
+        syncSetStatus(SYNC.pending and "kirim" or "ok")
+    else
+        syncSetStatus("offline")
+    end
+    SYNC.waktuUnduh = sukses and os.clock()
+        or (os.clock() - CFG.SYNC_UNDUH_TIAP + 20)   -- gagal: coba lagi 20 dtk
+    SYNC.sibuk = false
+end
+
+-- unggah = unduh -> merge -> POST (supaya tidak menimpa device lain)
+local function syncUnggah()
+    if SYNC.sibuk or State.Removed or not SYNC.kode then return end
+    SYNC.sibuk = true
+    SYNC.status = "kirim"
+    syncRefreshKartu()
+    local sukses = false
+    local bolehUpload = false
+    local cloud = syncAmbilCloud(SYNC.kode)
+    if cloud == nil then
+        -- jaringan gagal -> tunggu siklus berikutnya
+    elseif cloud == "kosong" or cloud == "rusak" then
+        -- loker kosong / isinya sampah -> isi ulang dengan data lokal
+        if cloud == "rusak" then
+            SYNC.offSudahToast = true
+            toast("☁ data cloud tidak valid — diisi ulang dari device ini", Warna.Merah)
+        end
+        bolehUpload = true
+    else
+        SYNC.lastDari = cloud.dari
+        local berubah, rincian = syncMerge(cloud)
+        if berubah > 0 then
+            toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
+        end
+        bolehUpload = true
+    end
+    if bolehUpload then
+        local teks = HttpService:JSONEncode(syncPayload())
+        if teks == SYNC.lastPayload then
+            SYNC.pending = false      -- isinya sama -> jangan upload ulang
+            syncSimpanFile()
+            sukses = true
+        else
+            local put = syncHttp("POST", CFG.SYNC_URL .. SYNC.kode, syncBodyForm(teks))
+            if put and (put.code == 200 or put.code == 201) then
+                SYNC.lastPayload = teks
+                SYNC.pending = false
+                SYNC.lastDari = SYNC.labelPerangkat
+                SYNC.kosongSudah = false
+                syncSimpanFile()
+                sukses = true
+                print("[BALAP-SYNC] terkirim (" .. #teks .. " byte)")
+            end
+        end
+    end
+    if sukses then
+        syncSetStatus("ok")
+    else
+        syncSetStatus("offline")
+    end
+    SYNC.sibuk = false
+end
+
+-- bergabung ke loker milik device lain (MASUKKAN KODE)
+local function syncPakaiKode(kodeMasuk)
+    if SYNC.sibuk or State.Removed then return end
+    local kodeBaru = tostring(kodeMasuk):lower()
+    kodeBaru = kodeBaru:gsub("^%s+", "")
+    kodeBaru = kodeBaru:gsub("%s+$", "")
+    if #kodeBaru < 6 or #kodeBaru > 40 or not kodeBaru:match("^[a-z0-9%-]+$") then
+        toast("Kode: huruf kecil/angka/tanda - (contoh: balap-7k2m-9xq4)", Warna.Kuning)
+        return
+    end
+    SYNC.sibuk = true
+    SYNC.status = "terima"
+    syncRefreshKartu()
+    local cloud = syncAmbilCloud(kodeBaru)
+    if type(cloud) == "table" then
+        SYNC.kode = kodeBaru
+        SYNC.lastPayload = nil
+        SYNC.lastDari = cloud.dari
+        SYNC.kosongSudah = false
+        syncSimpanFile()
+        local berubah, rincian = syncMerge(cloud)
+        if berubah > 0 then
+            toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
+        end
+        syncTandai()   -- data device ini ikut digabung ke loker
+        syncSetStatus("ok")
+        toast("☁ Tersambung ke loker " .. kodeBaru, Warna.Hijau)
+        print("[BALAP-SYNC] pakai kode: " .. kodeBaru)
+        SYNC.sibuk = false
+        return
+    end
+    SYNC.sibuk = false
+    if cloud == "kosong" then
+        toast("☁ Kode tidak ditemukan — loker masih kosong (cek ketikan)", Warna.Merah)
+    else
+        syncSetStatus("offline")
+        toast("☁ Kode tidak valid / tidak bisa dijangkau", Warna.Merah)
+    end
+end
+
+-- ganti kode = buat loker baru berisi data sekarang
+local function syncGantiKode()
+    if SYNC.sibuk or State.Removed then return end
+    SYNC.sibuk = true
+    SYNC.status = "kirim"
+    syncRefreshKartu()
+    local teks = HttpService:JSONEncode(syncPayload())
+    local kodeBaru = syncKodeBaru()
+    local hasil = syncHttp("POST", CFG.SYNC_URL .. kodeBaru, syncBodyForm(teks))
+    if hasil and (hasil.code == 200 or hasil.code == 201) then
+        SYNC.kode = kodeBaru
+        SYNC.lastPayload = teks
+        SYNC.pending = false
+        SYNC.lastDari = SYNC.labelPerangkat
+        SYNC.kosongSudah = false
+        syncSimpanFile()
+        syncSetStatus("ok")
+        toast("☁ Kode baru siap: " .. kodeBaru, Warna.Hijau)
+        print("[BALAP-SYNC] kode diganti: " .. kodeBaru)
+    else
+        syncSetStatus("offline")
+        toast("☁ Gagal ganti kode (offline?) — kode lama tetap", Warna.Kuning)
+    end
+    SYNC.sibuk = false
+end
+
+-- set ulang cloud = samakan cloud dengan device ini + kosongkan
+-- daftar hapus (penyelamat kalau data cloud kacau)
+local function syncSetUlang()
+    if SYNC.sibuk or State.Removed or not SYNC.kode then return end
+    SYNC.sibuk = true
+    SYNC.status = "kirim"
+    syncRefreshKartu()
+    local cadanganHapus = SYNC.hapus
+    SYNC.hapus = {}
+    local teks = HttpService:JSONEncode(syncPayload())
+    local put = syncHttp("POST", CFG.SYNC_URL .. SYNC.kode, syncBodyForm(teks))
+    if put and (put.code == 200 or put.code == 201) then
+        SYNC.lastPayload = teks
+        SYNC.pending = false
+        SYNC.lastDari = SYNC.labelPerangkat
+        syncSimpanFile()
+        syncSetStatus("ok")
+        toast("☁ Cloud disamakan dengan device ini", Warna.Hijau)
+    else
+        SYNC.hapus = cadanganHapus   -- gagal: kembalikan daftar hapus
+        syncSetStatus("offline")
+        toast("☁ Set ulang gagal (offline?) — coba lagi", Warna.Kuning)
+    end
+    SYNC.sibuk = false
+end
+
+-- mesin sync: dipanggil dari initLogic setelah semua siap
+local function syncMulai()
+    syncRefreshKartu()
+    if not SYNC.bisaHttp then return end
+    print("[BALAP-SYNC] mesin jalan — kode: " .. tostring(SYNC.kode or "belum ada"))
+    task.spawn(function()
+        task.wait(2.5)                 -- beri waktu GUI & data lokal siap
+        if State.Removed then return end
+        if SYNC.kode then syncUnduh() else syncBuatLoker() end
+        while not State.Removed do
+            task.wait(1)
+            if State.Removed then break end
+            local now = os.clock()
+            if not SYNC.kode then
+                if now - SYNC.waktuCoba >= 60 then syncBuatLoker() end
+            else
+                if now - SYNC.waktuUnduh >= CFG.SYNC_UNDUH_TIAP then
+                    syncUnduh()
+                    now = os.clock()
+                end
+                if SYNC.pending and not SYNC.sibuk
+                    and now - SYNC.waktuUbah >= CFG.SYNC_UNGGAH_JEDA then
+                    syncUnggah()
+                end
+            end
+        end
+    end)
+    -- kedip kuning saat kirim/terima (status titik berwarna)
+    task.spawn(function()
+        while not State.Removed do
+            local ui = SYNC.ui
+            if ui and ui.dot and ui.dot.Parent then
+                if SYNC.status == "kirim" or SYNC.status == "terima" then
+                    ui.dot.BackgroundTransparency =
+                        (math.floor(os.clock() * 2.5) % 2 == 0) and 0 or 0.55
+                else
+                    ui.dot.BackgroundTransparency = 0
+                end
+            end
+            task.wait(0.2)
+        end
+    end)
 end
 
 -- [7b] TAB BAR (4 TAB) ----------------------------------------------
@@ -1078,7 +1902,7 @@ lightConn = nil
 
 -- ===== baris TAB 1: GERAK =====
 buatHeader(scrollKing, "Player")
-local _, speedLbl = buatToggleRow(scrollKing, "Speed (Q): OFF (17.10)", "Q", "Speed")
+local _, speedLbl = buatToggleRow(scrollKing, "Speed (Q): OFF (" .. fmtNum(CFG.SPEED_OFF) .. ")", "Q", "Speed")
 SpeedLabel = speedLbl
 -- Nilai ON dipilih via stepper: rentang 17.25 - 21.25 (Q = ON/OFF saja)
 RefreshSpeed = buatStepperRow(
@@ -1163,57 +1987,11 @@ refreshFallPreset()
 
 -- ===== TP — TELEPORT + SIMPAN LOKASI (nama bebas, permanen) ==========
 -- Berdiri di tempat -> ketik nama -> 💾 SIMPAN -> muncul di daftar.
--- Tombol TP = teleport ke lokasi, X = hapus. Nama sama = update posisi.
--- Tersimpan di file BALAP_TP.json (folder Xeno) -> TETAP ADA walau
--- keluar game/rejoin. Executor tanpa writefile -> mode sesi (getgenv).
-local TP_MAX     = 40
-local TP_FILE    = "BALAP_TP.json"
-local TP_LOKASI  = {}
-local tpBisaFile = (type(writefile) == "function") and (type(readfile) == "function")
-
-local function tpBulat(v)
-    return math.floor(v * 100 + 0.5) / 100
-end
-
-local function tpTulisFile()
-    getgenv().BALAP_TP_DATA = TP_LOKASI            -- cadangan sesi (re-execute)
-    if not tpBisaFile then return end
-    local data = {}
-    for i = 1, #TP_LOKASI do
-        local L = TP_LOKASI[i]
-        data[i] = { nama = L.nama, x = tpBulat(L.x), y = tpBulat(L.y), z = tpBulat(L.z) }
-    end
-    local ok, err = pcall(function()
-        writefile(TP_FILE, HttpService:JSONEncode(data))
-    end)
-    if not ok then warn("[BALAP-TP] gagal tulis file: " .. tostring(err)) end
-end
-
-local function tpMuat()
-    local data
-    if tpBisaFile then
-        local ada = false
-        pcall(function() ada = isfile(TP_FILE) end)
-        if ada then
-            pcall(function() data = HttpService:JSONDecode(readfile(TP_FILE)) end)
-        end
-    end
-    if type(data) ~= "table" then
-        data = rawget(getgenv(), "BALAP_TP_DATA")   -- fallback: sesi yang sama
-    end
-    if type(data) == "table" then
-        for _, v in ipairs(data) do
-            if type(v) == "table" and type(v.nama) == "string" and #v.nama > 0
-                and type(v.x) == "number" and type(v.y) == "number" and type(v.z) == "number" then
-                TP_LOKASI[#TP_LOKASI + 1] = { nama = v.nama, x = v.x, y = v.y, z = v.z }
-            end
-        end
-    end
-    getgenv().BALAP_TP_DATA = TP_LOKASI
-    print("[BALAP-TP] muat " .. #TP_LOKASI .. " lokasi"
-        .. (tpBisaFile and " (file: " .. TP_FILE .. ")" or " (mode SESI — executor tanpa writefile)"))
-end
-tpMuat()
+-- Tombol TP = teleport, ✎ = rename (posisi tetap), X = hapus.
+-- Daftar menampilkan JARAK dari posisi sekarang + bisa diurutkan
+-- dari terdekat. Data TP (TP_MAX/TP_FILE/TP_LOKASI/tpTulisFile)
+-- didefinisikan di [7a3] bersama modul ☁ SINKRON. Perubahan TP
+-- otomatis masuk antrean sinkron cloud (syncTandai).
 
 buatHeader(scrollKing, "Teleport (TP)")
 
@@ -1258,7 +2036,16 @@ local tpList = buat("Frame", {
 }, scrollKing)
 buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, tpList)
 
-local function tpRefresh()
+local tpRenameIdx = nil   -- indeks TP yang sedang direname (✎)
+local function jarakMeter(x, y, z)
+    local char = getChar()
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local dx, dy, dz = x - hrp.Position.X, y - hrp.Position.Y, z - hrp.Position.Z
+    return math.sqrt(dx*dx + dy*dy + dz*dz)
+end
+
+tpRefresh = function()
     for _, c in ipairs(tpList:GetChildren()) do
         if c:IsA("TextButton") or c:IsA("TextLabel") or c:IsA("Frame") then c:Destroy() end
     end
@@ -1273,64 +2060,157 @@ local function tpRefresh()
             Text = "Belum ada lokasi — berdiri di tempat, ketik nama, tekan SIMPAN",
             LayoutOrder = 0,
         }, tpList)
+        syncRefreshKartu()
         return
     end
     for i, L in ipairs(TP_LOKASI) do
-        local row = buat("Frame", {
-            BackgroundColor3 = Warna.AbuItem,
-            Size = UDim2.new(1, 0, 0, 28),
-            LayoutOrder = i,
-        }, tpList)
-        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
-        buat("TextLabel", {
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 10, 0, 0),
-            Size = UDim2.new(1, -130, 1, 0),
-            FontFace = fnt("med"),
-            TextSize = 10,
-            TextColor3 = Warna.TeksGelap,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            TextTruncate = Enum.TextTruncate.AtEnd,
-            Text = L.nama .. "  (" .. math.floor(L.y) .. "m)",
-        }, row)
-        local btnTp = buat("TextButton", {
-            BackgroundColor3 = Warna.Biru,
-            Position = UDim2.new(1, -88, 0.5, -10),
-            Size = UDim2.new(0, 50, 0, 20),
-            FontFace = fnt("bold"),
-            TextSize = 10,
-            TextColor3 = Warna.Putih,
-            Text = "TP",
-            AutoButtonColor = false,
-        }, row)
-        buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnTp)
-        local btnHps = buat("TextButton", {
-            BackgroundColor3 = Warna.Merah,
-            Position = UDim2.new(1, -32, 0.5, -10),
-            Size = UDim2.new(0, 26, 0, 20),
-            FontFace = fnt("bold"),
-            TextSize = 10,
-            TextColor3 = Warna.Putih,
-            Text = "X",
-            AutoButtonColor = false,
-        }, row)
-        buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnHps)
-        btnTp.MouseButton1Click:Connect(function()
-            local _, hrp = getKarakter()
-            if not hrp then toast("TP gagal — karakter belum ada", Warna.Merah) return end
-            hrp.CFrame = CFrame.new(L.x, L.y + 3, L.z)
-            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-            print("[BALAP-TP] teleport ke '" .. L.nama .. "'")
-            toast("TP: " .. L.nama, Warna.Biru)
-        end)
-        btnHps.MouseButton1Click:Connect(function()
-            table.remove(TP_LOKASI, i)
-            tpTulisFile()
-            tpRefresh()
-            print("[BALAP-TP] hapus '" .. L.nama .. "' (sisa " .. #TP_LOKASI .. ")")
-            toast("Hapus: " .. L.nama, Warna.Merah)
-        end)
+        if i == tpRenameIdx then
+            -- ===== MODE RENAME (v1.3.4): [nama baru] [SIMPAN] [✕] =====
+            local row = buat("Frame", {
+                BackgroundColor3 = Warna.BiruMuda,
+                Size = UDim2.new(1, 0, 0, 28),
+                LayoutOrder = i,
+            }, tpList)
+            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
+            local box = buat("TextBox", {
+                BackgroundColor3 = Warna.Putih,
+                Position = UDim2.new(0, 8, 0.5, -10),
+                Size = UDim2.new(1, -128, 0, 20),
+                FontFace = fnt("med"),
+                TextSize = 10,
+                TextColor3 = Warna.TeksGelap,
+                Text = L.nama,
+                ClearTextOnFocus = false,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, box)
+            local btnOk = buat("TextButton", {
+                BackgroundColor3 = Warna.Hijau,
+                Position = UDim2.new(1, -92, 0.5, -10),
+                Size = UDim2.new(0, 54, 0, 20),
+                FontFace = fnt("bold"),
+                TextSize = 9,
+                TextColor3 = Warna.HijauMuda,
+                Text = "SIMPAN",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnOk)
+            local btnNo = buat("TextButton", {
+                BackgroundColor3 = Warna.Merah,
+                Position = UDim2.new(1, -32, 0.5, -10),
+                Size = UDim2.new(0, 26, 0, 20),
+                FontFace = fnt("bold"),
+                TextSize = 10,
+                TextColor3 = Warna.Putih,
+                Text = "✕",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnNo)
+            btnOk.MouseButton1Click:Connect(function()
+                local namaBaru = tostring(box.Text):gsub("^%s+", ""):gsub("%s+$", "")
+                if #namaBaru == 0 then toast("Tulis dulu nama barunya", Warna.Kuning) return end
+                if namaBaru ~= L.nama then
+                    for j, O in ipairs(TP_LOKASI) do
+                        if j ~= i and O.nama == namaBaru then
+                            toast("Nama '" .. namaBaru .. "' sudah dipakai", Warna.Kuning)
+                            return
+                        end
+                    end
+                end
+                local lama = L.nama
+                L.nama = namaBaru          -- posisi (x,y,z) TETAP
+                tpRenameIdx = nil
+                if namaBaru ~= lama then
+                    syncCatatHapusTp(lama)        -- nama lama = dihapus di cloud
+                    syncBuangHapusTp(namaBaru)    -- nama baru = tambahan baru
+                    tpTulisFile()
+                    syncTandai()
+                else
+                    tpTulisFile()
+                end
+                tpRefresh()
+                toast("Diubah: " .. lama .. " → " .. namaBaru, Warna.Hijau)
+            end)
+            btnNo.MouseButton1Click:Connect(function()
+                tpRenameIdx = nil
+                tpRefresh()
+            end)
+        else
+            local jarak = jarakMeter(L.x, L.y, L.z)
+            local row = buat("Frame", {
+                BackgroundColor3 = Warna.AbuItem,
+                Size = UDim2.new(1, 0, 0, 28),
+                LayoutOrder = i,
+            }, tpList)
+            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
+            buat("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 10, 0, 0),
+                Size = UDim2.new(1, -150, 1, 0),
+                FontFace = fnt("med"),
+                TextSize = 10,
+                TextColor3 = Warna.TeksGelap,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+                Text = L.nama .. (jarak and ("  (" .. fmtJarak(jarak) .. ")") or ""),
+            }, row)
+            local btnRen = buat("TextButton", {
+                BackgroundColor3 = Warna.Card2,
+                Position = UDim2.new(1, -94, 0.5, -10),
+                Size = UDim2.new(0, 22, 0, 20),
+                FontFace = fnt("bold"),
+                TextSize = 11,
+                TextColor3 = Warna.Putih,
+                Text = "✎",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnRen)
+            local btnTp = buat("TextButton", {
+                BackgroundColor3 = Warna.Biru,
+                Position = UDim2.new(1, -68, 0.5, -10),
+                Size = UDim2.new(0, 40, 0, 20),
+                FontFace = fnt("bold"),
+                TextSize = 10,
+                TextColor3 = Warna.Putih,
+                Text = "TP",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnTp)
+            local btnHps = buat("TextButton", {
+                BackgroundColor3 = Warna.Merah,
+                Position = UDim2.new(1, -32, 0.5, -10),
+                Size = UDim2.new(0, 26, 0, 20),
+                FontFace = fnt("bold"),
+                TextSize = 10,
+                TextColor3 = Warna.Putih,
+                Text = "X",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnHps)
+            btnRen.MouseButton1Click:Connect(function()
+                tpRenameIdx = i
+                tpRefresh()
+            end)
+            btnTp.MouseButton1Click:Connect(function()
+                local _, hrp = getKarakter()
+                if not hrp then toast("TP gagal — karakter belum ada", Warna.Merah) return end
+                hrp.CFrame = CFrame.new(L.x, L.y + 3, L.z)
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                print("[BALAP-TP] teleport ke '" .. L.nama .. "'")
+                toast("TP: " .. L.nama, Warna.Biru)
+            end)
+            btnHps.MouseButton1Click:Connect(function()
+                syncCatatHapusTp(L.nama)   -- tombstone: tidak bangkit dari cloud
+                table.remove(TP_LOKASI, i)
+                tpTulisFile()
+                tpRefresh()
+                syncTandai()
+                print("[BALAP-TP] hapus '" .. L.nama .. "' (sisa " .. #TP_LOKASI .. ")")
+                toast("Hapus: " .. L.nama, Warna.Merah)
+            end)
+        end
     end
+    syncRefreshKartu()
 end
 
 tpSaveBtn.MouseButton1Click:Connect(function()
@@ -1345,22 +2225,64 @@ tpSaveBtn.MouseButton1Click:Connect(function()
             tpTulisFile()
             tpRefresh()
             tpInput.Text = ""
+            syncTandai()
             print("[BALAP-TP] update '" .. nama .. "' (total " .. #TP_LOKASI .. ")")
             toast("Diperbarui: " .. nama, Warna.Hijau)
             return
         end
     end
     if #TP_LOKASI >= TP_MAX then toast("Penuh (max " .. TP_MAX .. " lokasi)", Warna.Kuning) return end
+    syncBuangHapusTp(nama)   -- dipasang lagi -> hapus tombstone lamanya
     TP_LOKASI[#TP_LOKASI + 1] = { nama = nama, x = p.X, y = p.Y, z = p.Z }
     tpTulisFile()
     tpRefresh()
     tpInput.Text = ""
+    syncTandai()
     print("[BALAP-TP] simpan '" .. nama .. "' (total " .. #TP_LOKASI .. ")"
         .. (tpBisaFile and " -> file" or " -> SESI SAJA (executor tanpa writefile)"))
     toast("Tersimpan: " .. nama, Warna.Hijau)
 end)
 
 tpRefresh()
+
+-- ⇅ urutkan TP dari terdekat + hapus semua TP (konfirmasi 2 langkah)
+local armTp = 0
+buatActionRow(scrollKing, "⇅ URUTKAN TP TERDEKAT", Warna.Biru, function()
+    local _, hrp = getKarakter()
+    if not hrp then toast("Karakter belum ada", Warna.Merah) return end
+    if #TP_LOKASI < 2 then toast("Butuh minimal 2 TP", Warna.Kuning) return end
+    table.sort(TP_LOKASI, function(a, b)
+        local da = (a.x - hrp.Position.X)^2 + (a.y - hrp.Position.Y)^2 + (a.z - hrp.Position.Z)^2
+        local db = (b.x - hrp.Position.X)^2 + (b.y - hrp.Position.Y)^2 + (b.z - hrp.Position.Z)^2
+        return da < db
+    end)
+    tpTulisFile()
+    tpRefresh()
+    toast("TP diurutkan dari yang terdekat", Warna.Biru)
+end)
+local btnHapusTpSemua = buatActionRow(scrollKing, "🗑️ HAPUS SEMUA TP", Warna.Merah, function()
+    local now = os.clock()
+    if now - armTp > 3 then
+        armTp = now
+        btnHapusTpSemua.Text = "⚠️ YAKIN? TEKAN LAGI (3 dtk)"
+        toast("Tekan LAGI dalam 3 dtk — semua TP terhapus", Warna.Merah)
+        task.delay(3, function()
+            if btnHapusTpSemua.Parent and btnHapusTpSemua.Text ~= "🗑️ HAPUS SEMUA TP" then
+                btnHapusTpSemua.Text = "🗑️ HAPUS SEMUA TP"
+            end
+        end)
+    else
+        armTp = 0
+        btnHapusTpSemua.Text = "🗑️ HAPUS SEMUA TP"
+        if #TP_LOKASI == 0 then toast("Belum ada TP", Warna.Kuning) return end
+        for _, L in ipairs(TP_LOKASI) do syncCatatHapusTp(L.nama) end
+        table.clear(TP_LOKASI)
+        tpTulisFile()
+        tpRefresh()
+        syncTandai()
+        toast("Semua TP dihapus", Warna.Merah)
+    end
+end)
 
 -- [7d] KONTEN TAB 2: VISUAL -----------------------------------------
 kontenVisual = buat("Frame", {
@@ -1435,13 +2357,283 @@ scrollTitik = buat("ScrollingFrame", {
     AutomaticCanvasSize = Enum.AutomaticSize.Y,
 }, kontenTitik)
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTitik)
+
+-- ===== kartu ☁ SINKRON (v1.3.5) — status sinkronisasi cloud =====
+local kartuSync = buat("Frame", {
+    BackgroundColor3 = Warna.Card2,
+    Size = UDim2.new(1, 0, 0, 102),
+    LayoutOrder = nextOrder(),
+}, scrollTitik)
+buat("UICorner", {CornerRadius = UDim.new(0, 8)}, kartuSync)
+buat("UIStroke", {Color = Warna.Ungu2, Thickness = 1, Transparency = 0.55}, kartuSync)
+local syncJudul = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 5),
+    Size = UDim2.new(1, -30, 0, 15),
+    FontFace = fnt("bold"),
+    TextSize = 11,
+    TextColor3 = Warna.BiruMuda,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "☁ SINKRON — TP + titik lintas device",
+}, kartuSync)
+local syncDot = buat("Frame", {
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -9, 0, 8),
+    Size = UDim2.fromOffset(9, 9),
+    BackgroundColor3 = Warna.AbuGelap,
+    BorderSizePixel = 0,
+}, kartuSync)
+buat("UICorner", {CornerRadius = UDim.new(1, 0)}, syncDot)
+local syncInfo = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 22),
+    Size = UDim2.new(1, -20, 0, 14),
+    FontFace = fnt("med"),
+    TextSize = 10,
+    TextColor3 = Warna.Putih,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+    Text = "menyambung ke cloud...",
+}, kartuSync)
+local syncDari = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 37),
+    Size = UDim2.new(1, -20, 0, 12),
+    FontFace = fnt("reg"),
+    TextSize = 9,
+    TextColor3 = Warna.AbuGelap,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+    Text = "menyambung ke cloud (butuh internet)...",
+}, kartuSync)
+-- baris input kode (disembunyikan; muncul saat MASUKKAN KODE)
+local syncRowInput = buat("Frame", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 53),
+    Size = UDim2.new(1, -20, 0, 24),
+    Visible = false,
+}, kartuSync)
+local boxKode = buat("TextBox", {
+    BackgroundColor3 = Warna.Hitam2,
+    Size = UDim2.new(1, -76, 1, 0),
+    FontFace = fnt("med"),
+    TextSize = 10,
+    TextColor3 = Warna.Putih,
+    PlaceholderText = "Tempel / ketik kode (balap-xxxx-xxxx)...",
+    PlaceholderColor3 = Warna.AbuTeks,
+    Text = "",
+    ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, syncRowInput)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, boxKode)
+local btnPakaiKode = buat("TextButton", {
+    BackgroundColor3 = Warna.Hijau,
+    Position = UDim2.new(1, -70, 0, 0),
+    Size = UDim2.new(0, 46, 1, 0),
+    FontFace = fnt("bold"),
+    TextSize = 9,
+    TextColor3 = Warna.HijauMuda,
+    Text = "PAKAI",
+    AutoButtonColor = false,
+}, syncRowInput)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnPakaiKode)
+local btnBatalKode = buat("TextButton", {
+    BackgroundColor3 = Warna.Merah,
+    Position = UDim2.new(1, -20, 0, 0),
+    Size = UDim2.new(0, 20, 1, 0),
+    FontFace = fnt("bold"),
+    TextSize = 10,
+    TextColor3 = Warna.Putih,
+    Text = "✕",
+    AutoButtonColor = false,
+}, syncRowInput)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnBatalKode)
+-- baris tombol utama
+local syncRowTombol = buat("Frame", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 10, 0, 53),
+    Size = UDim2.new(1, -20, 0, 24),
+}, kartuSync)
+local btnSalinKode = buat("TextButton", {
+    BackgroundColor3 = Warna.Biru,
+    Size = UDim2.new(0, 150, 1, 0),
+    FontFace = fnt("bold"),
+    TextSize = 9,
+    TextColor3 = Warna.Putih,
+    Text = "⧉ SALIN KODE",
+    AutoButtonColor = false,
+}, syncRowTombol)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnSalinKode)
+efekTombol(btnSalinKode, 1.03)
+local btnMasukKode = buat("TextButton", {
+    BackgroundColor3 = Warna.Card2,
+    Position = UDim2.new(0, 156, 0, 0),
+    Size = UDim2.new(0, 150, 1, 0),
+    FontFace = fnt("bold"),
+    TextSize = 9,
+    TextColor3 = Warna.Ungu2,
+    Text = "MASUKKAN KODE",
+    AutoButtonColor = false,
+}, syncRowTombol)
+buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnMasukKode)
+efekTombol(btnMasukKode, 1.03)
+local btnGantiKode = buat("TextButton", {
+    BackgroundColor3 = Warna.AbuItem,
+    Position = UDim2.new(0, 10, 0, 81),
+    Size = UDim2.new(0, 150, 0, 16),
+    FontFace = fnt("bold"),
+    TextSize = 8,
+    TextColor3 = Warna.AbuTeks,
+    Text = "GANTI KODE (loker baru)",
+    AutoButtonColor = false,
+}, kartuSync)
+buat("UICorner", {CornerRadius = UDim.new(0, 5)}, btnGantiKode)
+local btnResetCloud = buat("TextButton", {
+    BackgroundColor3 = Warna.AbuItem,
+    Position = UDim2.new(0, 166, 0, 81),
+    Size = UDim2.new(0, 150, 0, 16),
+    FontFace = fnt("bold"),
+    TextSize = 8,
+    TextColor3 = Warna.AbuTeks,
+    Text = "SET ULANG CLOUD",
+    AutoButtonColor = false,
+}, kartuSync)
+buat("UICorner", {CornerRadius = UDim.new(0, 5)}, btnResetCloud)
+SYNC.ui = { dot = syncDot, ikon = btnCloud, info = syncInfo, dari = syncDari }
+
+local function modeInputKode(on)
+    syncRowTombol.Visible = not on
+    syncRowInput.Visible = on
+    if on then pcall(function() boxKode:CaptureFocus() end) end
+end
+btnSalinKode.MouseButton1Click:Connect(function()
+    if not SYNC.kode then
+        toast("Kode belum ada — tunggu internet / pakai MASUKKAN KODE", Warna.Kuning)
+        return
+    end
+    local ok = pcall(function() setclipboard(SYNC.kode) end)
+    if ok then
+        toast("Kode disalin: " .. SYNC.kode, Warna.Hijau)
+    else
+        toast("Gagal salin — kode: " .. SYNC.kode, Warna.Kuning)
+    end
+end)
+btnMasukKode.MouseButton1Click:Connect(function() modeInputKode(true) end)
+btnBatalKode.MouseButton1Click:Connect(function()
+    boxKode.Text = ""
+    modeInputKode(false)
+end)
+btnPakaiKode.MouseButton1Click:Connect(function()
+    local kode = tostring(boxKode.Text):gsub("^%s+", ""):gsub("%s+$", "")
+    if not kode:match("^[a-zA-Z0-9%-]+$") then
+        toast("Kode: huruf kecil/angka/tanda - (contoh: balap-7k2m-9xq4)", Warna.Kuning)
+        return
+    end
+    boxKode.Text = ""
+    modeInputKode(false)
+    syncPakaiKode(kode)
+end)
+boxKode.FocusLost:Connect(function(enter)
+    if enter then
+        local kode = tostring(boxKode.Text):gsub("^%s+", ""):gsub("%s+$", "")
+        if kode:match("^[a-zA-Z0-9%-]+$") then
+            boxKode.Text = ""
+            modeInputKode(false)
+            syncPakaiKode(kode)
+        end
+    end
+end)
+-- GANTI KODE — konfirmasi 2 langkah (3 dtk)
+local armGanti = 0
+btnGantiKode.MouseButton1Click:Connect(function()
+    local now = os.clock()
+    if now - armGanti > 3 then
+        armGanti = now
+        btnGantiKode.Text = "⚠️ YAKIN? TEKAN LAGI"
+        btnGantiKode.BackgroundColor3 = Warna.Merah
+        btnGantiKode.TextColor3 = Warna.Putih
+        toast("Kode baru = loker baru — tekan lagi untuk konfirmasi", Warna.Kuning)
+        task.delay(3, function()
+            if btnGantiKode.Parent and btnGantiKode.Text ~= "GANTI KODE (loker baru)" then
+                btnGantiKode.Text = "GANTI KODE (loker baru)"
+                btnGantiKode.BackgroundColor3 = Warna.AbuItem
+                btnGantiKode.TextColor3 = Warna.AbuTeks
+            end
+        end)
+    else
+        armGanti = 0
+        btnGantiKode.Text = "GANTI KODE (loker baru)"
+        btnGantiKode.BackgroundColor3 = Warna.AbuItem
+        btnGantiKode.TextColor3 = Warna.AbuTeks
+        if not SYNC.kode then toast("Belum punya kode — tunggu loker dibuat", Warna.Kuning) return end
+        syncGantiKode()
+    end
+end)
+-- SET ULANG CLOUD — konfirmasi 2 langkah (3 dtk)
+local armReset = 0
+btnResetCloud.MouseButton1Click:Connect(function()
+    local now = os.clock()
+    if now - armReset > 3 then
+        armReset = now
+        btnResetCloud.Text = "⚠️ YAKIN? TEKAN LAGI"
+        btnResetCloud.BackgroundColor3 = Warna.Merah
+        btnResetCloud.TextColor3 = Warna.Putih
+        toast("Cloud akan disamakan dengan device ini — tekan lagi", Warna.Kuning)
+        task.delay(3, function()
+            if btnResetCloud.Parent and btnResetCloud.Text ~= "SET ULANG CLOUD" then
+                btnResetCloud.Text = "SET ULANG CLOUD"
+                btnResetCloud.BackgroundColor3 = Warna.AbuItem
+                btnResetCloud.TextColor3 = Warna.AbuTeks
+            end
+        end)
+    else
+        armReset = 0
+        btnResetCloud.Text = "SET ULANG CLOUD"
+        btnResetCloud.BackgroundColor3 = Warna.AbuItem
+        btnResetCloud.TextColor3 = Warna.AbuTeks
+        if not SYNC.kode then toast("Belum ada cloud untuk diset ulang", Warna.Kuning) return end
+        syncSetUlang()
+    end
+end)
+syncRefreshKartu()
+
 buatHeader(scrollTitik, "Tiang Penanda")
 buatToggleRow(scrollTitik, "Tampilkan Tiang", nil, "Tiang")
 buatActionRow(scrollTitik, "📍 + TAMBAH TITIK DI SINI", Warna.Hijau, function()
     titikTambahDiSini()
 end)
-buatActionRow(scrollTitik, "🗑️ HAPUS SEMUA TITIK", Warna.Merah, function()
-    titikHapusSemua()
+-- HAPUS SEMUA — konfirmasi 2 langkah (rawan kepencet kalau 1 tekan)
+local armTg = 0
+local btnHapusTgSemua = buatActionRow(scrollTitik, "🗑️ HAPUS SEMUA TITIK", Warna.Merah, function()
+    local now = os.clock()
+    if now - armTg > 3 then
+        armTg = now
+        btnHapusTgSemua.Text = "⚠️ YAKIN? TEKAN LAGI (3 dtk)"
+        toast("Tekan LAGI dalam 3 dtk — semua titik terhapus", Warna.Merah)
+        task.delay(3, function()
+            if btnHapusTgSemua.Parent and btnHapusTgSemua.Text ~= "🗑️ HAPUS SEMUA TITIK" then
+                btnHapusTgSemua.Text = "🗑️ HAPUS SEMUA TITIK"
+            end
+        end)
+    else
+        armTg = 0
+        btnHapusTgSemua.Text = "🗑️ HAPUS SEMUA TITIK"
+        titikHapusSemua()
+    end
+end)
+buatActionRow(scrollTitik, "⇅ URUTKAN TITIK TERDEKAT", Warna.Biru, function()
+    local _, hrp = getKarakter()
+    if not hrp then toast("Karakter belum ada", Warna.Merah) return end
+    if #titikList < 2 then toast("Butuh minimal 2 titik", Warna.Kuning) return end
+    table.sort(titikList, function(a, b)
+        local da = (a.X - hrp.Position.X)^2 + (a.Y - hrp.Position.Y)^2 + (a.Z - hrp.Position.Z)^2
+        local db = (b.X - hrp.Position.X)^2 + (b.Y - hrp.Position.Y)^2 + (b.Z - hrp.Position.Z)^2
+        return da < db
+    end)
+    titikSimpan()
+    titikRender()
+    titikRefreshDaftar()
+    toast("Titik diurutkan dari yang terdekat", Warna.Biru)
 end)
 buatHeader(scrollTitik, "Daftar Titik")
 titikHolder = buat("Frame", {
@@ -1469,20 +2661,23 @@ titikRefreshDaftar()
 buatHeader(scrollSistem, "Info")
 local infoVersi = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
-    Size = UDim2.new(1, 0, 0, 137),
+    Size = UDim2.new(1, 0, 0, 168),
     FontFace = fnt("med"),
     TextSize = 11,
     TextColor3 = Warna.TeksGelap,
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.3.3\n"
+    Text = "⚡ BALAP v1.3.5\n"
         .. "Fitur:\n"
         .. "GERAK  : Speed (Q) • Jump (J) • Shiftlock (C) • Moonwalk (F)\n"
         .. "Shiftlock Tengah (LShift) • Fall Resist (B, 4 preset) • TP\n"
+        .. "(✎ rename, jarak, urut terdekat) • V = +titik cepat\n"
         .. "VISUAL : Hide Player+Kendaraan (R) • Hide Badan Atas\n"
         .. "Cahaya Auto (T) • Lightweight • Dinding Batas (X)\n"
-        .. "TITIK  : Tiang checkpoint + teleport • tiang bisa hide\n"
+        .. "TITIK  : Tiang checkpoint + teleport • V = tambah titik\n"
+        .. "☁ SINKRON : TP + titik lintas device — kode di kartu TITIK,\n"
+        .. "salin ke device lain (MASUKKAN KODE untuk nyambung)\n"
         .. "SISTEM : Rejoin (K×2) • Hapus Script\n"
         .. "Shift/Moonwalk/Tengah otomatis OFF saat mati/respawn",
     LayoutOrder = nextOrder(),
@@ -1558,7 +2753,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1600, 13),
     FontFace = fnt("med"),
-    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • F Moonwalk • LShift Tengah • B FallResist • 📍 Titik   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • F Moonwalk • LShift Tengah • B FallResist • V +Titik   ✦   📍 Titik + ☁ Sinkron lintas device (kode di tab TITIK)   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -1866,8 +3061,10 @@ applySpeed = function()
     local hum = getHum()
     if not hum then return end
     local base = State.SpeedOn and State.SpeedValue or CFG.SPEED_OFF
-    if State.ShiftOn and State.IsSwimming then
-        base = base * 1.10
+    -- v1.3.4: bonus berenang HANYA saat Shiftlock Tengah aktif —
+    -- speed aktif × 1.025 (di darat & saat Tengah OFF = tanpa efek)
+    if State.TengahOn and State.IsSwimming then
+        base = base * CFG.SWIM_BONUS
     end
     hum.WalkSpeed = base
 end
@@ -2119,6 +3316,7 @@ Setters.Tengah = function(v, silent)
         pcall(function() UserInputService.MouseIconEnabled = true end)
         sltDotHide()
     end
+    applySpeed()   -- v1.3.4: bonus berenang langsung menyesuaikan / pulih
     syncNotify("Tengah", v, silent, "Shiftlock Tengah")
 end
 
@@ -2988,7 +4186,8 @@ local function initCharacter(char)
         local swimming = (newState == Enum.HumanoidStateType.Swimming)
         if swimming ~= State.IsSwimming then
             State.IsSwimming = swimming
-            if State.ShiftOn then applySpeed() end
+            -- v1.3.4: bonus berenang ikut Shiftlock Tengah; pulih otomatis
+            applySpeed()
         end
     end)
     task.wait(0.25)
@@ -3048,6 +4247,9 @@ local lastK = 0
 catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if State.Removed then return end
+    -- v1.3.4 FIX: jangan picu hotkey saat sedang mengetik di kotak teks
+    -- (G/Q dst. tidak lagi nyasar saat isi nama TP / stepper / kode sync)
+    if UserInputService:GetFocusedTextBox() then return end
     if input.KeyCode == CFG.TOGGLE_KEY then
         togglePanel()
     elseif input.KeyCode == Enum.KeyCode.Q then
@@ -3068,6 +4270,8 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
         setFeature("Light", not State.LightOn)
     elseif input.KeyCode == Enum.KeyCode.X then
         setFeature("Walls", not State.WallsOn)
+    elseif input.KeyCode == Enum.KeyCode.V then
+        titikTambahDiSini()   -- v1.3.4: + titik cepat, tanpa buka GUI
     elseif input.KeyCode == Enum.KeyCode.K then
         local now = os.clock()
         if now - lastK < 0.45 then
@@ -3081,6 +4285,8 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end))
 
 diagSet("keybind OK — finalisasi...")
+-- [21b] MESIN ☁ SINKRON (v1.3.5) — mulai setelah semua siap
+syncMulai()
 -- [22] MULAI ---------------------------------------------------------
 updateSpeedLabel()
 setTab(1)  -- 🏃 GERAK jadi tab pertama
@@ -3092,8 +4298,8 @@ task.delay(0.15, function()
         end
 end)
 print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-print("[BALAP] GERAK | VISUAL | SISTEM • Q speed • J jump • C shift • F moon • B fallresist • R hide • T cahaya • X dinding • K×2 rejoin")
-diagSet("BALAP v1.3.3 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+print("[BALAP] GERAK | VISUAL | SISTEM • Q speed • J jump • C shift • F moon • B fallresist • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sinkron")
+diagSet("BALAP v1.3.5 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
 task.delay(7, function()
         local function hapusDiag()
                 pcall(function()
@@ -3113,11 +4319,11 @@ end -- akhir initLogic()
 
 -- Eksekusi initLogic() sekarang (UI + helpers sudah siap dari part1-4)
 initLogic()
-getgenv().BALAP_API = { Setters = Setters, State = State }  -- debug/otomasi + harness uji
+getgenv().BALAP_API = { Setters = Setters, State = State, Sync = SYNC }  -- debug/otomasi + harness uji
 end, function(e)
         local teks = tostring(e)
         print("==================================================")
-        print("[BALAP v1.3.3] ERROR SAAT LOAD — kirim teks ini ke dev:")
+        print("[BALAP v1.3.5] ERROR SAAT LOAD — kirim teks ini ke dev:")
         print(teks)
         pcall(function() print(debug.traceback("", 2)) end)
         print("==================================================")
@@ -3126,5 +4332,5 @@ end, function(e)
         end)
 end)
 if not __BALAP_LOAD_OK__ then
-        warn("[BALAP v1.3.3] Script GAGAL load — banner MERAH di layar berisi errornya.")
+        warn("[BALAP v1.3.5] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
