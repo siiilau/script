@@ -1,5 +1,5 @@
 --========================================================
---  BALAP v1.3.4 — 
+--  BALAP v1.3.5 — 
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  4 TAB:
@@ -48,8 +48,15 @@
 --          rename TP (✎) • jarak + urut terdekat • hapus semua =
 --          konfirmasi 2 langkah • Speed OFF 17.15 • berenang saat
 --          Shiftlock Tengah aktif = speed aktif × 1.025
+--  v1.3.5: FIX SYNC — jsonblob.com ternyata MEMBLOKIR request dari
+--          executor (Cloudflare anti-bot, balasan 403) sehingga kode
+--          tidak pernah terbentuk ("Kode belum dibuat"). Layanan
+--          diganti ke textdb.dev — sudah diuji: tulis/baca/update OK,
+--          payload 320KB aman, tanpa blokir. BONUS: kode sync sekarang
+--          bisa dibaca manusia (contoh: balap-7k2m-9xq4) — dulu cuma
+--          bisa angka. Cara pakai tidak berubah sama sekali.
 --========================================================
-print("[BALAP v1.3.4] load mulai...")
+print("[BALAP v1.3.5] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -98,7 +105,7 @@ do
         end
 end
 
-local VERSI = "1.3.4"
+local VERSI = "1.3.5"
 local __BALAP_LOAD_OK__ = xpcall(function()
 -- ================================================================
 -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -182,9 +189,10 @@ local CFG = {
     TITIK_TINGGI   = 1.5,   -- tinggi tiang (stud)
     TITIK_DIAMETER = 0.3,   -- diameter tiang (stud)
     TITIK_FILE     = "penanda_titik.json", -- sama dgn script standalone lama
-    -- ☁ SINKRON (v1.3.4): TP + titik lintas device via jsonblob.com
+    -- ☁ SINKRON (v1.3.5): TP + titik lintas device via textdb.dev
+    -- (jsonblob.com diblokir Cloudflare untuk request executor -> 403)
     SYNC_FILE          = "BALAP_SYNC.json", -- kode sync + daftar hapus
-    SYNC_URL           = "https://jsonblob.com/api/jsonBlob",
+    SYNC_URL           = "https://textdb.dev/api/data/", -- .. kode
     SYNC_TOMBSTONE_MAX = 200,   -- batas daftar hapus yang ikut disinkron
     SYNC_UNGGAH_JEDA   = 30,    -- dtk tunda upload setelah perubahan terakhir
     SYNC_UNDUH_TIAP    = 180,   -- dtk antar unduhan berkala (3 menit)
@@ -595,7 +603,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -104, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.3.4 ⚡",
+    Text = "⚡ BALAP v1.3.5 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -905,11 +913,14 @@ end
 tpMuat()
 
 -- ======================================================================
--- ☁ SINKRON (v1.3.4) — TP + titik lintas device
--- Layanan : jsonblob.com — gratis, tanpa login, langsung jalan.
--- Kode    : angka otomatis dari layanan (ID loker). Selalu tampil di
---           kartu ☁ SINKRON (tab TITIK) + tombol SALIN. Device lain
---           bergabung lewat MASUKKAN KODE. GANTI KODE = loker baru.
+-- ☁ SINKRON (v1.3.5) — TP + titik lintas device
+-- Layanan : textdb.dev — gratis, tanpa login, TANPA blokir executor.
+--           (jsonblob.com diblokir Cloudflare utk request executor ->
+--           selalu 403; itulah sebabnya v1.3.4 gagal membentuk kode)
+-- Kode    : balap-xxxx-xxxx — dibaca manusia, mudah diketik. Selalu
+--           tampil di kartu ☁ SINKRON (tab TITIK) + tombol SALIN.
+--           Device lain bergabung lewat MASUKKAN KODE. GANTI KODE =
+--           loker baru.
 -- Isi sync: HANYA titik tiang + TP (pengaturan tidak ikut).
 -- Merge   : TP per nama (nama sama = posisi di-update) • titik per
 --           posisi (< 1 stud = kembar, ditolak) • DAFTAR HAPUS ikut
@@ -920,7 +931,7 @@ tpMuat()
 -- File    : BALAP_SYNC.json (kode + daftar hapus, tersimpan permanen).
 -- ======================================================================
 local SYNC = {
-    kode          = nil,   -- ID loker jsonblob (string angka)
+    kode          = nil,   -- ID loker (contoh: balap-7k2m-9xq4)
     hapus         = {},    -- tombstone: {t="tp", n=nama} / {t="tiang", x,y,z}
     bisaHttp      = false,
     sibuk         = false, -- mutex: cuma 1 operasi jaringan
@@ -933,6 +944,7 @@ local SYNC = {
     waktuUnduh    = 0,
     waktuCoba     = 0,
     offSudahToast = false,
+    kosongSudah   = false, -- toast "loker kosong" cukup sekali
     ui            = nil,   -- diisi buildUI (kartu status)
 }
 
@@ -992,8 +1004,13 @@ local function syncMuatFile()
         data = rawget(getgenv(), "BALAP_SYNC_DATA")
     end
     if type(data) == "table" then
-        if type(data.kode) == "string" and data.kode:match("^%d+$") then
-            SYNC.kode = data.kode
+        if type(data.kode) == "string" then
+            local k = data.kode:lower()
+            if k:match("^%d+$") then
+                -- kode lama v1.3.4 (jsonblob, sudah mati) -> abaikan
+            elseif #k >= 6 and #k <= 40 and k:match("^[a-z0-9%-]+$") then
+                SYNC.kode = k
+            end
         end
         if type(data.hapus) == "table" then
             for _, h in ipairs(data.hapus) do
@@ -1263,39 +1280,72 @@ local function syncHttp(method, url, body)
         Url     = url,
         Method  = method,
         Headers = {
-            ["Content-Type"] = "application/json",
-            ["Accept"]       = "application/json",
+            -- textdb.dev: tulis = form, baca = biasa
+            ["Content-Type"] = body and "application/x-www-form-urlencoded"
+                or "text/plain",
             -- UA netral: beberapa jaringan menolak request tanpa User-Agent
-            ["User-Agent"]   = "Mozilla/5.0 (BALAP v1.3.4)",
+            ["User-Agent"]   = "Mozilla/5.0 (BALAP v1.3.5)",
         },
     }
     if body then opts.Body = body end
     local ok, resp = pcall(syncReq, opts)
     if not ok or type(resp) ~= "table" then return nil end
     return {
-        code    = tonumber(resp.StatusCode or resp.code or resp.status),
+        code    = tonumber(resp.StatusCode or resp.code or resp.Code or resp.status),
         body    = resp.Body or resp.body,
         headers = resp.Headers or resp.headers or {},
     }
 end
 
--- kode loker ada di header X-jsonblob / Location (beda antar executor)
-local function syncKodeDariHeader(headers)
-    local kandidat = { headers["X-jsonblob"], headers["x-jsonblob"], headers.location, headers.Location }
-    for _, v in ipairs(kandidat) do
-        if type(v) == "string" then
-            local kode = v:match("(%d+)%s*$")
-            if kode then return kode end
+-- textdb.dev: tulis = POST "__data=<json>" (form), baca = GET balik
+-- teks "__data=<json>" juga. Kode %XX biar aman lewat parser form
+-- (sudah diuji: payload 320KB lolos 100% utuh).
+local function syncUrlEncode(s)
+    return (s:gsub("[^%w%-_%.~]", function(c)
+        return string.format("%%%02X", string.byte(c))
+    end))
+end
+
+local function syncBodyForm(teks)
+    return "__data=" .. syncUrlEncode(teks)
+end
+
+-- kode baru: balap-xxxx-xxxx — tanpa o/0/i/l biar tidak ketukar
+local function syncKodeBaru()
+    local abjad = "abcdefghjkmnpqrstuvwxyz23456789"
+    local function rnd4()
+        local a = {}
+        for _ = 1, 4 do
+            local n = math.random(#abjad)
+            a[#a + 1] = abjad:sub(n, n)
         end
+        return table.concat(a)
     end
-    for k, v in pairs(headers) do
-        local kl = tostring(k):lower()
-        if kl == "x-jsonblob" or kl == "location" then
-            local kode = tostring(v):match("(%d+)%s*$")
-            if kode then return kode end
-        end
-    end
-    return nil
+    return "balap-" .. rnd4() .. "-" .. rnd4()
+end
+
+-- isi loker dari balasan GET: buang awalan "__data=" (7 karakter)
+local function syncIsiDariBody(body)
+    if type(body) ~= "string" then return nil end
+    local isi = body:match("^%s*__data=(.-)%s*$")
+    if isi == nil then isi = body:gsub("^%s+", ""):gsub("%s+$", "") end
+    return isi
+end
+
+-- ambil + validasi isi loker:
+--   tabel  = data siap merge
+--   "kosong" = kode ada tapi belum ada isinya
+--   "rusak"  = isinya bukan data BALAP
+--   nil      = jaringan / layanan gagal
+local function syncAmbilCloud(kode)
+    local hasil = syncHttp("GET", CFG.SYNC_URL .. kode)
+    if not (hasil and hasil.code == 200) then return nil end
+    local isi = syncIsiDariBody(hasil.body)
+    if isi == nil then return nil end
+    if isi == "" then return "kosong" end
+    local data
+    pcall(function() data = HttpService:JSONDecode(isi) end)
+    return data and syncValidasi(data) or "rusak"
 end
 
 -- buat loker baru (device pertama kali / belum punya kode)
@@ -1305,12 +1355,9 @@ local function syncBuatLoker()
     SYNC.status = "kirim"
     syncRefreshKartu()
     local teks = HttpService:JSONEncode(syncPayload())
-    local hasil = syncHttp("POST", CFG.SYNC_URL, teks)
-    local kode
+    local kode = syncKodeBaru()   -- kode dipilih sendiri, langsung dipakai
+    local hasil = syncHttp("POST", CFG.SYNC_URL .. kode, syncBodyForm(teks))
     if hasil and (hasil.code == 200 or hasil.code == 201) then
-        kode = syncKodeDariHeader(hasil.headers)
-    end
-    if kode then
         SYNC.kode = kode
         SYNC.lastPayload = teks
         SYNC.pending = false
@@ -1334,23 +1381,26 @@ local function syncUnduh()
     SYNC.status = "terima"
     syncRefreshKartu()
     local sukses = false
-    local hasil = syncHttp("GET", CFG.SYNC_URL .. "/" .. SYNC.kode)
-    if hasil and hasil.code == 200 and type(hasil.body) == "string" then
-        local data
-        pcall(function() data = HttpService:JSONDecode(hasil.body) end)
-        local cloud = data and syncValidasi(data) or nil
-        if cloud then
-            SYNC.lastDari = cloud.dari
-            local berubah, rincian = syncMerge(cloud)
-            if berubah > 0 then
-                toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
-                syncTandai()   -- tombstone gabungan diunggah balik sekali
-            end
-            sukses = true
-        else
-            SYNC.offSudahToast = true   -- toast offline kembar tidak perlu
-            toast("☁ data cloud tidak valid — diabaikan", Warna.Merah)
+    local cloud = syncAmbilCloud(SYNC.kode)
+    if cloud == "kosong" then
+        -- loker ada tapi belum berisi -> tandai biar diisi data lokal
+        if not SYNC.kosongSudah then
+            SYNC.kosongSudah = true
+            toast("☁ loker kosong — data device ini akan diunggah", Warna.Kuning)
         end
+        SYNC.pending = true
+        sukses = true
+    elseif type(cloud) == "table" then
+        SYNC.lastDari = cloud.dari
+        local berubah, rincian = syncMerge(cloud)
+        if berubah > 0 then
+            toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
+            syncTandai()   -- tombstone gabungan diunggah balik sekali
+        end
+        sukses = true
+    elseif cloud == "rusak" then
+        SYNC.offSudahToast = true   -- toast offline kembar tidak perlu
+        toast("☁ data cloud tidak valid — diabaikan", Warna.Merah)
     end
     if sukses then
         syncSetStatus(SYNC.pending and "kirim" or "ok")
@@ -1362,43 +1412,49 @@ local function syncUnduh()
     SYNC.sibuk = false
 end
 
--- unggah = unduh -> merge -> PUT (supaya tidak menimpa device lain)
+-- unggah = unduh -> merge -> POST (supaya tidak menimpa device lain)
 local function syncUnggah()
     if SYNC.sibuk or State.Removed or not SYNC.kode then return end
     SYNC.sibuk = true
     SYNC.status = "kirim"
     syncRefreshKartu()
     local sukses = false
-    local hasil = syncHttp("GET", CFG.SYNC_URL .. "/" .. SYNC.kode)
-    if hasil and hasil.code == 200 and type(hasil.body) == "string" then
-        local data
-        pcall(function() data = HttpService:JSONDecode(hasil.body) end)
-        local cloud = data and syncValidasi(data) or nil
-        if cloud then
-            SYNC.lastDari = cloud.dari
-            local berubah, rincian = syncMerge(cloud)
-            if berubah > 0 then
-                toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
-            end
-            local teks = HttpService:JSONEncode(syncPayload())
-            if teks == SYNC.lastPayload then
-                SYNC.pending = false      -- isinya sama -> jangan upload ulang
+    local bolehUpload = false
+    local cloud = syncAmbilCloud(SYNC.kode)
+    if cloud == nil then
+        -- jaringan gagal -> tunggu siklus berikutnya
+    elseif cloud == "kosong" or cloud == "rusak" then
+        -- loker kosong / isinya sampah -> isi ulang dengan data lokal
+        if cloud == "rusak" then
+            SYNC.offSudahToast = true
+            toast("☁ data cloud tidak valid — diisi ulang dari device ini", Warna.Merah)
+        end
+        bolehUpload = true
+    else
+        SYNC.lastDari = cloud.dari
+        local berubah, rincian = syncMerge(cloud)
+        if berubah > 0 then
+            toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
+        end
+        bolehUpload = true
+    end
+    if bolehUpload then
+        local teks = HttpService:JSONEncode(syncPayload())
+        if teks == SYNC.lastPayload then
+            SYNC.pending = false      -- isinya sama -> jangan upload ulang
+            syncSimpanFile()
+            sukses = true
+        else
+            local put = syncHttp("POST", CFG.SYNC_URL .. SYNC.kode, syncBodyForm(teks))
+            if put and (put.code == 200 or put.code == 201) then
+                SYNC.lastPayload = teks
+                SYNC.pending = false
+                SYNC.lastDari = SYNC.labelPerangkat
+                SYNC.kosongSudah = false
                 syncSimpanFile()
                 sukses = true
-            else
-                local put = syncHttp("PUT", CFG.SYNC_URL .. "/" .. SYNC.kode, teks)
-                if put and (put.code == 200 or put.code == 201) then
-                    SYNC.lastPayload = teks
-                    SYNC.pending = false
-                    SYNC.lastDari = SYNC.labelPerangkat
-                    syncSimpanFile()
-                    sukses = true
-                    print("[BALAP-SYNC] terkirim (" .. #teks .. " byte)")
-                end
+                print("[BALAP-SYNC] terkirim (" .. #teks .. " byte)")
             end
-        else
-            SYNC.offSudahToast = true
-            toast("☁ data cloud tidak valid — diabaikan", Warna.Merah)
         end
     end
     if sukses then
@@ -1410,40 +1466,43 @@ local function syncUnggah()
 end
 
 -- bergabung ke loker milik device lain (MASUKKAN KODE)
-local function syncPakaiKode(kodeBaru)
+local function syncPakaiKode(kodeMasuk)
     if SYNC.sibuk or State.Removed then return end
-    if not kodeBaru:match("^%d+$") then
-        toast("Kode harus angka", Warna.Kuning)
+    local kodeBaru = tostring(kodeMasuk):lower()
+    kodeBaru = kodeBaru:gsub("^%s+", "")
+    kodeBaru = kodeBaru:gsub("%s+$", "")
+    if #kodeBaru < 6 or #kodeBaru > 40 or not kodeBaru:match("^[a-z0-9%-]+$") then
+        toast("Kode: huruf kecil/angka/tanda - (contoh: balap-7k2m-9xq4)", Warna.Kuning)
         return
     end
     SYNC.sibuk = true
     SYNC.status = "terima"
     syncRefreshKartu()
-    local hasil = syncHttp("GET", CFG.SYNC_URL .. "/" .. kodeBaru)
-    if hasil and hasil.code == 200 and type(hasil.body) == "string" then
-        local data
-        pcall(function() data = HttpService:JSONDecode(hasil.body) end)
-        local cloud = data and syncValidasi(data) or nil
-        if cloud then
-            SYNC.kode = kodeBaru
-            SYNC.lastPayload = nil
-            SYNC.lastDari = cloud.dari
-            syncSimpanFile()
-            local berubah, rincian = syncMerge(cloud)
-            if berubah > 0 then
-                toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
-            end
-            syncTandai()   -- data device ini ikut digabung ke loker
-            syncSetStatus("ok")
-            toast("☁ Tersambung ke loker " .. kodeBaru, Warna.Hijau)
-            print("[BALAP-SYNC] pakai kode: " .. kodeBaru)
-            SYNC.sibuk = false
-            return
+    local cloud = syncAmbilCloud(kodeBaru)
+    if type(cloud) == "table" then
+        SYNC.kode = kodeBaru
+        SYNC.lastPayload = nil
+        SYNC.lastDari = cloud.dari
+        SYNC.kosongSudah = false
+        syncSimpanFile()
+        local berubah, rincian = syncMerge(cloud)
+        if berubah > 0 then
+            toast("☁ dari cloud: " .. syncRingkas(rincian), Warna.Biru)
         end
+        syncTandai()   -- data device ini ikut digabung ke loker
+        syncSetStatus("ok")
+        toast("☁ Tersambung ke loker " .. kodeBaru, Warna.Hijau)
+        print("[BALAP-SYNC] pakai kode: " .. kodeBaru)
+        SYNC.sibuk = false
+        return
     end
     SYNC.sibuk = false
-    syncSetStatus("offline")
-    toast("☁ Kode tidak valid / tidak bisa dijangkau", Warna.Merah)
+    if cloud == "kosong" then
+        toast("☁ Kode tidak ditemukan — loker masih kosong (cek ketikan)", Warna.Merah)
+    else
+        syncSetStatus("offline")
+        toast("☁ Kode tidak valid / tidak bisa dijangkau", Warna.Merah)
+    end
 end
 
 -- ganti kode = buat loker baru berisi data sekarang
@@ -1453,20 +1512,18 @@ local function syncGantiKode()
     SYNC.status = "kirim"
     syncRefreshKartu()
     local teks = HttpService:JSONEncode(syncPayload())
-    local hasil = syncHttp("POST", CFG.SYNC_URL, teks)
-    local kode
+    local kodeBaru = syncKodeBaru()
+    local hasil = syncHttp("POST", CFG.SYNC_URL .. kodeBaru, syncBodyForm(teks))
     if hasil and (hasil.code == 200 or hasil.code == 201) then
-        kode = syncKodeDariHeader(hasil.headers)
-    end
-    if kode then
-        SYNC.kode = kode
+        SYNC.kode = kodeBaru
         SYNC.lastPayload = teks
         SYNC.pending = false
         SYNC.lastDari = SYNC.labelPerangkat
+        SYNC.kosongSudah = false
         syncSimpanFile()
         syncSetStatus("ok")
-        toast("☁ Kode baru siap: " .. kode, Warna.Hijau)
-        print("[BALAP-SYNC] kode diganti: " .. kode)
+        toast("☁ Kode baru siap: " .. kodeBaru, Warna.Hijau)
+        print("[BALAP-SYNC] kode diganti: " .. kodeBaru)
     else
         syncSetStatus("offline")
         toast("☁ Gagal ganti kode (offline?) — kode lama tetap", Warna.Kuning)
@@ -1484,7 +1541,7 @@ local function syncSetUlang()
     local cadanganHapus = SYNC.hapus
     SYNC.hapus = {}
     local teks = HttpService:JSONEncode(syncPayload())
-    local put = syncHttp("PUT", CFG.SYNC_URL .. "/" .. SYNC.kode, teks)
+    local put = syncHttp("POST", CFG.SYNC_URL .. SYNC.kode, syncBodyForm(teks))
     if put and (put.code == 200 or put.code == 201) then
         SYNC.lastPayload = teks
         SYNC.pending = false
@@ -2301,7 +2358,7 @@ scrollTitik = buat("ScrollingFrame", {
 }, kontenTitik)
 buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTitik)
 
--- ===== kartu ☁ SINKRON (v1.3.4) — status sinkronisasi cloud =====
+-- ===== kartu ☁ SINKRON (v1.3.5) — status sinkronisasi cloud =====
 local kartuSync = buat("Frame", {
     BackgroundColor3 = Warna.Card2,
     Size = UDim2.new(1, 0, 0, 102),
@@ -2362,7 +2419,7 @@ local boxKode = buat("TextBox", {
     FontFace = fnt("med"),
     TextSize = 10,
     TextColor3 = Warna.Putih,
-    PlaceholderText = "Tempel kode sync (angka)...",
+    PlaceholderText = "Tempel / ketik kode (balap-xxxx-xxxx)...",
     PlaceholderColor3 = Warna.AbuTeks,
     Text = "",
     ClearTextOnFocus = false,
@@ -2468,8 +2525,8 @@ btnBatalKode.MouseButton1Click:Connect(function()
 end)
 btnPakaiKode.MouseButton1Click:Connect(function()
     local kode = tostring(boxKode.Text):gsub("^%s+", ""):gsub("%s+$", "")
-    if not kode:match("^%d+$") then
-        toast("Kode harus angka (lihat kartu ☁ di device lain)", Warna.Kuning)
+    if not kode:match("^[a-zA-Z0-9%-]+$") then
+        toast("Kode: huruf kecil/angka/tanda - (contoh: balap-7k2m-9xq4)", Warna.Kuning)
         return
     end
     boxKode.Text = ""
@@ -2479,7 +2536,7 @@ end)
 boxKode.FocusLost:Connect(function(enter)
     if enter then
         local kode = tostring(boxKode.Text):gsub("^%s+", ""):gsub("%s+$", "")
-        if kode:match("^%d+$") then
+        if kode:match("^[a-zA-Z0-9%-]+$") then
             boxKode.Text = ""
             modeInputKode(false)
             syncPakaiKode(kode)
@@ -2611,7 +2668,7 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.3.4\n"
+    Text = "⚡ BALAP v1.3.5\n"
         .. "Fitur:\n"
         .. "GERAK  : Speed (Q) • Jump (J) • Shiftlock (C) • Moonwalk (F)\n"
         .. "Shiftlock Tengah (LShift) • Fall Resist (B, 4 preset) • TP\n"
@@ -4228,7 +4285,7 @@ catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
 end))
 
 diagSet("keybind OK — finalisasi...")
--- [21b] MESIN ☁ SINKRON (v1.3.4) — mulai setelah semua siap
+-- [21b] MESIN ☁ SINKRON (v1.3.5) — mulai setelah semua siap
 syncMulai()
 -- [22] MULAI ---------------------------------------------------------
 updateSpeedLabel()
@@ -4242,7 +4299,7 @@ task.delay(0.15, function()
 end)
 print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
 print("[BALAP] GERAK | VISUAL | SISTEM • Q speed • J jump • C shift • F moon • B fallresist • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sinkron")
-diagSet("BALAP v1.3.4 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+diagSet("BALAP v1.3.5 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
 task.delay(7, function()
         local function hapusDiag()
                 pcall(function()
@@ -4266,7 +4323,7 @@ getgenv().BALAP_API = { Setters = Setters, State = State, Sync = SYNC }  -- debu
 end, function(e)
         local teks = tostring(e)
         print("==================================================")
-        print("[BALAP v1.3.4] ERROR SAAT LOAD — kirim teks ini ke dev:")
+        print("[BALAP v1.3.5] ERROR SAAT LOAD — kirim teks ini ke dev:")
         print(teks)
         pcall(function() print(debug.traceback("", 2)) end)
         print("==================================================")
@@ -4275,5 +4332,5 @@ end, function(e)
         end)
 end)
 if not __BALAP_LOAD_OK__ then
-        warn("[BALAP v1.3.4] Script GAGAL load — banner MERAH di layar berisi errornya.")
+        warn("[BALAP v1.3.5] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
