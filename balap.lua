@@ -1,23 +1,37 @@
 --========================================================
---  BALAP v1.3.5 — 
+--  BALAP v1.0 —
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  4 TAB:
---    1 🏃 GERAK  : Speed, Jump, Shiftlock, Tengah, Moonwalk, Fall Resist, TP
---    2 🎨 VISUAL : Hide Player+Kendaraan, Hide Badan Atas, Cahaya Auto 2 arah, Lightweight, Dinding Batas
---    3 ⚙️ SISTEM : rejoin, hapus script
---    4 📍 TITIK  : tiang checkpoint + daftar teleport (tersimpan permanen)
+--    1 MOVEMENT & VISUAL : Speed, Jump, Shiftlock Mobile, Shiftlock Tengah,
+--                          Moonwalk, Fall Resist (bebas 0-75%), Hide Player
+--                          +Kendaraan, Hide Badan Atas, Cahaya Auto,
+--                          Lightweight, Dinding Batas
+--    2 TITIK   : tiang checkpoint + daftar titik (tersimpan permanen)
+--    3 TP      : simpan / rename / hapus lokasi teleport + urut terdekat
+--    4 SYSTEM  : ☁ SINKRON (kode lintas device), rejoin, hapus script
 --
 --  Keybind:
 --    G = buka/tutup GUI (saat tutup = hilang total)
 --    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
 --    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor lingkaran mini)
---    F = Moonwalk    B = Fall Resist (preset 5/20/50/75%)    R = Hide
+--    F = Moonwalk    B = Fall Resist (potongan bebas 0-75%)    R = Hide
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    V = Tambah titik di posisi karakter (tanpa buka GUI)
 --    K = Rejoin (double-tap)
---    TP = via GUI (tab GERAK): simpan lokasi dgn nama bebas — permanen
+--    TP = via GUI (tab TP): simpan lokasi dgn nama bebas — permanen
+--
+--  v1.0 (rilis restrukturisasi — lanjutan dari BALAP v1.3.5):
+--    • TAB BARU: 1 MOVEMENT & VISUAL (gerak + visual dilebur jadi satu),
+--      2 TITIK, 3 TP (tab sendiri), 4 SYSTEM
+--    • Kartu ☁ SINKRON pindah ke tab SYSTEM; tombol ☁ di header membuka
+--      tab SYSTEM. Mesin sync (textdb.dev, merge, tombstone) TIDAK diubah.
+--    • Fall Resist: 4 tombol preset diganti STEPPER bebas 0-75% (pola
+--      seperti Speed: -/+ 0.25 atau ketik sendiri). 0% = tanpa potongan
+--      (pulse tidak ditembakkan, damage normal).
+--    • Versi di-reset menjadi v1.0
+--  Riwayat versi lama (sebelum reset ke v1.0):
 --
 --  v1.0.1: Moonwalk halus (putaran natural, CFG.MOON_TURN_MAX)
 --  v1.1.0: Anti-AFK / Reset / Hemat GUI / Hide Pemain Lain dihapus
@@ -56,7 +70,7 @@
 --          bisa dibaca manusia (contoh: balap-7k2m-9xq4) — dulu cuma
 --          bisa angka. Cara pakai tidak berubah sama sekali.
 --========================================================
-print("[BALAP v1.3.5] load mulai...")
+print("[BALAP v1.0] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -105,7 +119,7 @@ do
         end
 end
 
-local VERSI = "1.3.5"
+local VERSI = "1.0"
 local __BALAP_LOAD_OK__ = xpcall(function()
 -- ================================================================
 -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -342,7 +356,7 @@ local effGradients, effTweens = {}, {}   -- registry efek neon (internal FX)
 local setFeature, togglePanel, rejoin, unloadScript
 local applySpeed, applyJump, updateJumpLabel
 local RefreshSpeed, RefreshJump, JumpLabel, SpeedLabel, FallLabel
-local cfgFall, oLight, fallState, fallRay, lightConn, refreshFallPreset, PRESET_FALL
+local cfgFall, oLight, fallState, fallRay, lightConn, refreshFall
 
 -- Forward declare untuk part3 (FX/footer/icon) — di-expose via buildFX()
 local konfeti, emojiBurst, pusatDiRoot, toast
@@ -355,9 +369,10 @@ local syncBuangHapusTp, syncBuangHapusTiang, syncRefreshKartu
 
 -- Forward declare untuk part2 (UI builder) — di-expose via buildUI()
 local tabBtns, kontenTabs, setTab
-local kontenKing, scrollKing, kontenVisual, scrollVisual
-local kontenSistem, scrollSistem
+local kontenMove, scrollMove
 local kontenTitik, scrollTitik
+local kontenTP, scrollTP
+local kontenSistem, scrollSistem
 setFeature = function(name, v, silent)
     local f = Setters[name]
     if f then f(v, silent) end
@@ -603,7 +618,7 @@ local title = buat("TextLabel", {
     Position = UDim2.new(0, 12, 0, 0),
     Size = UDim2.new(1, -104, 1, 0),
     FontFace = fnt("judul"),
-    Text = "⚡ BALAP v1.3.5 ⚡",
+    Text = "⚡ BALAP v1.0 ⚡",
     TextColor3 = Warna.Putih,
     TextSize = 21,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -638,7 +653,7 @@ local accent = buat("Frame", {
     BorderSizePixel = 0,
 }, panel)
 ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
--- ☁ mini di header (v1.3.4): warna = status sinkron, klik = buka tab TITIK
+-- ☁ mini di header: warna = status sinkron, klik = buka tab SYSTEM
 local btnCloud = buat("TextButton", {
     Size = UDim2.fromOffset(24, 24),
     Position = UDim2.new(1, -72, 0.5, -12),
@@ -1605,8 +1620,8 @@ end
 -- Bungkus dengan function untuk hemat local count (Luau limit 200)
 local function buildUI()
 tabBtns = {}
-local tabLabels = {"🏃 GERAK", "🎨 VISUAL", "⚙️ SISTEM", "📍 TITIK"}
-local tabColors = {Warna.Ungu2, Warna.Biru, Warna.AbuGelap, Warna.Kuning}
+local tabLabels = {"MOVEMENT & VISUAL", "TITIK", "TP", "SYSTEM"}
+local tabColors = {Warna.Ungu2, Warna.Kuning, Warna.Biru, Warna.AbuGelap}
 kontenTabs = {}
 for i, lbl in ipairs(tabLabels) do
     local tab = buat("TextButton", {
@@ -1617,7 +1632,7 @@ for i, lbl in ipairs(tabLabels) do
         FontFace = fnt("bold"),
         Text = lbl,
         TextColor3 = (i == 1) and Warna.Putih or Warna.AbuTeks,
-        TextSize = 10,
+        TextSize = 8,
         AutoButtonColor = false,
     }, panel)
     buat("UICorner", {CornerRadius = UDim.new(0, 6)}, tab)
@@ -1643,16 +1658,16 @@ for i, t in ipairs(tabBtns) do
     end)
 end
 
--- [7c] KONTEN TAB 1: GERAK ------------------------------------------
-kontenKing = buat("Frame", {
+-- [7c] KONTEN TAB 1: MOVEMENT & VISUAL ------------------------------------------
+kontenMove = buat("Frame", {
     Position = UDim2.new(0, 0, 0, 80),
     Size = UDim2.new(1, 0, 1, -110),
     BackgroundTransparency = 1,
     BorderSizePixel = 0,
     Visible = false,
 }, panel)
-table.insert(kontenTabs, kontenKing)
-scrollKing = buat("ScrollingFrame", {
+table.insert(kontenTabs, kontenMove)
+scrollMove = buat("ScrollingFrame", {
     Position = UDim2.new(0, 12, 0, 2),
     Size = UDim2.new(1, -24, 1, -6),
     BackgroundTransparency = 1,
@@ -1662,12 +1677,12 @@ scrollKing = buat("ScrollingFrame", {
     ScrollingDirection = Enum.ScrollingDirection.Y,
     CanvasSize = UDim2.new(0, 0, 0, 0),
     AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, kontenKing)
-buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollKing)
+}, kontenMove)
+buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollMove)
 local sOrder = 0
 local function nextOrder() sOrder += 1 return sOrder end
 
--- ===== baris generik (dipakai tab GERAK / VISUAL / SISTEM) =====
+-- ===== baris generik (dipakai semua tab) =====
 local function buatHeader(parent, text)
     return buat("TextLabel", {
         BackgroundTransparency = 1,
@@ -1825,7 +1840,7 @@ local function buatActionRow(parent, text, color, callback)
     return btn
 end
 
--- ===== init State KING (dibuat SEBELUM baris toggle) =====
+-- ===== init State (dibuat SEBELUM baris toggle) =====
 State.SpeedOn = false
 State.SpeedValue = CFG.SPEED_ON_1
 State.JumpOn  = false
@@ -1847,22 +1862,15 @@ State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
 -- FALL RESIST V1.07 (port script standalone -- menggantikan Smart Fall
 -- Assist model REFUND v1.7 yang ternyata visual-only: Health milik
 -- server, tulisan HP dari client langsung tertimpa replikasi).
--- 1 angka: POTONGAN DEMAGE jatuh %, dipilih lewat 4 tombol preset.
+-- 1 angka: POTONGAN DEMAGE jatuh %, diatur bebas 0-75 lewat stepper (pola Speed).
 -- Mekanisme: SILENT PULSE "Landed" 0.08 dtk + PLANNER kurva demage
 -- (data tes user) -- fisika & kecepatan TIDAK disentuh, HP TIDAK
 -- ditulis; damage server beneran berkurang karena hitungan tinggi
 -- jatuh game tereset oleh pulse. TANPA batas tinggi (v1.07): semua
 -- lompatan/jatuh diawasi & bisa langsung ke-trigger.
 -- ======================================================================
-PRESET_FALL = {
-    { nama = "S.RINGAN", pct = 5  },
-    { nama = "RINGAN",   pct = 20 },  -- DEFAULT
-    { nama = "SEDANG",   pct = 50 },
-    { nama = "BERAT",    pct = 75 },
-}
 cfgFall = {
-    potongan = 20,        -- DEFAULT POTONGAN = 20% (RINGAN)
-    idx      = 2,         -- preset terpilih: RINGAN
+    potongan = 20,        -- DEFAULT POTONGAN = 20% (bebas diatur 0-75 via stepper)
     VEL_MIN      = -10,   -- gerbang kecepatan turun (tercapai ~0.25 stud setelah mulai jatuh)
     BATAS_RIIL   = 30,    -- jatuh >= 30 stud = "riil" (pulse mengunci + notif); di bawah = sia-sia
     PULSE_DURASI = 0.08,  -- jendela pulse "Landed" (port SILENT PULSE v1.3)
@@ -1900,13 +1908,13 @@ fallRay = RaycastParams.new()
 fallRay.FilterType = Enum.RaycastFilterType.Exclude
 lightConn = nil
 
--- ===== baris TAB 1: GERAK =====
-buatHeader(scrollKing, "Player")
-local _, speedLbl = buatToggleRow(scrollKing, "Speed (Q): OFF (" .. fmtNum(CFG.SPEED_OFF) .. ")", "Q", "Speed")
+-- ===== baris TAB 1: MOVEMENT & VISUAL =====
+buatHeader(scrollMove, "Player")
+local _, speedLbl = buatToggleRow(scrollMove, "Speed (Q): OFF (" .. fmtNum(CFG.SPEED_OFF) .. ")", "Q", "Speed")
 SpeedLabel = speedLbl
 -- Nilai ON dipilih via stepper: rentang 17.25 - 21.25 (Q = ON/OFF saja)
 RefreshSpeed = buatStepperRow(
-    scrollKing,
+    scrollMove,
     "Speed",
     function() return State.SpeedValue end,
     function(v)
@@ -1917,10 +1925,10 @@ RefreshSpeed = buatStepperRow(
         end
     end
 )
-local _, jumpLabelRow = buatToggleRow(scrollKing, "JumpPower", "J", "Jump")
+local _, jumpLabelRow = buatToggleRow(scrollMove, "JumpPower", "J", "Jump")
 JumpLabel = jumpLabelRow
 RefreshJump = buatStepperRow(
-    scrollKing,
+    scrollMove,
     "Jump",
     function()
         local hum = getHum()
@@ -1933,57 +1941,163 @@ RefreshJump = buatStepperRow(
         if State.JumpOn then applyJump() end
     end
 )
-buatToggleRow(scrollKing, "Shiftlock Mobile", "C", "Shift")
-buatToggleRow(scrollKing, "Moonwalk", "F", "Moon")
-buatToggleRow(scrollKing, "Shiftlock Tengah", "Shift", "Tengah")
--- ===== FALL RESIST V1.07 — toggle + 4 preset potongan demage =====
-buatHeader(scrollKing, "Fall Resist")
-local _, fallLbl = buatToggleRow(scrollKing, "Fall Resist", "B", "Fall")
+buatToggleRow(scrollMove, "Shiftlock Mobile", "C", "Shift")
+buatToggleRow(scrollMove, "Shiftlock Tengah", "Shift", "Tengah")
+buatToggleRow(scrollMove, "Moonwalk", "F", "Moon")
+-- ===== FALL RESIST — toggle + stepper potongan bebas 0-75% =====
+buatHeader(scrollMove, "Fall Resist")
+local _, fallLbl = buatToggleRow(scrollMove, "Fall Resist", "B", "Fall")
 FallLabel = fallLbl
-local gridFall = buat("Frame", {
-    BackgroundTransparency = 1,
-    Size = UDim2.new(1, 0, 0, 64),
-    LayoutOrder = nextOrder(),
-}, scrollKing)
-buat("UIGridLayout", {
-    CellSize = UDim2.new(0.5, -3, 0, 29),
-    CellPadding = UDim2.new(0, 6, 0, 6),
-    SortOrder = Enum.SortOrder.LayoutOrder,
-}, gridFall)
-local presetFallBtns = {}
-for i, p in ipairs(PRESET_FALL) do
-    local b = buat("TextButton", {
-        BackgroundColor3 = Warna.AbuItem,
-        BorderSizePixel = 0,
-        FontFace = fnt("bold"),
-        TextSize = 10,
-        TextColor3 = Warna.AbuTeks,
-        Text = p.nama .. " " .. p.pct .. "%",
-        AutoButtonColor = false,
-        LayoutOrder = i,
-    }, gridFall)
-    buat("UICorner", {CornerRadius = UDim.new(0, 8)}, b)
-    presetFallBtns[i] = b
-    b.MouseButton1Click:Connect(function()
-        cfgFall.idx = i
-        cfgFall.potongan = p.pct
-        if refreshFallPreset then refreshFallPreset() end
-        toast("Fall Resist: " .. p.nama .. " " .. p.pct .. "%", Warna.Biru)
-    end)
-end
-refreshFallPreset = function()
-    local pr = PRESET_FALL[cfgFall.idx or 2] or PRESET_FALL[2]
+buatStepperRow(
+    scrollMove,
+    "Fall Resist",
+    function() return cfgFall.potongan end,
+    function(v)
+        cfgFall.potongan = math.clamp(v, 0, 75)
+        if refreshFall then refreshFall() end
+    end
+)
+refreshFall = function()
     if FallLabel and FallLabel.Parent then
         FallLabel.Text = "Fall Resist: "
-            .. (State.FallOn and (pr.nama .. " " .. pr.pct .. "%") or "OFF")
-    end
-    for bi, bb in ipairs(presetFallBtns) do
-        local aktif = (bi == cfgFall.idx)
-        bb.BackgroundColor3 = aktif and Warna.Hijau or Warna.AbuItem
-        bb.TextColor3 = aktif and Warna.HijauMuda or Warna.AbuTeks
+            .. (State.FallOn and (fmtNum(cfgFall.potongan) .. "%") or "OFF")
     end
 end
-refreshFallPreset()
+refreshFall()
+
+-- ===== VISUAL (dilebur dari tab VISUAL lama ke tab 1) =====
+buatHeader(scrollMove, "Visual")
+buatToggleRow(scrollMove, "Hide Player + Kendaraan", "R", "Hide")
+buatToggleRow(scrollMove, "Hide Badan Atas (kaki tetap)", nil, "HideAtas")
+buatToggleRow(scrollMove, "Cahaya Auto (2 arah)", "T", "Light")
+buatHeader(scrollMove, "Lightweight")
+buatToggleRow(scrollMove, "Partikel / Bayangan / Efek", nil, "LW")
+buatHeader(scrollMove, "Map")
+buatToggleRow(scrollMove, "Dinding Batas", "X", "Walls")
+
+-- [7g] KONTEN TAB 4: SYSTEM -----------------------------------------
+kontenSistem = buat("Frame", {
+    Position = UDim2.new(0, 0, 0, 80),
+    Size = UDim2.new(1, 0, 1, -110),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Visible = false,
+}, panel)
+scrollSistem = buat("ScrollingFrame", {
+    Position = UDim2.new(0, 12, 0, 2),
+    Size = UDim2.new(1, -24, 1, -6),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Warna.Ungu,
+    ScrollingDirection = Enum.ScrollingDirection.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, kontenSistem)
+buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollSistem)
+
+-- [7f] KONTEN TAB 2: TITIK ------------------------------------------
+kontenTitik = buat("Frame", {
+    Position = UDim2.new(0, 0, 0, 80),
+    Size = UDim2.new(1, 0, 1, -110),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Visible = false,
+}, panel)
+scrollTitik = buat("ScrollingFrame", {
+    Position = UDim2.new(0, 12, 0, 2),
+    Size = UDim2.new(1, -24, 1, -6),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Warna.Kuning,
+    ScrollingDirection = Enum.ScrollingDirection.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, kontenTitik)
+buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTitik)
+
+buatHeader(scrollTitik, "Tiang Penanda")
+buatToggleRow(scrollTitik, "Tampilkan Tiang", nil, "Tiang")
+buatActionRow(scrollTitik, "📍 + TAMBAH TITIK DI SINI", Warna.Hijau, function()
+    titikTambahDiSini()
+end)
+-- HAPUS SEMUA — konfirmasi 2 langkah (rawan kepencet kalau 1 tekan)
+local armTg = 0
+local btnHapusTgSemua = buatActionRow(scrollTitik, "🗑️ HAPUS SEMUA TITIK", Warna.Merah, function()
+    local now = os.clock()
+    if now - armTg > 3 then
+        armTg = now
+        btnHapusTgSemua.Text = "⚠️ YAKIN? TEKAN LAGI (3 dtk)"
+        toast("Tekan LAGI dalam 3 dtk — semua titik terhapus", Warna.Merah)
+        task.delay(3, function()
+            if btnHapusTgSemua.Parent and btnHapusTgSemua.Text ~= "🗑️ HAPUS SEMUA TITIK" then
+                btnHapusTgSemua.Text = "🗑️ HAPUS SEMUA TITIK"
+            end
+        end)
+    else
+        armTg = 0
+        btnHapusTgSemua.Text = "🗑️ HAPUS SEMUA TITIK"
+        titikHapusSemua()
+    end
+end)
+buatActionRow(scrollTitik, "⇅ URUTKAN TITIK TERDEKAT", Warna.Biru, function()
+    local _, hrp = getKarakter()
+    if not hrp then toast("Karakter belum ada", Warna.Merah) return end
+    if #titikList < 2 then toast("Butuh minimal 2 titik", Warna.Kuning) return end
+    table.sort(titikList, function(a, b)
+        local da = (a.X - hrp.Position.X)^2 + (a.Y - hrp.Position.Y)^2 + (a.Z - hrp.Position.Z)^2
+        local db = (b.X - hrp.Position.X)^2 + (b.Y - hrp.Position.Y)^2 + (b.Z - hrp.Position.Z)^2
+        return da < db
+    end)
+    titikSimpan()
+    titikRender()
+    titikRefreshDaftar()
+    toast("Titik diurutkan dari yang terdekat", Warna.Biru)
+end)
+buatHeader(scrollTitik, "Daftar Titik")
+titikHolder = buat("Frame", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 0),
+    AutomaticSize = Enum.AutomaticSize.Y,
+    LayoutOrder = nextOrder(),
+}, scrollTitik)
+buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, titikHolder)
+titikLabelJumlah = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 14),
+    FontFace = fnt("med"),
+    TextSize = 10,
+    TextColor3 = Warna.AbuTeks,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "Total: 0 titik • klik item = teleport",
+    LayoutOrder = nextOrder(),
+}, scrollTitik)
+-- muat data lama (file / getgenv) lalu render pertama
+titikMuat()
+titikRender()
+titikRefreshDaftar()
+
+-- [7e] KONTEN TAB 3: TP ---------------------------------------------
+kontenTP = buat("Frame", {
+    Position = UDim2.new(0, 0, 0, 80),
+    Size = UDim2.new(1, 0, 1, -110),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Visible = false,
+}, panel)
+scrollTP = buat("ScrollingFrame", {
+    Position = UDim2.new(0, 12, 0, 2),
+    Size = UDim2.new(1, -24, 1, -6),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Warna.Biru,
+    ScrollingDirection = Enum.ScrollingDirection.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+}, kontenTP)
+buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTP)
 
 -- ===== TP — TELEPORT + SIMPAN LOKASI (nama bebas, permanen) ==========
 -- Berdiri di tempat -> ketik nama -> 💾 SIMPAN -> muncul di daftar.
@@ -1993,14 +2107,14 @@ refreshFallPreset()
 -- didefinisikan di [7a3] bersama modul ☁ SINKRON. Perubahan TP
 -- otomatis masuk antrean sinkron cloud (syncTandai).
 
-buatHeader(scrollKing, "Teleport (TP)")
+buatHeader(scrollTP, "Teleport (TP)")
 
 -- baris input: [nama bebas] [💾 SIMPAN]
 local tpInputRow = buat("Frame", {
     BackgroundColor3 = Warna.AbuItem,
     Size = UDim2.new(1, 0, 0, 30),
     LayoutOrder = nextOrder(),
-}, scrollKing)
+}, scrollTP)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, tpInputRow)
 local tpInput = buat("TextBox", {
     BackgroundTransparency = 1,
@@ -2033,7 +2147,7 @@ local tpList = buat("Frame", {
     Size = UDim2.new(1, 0, 0, 0),
     AutomaticSize = Enum.AutomaticSize.Y,
     LayoutOrder = nextOrder(),
-}, scrollKing)
+}, scrollTP)
 buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, tpList)
 
 local tpRenameIdx = nil   -- indeks TP yang sedang direname (✎)
@@ -2247,7 +2361,7 @@ tpRefresh()
 
 -- ⇅ urutkan TP dari terdekat + hapus semua TP (konfirmasi 2 langkah)
 local armTp = 0
-buatActionRow(scrollKing, "⇅ URUTKAN TP TERDEKAT", Warna.Biru, function()
+buatActionRow(scrollTP, "⇅ URUTKAN TP TERDEKAT", Warna.Biru, function()
     local _, hrp = getKarakter()
     if not hrp then toast("Karakter belum ada", Warna.Merah) return end
     if #TP_LOKASI < 2 then toast("Butuh minimal 2 TP", Warna.Kuning) return end
@@ -2260,7 +2374,7 @@ buatActionRow(scrollKing, "⇅ URUTKAN TP TERDEKAT", Warna.Biru, function()
     tpRefresh()
     toast("TP diurutkan dari yang terdekat", Warna.Biru)
 end)
-local btnHapusTpSemua = buatActionRow(scrollKing, "🗑️ HAPUS SEMUA TP", Warna.Merah, function()
+local btnHapusTpSemua = buatActionRow(scrollTP, "🗑️ HAPUS SEMUA TP", Warna.Merah, function()
     local now = os.clock()
     if now - armTp > 3 then
         armTp = now
@@ -2284,86 +2398,17 @@ local btnHapusTpSemua = buatActionRow(scrollKing, "🗑️ HAPUS SEMUA TP", Warn
     end
 end)
 
--- [7d] KONTEN TAB 2: VISUAL -----------------------------------------
-kontenVisual = buat("Frame", {
-    Position = UDim2.new(0, 0, 0, 80),
-    Size = UDim2.new(1, 0, 1, -110),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    Visible = false,
-}, panel)
-table.insert(kontenTabs, kontenVisual)
-scrollVisual = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 2),
-    Size = UDim2.new(1, -24, 1, -6),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ScrollBarThickness = 4,
-    ScrollBarImageColor3 = Warna.Ungu,
-    ScrollingDirection = Enum.ScrollingDirection.Y,
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, kontenVisual)
-buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollVisual)
-buatHeader(scrollVisual, "Visual")
-buatToggleRow(scrollVisual, "Hide Player + Kendaraan", "R", "Hide")
-buatToggleRow(scrollVisual, "Hide Badan Atas (kaki tetap)", nil, "HideAtas")
-buatToggleRow(scrollVisual, "Cahaya Auto (2 arah)", "T", "Light")
-buatHeader(scrollVisual, "Lightweight")
-buatToggleRow(scrollVisual, "Partikel / Bayangan / Efek", nil, "LW")
-buatHeader(scrollVisual, "Map")
-buatToggleRow(scrollVisual, "Dinding Batas", "X", "Walls")
-
--- [7g] KONTEN TAB 3: SISTEM -----------------------------------------
-kontenSistem = buat("Frame", {
-    Position = UDim2.new(0, 0, 0, 80),
-    Size = UDim2.new(1, 0, 1, -110),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    Visible = false,
-}, panel)
-table.insert(kontenTabs, kontenSistem)
-scrollSistem = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 2),
-    Size = UDim2.new(1, -24, 1, -6),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ScrollBarThickness = 4,
-    ScrollBarImageColor3 = Warna.Ungu,
-    ScrollingDirection = Enum.ScrollingDirection.Y,
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, kontenSistem)
-buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollSistem)
-
--- [7f] KONTEN TAB 4: TITIK ------------------------------------------
-kontenTitik = buat("Frame", {
-    Position = UDim2.new(0, 0, 0, 80),
-    Size = UDim2.new(1, 0, 1, -110),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    Visible = false,
-}, panel)
+-- urutan kontenTabs = urutan tab: 1 MOVEMENT & VISUAL • 2 TITIK • 3 TP • 4 SYSTEM
 table.insert(kontenTabs, kontenTitik)
-scrollTitik = buat("ScrollingFrame", {
-    Position = UDim2.new(0, 12, 0, 2),
-    Size = UDim2.new(1, -24, 1, -6),
-    BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ScrollBarThickness = 4,
-    ScrollBarImageColor3 = Warna.Kuning,
-    ScrollingDirection = Enum.ScrollingDirection.Y,
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, kontenTitik)
-buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTitik)
+table.insert(kontenTabs, kontenTP)
+table.insert(kontenTabs, kontenSistem)
 
--- ===== kartu ☁ SINKRON (v1.3.5) — status sinkronisasi cloud =====
+-- ===== kartu ☁ SINKRON — status sinkronisasi cloud (pindahan dari tab TITIK ke tab SYSTEM) =====
 local kartuSync = buat("Frame", {
     BackgroundColor3 = Warna.Card2,
     Size = UDim2.new(1, 0, 0, 102),
     LayoutOrder = nextOrder(),
-}, scrollTitik)
+}, scrollSistem)
 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, kartuSync)
 buat("UIStroke", {Color = Warna.Ungu2, Thickness = 1, Transparency = 0.55}, kartuSync)
 local syncJudul = buat("TextLabel", {
@@ -2597,67 +2642,6 @@ btnResetCloud.MouseButton1Click:Connect(function()
 end)
 syncRefreshKartu()
 
-buatHeader(scrollTitik, "Tiang Penanda")
-buatToggleRow(scrollTitik, "Tampilkan Tiang", nil, "Tiang")
-buatActionRow(scrollTitik, "📍 + TAMBAH TITIK DI SINI", Warna.Hijau, function()
-    titikTambahDiSini()
-end)
--- HAPUS SEMUA — konfirmasi 2 langkah (rawan kepencet kalau 1 tekan)
-local armTg = 0
-local btnHapusTgSemua = buatActionRow(scrollTitik, "🗑️ HAPUS SEMUA TITIK", Warna.Merah, function()
-    local now = os.clock()
-    if now - armTg > 3 then
-        armTg = now
-        btnHapusTgSemua.Text = "⚠️ YAKIN? TEKAN LAGI (3 dtk)"
-        toast("Tekan LAGI dalam 3 dtk — semua titik terhapus", Warna.Merah)
-        task.delay(3, function()
-            if btnHapusTgSemua.Parent and btnHapusTgSemua.Text ~= "🗑️ HAPUS SEMUA TITIK" then
-                btnHapusTgSemua.Text = "🗑️ HAPUS SEMUA TITIK"
-            end
-        end)
-    else
-        armTg = 0
-        btnHapusTgSemua.Text = "🗑️ HAPUS SEMUA TITIK"
-        titikHapusSemua()
-    end
-end)
-buatActionRow(scrollTitik, "⇅ URUTKAN TITIK TERDEKAT", Warna.Biru, function()
-    local _, hrp = getKarakter()
-    if not hrp then toast("Karakter belum ada", Warna.Merah) return end
-    if #titikList < 2 then toast("Butuh minimal 2 titik", Warna.Kuning) return end
-    table.sort(titikList, function(a, b)
-        local da = (a.X - hrp.Position.X)^2 + (a.Y - hrp.Position.Y)^2 + (a.Z - hrp.Position.Z)^2
-        local db = (b.X - hrp.Position.X)^2 + (b.Y - hrp.Position.Y)^2 + (b.Z - hrp.Position.Z)^2
-        return da < db
-    end)
-    titikSimpan()
-    titikRender()
-    titikRefreshDaftar()
-    toast("Titik diurutkan dari yang terdekat", Warna.Biru)
-end)
-buatHeader(scrollTitik, "Daftar Titik")
-titikHolder = buat("Frame", {
-    BackgroundTransparency = 1,
-    Size = UDim2.new(1, 0, 0, 0),
-    AutomaticSize = Enum.AutomaticSize.Y,
-    LayoutOrder = nextOrder(),
-}, scrollTitik)
-buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, titikHolder)
-titikLabelJumlah = buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Size = UDim2.new(1, 0, 0, 14),
-    FontFace = fnt("med"),
-    TextSize = 10,
-    TextColor3 = Warna.AbuTeks,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Text = "Total: 0 titik • klik item = teleport",
-    LayoutOrder = nextOrder(),
-}, scrollTitik)
--- muat data lama (file / getgenv) lalu render pertama
-titikMuat()
-titikRender()
-titikRefreshDaftar()
-
 buatHeader(scrollSistem, "Info")
 local infoVersi = buat("TextLabel", {
     BackgroundColor3 = Warna.AbuItem,
@@ -2668,17 +2652,16 @@ local infoVersi = buat("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v1.3.5\n"
-        .. "Fitur:\n"
-        .. "GERAK  : Speed (Q) • Jump (J) • Shiftlock (C) • Moonwalk (F)\n"
-        .. "Shiftlock Tengah (LShift) • Fall Resist (B, 4 preset) • TP\n"
-        .. "(✎ rename, jarak, urut terdekat) • V = +titik cepat\n"
-        .. "VISUAL : Hide Player+Kendaraan (R) • Hide Badan Atas\n"
+    Text = "⚡ BALAP v1.0\n"
+        .. "TAB 1 MOVEMENT & VISUAL: Speed (Q) • Jump (J)\n"
+        .. "Shiftlock (C) • Shiftlock Tengah (LShift) • Moonwalk (F)\n"
+        .. "Fall Resist (B, bebas 0-75%) • Hide (R) • Hide Atas\n"
         .. "Cahaya Auto (T) • Lightweight • Dinding Batas (X)\n"
-        .. "TITIK  : Tiang checkpoint + teleport • V = tambah titik\n"
-        .. "☁ SINKRON : TP + titik lintas device — kode di kartu TITIK,\n"
+        .. "TAB 2 TITIK: tiang checkpoint + daftar • V = +titik cepat\n"
+        .. "TAB 3 TP: simpan/rename/hapus/urut terdekat\n"
+        .. "TAB 4 SYSTEM: ☁ SINKRON — kode di kartu SYSTEM,\n"
         .. "salin ke device lain (MASUKKAN KODE untuk nyambung)\n"
-        .. "SISTEM : Rejoin (K×2) • Hapus Script\n"
+        .. "Rejoin (K×2) • Hapus Script\n"
         .. "Shift/Moonwalk/Tengah otomatis OFF saat mati/respawn",
     LayoutOrder = nextOrder(),
 }, scrollSistem)
@@ -2753,7 +2736,7 @@ local marquee = buat("TextLabel", {
     Position = UDim2.fromOffset(360, 0),
     Size = UDim2.fromOffset(1600, 13),
     FontFace = fnt("med"),
-    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25 di panel) • J Jump (51.25/65.25) • C Shift • F Moonwalk • LShift Tengah • B FallResist • V +Titik   ✦   📍 Titik + ☁ Sinkron lintas device (kode di tab TITIK)   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+    Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25) • J Jump (51.25/65.25) • C Shift • LShift Tengah • F Moonwalk • B FallResist 0-75% • V +Titik   ✦   📍 TAB TITIK: tiang + daftar titik   ✦   🌍 TAB TP: simpan/rename/urut terdekat   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ☁ kode sinkron di tab SYSTEM   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
     TextColor3 = Warna.AbuGelap,
     TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -4034,7 +4017,7 @@ Setters.Fall = function(v, silent)
         fallState.hum = nil
     end
     syncNotify("Fall", v, silent, "Fall Resist")
-    if refreshFallPreset then refreshFallPreset() end
+    if refreshFall then refreshFall() end
 end
 
 -- Q — Speed ON/OFF murni
@@ -4298,8 +4281,8 @@ task.delay(0.15, function()
         end
 end)
 print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-print("[BALAP] GERAK | VISUAL | SISTEM • Q speed • J jump • C shift • F moon • B fallresist • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sinkron")
-diagSet("BALAP v1.3.5 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon • B fallresist 0-75% • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
+diagSet("BALAP v1.0 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
 task.delay(7, function()
         local function hapusDiag()
                 pcall(function()
@@ -4323,7 +4306,7 @@ getgenv().BALAP_API = { Setters = Setters, State = State, Sync = SYNC }  -- debu
 end, function(e)
         local teks = tostring(e)
         print("==================================================")
-        print("[BALAP v1.3.5] ERROR SAAT LOAD — kirim teks ini ke dev:")
+        print("[BALAP v1.0] ERROR SAAT LOAD — kirim teks ini ke dev:")
         print(teks)
         pcall(function() print(debug.traceback("", 2)) end)
         print("==================================================")
@@ -4332,5 +4315,5 @@ end, function(e)
         end)
 end)
 if not __BALAP_LOAD_OK__ then
-        warn("[BALAP v1.3.5] Script GAGAL load — banner MERAH di layar berisi errornya.")
+        warn("[BALAP v1.0] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
