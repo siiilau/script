@@ -1,11 +1,12 @@
 --========================================================
---  BALAP v1.2 —
+--  BALAP v1.4 —
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  4 TAB:
 --    1 MOVEMENT & VISUAL : Speed, Jump, Shiftlock Mobile, Shiftlock Tengah,
---                          Moonwalk, Hide Player +Kendaraan, Hide Badan Atas,
---                          Cahaya Auto, Lightweight, Dinding Batas
+--                          Moonwalk, Lompat Udara, Hide Player +Kendaraan,
+--                          Hide Badan Atas, Cahaya Auto, Lightweight,
+--                          Dinding Batas
 --    2 TITIK   : tiang checkpoint + daftar titik (tersimpan permanen)
 --    3 TP      : simpan / rename / hapus lokasi teleport + urut terdekat
 --    4 SYSTEM  : ☁ SINKRON (kode lintas device), rejoin, hapus script
@@ -16,11 +17,36 @@
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
 --    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor lingkaran mini)
 --    F = Moonwalk    R = Hide
+--    B = Lompat Udara ON/OFF — saat di udara, tekan lompat lagi
+--        (spasi PC / tombol lompat HP) untuk lompatan ekstra
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    V = Tambah titik di posisi karakter (tanpa buka GUI)
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab TP): simpan lokasi dgn nama bebas — permanen
 --
+--  v1.4 (PERBAIKAN):
+--    • FIX KENDARAAN — Moonwalk (F) & Shiftlock Mobile (C) sekarang
+--      TIDAK BEREFEK SAMA SEKALI saat naik kendaraan (mobil, motor,
+--      seat apa pun). Dulu mesinnya tetap memaksa badan menghadap
+--      kamera padahal badan sudah "menyatu" dgn kendaraan (weld),
+--      jadi MOBIL/MOTOR ikut terpaku ke arah kamera / ikut dibalik
+--      saat jalan. Sekarang: duduk di kendaraan = kedua mesin berhenti
+--      total (tidak sentuh CFrame) + AutoRotate dikembalikan sementara
+--      ke bawaan game, jadi kendaraan dikendarai 100% normal. Turun
+--      dari kendaraan = efeknya balik OTOMATIS (toggle tetap ON,
+--      tidak perlu dimatikan-pasang lagi). Shiftlock Tengah, fitur
+--      lain & semua data tersimpan tidak disentuh sama sekali.
+--  v1.3 (FITUR BARU):
+--    • LOMPAT UDARA (Air Jump) — fitur baru di tab MOVEMENT & VISUAL.
+--      Toggle di panel + keybind B (slot B memang dikosongkan sejak
+--      v1.2). Saat DI UDARA, tekan lompat lagi (spasi PC / tombol
+--      lompat HP) untuk lompatan ekstra — kekuatannya mengikuti
+--      JumpPower/JumpHeight aktif (setting J). Jumlah lompatan ekstra
+--      diatur stepper "Lompatan ekstra" (1-3, default 1 = double jump).
+--      Reset otomatis saat mendarat/respawn • anti-spam 0.25 dtk •
+--      tidak aktif saat berenang / duduk di kendaraan.
+--    • Fitur lain, semua data tersimpan (penanda_titik.json,
+--      BALAP_TP.json, BALAP_SYNC.json) & keybind lain 100% tidak berubah.
 --  v1.2 (HAPUS FITUR):
 --    • Fitur Fall Resist DIHAPUS total: toggle + stepper di tab
 --      MOVEMENT & VISUAL, keybind B, mesin pulse "Landed" (Heartbeat),
@@ -89,7 +115,7 @@
 --          bisa dibaca manusia (contoh: balap-7k2m-9xq4) — dulu cuma
 --          bisa angka. Cara pakai tidak berubah sama sekali.
 --========================================================
-print("[BALAP v1.2] load mulai...")
+print("[BALAP v1.4] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -139,7 +165,7 @@ do
     end
 end
 
-local VERSI = "1.2"
+local VERSI = "1.3"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -211,6 +237,14 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         --   Badan hanya berputar saat karakter BERGERAK; berdiri = diam total.
         MOON_TURN_MAX = 12,
         MOON_SMOOTH = 10,
+        -- Lompat Udara (v1.3, B): lompatan ekstra saat DI UDARA (double jump).
+        --   Tekan lompat lagi (spasi / tombol lompat HP) saat melayang.
+        --   AIRJUMP_MAX      = jumlah lompatan ekstra bawaan (1 = double jump)
+        --   AIRJUMP_CAP      = batas atas stepper "Lompatan ekstra"
+        --   AIRJUMP_DEBOUNCE = jeda minimal antar lompatan udara (anti spam)
+        AIRJUMP_MAX      = 1,
+        AIRJUMP_CAP      = 3,
+        AIRJUMP_DEBOUNCE = 0.25,
         -- Shiftlock Tengah (v1.2.0): kamera persis di TENGAH karakter.
         -- v1.3.3: kamera TIDAK diubah sama sekali — yang digeser ke bawah cuma
         --         letak lingkaran kursornya (posisi diatur SLT_DOT_Y)
@@ -664,7 +698,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Position = UDim2.new(0, 12, 0, 0),
         Size = UDim2.new(1, -104, 1, 0),
         FontFace = fnt("judul"),
-        Text = "⚡ BALAP v1.2 ⚡",
+        Text = "⚡ BALAP v1.4 ⚡",
         TextColor3 = Warna.Putih,
         TextSize = 22,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -1872,6 +1906,72 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end)
             return refresh
         end
+        -- stepper bilangan bulat (v1.3): dipakai "Lompatan ekstra" Lompat Udara
+        local function buatStepperIntRow(parent, labelText, minV, maxV, getV, setV)
+            local row = buat("Frame", {
+                BackgroundColor3 = Warna.AbuItem,
+                Size = UDim2.new(1, 0, 0, 30),
+                LayoutOrder = nextOrder(),
+            }, parent)
+            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
+            buat("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 10, 0, 0),
+                Size = UDim2.new(0, 100, 1, 0),
+                FontFace = fnt("med"),
+                TextSize = 12,
+                TextColor3 = Warna.TeksGelap,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Text = labelText,
+            }, row)
+            local minus = buat("TextButton", {
+                BackgroundColor3 = Warna.Card2,
+                Size = UDim2.new(0, 32, 0, 22),
+                Position = UDim2.new(0, 110, 0.5, -11),
+                FontFace = fnt("bold"),
+                TextSize = 16,
+                TextColor3 = Warna.Putih,
+                Text = "-",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, minus)
+            local box = buat("TextBox", {
+                BackgroundColor3 = Warna.Hitam2,
+                Size = UDim2.new(1, -192, 0, 22),
+                Position = UDim2.new(0, 148, 0.5, -11),
+                FontFace = fnt("reg"),
+                TextSize = 14,
+                TextColor3 = Warna.Putih,
+                Text = tostring(getV()),
+                ClearTextOnFocus = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, box)
+            local plus = buat("TextButton", {
+                BackgroundColor3 = Warna.Card2,
+                Size = UDim2.new(0, 32, 0, 22),
+                Position = UDim2.new(1, -40, 0.5, -11),
+                FontFace = fnt("bold"),
+                TextSize = 16,
+                TextColor3 = Warna.Putih,
+                Text = "+",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, plus)
+            local function refresh() box.Text = tostring(getV()) end
+            local function ubah(d)
+                setV(math.clamp(getV() + d, minV, maxV))
+                refresh()
+                toast(labelText .. ": " .. tostring(getV()), Warna.Biru)
+            end
+            minus.MouseButton1Click:Connect(function() ubah(-1) end)
+            plus.MouseButton1Click:Connect(function() ubah(1) end)
+            box.FocusLost:Connect(function()
+                local n = tonumber(box.Text)
+                if n then setV(math.clamp(math.floor(n + 0.5), minV, maxV)) end
+                refresh()
+            end)
+            return refresh
+        end
         local function buatActionRow(parent, text, color, callback)
             local btn = buat("TextButton", {
                 BackgroundColor3 = color,
@@ -1902,6 +2002,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         State.WallsOn = false
         State.LightOn = false
         State.MoonOn  = false  -- Moonwalk (F)
+        State.AirJumpOn = false -- Lompat Udara (B, v1.3)
+        State.AirJumpMax = CFG.AIRJUMP_MAX -- jumlah lompatan ekstra (stepper)
         State.TengahOn = false -- Shiftlock Tengah (LShift/RShift)
         State.TiangOn  = true  -- Tiang Penanda (tab TITIK, default TAMPIL)
         State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
@@ -1954,6 +2056,11 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         buatToggleRow(scrollMove, "Shiftlock Mobile", "C", "Shift")
         buatToggleRow(scrollMove, "Shiftlock Tengah", "Shift", "Tengah")
         buatToggleRow(scrollMove, "Moonwalk", "F", "Moon")
+        buatToggleRow(scrollMove, "Lompat Udara", "B", "AirJump")
+        -- jumlah lompatan ekstra: 1-3 (1 = double jump biasa)
+        buatStepperIntRow(scrollMove, "Lompatan ekstra", 1, CFG.AIRJUMP_CAP,
+        function() return State.AirJumpMax or CFG.AIRJUMP_MAX end,
+        function(v) State.AirJumpMax = v end)
 
         -- ===== VISUAL (dilebur dari tab VISUAL lama ke tab 1) =====
         buatHeader(scrollMove, "Visual")
@@ -2644,9 +2751,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             TextXAlignment = Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Top,
             TextWrapped = true,
-            Text = "⚡ BALAP v1.2\n"
+            Text = "⚡ BALAP v1.4\n"
             .. "TAB 1 MOVEMENT & VISUAL: Speed (Q) • Jump (J)\n"
             .. "Shiftlock (C) • Shiftlock Tengah (LShift) • Moonwalk (F)\n"
+            .. "Lompat Udara (B) — tekan lompat lagi di udara\n"
             .. "Hide (R) • Hide Atas\n"
             .. "Cahaya Auto (T) • Lightweight • Dinding Batas (X)\n"
             .. "TAB 2 TITIK: tiang checkpoint + daftar • V = +titik cepat\n"
@@ -2654,7 +2762,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             .. "TAB 4 SYSTEM: ☁ SINKRON — kode di kartu SYSTEM,\n"
             .. "salin ke device lain (MASUKKAN KODE untuk nyambung)\n"
             .. "Rejoin (K×2) • Hapus Script\n"
-            .. "Shift/Moonwalk/Tengah otomatis OFF saat mati/respawn",
+            .. "Shift/Moonwalk/Tengah otomatis OFF saat mati/respawn\n"
+            .. "v1.4: Moonwalk & Shiftlock Mobile tidak berefek saat\n"
+            .. "naik kendaraan — turun dari kendaraan, efek balik sendiri",
             LayoutOrder = nextOrder(),
         }, scrollSistem)
         buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
@@ -3113,6 +3223,19 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             syncNotify("Jump", v, silent, "JumpPower")
         end
 
+        -- [v1.4] CEK KENDARAAN — dipakai Shiftlock Mobile & Moonwalk.
+        -- Duduk di Seat/VehicleSeat apa pun (mobil/motor/kursi) = badan
+        -- "menyatu" dgn kendaraan lewat weld. Kalau mesin tetap memaksa
+        -- hrp.CFrame menghadap kamera, yang ikut terpaku/terputar justru
+        -- KENDARAANNYA (mobil muter sendiri / terpaku ke arah kamera).
+        -- Solusi: selama duduk, kedua mesin DIAM TOTAL (tidak sentuh
+        -- CFrame) + AutoRotate dikembalikan sementara ke bawaan game.
+        -- Turun dari kendaraan = efek jalan lagi otomatis (toggle tetap
+        -- ON, tanpa perlu matikan-pasang ulang).
+        local function sedangDuduk(h)
+            return h ~= nil and (h.SeatPart ~= nil or h.Sit == true)
+        end
+
         -- SHIFTLOCK MOBILE
         Setters.Shift = function(v, silent)
             if State.ShiftOn == v then return end
@@ -3126,6 +3249,16 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                     local char = getChar()
                     local h = char and char:FindFirstChildOfClass("Humanoid")
                     local r = char and char:FindFirstChild("HumanoidRootPart")
+                    -- [v1.4] naik kendaraan = TANPA EFEK: jangan sentuh CFrame
+                    -- sama sekali, AutoRotate dikembalikan sementara ke bawaan
+                    -- game supaya kendaraan dikendarai 100% normal
+                    if h and sedangDuduk(h) then
+                        if not h.AutoRotate then h.AutoRotate = true end
+                        return
+                    end
+                    -- jaga AutoRotate tetap OFF saat jalan kaki (mis. script
+                    -- game menghidupkan lagi setelah turun kendaraan)
+                    if h and h.AutoRotate then h.AutoRotate = false end
                     if h and r and h.Health > 0 then
                         local cam = Workspace.CurrentCamera
                         local _, yaw = cam.CFrame:ToOrientation()
@@ -3157,6 +3290,14 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                     local char = getChar()
                     local h = char and char:FindFirstChildOfClass("Humanoid")
                     local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    -- [v1.4] naik kendaraan = TANPA EFEK: badan tidak dipaksa
+                    -- menghadap kamera, jadi mobil/motor tidak ikut dibalik
+                    -- 180° / terpaku ke arah kamera saat digas
+                    if h and sedangDuduk(h) then
+                        if not h.AutoRotate then h.AutoRotate = true end
+                        return
+                    end
+                    if h and h.AutoRotate then h.AutoRotate = false end
                     if h and hrp and h.Health > 0 then
                         local cam = Workspace.CurrentCamera
                         -- DIAM = TIDAK BEROTASI: badan hanya mengejar kamera saat
@@ -3183,6 +3324,17 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 if hum then hum.AutoRotate = true end
             end
             syncNotify("Moon", v, silent, "Moonwalk")
+        end
+
+        -- LOMPAT UDARA (v1.3, B) — lompatan ekstra di udara (double jump).
+        -- Di sini cuma toggle ON/OFF (switch GUI + keybind B); gerakan
+        -- lompatannya dijalankan mesin JumpRequest [21c] di bawah.
+        local airJumpPakai, airJumpTerakhir = 0, 0
+        Setters.AirJump = function(v, silent)
+            if State.AirJumpOn == v then return end
+            State.AirJumpOn = v
+            if not v then airJumpPakai = 0 end
+            syncNotify("AirJump", v, silent, "Lompat Udara")
         end
 
         -- SHIFTLOCK TENGAH (v1.2.0, revisi v1.3.3) — port "SHIFT LOCK TENGAH v2"
@@ -3994,6 +4146,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 setFeature("Shift", not State.ShiftOn)
             elseif input.KeyCode == Enum.KeyCode.F then
                 setFeature("Moon", not State.MoonOn)
+            elseif input.KeyCode == Enum.KeyCode.B then
+                setFeature("AirJump", not State.AirJumpOn)   -- v1.3: Lompat Udara
             elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
                 setFeature("Tengah", not State.TengahOn)
             elseif input.KeyCode == Enum.KeyCode.R then
@@ -4016,6 +4170,55 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end))
 
+        -- [21c] MESIN LOMPAT UDARA (v1.3, B) -----------------------------------
+        -- Tekan lompat lagi saat DI UDARA = lompatan ekstra (double jump).
+        -- PC: spasi (toggle via B) • HP: tombol lompat memicu JumpRequest.
+        -- Kekuatan = JumpPower / JumpHeight aktif (ikut setting J). Counter
+        -- reset saat mendarat / respawn; anti-spam CFG.AIRJUMP_DEBOUNCE;
+        -- tidak jalan saat berenang, duduk (kendaraan), atau masih di tanah.
+        catat(UserInputService.JumpRequest:Connect(function()
+            if not State.AirJumpOn or State.Removed then return end
+            local _, hrp, h = getKarakter()
+            if not (h and hrp) or h.Health <= 0 then return end
+            if h.FloorMaterial ~= Enum.Material.Air then return end -- di tanah = lompat normal
+            local st = h:GetState()
+            if st == Enum.HumanoidStateType.Swimming
+                or st == Enum.HumanoidStateType.Seated
+                or st == Enum.HumanoidStateType.PlatformStanding then return end
+            if airJumpPakai >= (State.AirJumpMax or CFG.AIRJUMP_MAX) then return end
+            local now = os.clock()
+            if now - airJumpTerakhir < CFG.AIRJUMP_DEBOUNCE then return end
+            airJumpTerakhir = now
+            airJumpPakai += 1
+            -- kekuatan lompatan = lompatan normal aktif (JumpPower / JumpHeight)
+            local kekuatan
+            if h.UseJumpPower then
+                kekuatan = h.JumpPower
+            else
+                kekuatan = math.sqrt(2 * Workspace.Gravity * h.JumpHeight)
+            end
+            local v = hrp.AssemblyLinearVelocity
+            hrp.AssemblyLinearVelocity = Vector3.new(v.X, kekuatan, v.Z)
+            pcall(function() h:ChangeState(Enum.HumanoidStateType.Jumping) end)
+            bunyi(CFG.SND_PING, 0.15, 1.6)
+        end))
+        -- counter lompatan ekstra di-reset tiap karakter mendarat (polling ringan)
+        task.spawn(function()
+            while not State.Removed do
+                if State.AirJumpOn then
+                    local h = getHum()
+                    if h and h.Health > 0
+                        and h.FloorMaterial ~= Enum.Material.Air
+                        and airJumpPakai ~= 0 then
+                        airJumpPakai = 0
+                    end
+                    task.wait(0.1)
+                else
+                    task.wait(0.3)
+                end
+            end
+        end)
+
         diagSet("keybind OK — finalisasi...")
         -- [21b] MESIN ☁ SINKRON (v1.3.5) — mulai setelah semua siap
         syncMulai()
@@ -4030,8 +4233,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end)
         print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
-        diagSet("BALAP v1.2 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon • B lompat udara • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
+        diagSet("BALAP v1.4 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
                 pcall(function()
@@ -4055,7 +4258,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 end, function(e)
     local teks = tostring(e)
     print("==================================================")
-    print("[BALAP v1.2] ERROR SAAT LOAD — kirim teks ini ke dev:")
+    print("[BALAP v1.4] ERROR SAAT LOAD — kirim teks ini ke dev:")
     print(teks)
     pcall(function() print(debug.traceback("", 2)) end)
     print("==================================================")
@@ -4064,5 +4267,5 @@ end, function(e)
     end)
 end)
 if not __BALAP_LOAD_OK__ then
-    warn("[BALAP v1.2] Script GAGAL load — banner MERAH di layar berisi errornya.")
+    warn("[BALAP v1.4] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
