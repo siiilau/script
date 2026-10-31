@@ -1,6 +1,6 @@
 --[[
         ═══════════════════════════════════════════════════════════════════
-          CAMERA · v1.0.1  —  ALL-IN-ONE CINEMATIC CAMERA
+          CAMERA · v1.0.2  —  ALL-IN-ONE CINEMATIC CAMERA
           CINEMATIC + FOTO (v12)  ·  FREE/PRO CAM + TARGET LOCK (v11)  ·  RACE CAM
         ═══════════════════════════════════════════════════════════════════
           KEYBINDS :
@@ -14,7 +14,7 @@
             T        = lock target TERDEKAT DARI KAMERA / unlock
             C        = teleport ke belakang layar
             Z        = CAHAYA AUTO 2 arah (malam diterangi · siang dilembutkan)
-            J        = GERAK ⇄ BEKU karakter (tekan J gerak · J lagi diam total)
+            J        = GERAK ⇄ BEKU karakter (J lagi = PATUNG: pose beku di frame itu)
             H        = sembunyikan semua UI (layar bersih)
             K (2x)   = hapus script
             RMB      = lihat sekeliling (FREE / PRO)
@@ -47,7 +47,8 @@
             • Letterbox bioskop otomatis di SEMUA mode kamera (FREE/PRO/CINE/FOTO)
             • CapsLock = MASTER fitur kamera: OFF (default saat dibuka) = keybind kamera MATI
               (anti salah tekan 1/2 pas ambil item) · F · Z · K · J berdiri sendiri (mandiri)
-            • Tombol J: tekan = karakter bisa gerak · tekan lagi = beku diam TOTAL (tanpa analog)
+            • Tombol J: tekan = karakter bisa gerak · tekan lagi = BEKU PATUNG —
+              pose & SEMUA animasi terkunci persis di frame itu (jalan/emot ikut beku)
             • Semua efek client-side — cuma terlihat di layar kamu
             • Aman di-execute ulang kapan saja (auto bersihkan versi lama)
         ═══════════════════════════════════════════════════════════════════
@@ -506,7 +507,7 @@ UI.wm = new("TextLabel", {
         BackgroundTransparency = 0.35,
         BorderSizePixel = 0,
         Font = Enum.Font.GothamBold,
-        Text = " CAMERA v1.0.1 ",
+        Text = " CAMERA v1.0.2 ",
         TextColor3 = CFG.TXT,
         TextSize = 10,
         Visible = false,
@@ -546,7 +547,7 @@ UI.title = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 8),
         Size = UDim2.new(1, -60, 0, 22),
         Font = Enum.Font.GothamBlack,
-        Text = "CAMERA<font color=\"#FF2DAA\"> v1.0.1</font>",
+        Text = "CAMERA<font color=\"#FF2DAA\"> v1.0.2</font>",
         RichText = true,
         TextColor3 = CFG.TXT,
         TextSize = 16,
@@ -559,7 +560,7 @@ UI.sub = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 31),
         Size = UDim2.new(1, -60, 0, 14),
         Font = Enum.Font.GothamMedium,
-        Text = "v1.0.1 · 1/2/3/4 = MODE",
+        Text = "v1.0.2 · 1/2/3/4 = MODE",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -1315,20 +1316,230 @@ function updateChip()
         return
 end
 
--- ═══════════════ KARAKTER BEKU (OTOMATIS + TOMBOL J) ═══════════════
--- OTOMATIS: mode kamera aktif ATAU CapsLock MASTER nyala = karakter diam TOTAL
--- (tak bisa jalan, lari, lompat, jatuh, ataupun terdorong; RACE tetap bebas menyetir).
--- TOMBOL J (mandiri, tanpa master): tekan J = bisa gerak · J lagi = beku total
--- (diam seperti tidak ada analog/pergerakan) — bisa ditekan kapan saja.
-local function hitungBeku()
-        if not CFG.Anchor then
-                return false -- sistem beku dimatikan lewat toggle SISTEM
+-- ═══════════════ KARAKTER BEKU PATUNG (OTOMATIS + TOMBOL J) ═══════════════
+-- BEKU = PATUNG SUNGGUHAN — diam 100%, KAKU, sama sekali tidak bergerak:
+--   1) posisi dikunci (anchored)               → tak bisa jalan/lompat/jatuh/terdorong
+--   2) SEMUA animasi beku di frame itu juga    → pose jalan/emot terkunci PERSIS saat ditekan
+--   3) script "Animate" dimati-sementara       → tak ada pergantian animasi (jalan→idle) selama beku
+--   4) semua kecepatan tubuh = nol tiap frame  → anti goyang / terdorong / terpental
+--   5) animasi BARU yang dicoba main saat beku → langsung dibekukan juga
+-- TOMBOL J (mandiri, tanpa master): tekan J = bisa gerak · J lagi = beku patung.
+-- RACE tidak pernah dibekukan biar kamu tetap bisa menyetir.
+local BEKU = {
+        on = false,
+        char = nil,      -- karakter yang sedang dibekukan (deteksi respawn)
+        saved = nil,     -- WalkSpeed / Jump / AutoRotate asli
+        animOff = false, -- status Disabled script "Animate" sebelum dibekukan
+        tracks = {},     -- [track] = {Speed, Pos} nilai asli sebelum dibekukan
+        conns = {},      -- koneksi sementara selama beku
+}
+
+local function dapatAnimator(c, hum)
+        if hum then
+                local a = hum:FindFirstChildOfClass("Animator")
+                if a then
+                        return a
+                end
         end
+        if c then
+                return c:FindFirstChildOfClass("Animator")
+        end
+        return nil
+end
+
+-- bekukan SEMUA track yang sedang main → pose terkunci di frame SAAT INI
+local function bekukanSemuaTrack()
+        local c = myChar()
+        if not (c and c.Parent) then
+                return
+        end
+        local anim = dapatAnimator(c, getHum(c))
+        if not anim then
+                return
+        end
+        for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
+                if not BEKU.tracks[tr] then
+                        BEKU.tracks[tr] = { Speed = tr.Speed, Pos = tr.TimePosition }
+                        -- track dihentikan paksa oleh script lain → main LAGI persis di frame itu
+                        table.insert(BEKU.conns, tr.Stopped:Connect(function()
+                                if not BEKU.on or not BEKU.tracks[tr] then
+                                        return
+                                end
+                                pcall(function()
+                                        tr:Play(0)
+                                        tr.TimePosition = BEKU.tracks[tr].Pos
+                                        tr:AdjustSpeed(0)
+                                end)
+                        end))
+                end
+                tr:AdjustSpeed(0) -- pose berhenti PERSIS di frame ini
+        end
+end
+
+-- nol-kan kecepatan SEMUA bagian tubuh (anti goyang / terdorong / terpental)
+local function nolkanKecepatan(c)
+        for _, p in ipairs(c:GetDescendants()) do
+                if p:IsA("BasePart") then
+                        p.AssemblyLinearVelocity = Vector3.zero
+                        p.AssemblyAngularVelocity = Vector3.zero
+                end
+        end
+end
+
+local function putuskanBeku()
+        for _, cn in ipairs(BEKU.conns) do
+                pcall(function()
+                        cn:Disconnect()
+                end)
+        end
+        table.clear(BEKU.conns)
+end
+
+local function bekukanKarakter()
+        local c = myChar()
+        if not (c and c.Parent) then
+                return
+        end
+        if BEKU.on and BEKU.char == c then
+                return -- karakter ini sudah dibekukan
+        end
+        if BEKU.on then
+                putuskanBeku() -- respawn: karakter lama tiada, bersihkan sisa beku
+                table.clear(BEKU.tracks)
+                BEKU.saved = nil
+                BEKU.on = false
+        end
+        local hrp = getRoot(c)
+        if not hrp then
+                return
+        end
+        local hum = getHum(c)
+        BEKU.on = true
+        BEKU.char = c
+
+        -- 1) KUNCI POSISI
+        hrp.Anchored = true
+
+        -- 2) MATIKAN KONTROL GERAK (jalan/lari/lompat/putar badan)
+        if hum then
+                BEKU.saved = {
+                        Walk = hum.WalkSpeed,
+                        Jump = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight,
+                        UseJP = hum.UseJumpPower,
+                        Rot = hum.AutoRotate,
+                }
+                hum.WalkSpeed = 0
+                hum.AutoRotate = false
+                if hum.UseJumpPower then
+                        hum.JumpPower = 0
+                else
+                        hum.JumpHeight = 0
+                end
+        end
+
+        -- 3) MATIKAN SCRIPT "ANIMATE": INI KUNCINYA! Tanpa ini animasi jalan/emot
+        --    tetap berganti ke idle (itulah sebabnya versi lama masih kelihatan gerak).
+        --    Track yang SUDAH main tetap hidup walau scriptnya mati → pose bisa dikunci.
+        local animScript = c:FindFirstChild("Animate")
+        if animScript and animScript:IsA("LocalScript") then
+                BEKU.animOff = animScript.Disabled
+                animScript.Disabled = true
+        else
+                BEKU.animOff = nil
+        end
+
+        -- 4) SEMUA KECEPATAN TUBUH = NOL
+        nolkanKecepatan(c)
+
+        -- 5) BEKUKAN SEMUA ANIMASI di frame ini (jalan/emot/idle semua berhenti)
+        bekukanSemuaTrack()
+
+        -- 6) ANIMASI BARU saat beku (emot dari game, dll) → langsung dibekukan
+        local anim = dapatAnimator(c, hum)
+        if anim then
+                table.insert(BEKU.conns, anim.AnimationPlayed:Connect(function(tr)
+                        if not BEKU.tracks[tr] then
+                                BEKU.tracks[tr] = { Speed = tr.Speed, Pos = 0 }
+                        end
+                        tr:AdjustSpeed(0)
+                end))
+        end
+
+        -- 7) PENJAGA TIAP FRAME: restart animasi & dorongan luar tetap dibekukan total
+        table.insert(BEKU.conns, RunService.Heartbeat:Connect(function()
+                if not BEKU.on then
+                        return
+                end
+                local ch = myChar()
+                if not (ch and ch.Parent and getRoot(ch)) then
+                        return
+                end
+                nolkanKecepatan(ch)
+                local anim2 = dapatAnimator(ch, getHum(ch))
+                if anim2 then
+                        for _, tr in ipairs(anim2:GetPlayingAnimationTracks()) do
+                                if tr.Speed ~= 0 then
+                                        tr:AdjustSpeed(0)
+                                end
+                        end
+                end
+        end))
+end
+
+local function lebaskanKarakter()
+        if not BEKU.on then
+                return
+        end
+        BEKU.on = false
+        putuskanBeku()
+        local c = myChar()
+        local hrp = getRoot(c)
+        local hum = getHum(c)
+        if BEKU.char == c then
+                -- karakter sama: matikan track beku (tanpa fade) & pulihkan semuanya
+                for tr in pairs(BEKU.tracks) do
+                        pcall(function()
+                                if tr then
+                                        tr:Stop(0)
+                                end
+                        end)
+                end
+                local animScript = c:FindFirstChild("Animate")
+                if animScript and BEKU.animOff ~= nil then
+                        animScript.Disabled = BEKU.animOff
+                end
+                if hum and BEKU.saved then
+                        pcall(function()
+                                hum.WalkSpeed = BEKU.saved.Walk
+                                hum.AutoRotate = BEKU.saved.Rot
+                                if BEKU.saved.UseJP then
+                                        hum.JumpPower = BEKU.saved.Jump
+                                else
+                                        hum.JumpHeight = BEKU.saved.Jump
+                                end
+                        end)
+                end
+        end
+        table.clear(BEKU.tracks)
+        BEKU.saved = nil
+        BEKU.char = nil
+        BEKU.animOff = false
+        if hrp then
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+                hrp.Anchored = false
+        end
+end
+
+local function hitungBeku()
         if S.gerakMode == "GERAK" then
                 return false -- J: boleh jalan walau kamera/master aktif
         end
         if S.gerakMode == "BEKU" then
-                return S.mode ~= "RACE" -- J: beku total walau master off
+                return S.mode ~= "RACE" -- J: beku patung walau master off / toggle SISTEM off
+        end
+        if not CFG.Anchor then
+                return false -- sistem beku dimatikan lewat toggle SISTEM
         end
         -- otomatis: kamera aktif / master nyala = beku (RACE dikecualikan biar tetap bisa menyetir)
         return (S.master or S.mode ~= "NONE") and S.mode ~= "RACE"
@@ -1339,26 +1550,29 @@ function setAnchorState()
                 return
         end
         local want = hitungBeku()
-        local hrp = getRoot(myChar())
-        if hrp then
-                if want then
-                        hrp.Anchored = true
-                else
+        if want then
+                bekukanKarakter()
+        elseif BEKU.on then
+                lebaskanKarakter()
+        else
+                -- pastikan lepas kalau sempat di-anchor manual (teleport dll)
+                local hrp = getRoot(myChar())
+                if hrp and hrp.Anchored then
                         hrp.AssemblyLinearVelocity = Vector3.zero
                         hrp.Anchored = false
                 end
         end
 end
 
--- J = GERAK ⇄ BEKU (mandiri): flip antara boleh jalan & diam total.
+-- J = GERAK ⇄ BEKU PATUNG (mandiri): flip antara boleh jalan & beku total.
 -- Arah dideteksi otomatis: lagi beku → J melepas (bisa gerak), lagi bebas → J membekukan.
 function toggleGerak()
-        S.gerakMode = hitungBeku() and "GERAK" or "BEKU"
+        S.gerakMode = (BEKU.on or hitungBeku()) and "GERAK" or "BEKU"
         setAnchorState()
         if S.gerakMode == "GERAK" then
                 notify("GERAK — karakter bisa jalan lagi (J lagi = bekukan)", 1.8)
         else
-                notify("BEKU — karakter diam total, seperti tanpa analog (J lagi = gerak)", 1.8)
+                notify("BEKU — PATUNG: diam total, pose terkunci di frame ini (J lagi = gerak)", 2.2)
         end
 end
 
@@ -4293,6 +4507,9 @@ function unloadAll()
                 UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         end)
         pcall(function()
+                lebaskanKarakter() -- pulihkan animasi & kontrol gerak yang dibekukan
+        end)
+        pcall(function()
                 local hrp = getRoot(myChar())
                 if hrp then
                         hrp.AssemblyLinearVelocity = Vector3.zero
@@ -4304,7 +4521,7 @@ function unloadAll()
         end)
         _G.CAMERA_V101_UNLOAD = nil
         _G.SIIILAU_CAM_UNLOAD = nil
-        print("[CAMERA v1.0.1] script dihapus — sampai jumpa!")
+        print("[CAMERA v1.0.2] script dihapus — sampai jumpa!")
 end
 _G.CAMERA_V101_UNLOAD = unloadAll
 
@@ -4317,4 +4534,4 @@ setFilter("OFF")
 setRatio("FULL")
 applyLetterbox()
 applyUIVisibility()
-notify("CAMERA v1.0.1 siap — CapsLock OFF: keybind kamera MATI · tekan CAPSLOCK untuk aktifkan (F panel · Z cahaya · K hapus · J gerak/beku selalu hidup)", 6)
+notify("CAMERA v1.0.2 siap — CapsLock OFF: keybind kamera MATI · tekan CAPSLOCK untuk aktifkan (F panel · Z cahaya · K hapus · J gerak/beku selalu hidup)", 6)
