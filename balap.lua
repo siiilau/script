@@ -1,11 +1,12 @@
 --========================================================
---  BALAP v1.5 —
+--  BALAP v1.6 —
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  4 TAB:
 --    1 MOVEMENT & VISUAL : Speed, Jump, Shiftlock Mobile, Shiftlock Tengah,
---                          Moonwalk, Hide Player +Kendaraan, Hide Badan Atas,
---                          Cahaya Auto, Lightweight, Dinding Batas
+--                          Moonwalk, Bekukan Karakter (P), Hide Player
+--                          +Kendaraan, Hide Badan Atas, Cahaya Auto,
+--                          Lightweight, Dinding Batas
 --    2 TITIK   : tiang checkpoint + daftar titik (tersimpan permanen)
 --    3 TP      : simpan / rename / hapus lokasi teleport + urut terdekat
 --    4 SYSTEM  : ☁ SINKRON (kode lintas device), rejoin, hapus script
@@ -16,13 +17,122 @@
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
 --    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor lingkaran mini)
 --    F = Moonwalk    R = Hide
+--    P = Bekukan Karakter (pose beku total — idle/lompat/emot)
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    V = Tambah titik di posisi karakter (tanpa buka GUI)
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab TP): simpan lokasi dgn nama bebas — permanen
 --
+--  v1.6 (FITUR BARU):
+--    • BEKUKAN KARAKTER (Beku) — toggle di tab MOVEMENT & VISUAL +
+--      keybind P. Karakter BEKU TOTAL di pose saat itu: HRP di-anchor
+--      + semua animasi yang lagi main dibekukan di frame itu
+--      (AdjustSpeed 0). Beku bisa pas IDLE, pas LOMPAT (melayang beku
+--      di udara), atau pas EMOT (pose emot terkunci). Tekan P lagi =
+--      lepas beku, animasi & gerak balik normal. Shiftlock Mobile
+--      otomatis mati saat beku (patung tidak boleh muter sendiri).
+--      Naik kendaraan = beku pause otomatis (anchor bisa merambat ke
+--      kendaraan lewat weld), turun lagi = beku jalan sendiri
+--      (toggle tetap ON). Mati/respawn = beku otomatis OFF.
+--      Fitur lain & semua data tersimpan 100% tidak berubah.
+--  v1.5 (HAPUS FITUR):
+--    • Fitur Lompat Udara (Air Jump, v1.3) DIHAPUS total: toggle +
+--      stepper "Lompatan ekstra" di tab MOVEMENT & VISUAL, keybind B,
+--      mesin JumpRequest (lompatan ekstra di udara) & polling reset
+--      mendaratnya. Tombol B kembali bebas (tidak dipakai fitur lain).
+--      Fitur lain & semua data tersimpan 100% tidak berubah.
+--  v1.4 (PERBAIKAN):
+--    • FIX KENDARAAN — Moonwalk (F) & Shiftlock Mobile (C) sekarang
+--      TIDAK BEREFEK SAMA SEKALI saat naik kendaraan (mobil, motor,
+--      seat apa pun). Dulu mesinnya tetap memaksa badan menghadap
+--      kamera padahal badan sudah "menyatu" dgn kendaraan (weld),
+--      jadi MOBIL/MOTOR ikut terpaku ke arah kamera / ikut dibalik
+--      saat jalan. Sekarang: duduk di kendaraan = kedua mesin berhenti
+--      total (tidak sentuh CFrame) + AutoRotate dikembalikan sementara
+--      ke bawaan game, jadi kendaraan dikendarai 100% normal. Turun
+--      dari kendaraan = efeknya balik OTOMATIS (toggle tetap ON,
+--      tidak perlu dimatikan-pasang lagi). Shiftlock Tengah, fitur
+--      lain & semua data tersimpan tidak disentuh sama sekali.
+--  v1.3 (FITUR BARU):
+--    • LOMPAT UDARA (Air Jump) — fitur baru di tab MOVEMENT & VISUAL.
+--      Toggle di panel + keybind B (slot B memang dikosongkan sejak
+--      v1.2). Saat DI UDARA, tekan lompat lagi (spasi PC / tombol
+--      lompat HP) untuk lompatan ekstra — kekuatannya mengikuti
+--      JumpPower/JumpHeight aktif (setting J). Jumlah lompatan ekstra
+--      diatur stepper "Lompatan ekstra" (1-3, default 1 = double jump).
+--      Reset otomatis saat mendarat/respawn • anti-spam 0.25 dtk •
+--      tidak aktif saat berenang / duduk di kendaraan.
+--    • Fitur lain, semua data tersimpan (penanda_titik.json,
+--      BALAP_TP.json, BALAP_SYNC.json) & keybind lain 100% tidak berubah.
+--  v1.2 (HAPUS FITUR):
+--    • Fitur Fall Resist DIHAPUS total: toggle + stepper di tab
+--      MOVEMENT & VISUAL, keybind B, mesin pulse "Landed" (Heartbeat),
+--      kurva demage, raycast tanah, dan semua teks/notif terkait.
+--      Tombol B sekarang bebas (tidak dipakai fitur lain).
+--      Fitur & keybind lain 100% tidak berubah.
+--  v1.1 (RAPIKAN KODE + UI LEBAR & PAS LAYAR):
+--    • Panel RESPONSIF — skala otomatis mengikuti layar (HP potret/lanskap
+--      atau PC): layar besar tampil LEBAR (sampai 1.25x), layar kecil
+--      menyusut sendiri supaya tidak ada bagian yang keluar layar.
+--      Atur lewat CFG: UI_LEBAR / UI_TINGGI / UI_SCALE_MIN / UI_SCALE_MAX.
+--    • Teks DIPERBESAR di seluruh UI (tab, label, tombol, daftar, notif).
+--    • Anti teks nyasar keluar frame: daftar titik & status sinkron pakai
+--      TextScaled (mengecil sendiri kalau teks panjang), tab di-wrap 2
+--      baris, banner diag dapat ClipsDescendants + tinggi ekstra, kartu
+--      info dilebarkan.
+--    • Kode dirapikan: indentasi konsisten 4 spasi, struktur & komentar
+--      dirapiin tanpa mengubah logika; 5 helper tak terpakai dihapus
+--      (angkaDari, nomorBebas, idBaru, sorotInput, gayaToggle).
+--      FITUR & CARA PAKAI 100% SAMA.
+--  v1.0 (rilis restrukturisasi — lanjutan dari BALAP v1.3.5):
+--    • TAB BARU: 1 MOVEMENT & VISUAL (gerak + visual dilebur jadi satu),
+--      2 TITIK, 3 TP (tab sendiri), 4 SYSTEM
+--    • Kartu ☁ SINKRON pindah ke tab SYSTEM; tombol ☁ di header membuka
+--      tab SYSTEM. Mesin sync (textdb.dev, merge, tombstone) TIDAK diubah.
+--    • Fall Resist: 4 tombol preset diganti STEPPER bebas 0-75% (pola
+--      seperti Speed: -/+ 0.25 atau ketik sendiri). 0% = tanpa potongan
+--      (pulse tidak ditembakkan, damage normal).
+--    • Versi di-reset menjadi v1.0
+--  Riwayat versi lama (sebelum reset ke v1.0):
+--
+--  v1.0.1: Moonwalk halus (putaran natural, CFG.MOON_TURN_MAX)
+--  v1.1.0: Anti-AFK / Reset / Hemat GUI / Hide Pemain Lain dihapus
+--          Shiftlock & Moonwalk OTOMATIS OFF saat mati / respawn
+--  v1.2.0: FITUR BARU — Shiftlock Tengah (LShift/RShift): kamera persis di
+--          TENGAH karakter (CameraOffset 0), kursor bawaan komputer,
+--          transisi halus. Shiftlock/Moonwalk/Tengah saling menonaktifkan.
+--  v1.3.0: TAB BARU 📍 TITIK — penanda checkpoint: tiang neon bernomor +
+--          daftar teleport, tiang bisa hide/show, titik TERSIMPAN PERMANEN
+--          (file penanda_titik.json — titik dari script lama ikut kebaca)
+--  v1.3.1: Tiang TANPA nomor — muncul tiang polos saja (nomor di atas
+--          tiang dihapus; daftar di tab tetap ada urutannya)
+--  v1.3.2: Shiftlock Tengah — titik bidik TURUN ke pinggang/bawah badan
+--          (CFG.SLT_TURUN) + kursor jadi lingkaran mini (panah komputer
+--          disembunyikan)
+--  v1.3.3: Kamera TIDAK diubah (efek kamera v1.3.2 dibatalkan) — cuma LETAK
+--          lingkaran kursor digeser ke bawah (CFG.SLT_DOT_Y, 0.5 = tengah)
+--  v1.3.4: ☁ SINKRON — TP & titik ikut tersinkron LINTAS DEVICE via
+--          jsonblob.com (gratis, tanpa login). Kode sync angka dibuat
+--          otomatis, selalu tampil di kartu ☁ SINKRON (tab TITIK) +
+--          tombol SALIN. MASUKKAN KODE = nyambung ke device lain,
+--          GANTI KODE = buat loker baru. Merge pintar: TP per nama,
+--          titik <1 stud = dianggap kembar, DAFTAR HAPUS ikut
+--          tersinkron (max 200) supaya hapusan tidak "bangkit" lagi.
+--          Upload jeda 30 dtk • download saat load + tiap 3 menit •
+--          offline = diam, data aman di lokal, retry otomatis.
+--          Lain-lain: fix hotkey saat mengetik • V = tambah titik •
+--          rename TP (✎) • jarak + urut terdekat • hapus semua =
+--          konfirmasi 2 langkah • Speed OFF 17.15 • berenang saat
+--          Shiftlock Tengah aktif = speed aktif × 1.025
+--  v1.3.5: FIX SYNC — jsonblob.com ternyata MEMBLOKIR request dari
+--          executor (Cloudflare anti-bot, balasan 403) sehingga kode
+--          tidak pernah terbentuk ("Kode belum dibuat"). Layanan
+--          diganti ke textdb.dev — sudah diuji: tulis/baca/update OK,
+--          payload 320KB aman, tanpa blokir. BONUS: kode sync sekarang
+--          bisa dibaca manusia (contoh: balap-7k2m-9xq4) — dulu cuma
+--          bisa angka. Cara pakai tidak berubah sama sekali.
 --========================================================
-print("[BALAP v1.5] load mulai...")
+print("[BALAP v1.6] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -72,7 +182,7 @@ do
     end
 end
 
-local VERSI = "1.5"
+local VERSI = "1.6"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -597,7 +707,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Position = UDim2.new(0, 12, 0, 0),
         Size = UDim2.new(1, -104, 1, 0),
         FontFace = fnt("judul"),
-        Text = "⚡ BALAP v1.5 ⚡",
+        Text = "⚡ BALAP v1.6 ⚡",
         TextColor3 = Warna.Putih,
         TextSize = 22,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -1838,6 +1948,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         State.TengahOn = false -- Shiftlock Tengah (LShift/RShift)
         State.TiangOn  = true  -- Tiang Penanda (tab TITIK, default TAMPIL)
         State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
+        State.BekuOn = false      -- Bekukan Karakter (P, v1.6)
 
         -- Original Lighting (untuk restore saat cahaya dimatikan)
         oLight = {
@@ -1887,6 +1998,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         buatToggleRow(scrollMove, "Shiftlock Mobile", "C", "Shift")
         buatToggleRow(scrollMove, "Shiftlock Tengah", "Shift", "Tengah")
         buatToggleRow(scrollMove, "Moonwalk", "F", "Moon")
+        buatToggleRow(scrollMove, "Bekukan Karakter", "P", "Beku")
 
         -- ===== VISUAL (dilebur dari tab VISUAL lama ke tab 1) =====
         buatHeader(scrollMove, "Visual")
@@ -2570,26 +2682,27 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         buatHeader(scrollSistem, "Info")
         local infoVersi = buat("TextLabel", {
             BackgroundColor3 = Warna.AbuItem,
-            Size = UDim2.new(1, 0, 0, 190),
+            Size = UDim2.new(1, 0, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y, -- tinggi ikut isi teks (anti teks keluar frame)
             FontFace = fnt("med"),
             TextSize = 12,
             TextColor3 = Warna.TeksGelap,
             TextXAlignment = Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Top,
             TextWrapped = true,
-            Text = "⚡ BALAP v1.5\n"
+            Text = "⚡ BALAP v1.6\n"
             .. "TAB 1 MOVEMENT & VISUAL: Speed (Q) • Jump (J)\n"
             .. "Shiftlock (C) • Shiftlock Tengah (LShift) • Moonwalk (F)\n"
-            .. "Hide (R) • Hide Atas\n"
+            .. "Beku (P) • Hide (R) • Hide Atas\n"
             .. "Cahaya Auto (T) • Lightweight • Dinding Batas (X)\n"
             .. "TAB 2 TITIK: tiang checkpoint + daftar • V = +titik cepat\n"
             .. "TAB 3 TP: simpan/rename/hapus/urut terdekat\n"
             .. "TAB 4 SYSTEM: ☁ SINKRON — kode di kartu SYSTEM,\n"
             .. "salin ke device lain (MASUKKAN KODE untuk nyambung)\n"
             .. "Rejoin (K×2) • Hapus Script\n"
-            .. "Shift/Moonwalk/Tengah otomatis OFF saat mati/respawn\n"
-            .. "v1.4: Moonwalk & Shiftlock Mobile tidak berefek saat\n"
-            .. "naik kendaraan — turun dari kendaraan, efek balik sendiri",
+            .. "Shift/Moonwalk/Tengah/Beku otomatis OFF saat mati/respawn\n"
+            .. "v1.4: Moonwalk & Shiftlock Mobile diam saat naik kendaraan —\n"
+            .. "turun = efek balik sendiri • v1.6: Beku = pose beku total",
             LayoutOrder = nextOrder(),
         }, scrollSistem)
         buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
@@ -3068,6 +3181,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             if v then
                 -- anti bentrok orientasi: Shiftlock Tengah dimatikan dulu
                 if State.TengahOn then setFeature("Tengah", false, true) end
+                -- anti bentrok dgn Beku (v1.6): pose beku tidak boleh
+                -- dipaksa muter tiap frame oleh mesin shiftlock
+                if State.BekuOn then setFeature("Beku", false, true) end
                 local hum = getHum()
                 if hum then hum.AutoRotate = false end
                 RunService:BindToRenderStep("KS_SHIFTLOCK", Enum.RenderPriority.Character.Value + 1, function()
@@ -3149,6 +3265,69 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 if hum then hum.AutoRotate = true end
             end
             syncNotify("Moon", v, silent, "Moonwalk")
+        end
+
+        -- BEKUKAN KARAKTER (v1.6, keybind P) — beku TOTAL di pose saat itu.
+        -- HRP di-anchor + SEMUA animasi yang sedang main dibekukan di frame
+        -- itu (AdjustSpeed 0). Jadi bisa beku pas IDLE (berdiri diam), pas
+        -- LOMPAT (melayang beku di udara), atau pas EMOT (pose emot
+        -- terkunci). Tekan P lagi / toggle OFF = lepas beku: anchor dilepas
+        -- + speed animasi balik normal. Anti bentrok: kalau Shiftlock
+        -- Mobile aktif, itu dimatikan dulu (shiftlock memaksa badan muter
+        -- tiap frame — tidak cocok dgn pose beku). [pola v1.4] duduk di
+        -- kendaraan = beku pause otomatis (anchor bisa merambat ke
+        -- kendaraan lewat weld), turun dari kendaraan = beku jalan lagi
+        -- sendiri (toggle tetap ON). Mati/respawn = beku otomatis OFF
+        -- (lihat matikanGerak). RenderStep nama: KS_BEKU.
+        local bekuAktif = false  -- true = anchor + beku animasi sedang terpasang
+        local function bekuLepas(h, hrp)
+            if not bekuAktif then return end
+            bekuAktif = false
+            if hrp and hrp.Anchored then hrp.Anchored = false end
+            if h then
+                local anim = h:FindFirstChildOfClass("Animator")
+                if anim then
+                    for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
+                        pcall(function() tr:AdjustSpeed(1) end)
+                    end
+                end
+            end
+        end
+        Setters.Beku = function(v, silent)
+            if State.BekuOn == v then return end
+            State.BekuOn = v
+            if v then
+                -- anti bentrok: Shiftlock Mobile memaksa badan menghadap
+                -- kamera tiap frame -> di beku itu artinya patung muter
+                if State.ShiftOn then setFeature("Shift", false, true) end
+                RunService:BindToRenderStep("KS_BEKU", Enum.RenderPriority.Character.Value + 2, function()
+                    local char = getChar()
+                    local h = char and char:FindFirstChildOfClass("Humanoid")
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    if not (h and hrp) then bekuLepas(nil, nil) return end
+                    -- duduk di kendaraan / mati = beku DI-PAUSE total
+                    -- (toggle tetap ON, efek balik sendiri begitu normal lagi)
+                    if sedangDuduk(h) or h.Health <= 0 then
+                        bekuLepas(h, hrp)
+                        return
+                    end
+                    if not hrp.Anchored then hrp.Anchored = true end
+                    bekuAktif = true
+                    local anim = h:FindFirstChildOfClass("Animator")
+                    if anim then
+                        for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
+                            pcall(function() tr:AdjustSpeed(0) end)
+                        end
+                    end
+                end)
+            else
+                RunService:UnbindFromRenderStep("KS_BEKU")
+                local char = getChar()
+                local h = char and char:FindFirstChildOfClass("Humanoid")
+                local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                bekuLepas(h, hrp)
+            end
+            syncNotify("Beku", v, silent, "Bekukan Karakter")
         end
 
         -- SHIFTLOCK TENGAH (v1.2.0, revisi v1.3.3) — port "SHIFT LOCK TENGAH v2"
@@ -3775,10 +3954,12 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             pcall(setFeature, "Walls", false, true)
             pcall(setFeature, "Light", false, true)
             pcall(setFeature, "HideAtas", false, true)
+            pcall(setFeature, "Beku", false, true)
             -- 2) Unbind semua RenderStep binding
             pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
             pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
             pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
+            pcall(function() RunService:UnbindFromRenderStep("KS_BEKU") end)
             pcall(function() UserInputService.MouseBehavior = Enum.MouseBehavior.Default end)
             pcall(function()
                 UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.MovementRelative
@@ -3871,7 +4052,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             local hum = char:WaitForChild("Humanoid", 10)
             if not hum then return end
             updateJumpLabel()
-            -- REVISI v1.1.0 + v1.2.0: Shiftlock, Moonwalk & Shiftlock Tengah
+            -- REVISI v1.1.0 + v1.2.0: Shiftlock, Moonwalk, Shiftlock Tengah & Beku
             -- OTOMATIS OFF saat mati/respawn. Dua lapis: langsung saat humanoid
             -- mati (Died) + jaga-jaga saat spawn baru (karakter diganti tanpa
             -- event Died sempat jalan).
@@ -3879,6 +4060,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 if State.ShiftOn then setFeature("Shift", false) end
                 if State.MoonOn then setFeature("Moon", false) end
                 if State.TengahOn then setFeature("Tengah", false) end
+                if State.BekuOn then setFeature("Beku", false) end
             end
             matikanGerak()
             catat(hum.Died:Connect(matikanGerak))
@@ -3964,6 +4146,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 setFeature("Tengah", not State.TengahOn)
             elseif input.KeyCode == Enum.KeyCode.R then
                 setFeature("Hide", not State.HideOn)
+            elseif input.KeyCode == Enum.KeyCode.P then
+                setFeature("Beku", not State.BekuOn)
             elseif input.KeyCode == Enum.KeyCode.T then
                 setFeature("Light", not State.LightOn)
             elseif input.KeyCode == Enum.KeyCode.X then
@@ -3996,8 +4180,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end)
         print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
-        diagSet("BALAP v1.5 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon • P beku • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
+        diagSet("BALAP v1.6 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
                 pcall(function()
@@ -4021,7 +4205,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 end, function(e)
     local teks = tostring(e)
     print("==================================================")
-    print("[BALAP v1.5] ERROR SAAT LOAD — kirim teks ini ke dev:")
+    print("[BALAP v1.6] ERROR SAAT LOAD — kirim teks ini ke dev:")
     print(teks)
     pcall(function() print(debug.traceback("", 2)) end)
     print("==================================================")
@@ -4030,5 +4214,5 @@ end, function(e)
     end)
 end)
 if not __BALAP_LOAD_OK__ then
-    warn("[BALAP v1.5] Script GAGAL load — banner MERAH di layar berisi errornya.")
+    warn("[BALAP v1.6] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
