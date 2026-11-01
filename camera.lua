@@ -1,6 +1,6 @@
 --[[
         ═══════════════════════════════════════════════
-          CAMERA · v1.0.8  —  ALL-IN-ONE CINEMATIC CAMERA
+          CAMERA · v1.0.10  —  ALL-IN-ONE CINEMATIC CAMERA
           CINEMATIC + FOTO (v12) · FREE/PRO + TARGET LOCK (v11) · RACE CAM
         ═══════════════════════════════════════════════
           1/2/3/4  = FREE · PRO · CINEMATIC · RACE (tekan lagi = mati)
@@ -9,9 +9,10 @@
           Z = cahaya auto · J = gerak/beku patung · H = sembunyikan UI
           K 2x = hapus script · RMB = lihat sekeliling · Scroll = FOV/zoom
           Space tahan = turbo (FREE) · Ctrl = slow cinematic (FREE)
-          v1.0.8 — TRANSISI SHOT CINE CUT LANGSUNG (blur antar shot OFF)
-          LENSA CINE diatur sendiri: slider MIN & MAX di panel (30-100°),
-          default 30-70° · shot jauh: DRONE · PULL REVEAL · TELE SNIPER
+          v1.0.10 — STABILIZER LOMPAT/JATUH kini mengatur PRO·CINE·RACE
+          (kamera tidak ikut menyungkur saat lompat/jatuh · toggle tab CAM)
+          Rentang LENSA CINE MIN/MAX (FOV) kini juga mengatur lensa RACE
+          Sebelumnya: PRO stabilizer · transisi cut langsung · LENSA 30-100°
           TANPA notifikasi popup sama sekali — status jalan: console eksekutor
           Efek client-side · aman di-execute ulang (auto bersihkan versi lama)
         ═══════════════════════════════════════════════
@@ -26,11 +27,11 @@ if _G.SIIILAU_CAM_UNLOAD then
 end
 task.wait(0.05)
 
--- v1.0.8: DEBUG breadcrumb — muncul di CONSOLE eksekutor (bukan di layar game)
+-- v1.0.10: DEBUG breadcrumb — muncul di CONSOLE eksekutor (bukan di layar game)
 local DBGWARN = true -- ubah ke false kalau tidak mau log console
 local function dbg(tag)
         if DBGWARN then
-                warn("[CAM v1.0.8] " .. tag)
+                warn("[CAM v1.0.10] " .. tag)
         end
 end
 dbg("1: script mulai dijalankan")
@@ -73,10 +74,10 @@ local CFG = {
         SlowMult      = 0.25,  -- pengali kecepatan slow (Ctrl)
         ModeBlend     = 0.5,   -- masuk / pindah antar mode kamera (1/2/3/4)
         ExitBlend     = 0.45,  -- keluar mode: balik ke kamera normal dgn glide halus
-        ShotBlur      = 0,     -- CUT LANGSUNG antar shot (v1.0.8; bisa dinyalakan lagi di panel SISTEM)
+        ShotBlur      = 0,     -- CUT LANGSUNG antar shot (v1.0.10; bisa dinyalakan lagi di panel SISTEM)
         LensPool      = true,  -- FOV tiap shot bervariasi (bobot cerdas) — dibatasi slider LENSA CINE
-        CineFovMin    = 30,    -- LENSA CINE MIN (slider 30-100°) — v1.0.8
-        CineFovMax    = 70,    -- LENSA CINE MAX (slider 30-100°) — v1.0.8
+        CineFovMin    = 30,    -- LENSA CINE·RACE MIN (slider 30-100°, juga RACE) — v1.0.10
+        CineFovMax    = 70,    -- LENSA CINE·RACE MAX (slider 30-100°, juga RACE) — v1.0.10
         FarShots      = true,  -- shot jarak jauh 30-120 stud (drone · tele sniper) aktif
         MouseSens     = 0.25,  -- sensitivitas RMB look
         SelfFlyDist   = 8,     -- jarak kamera mendarat di belakang karakter (KE KARAKTER)
@@ -87,6 +88,8 @@ local CFG = {
         ProVelYMax    = 42,    -- PRO: batas laju vertikal yang diikuti (jatuh mendadak tak menjatuhkan kamera)
         ProErr        = 0.30,  -- PRO: koreksi selisih posisi standar (sangat lembut, tak terlihat)
         ProErrFast    = 0.10,  -- PRO: koreksi saat selisih besar (kejar cepat TANPA lompatan)
+        ProStab       = true,  -- v1.0.10 STABILIZER (PRO·CINE·RACE): lompat/jatuh kamera TIDAK ikut menyungkur
+        ProStabAir    = 1.1,   -- laju menyusul tinggi saat melayang/jatuh (makin besar = makin larut, ala CINE)
         JamMalamMulai   = 18,     -- jam mulai malam
         JamMalamAkhir   = 6,      -- jam akhir malam
         ClockTerangi    = 14,     -- ClockTime target saat malam diterangi
@@ -289,7 +292,7 @@ PHOTO_BLOOM.Size = 24
 PHOTO_BLOOM.Threshold = 0.85
 PHOTO_BLOOM.Parent = Lighting
 
--- v1.0.8 FIX: hanya properti DepthOfFieldEffect yang ASLI di Roblox —
+-- v1.0.10 FIX: hanya properti DepthOfFieldEffect yang ASLI di Roblox —
 -- 2 properti DOF tidak resmi dihapus (penyebab v1.0.4-6 mati total sebelum GUI)
 DOF_TRANS = Instance.new("DepthOfFieldEffect")
 pcall(function()
@@ -480,7 +483,7 @@ UI.wm = new("TextLabel", {
         BackgroundTransparency = 0.35,
         BorderSizePixel = 0,
         Font = Enum.Font.GothamBold,
-        Text = " CAMERA v1.0.8 ",
+        Text = " CAMERA v1.0.10 ",
         TextColor3 = CFG.TXT,
         TextSize = 10,
         Visible = false,
@@ -519,7 +522,7 @@ UI.title = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 8),
         Size = UDim2.new(1, -60, 0, 22),
         Font = Enum.Font.GothamBlack,
-        Text = "CAMERA<font color=\"#FF2DAA\"> v1.0.8</font>",
+        Text = "CAMERA<font color=\"#FF2DAA\"> v1.0.10</font>",
         RichText = true,
         TextColor3 = CFG.TXT,
         TextSize = 16,
@@ -532,7 +535,7 @@ UI.sub = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 31),
         Size = UDim2.new(1, -60, 0, 14),
         Font = Enum.Font.GothamMedium,
-        Text = "v1.0.8 · 1/2/3/4 = MODE",
+        Text = "v1.0.10 · 1/2/3/4 = MODE",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -842,7 +845,7 @@ UI.tempoSlider = makeSlider(UI.tabCAM, "CINE TEMPO", 3, 10, CFG.CineTempo, funct
 end, function(v)
         CFG.CineTempo = v
 end, 9)
-UI.fovMinSlider = makeSlider(UI.tabCAM, "LENSA CINE MIN (FOV)", 30, 100, CFG.CineFovMin, function(v)
+UI.fovMinSlider = makeSlider(UI.tabCAM, "LENSA CINE·RACE MIN (FOV)", 30, 100, CFG.CineFovMin, function(v)
         return math.floor(v) .. "°"
 end, function(v)
         CFG.CineFovMin = v
@@ -851,7 +854,7 @@ end, function(v)
                 UI.fovMaxSlider.Set(v, true)
         end
 end, 10)
-UI.fovMaxSlider = makeSlider(UI.tabCAM, "LENSA CINE MAX (FOV)", 30, 100, CFG.CineFovMax, function(v)
+UI.fovMaxSlider = makeSlider(UI.tabCAM, "LENSA CINE·RACE MAX (FOV)", 30, 100, CFG.CineFovMax, function(v)
         return math.floor(v) .. "°"
 end, function(v)
         CFG.CineFovMax = v
@@ -860,6 +863,9 @@ end, function(v)
                 UI.fovMinSlider.Set(v, true)
         end
 end, 11)
+makeToggle(UI.tabCAM, "STABILIZER LOMPAT/JATUH (PRO·CINE·RACE)", CFG.ProStab, function(state)
+        CFG.ProStab = state
+end, 12)
 
 -- ═══════════════ ISI TAB TARGET ═══════════════
 new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, UI.tabTARGET)
@@ -1217,7 +1223,7 @@ end
 
 -- ═══════════════ NOTIFIKASI ═══════════════
 function notify(text, dur)
-        -- v1.0.8: semua notifikasi dimatikan — tidak ada popup apa pun
+        -- v1.0.10: semua notifikasi dimatikan — tidak ada popup apa pun
 end
 
 -- ═══════════════ VISIBILITAS UI ═══════════════
@@ -2428,7 +2434,16 @@ local function proUpdate(dt)
                         S.proPivot = targetPivot
                         S.proPivotVel = Vector3.new(0, 0, 0)
                 end
-                local gap = (targetPivot - S.proPivot).Magnitude
+                local hum = getHum(char)
+                local grounded = (hum == nil) or (hum.FloorMaterial ~= Enum.Material.Air)
+                local stabY = CFG.ProStab and not grounded -- v1.0.10 STABILIZER: melayang/jatuh
+                local gapH = Vector3.new(targetPivot.X - S.proPivot.X, 0, targetPivot.Z - S.proPivot.Z).Magnitude
+                local gap
+                if CFG.ProStab then
+                        gap = gapH -- teleport horizontal tetap ketahuan; jatuh TIDAK memicu snap
+                else
+                        gap = (targetPivot - S.proPivot).Magnitude
+                end
                 if gap > 40 then
                         S.proPivot = targetPivot
                         S.proPivotVel = Vector3.new(0, 0, 0)
@@ -2438,6 +2453,9 @@ local function proUpdate(dt)
                 local aH = 1 - math.exp(-dt / CFG.ProVelH)
                 local aV = 1 - math.exp(-dt / CFG.ProVelV)
                 local vy = math.clamp(vel.Y, -CFG.ProVelYMax, CFG.ProVelYMax)
+                if stabY then
+                        vy = 0 -- kamera tidak ikut tersungkur: kecepatan jatuh/lompat diabaikan
+                end
                 local pv = S.proPivotVel or Vector3.new(0, 0, 0)
                 S.proPivotVel = Vector3.new(
                         pv.X + (vel.X - pv.X) * aH,
@@ -2450,7 +2468,9 @@ local function proUpdate(dt)
                 local kH = math.clamp(eH / CFG.ProSnap, 0, 1)
                 local kV = math.clamp(math.abs(err.Y) / CFG.ProSnap, 0, 1)
                 local tauH = CFG.ProErr * (1 - (1 - CFG.ProErrFast / CFG.ProErr) * kH)
-                local tauV = CFG.ProErr * (1.7 - 1.3 * kV)
+                -- v1.0.10: melayang/jatuh ATAU baru mendarat dari jatuh jauh -> tinggi menyusul PELAN
+                local softY = stabY or (CFG.ProStab and math.abs(err.Y) > 10)
+                local tauV = softY and CFG.ProStabAir or CFG.ProErr * (1.7 - 1.3 * kV)
                 local aEH = 1 - math.exp(-dt / tauH)
                 local aEV = 1 - math.exp(-dt / tauV)
                 S.proPivot = Vector3.new(
@@ -2543,7 +2563,7 @@ local function cineCtx(dt)
                 end
                 if dt then
                         local grounded = (hum == nil) or (hum.FloorMaterial ~= Enum.Material.Air)
-                        local kY = grounded and CFG.CineStabG or CFG.CineStabA
+                        local kY = grounded and CFG.CineStabG or (CFG.ProStab and CFG.CineStabA or CFG.CineStabG) -- v1.0.10: stabilizer ON/OFF juga mengatur CINE & RACE
                         S.cineStabY = expLerp(S.cineStabY, pos.Y, dt, kY)
                 else
                         S.cineStabY = pos.Y
@@ -3386,7 +3406,7 @@ local function cineUpdate(dt)
         S.cine.bank = (S.cine.bank or 0) + (bankT - (S.cine.bank or 0)) * math.min(1, dt * 5)
         local nafas = math.sin(os.clock() * 0.7) * 1.6
         Camera.CFrame = Camera.CFrame * CFrame.Angles(0, 0, math.rad((S.cine.bank or 0) + nafas))
-        Camera.FieldOfView = math.clamp(fov, CFG.CineFovMin, CFG.CineFovMax) -- v1.0.8: rentang lensa diatur user
+        Camera.FieldOfView = math.clamp(fov, CFG.CineFovMin, CFG.CineFovMax) -- v1.0.10: rentang lensa diatur user
         S.cine.dofK = dofK or 0
         S.cine.focusDist = (Camera.CFrame.Position - ctx.head).Magnitude
 end
@@ -3768,7 +3788,7 @@ local function raceCtx(dt)
                 end
                 if dt then
                         local grounded = (hum == nil) or (hum.FloorMaterial ~= Enum.Material.Air)
-                        local kY = grounded and CFG.CineStabG or CFG.CineStabA
+                        local kY = grounded and CFG.CineStabG or (CFG.ProStab and CFG.CineStabA or CFG.CineStabG) -- v1.0.10: stabilizer ON/OFF juga mengatur CINE & RACE
                         S.cineStabY = expLerp(S.cineStabY, pos.Y, dt, kY)
                 else
                         S.cineStabY = pos.Y
@@ -3894,7 +3914,7 @@ local function raceUpdate(dt)
         end
         S.race.smCf = cf
         Camera.CFrame = cf
-        Camera.FieldOfView = fov
+        Camera.FieldOfView = math.clamp(fov, CFG.CineFovMin, CFG.CineFovMax) -- v1.0.10: rentang lensa user juga mengatur RACE
         S.race.dofK = dofK or 0
         S.race.focusDist = (Camera.CFrame.Position - ctx.pos).Magnitude
 end
@@ -4447,7 +4467,7 @@ function unloadAll()
         end)
         _G.CAMERA_V101_UNLOAD = nil
         _G.SIIILAU_CAM_UNLOAD = nil
-        print("[CAMERA v1.0.8] script dihapus — sampai jumpa!")
+        print("[CAMERA v1.0.10] script dihapus — sampai jumpa!")
 end
 _G.CAMERA_V101_UNLOAD = unloadAll
 
