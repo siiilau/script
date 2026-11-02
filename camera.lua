@@ -1,6 +1,6 @@
 --[[
         ═══════════════════════════════════════════════
-          CAMERA · v1.0.11  —  ALL-IN-ONE CINEMATIC CAMERA
+          CAMERA · v1.0.12  —  ALL-IN-ONE CINEMATIC CAMERA
           CINEMATIC + FOTO (v12) · FREE/PRO + TARGET LOCK (v11) · RACE CAM
         ═══════════════════════════════════════════════
           1/2/3/4  = FREE · PRO · CINEMATIC · RACE (tekan lagi = mati)
@@ -9,9 +9,10 @@
           Z = cahaya auto · J = gerak/beku patung · H = sembunyikan UI
           K 2x = hapus script · RMB = lihat sekeliling · Scroll = FOV/zoom
           Space tahan = turbo (FREE) · Ctrl = slow cinematic (FREE)
-          v1.0.11 — LOCK KARAKTER SENDIRI: tombol di tab TARGET — FREE,
-          PRO, CINE & RACE ikut mengambil gambar karakter kamu sendiri
-          Sebelumnya: stabilizer PRO·CINE·RACE · LENSA CINE·RACE 30-100°
+          v1.0.12 — FIX LOCK KARAKTER SENDIRI: kondisi toggle di versi
+          lama terbalik (tombol tak pernah mengunci) — kini benar; status
+          lock terlihat di CONSOLE eksekutor
+          Sebelumnya: lock karakter sendiri · stabilizer PRO·CINE·RACE
           TANPA notifikasi popup sama sekali — status jalan: console eksekutor
           Efek client-side · aman di-execute ulang (auto bersihkan versi lama)
         ═══════════════════════════════════════════════
@@ -26,11 +27,11 @@ if _G.SIIILAU_CAM_UNLOAD then
 end
 task.wait(0.05)
 
--- v1.0.11: DEBUG breadcrumb — muncul di CONSOLE eksekutor (bukan di layar game)
+-- v1.0.12: DEBUG breadcrumb — muncul di CONSOLE eksekutor (bukan di layar game)
 local DBGWARN = true -- ubah ke false kalau tidak mau log console
 local function dbg(tag)
         if DBGWARN then
-                warn("[CAM v1.0.11] " .. tag)
+                warn("[CAM v1.0.12] " .. tag)
         end
 end
 dbg("1: script mulai dijalankan")
@@ -73,10 +74,10 @@ local CFG = {
         SlowMult      = 0.25,  -- pengali kecepatan slow (Ctrl)
         ModeBlend     = 0.5,   -- masuk / pindah antar mode kamera (1/2/3/4)
         ExitBlend     = 0.45,  -- keluar mode: balik ke kamera normal dgn glide halus
-        ShotBlur      = 0,     -- CUT LANGSUNG antar shot (v1.0.11; bisa dinyalakan lagi di panel SISTEM)
+        ShotBlur      = 0,     -- CUT LANGSUNG antar shot (v1.0.12; bisa dinyalakan lagi di panel SISTEM)
         LensPool      = true,  -- FOV tiap shot bervariasi (bobot cerdas) — dibatasi slider LENSA CINE
-        CineFovMin    = 30,    -- LENSA CINE·RACE MIN (slider 30-100°, juga RACE) — v1.0.11
-        CineFovMax    = 70,    -- LENSA CINE·RACE MAX (slider 30-100°, juga RACE) — v1.0.11
+        CineFovMin    = 30,    -- LENSA CINE·RACE MIN (slider 30-100°, juga RACE) — v1.0.12
+        CineFovMax    = 70,    -- LENSA CINE·RACE MAX (slider 30-100°, juga RACE) — v1.0.12
         FarShots      = true,  -- shot jarak jauh 30-120 stud (drone · tele sniper) aktif
         MouseSens     = 0.25,  -- sensitivitas RMB look
         SelfFlyDist   = 8,     -- jarak kamera mendarat di belakang karakter (KE KARAKTER)
@@ -87,7 +88,7 @@ local CFG = {
         ProVelYMax    = 42,    -- PRO: batas laju vertikal yang diikuti (jatuh mendadak tak menjatuhkan kamera)
         ProErr        = 0.30,  -- PRO: koreksi selisih posisi standar (sangat lembut, tak terlihat)
         ProErrFast    = 0.10,  -- PRO: koreksi saat selisih besar (kejar cepat TANPA lompatan)
-        ProStab       = true,  -- v1.0.11 STABILIZER (PRO·CINE·RACE): lompat/jatuh kamera TIDAK ikut menyungkur
+        ProStab       = true,  -- v1.0.12 STABILIZER (PRO·CINE·RACE): lompat/jatuh kamera TIDAK ikut menyungkur
         ProStabAir    = 1.1,   -- laju menyusul tinggi saat melayang/jatuh (makin besar = makin larut, ala CINE)
         JamMalamMulai   = 18,     -- jam mulai malam
         JamMalamAkhir   = 6,      -- jam akhir malam
@@ -291,7 +292,7 @@ PHOTO_BLOOM.Size = 24
 PHOTO_BLOOM.Threshold = 0.85
 PHOTO_BLOOM.Parent = Lighting
 
--- v1.0.11 FIX: hanya properti DepthOfFieldEffect yang ASLI di Roblox —
+-- v1.0.12 FIX: hanya properti DepthOfFieldEffect yang ASLI di Roblox —
 -- 2 properti DOF tidak resmi dihapus (penyebab v1.0.4-6 mati total sebelum GUI)
 DOF_TRANS = Instance.new("DepthOfFieldEffect")
 pcall(function()
@@ -482,7 +483,7 @@ UI.wm = new("TextLabel", {
         BackgroundTransparency = 0.35,
         BorderSizePixel = 0,
         Font = Enum.Font.GothamBold,
-        Text = " CAMERA v1.0.11 ",
+        Text = " CAMERA v1.0.12 ",
         TextColor3 = CFG.TXT,
         TextSize = 10,
         Visible = false,
@@ -521,7 +522,7 @@ UI.title = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 8),
         Size = UDim2.new(1, -60, 0, 22),
         Font = Enum.Font.GothamBlack,
-        Text = "CAMERA<font color=\"#FF2DAA\"> v1.0.11</font>",
+        Text = "CAMERA<font color=\"#FF2DAA\"> v1.0.12</font>",
         RichText = true,
         TextColor3 = CFG.TXT,
         TextSize = 16,
@@ -534,7 +535,7 @@ UI.sub = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 31),
         Size = UDim2.new(1, -60, 0, 14),
         Font = Enum.Font.GothamMedium,
-        Text = "v1.0.11 · 1/2/3/4 = MODE",
+        Text = "v1.0.12 · 1/2/3/4 = MODE",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -1225,7 +1226,7 @@ end
 
 -- ═══════════════ NOTIFIKASI ═══════════════
 function notify(text, dur)
-        -- v1.0.11: semua notifikasi dimatikan — tidak ada popup apa pun
+        -- v1.0.12: semua notifikasi dimatikan — tidak ada popup apa pun
 end
 
 -- ═══════════════ VISIBILITAS UI ═══════════════
@@ -1534,7 +1535,7 @@ end
 
 function getSubjectChar()
         if S.locked and S.lockPlayer == LP then
-                -- v1.0.11: lock karakter sendiri — respawn pun tetap DIRI SENDIRI,
+                -- v1.0.12: lock karakter sendiri — respawn pun tetap DIRI SENDIRI,
                 -- tidak pernah jatuh ke 'pemain terdekat'
                 return aliveCharOf(LP) or myChar()
         end
@@ -1622,26 +1623,31 @@ function lockAutoToggle()
 end
 
 function lockPick(pl)
-        if not pl or (pl == LP and not (S.locked and S.lockPlayer == LP)) then
-                -- v1.0.11: klik baris sendiri = lock DIRI SENDIRI; klik lagi = lepas
+        if not pl or (pl == LP and S.locked and S.lockPlayer == LP) then
+                -- FIX: kondisi toggle dibalik — sebelumnya terbalik sehingga tombol
+                -- tak pernah mengunci diri sendiri. Klik diri saat BELUM lock = LOCK DIRI,
+                -- klik lagi saat SUDAH lock diri = lepas.
                 S.locked = false
                 S.lockPlayer = nil
                 if S.selected == LP then
                         S.selected = nil
                 end
                 notify("Lock dilepas", 1.2)
+                dbg("lock dilepas")
         elseif pl == LP then
                 S.locked = true
                 S.lockMode = "SENDIRI"
                 S.lockPlayer = LP
                 S.selected = LP
                 notify("Locked: KARAKTER SENDIRI — FREE/PRO/CINE/RACE ikut kamu", 1.4)
+                dbg("LOCK AKTIF: KARAKTER SENDIRI — mode " .. S.mode)
         else
                 S.locked = true
                 S.lockMode = "PILIH"
                 S.lockPlayer = pl
                 S.selected = pl
                 notify("Lock (pilih sendiri): " .. pl.Name, 1.4)
+                dbg("LOCK: " .. pl.Name)
         end
         updateChip()
         refreshTargetList()
@@ -2462,7 +2468,7 @@ local function proUpdate(dt)
                 end
                 local hum = getHum(char)
                 local grounded = (hum == nil) or (hum.FloorMaterial ~= Enum.Material.Air)
-                local stabY = CFG.ProStab and not grounded -- v1.0.11 STABILIZER: melayang/jatuh
+                local stabY = CFG.ProStab and not grounded -- v1.0.12 STABILIZER: melayang/jatuh
                 local gapH = Vector3.new(targetPivot.X - S.proPivot.X, 0, targetPivot.Z - S.proPivot.Z).Magnitude
                 local gap
                 if CFG.ProStab then
@@ -2494,7 +2500,7 @@ local function proUpdate(dt)
                 local kH = math.clamp(eH / CFG.ProSnap, 0, 1)
                 local kV = math.clamp(math.abs(err.Y) / CFG.ProSnap, 0, 1)
                 local tauH = CFG.ProErr * (1 - (1 - CFG.ProErrFast / CFG.ProErr) * kH)
-                -- v1.0.11: melayang/jatuh ATAU baru mendarat dari jatuh jauh -> tinggi menyusul PELAN
+                -- v1.0.12: melayang/jatuh ATAU baru mendarat dari jatuh jauh -> tinggi menyusul PELAN
                 local softY = stabY or (CFG.ProStab and math.abs(err.Y) > 10)
                 local tauV = softY and CFG.ProStabAir or CFG.ProErr * (1.7 - 1.3 * kV)
                 local aEH = 1 - math.exp(-dt / tauH)
@@ -2589,7 +2595,7 @@ local function cineCtx(dt)
                 end
                 if dt then
                         local grounded = (hum == nil) or (hum.FloorMaterial ~= Enum.Material.Air)
-                        local kY = grounded and CFG.CineStabG or (CFG.ProStab and CFG.CineStabA or CFG.CineStabG) -- v1.0.11: stabilizer ON/OFF juga mengatur CINE & RACE
+                        local kY = grounded and CFG.CineStabG or (CFG.ProStab and CFG.CineStabA or CFG.CineStabG) -- v1.0.12: stabilizer ON/OFF juga mengatur CINE & RACE
                         S.cineStabY = expLerp(S.cineStabY, pos.Y, dt, kY)
                 else
                         S.cineStabY = pos.Y
@@ -3432,7 +3438,7 @@ local function cineUpdate(dt)
         S.cine.bank = (S.cine.bank or 0) + (bankT - (S.cine.bank or 0)) * math.min(1, dt * 5)
         local nafas = math.sin(os.clock() * 0.7) * 1.6
         Camera.CFrame = Camera.CFrame * CFrame.Angles(0, 0, math.rad((S.cine.bank or 0) + nafas))
-        Camera.FieldOfView = math.clamp(fov, CFG.CineFovMin, CFG.CineFovMax) -- v1.0.11: rentang lensa diatur user
+        Camera.FieldOfView = math.clamp(fov, CFG.CineFovMin, CFG.CineFovMax) -- v1.0.12: rentang lensa diatur user
         S.cine.dofK = dofK or 0
         S.cine.focusDist = (Camera.CFrame.Position - ctx.head).Magnitude
 end
@@ -3814,7 +3820,7 @@ local function raceCtx(dt)
                 end
                 if dt then
                         local grounded = (hum == nil) or (hum.FloorMaterial ~= Enum.Material.Air)
-                        local kY = grounded and CFG.CineStabG or (CFG.ProStab and CFG.CineStabA or CFG.CineStabG) -- v1.0.11: stabilizer ON/OFF juga mengatur CINE & RACE
+                        local kY = grounded and CFG.CineStabG or (CFG.ProStab and CFG.CineStabA or CFG.CineStabG) -- v1.0.12: stabilizer ON/OFF juga mengatur CINE & RACE
                         S.cineStabY = expLerp(S.cineStabY, pos.Y, dt, kY)
                 else
                         S.cineStabY = pos.Y
@@ -3940,7 +3946,7 @@ local function raceUpdate(dt)
         end
         S.race.smCf = cf
         Camera.CFrame = cf
-        Camera.FieldOfView = math.clamp(fov, CFG.CineFovMin, CFG.CineFovMax) -- v1.0.11: rentang lensa user juga mengatur RACE
+        Camera.FieldOfView = math.clamp(fov, CFG.CineFovMin, CFG.CineFovMax) -- v1.0.12: rentang lensa user juga mengatur RACE
         S.race.dofK = dofK or 0
         S.race.focusDist = (Camera.CFrame.Position - ctx.pos).Magnitude
 end
@@ -4308,7 +4314,7 @@ table.insert(CONNS, RunService.RenderStepped:Connect(function(dt)
                 camFilterCheck = os.clock()
                 refreshCamFilter()
         end
-        if S.locked and S.lockMode ~= "SENDIRI" and os.clock() - lockCheck > 0.5 then -- v1.0.11: lock diri sendiri tidak pernah lepas
+        if S.locked and S.lockMode ~= "SENDIRI" and os.clock() - lockCheck > 0.5 then -- v1.0.12: lock diri sendiri tidak pernah lepas
                 lockCheck = os.clock()
                 local c = S.lockPlayer and S.lockPlayer.Parent and S.lockPlayer.Character or nil
                 local h = c and getHum(c) or nil
@@ -4493,7 +4499,7 @@ function unloadAll()
         end)
         _G.CAMERA_V101_UNLOAD = nil
         _G.SIIILAU_CAM_UNLOAD = nil
-        print("[CAMERA v1.0.11] script dihapus — sampai jumpa!")
+        print("[CAMERA v1.0.12] script dihapus — sampai jumpa!")
 end
 _G.CAMERA_V101_UNLOAD = unloadAll
 
