@@ -1,12 +1,12 @@
 --========================================================
---  BALAP v1.6 —
+--  BALAP v1.7 —
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  4 TAB:
 --    1 MOVEMENT & VISUAL : Speed, Jump, Shiftlock Mobile, Shiftlock Tengah,
 --                          Moonwalk, Bekukan Karakter (P), Hide Player
---                          +Kendaraan, Hide Badan Atas, Cahaya Auto,
---                          Lightweight, Dinding Batas
+--                          +Kendaraan, Ghost Pemain (O), Hide Badan Atas,
+--                          Cahaya Auto, Lightweight, Dinding Batas
 --    2 TITIK   : tiang checkpoint + daftar titik (tersimpan permanen)
 --    3 TP      : simpan / rename / hapus lokasi teleport + urut terdekat
 --    4 SYSTEM  : ☁ SINKRON (kode lintas device), rejoin, hapus script
@@ -16,13 +16,27 @@
 --    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
 --    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor lingkaran mini)
---    F = Moonwalk    R = Hide
+--    F = Moonwalk    R = Hide    O = Ghost Pemain (samar 80%)
 --    P = Bekukan Karakter (pose beku total — idle/lompat/emot)
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    V = Tambah titik di posisi karakter (tanpa buka GUI)
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab TP): simpan lokasi dgn nama bebas — permanen
 --
+--  v1.7 (FITUR BARU):
+--    • GHOST PEMAIN (O) — toggle di tab MOVEMENT & VISUAL + keybind O.
+--      Semua pemain LAIN tampil SAMAR 80% di layar sendiri: karakter
+--      (badan, aksesori, muka) + kendaraan yang sedang dikendarai jadi
+--      tembus pandang 80% (masih kelihatan bayangan 20%). Beda dgn
+--      Hide (R) yang menghilangkan total & cuma radius 20 stud: Ghost
+--      berlaku ke SEMUA pemain di mana pun & tetap kelihatan samar,
+--      jadi rival yang mau nyusul masih terlihat bayangannya.
+--      100% LOKAL (server & pemain lain tidak tahu) • pemain baru
+--      join/respawn/pindah mobil otomatis diikuti (sapu 0.4 dtk) •
+--      toggle OFF = semua balik normal 100% • nametag bawaan tetap
+--      tampil biar tau rival siapa, nametag kustom (BillboardGui) ikut
+--      pudar • tingkat samar diatur CFG.GHOST_TRANSPARAN (default 0.8).
+--      Fitur lain & semua data tersimpan 100% tidak berubah.
 --  v1.6 (FITUR BARU):
 --    • BEKUKAN KARAKTER (Beku) — toggle di tab MOVEMENT & VISUAL +
 --      keybind P. Karakter BEKU TOTAL di pose saat itu: HRP di-anchor
@@ -132,7 +146,7 @@
 --          bisa dibaca manusia (contoh: balap-7k2m-9xq4) — dulu cuma
 --          bisa angka. Cara pakai tidak berubah sama sekali.
 --========================================================
-print("[BALAP v1.6] load mulai...")
+print("[BALAP v1.7] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -182,7 +196,7 @@ do
     end
 end
 
-local VERSI = "1.6"
+local VERSI = "1.7"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -275,6 +289,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         SYNC_UNDUH_TIAP    = 180,   -- dtk antar unduhan berkala (3 menit)
         TITIK_MAX          = 5000,  -- cap keras titik (praktis unlimited, anti crash)
         SWIM_BONUS         = 1.025, -- berenang + Shiftlock Tengah: speed aktif × 1.025
+        -- Ghost Pemain (v1.7, keybind O): tingkat tembus pandang pemain
+        -- lain & kendaraannya. 0.8 = samar 80% (sisa bayangan 20%).
+        -- 1 = hilang total, 0.5 = setengah tampak.
+        GHOST_TRANSPARAN   = 0.8,
         -- UI RESPONSIF (v1.1): panel menyesuaikan ukuran layar otomatis.
         -- Layar besar -> panel tampil lebih besar (sampai UI_SCALE_MAX),
         -- layar kecil -> menyusut sendiri (sampai UI_SCALE_MIN) supaya
@@ -707,7 +725,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Position = UDim2.new(0, 12, 0, 0),
         Size = UDim2.new(1, -104, 1, 0),
         FontFace = fnt("judul"),
-        Text = "⚡ BALAP v1.6 ⚡",
+        Text = "⚡ BALAP v1.7 ⚡",
         TextColor3 = Warna.Putih,
         TextSize = 22,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -1949,6 +1967,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         State.TiangOn  = true  -- Tiang Penanda (tab TITIK, default TAMPIL)
         State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
         State.BekuOn = false      -- Bekukan Karakter (P, v1.6)
+        State.GhostOn = false     -- Ghost Pemain (O, v1.7)
 
         -- Original Lighting (untuk restore saat cahaya dimatikan)
         oLight = {
@@ -2003,6 +2022,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         -- ===== VISUAL (dilebur dari tab VISUAL lama ke tab 1) =====
         buatHeader(scrollMove, "Visual")
         buatToggleRow(scrollMove, "Hide Player + Kendaraan", "R", "Hide")
+        buatToggleRow(scrollMove, "Ghost Pemain (80%)", "O", "Ghost")
         buatToggleRow(scrollMove, "Hide Badan Atas (kaki tetap)", nil, "HideAtas")
         buatToggleRow(scrollMove, "Cahaya Auto (2 arah)", "T", "Light")
         buatHeader(scrollMove, "Lightweight")
@@ -2690,10 +2710,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             TextXAlignment = Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Top,
             TextWrapped = true,
-            Text = "⚡ BALAP v1.6\n"
+            Text = "⚡ BALAP v1.7\n"
             .. "TAB 1 MOVEMENT & VISUAL: Speed (Q) • Jump (J)\n"
             .. "Shiftlock (C) • Shiftlock Tengah (LShift) • Moonwalk (F)\n"
-            .. "Beku (P) • Hide (R) • Hide Atas\n"
+            .. "Beku (P) • Hide (R) • Ghost (O) • Hide Atas\n"
             .. "Cahaya Auto (T) • Lightweight • Dinding Batas (X)\n"
             .. "TAB 2 TITIK: tiang checkpoint + daftar • V = +titik cepat\n"
             .. "TAB 3 TP: simpan/rename/hapus/urut terdekat\n"
@@ -2702,7 +2722,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             .. "Rejoin (K×2) • Hapus Script\n"
             .. "Shift/Moonwalk/Tengah/Beku otomatis OFF saat mati/respawn\n"
             .. "v1.4: Moonwalk & Shiftlock Mobile diam saat naik kendaraan —\n"
-            .. "turun = efek balik sendiri • v1.6: Beku = pose beku total",
+            .. "turun = efek balik sendiri • v1.7: Ghost = pemain lain samar 80%",
             LayoutOrder = nextOrder(),
         }, scrollSistem)
         buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
@@ -3574,6 +3594,155 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             syncNotify("Hide", v, silent, "Hide Player + Kendaraan")
         end
 
+        -- GHOST PEMAIN (v1.7, keybind O) — semua pemain LAIN tampil SAMAR
+        -- 80% di layar sendiri: karakter (badan + aksesori + muka/Decal)
+        -- & kendaraan yang sedang dikendarai jadi tembus pandang
+        -- CFG.GHOST_TRANSPARAN (0.8). Beda dgn Hide (R): Hide menghilangkan
+        -- total & cuma radius 20 stud; Ghost berlaku ke SEMUA pemain di
+        -- mana pun & masih kelihatan bayangannya 20% (rival nyusul tetap
+        -- terlihat). 100% LOKAL — LocalTransparencyModifier + transparency
+        -- lokal, server & pemain lain tidak terpengaruh sama sekali.
+        -- Toggle OFF = semua balik normal 100%. Sapu berkala 0.4 dtk:
+        -- pemain baru join / respawn / pindah mobil otomatis diikuti.
+        -- Nametag bawaan (Humanoid) tetap tampil biar tau rival siapa;
+        -- nametag kustom (BillboardGui) ikut pudar.
+        local ghostPulih = {}  -- [instance] = fungsi pemulih (nilai asli Decal/GUI)
+        local ghostVeh = {}    -- [player] = model kendaraan yang lagi dighost
+        local ghostT = CFG.GHOST_TRANSPARAN
+
+        local function ghostGuiIsi(gui)   -- pudar isi BillboardGui (nametag kustom)
+            for _, d in ipairs(gui:GetDescendants()) do
+                if d:IsA("TextLabel") or d:IsA("TextButton") then
+                    if ghostPulih[d] == nil then
+                        local t = d.TextTransparency
+                        ghostPulih[d] = function() d.TextTransparency = t end
+                    end
+                    d.TextTransparency = ghostT
+                elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
+                    if ghostPulih[d] == nil then
+                        local t = d.ImageTransparency
+                        ghostPulih[d] = function() d.ImageTransparency = t end
+                    end
+                    d.ImageTransparency = ghostT
+                elseif d:IsA("Frame") then
+                    if ghostPulih[d] == nil then
+                        local t = d.BackgroundTransparency
+                        ghostPulih[d] = function() d.BackgroundTransparency = t end
+                    end
+                    d.BackgroundTransparency = ghostT
+                end
+            end
+        end
+
+        local function ghostSapu(model)   -- pasang ghost ke satu model (idempoten)
+            for _, d in ipairs(model:GetDescendants()) do
+                if d:IsA("BasePart") then
+                    pcall(function() d.LocalTransparencyModifier = ghostT end)
+                elseif d:IsA("Decal") then
+                    if ghostPulih[d] == nil then
+                        local t = d.Transparency
+                        ghostPulih[d] = function() d.Transparency = t end
+                    end
+                    d.Transparency = ghostT
+                elseif d:IsA("BillboardGui") then
+                    ghostGuiIsi(d)
+                end
+            end
+        end
+
+        local function ghostLepasModel(model)  -- lepas ghost dari satu model
+            for _, d in ipairs(model:GetDescendants()) do
+                if d:IsA("BasePart") then
+                    pcall(function() d.LocalTransparencyModifier = 0 end)
+                end
+            end
+            for obj, fn in pairs(ghostPulih) do
+                if obj.Parent == nil or obj:IsDescendantOf(model) then
+                    pcall(fn)
+                    ghostPulih[obj] = nil
+                end
+            end
+        end
+
+        local function ghostLepasSemua()  -- pulihkan semuanya (toggle OFF)
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer and plr.Character then
+                    for _, d in ipairs(plr.Character:GetDescendants()) do
+                        if d:IsA("BasePart") then
+                            pcall(function() d.LocalTransparencyModifier = 0 end)
+                        end
+                    end
+                end
+            end
+            for _, m in pairs(ghostVeh) do ghostLepasModel(m) end
+            for _, fn in pairs(ghostPulih) do
+                pcall(fn)
+            end
+            table.clear(ghostPulih)
+            table.clear(ghostVeh)
+        end
+
+        -- deteksi model kendaraan dari kursi yang diduduki (pola sama dgn
+        -- engine Hide, sudah terbukti: tolak model ber-Humanoid + cap 64 stud)
+        local function ghostModelKendaraan(seat)
+            local m = seat:FindFirstAncestorOfClass("Model")
+            while m do
+                if m:FindFirstChildWhichIsA("Humanoid", true) then return nil end
+                if m:FindFirstChildWhichIsA("VehicleSeat", true) or m:FindFirstChildWhichIsA("Seat", true) then
+                    local s = m:GetExtentsSize()
+                    if math.max(s.X, s.Y, s.Z) <= 64 then return m end
+                    return nil
+                end
+                m = m:FindFirstAncestorOfClass("Model")
+            end
+            return nil
+        end
+
+        local function ghostLangkah()  -- sapu berkala: ikuti join/respawn/pindah mobil
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LocalPlayer then
+                    local char = plr.Character
+                    if char then ghostSapu(char) end
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    local seat = hum and hum.SeatPart or nil
+                    local model = seat and ghostModelKendaraan(seat) or nil
+                    local lama = ghostVeh[plr]
+                    if model ~= lama then
+                        if lama then pcall(ghostLepasModel, lama) end
+                        ghostVeh[plr] = model
+                        if model then ghostSapu(model) end
+                    elseif model then
+                        ghostSapu(model)  -- part baru di mobil, dipasang lagi
+                    end
+                end
+            end
+            for plr, m in pairs(ghostVeh) do
+                if plr.Parent == nil then  -- pemain keluar: lepaskan kendaraannya
+                    pcall(ghostLepasModel, m)
+                    ghostVeh[plr] = nil
+                end
+            end
+            for obj in pairs(ghostPulih) do  -- buang sisa instance yang sudah hancur
+                if obj.Parent == nil then ghostPulih[obj] = nil end
+            end
+        end
+
+        Setters.Ghost = function(v, silent)
+            if State.GhostOn == v then return end
+            State.GhostOn = v
+            if not v then
+                ghostLepasSemua()  -- OFF: pulihkan transparansi asli semuanya
+            end
+            syncNotify("Ghost", v, silent, "Ghost Pemain (80%)")
+        end
+
+        task.spawn(function()
+            while not State.Removed do
+                if State.GhostOn then pcall(ghostLangkah) end
+                task.wait(0.4)
+            end
+        end)
+
         -- HIDE BADAN ATAS — sembunyikan KEPALA s/d BADAN & TANGAN milik
         -- DIRI SENDIRI, hanya di layar sendiri (LocalTransparencyModifier).
         -- Tetap tampil: pinggang ke bawah (celana) + kaki + sepatu.
@@ -3955,6 +4124,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             pcall(setFeature, "Light", false, true)
             pcall(setFeature, "HideAtas", false, true)
             pcall(setFeature, "Beku", false, true)
+            pcall(setFeature, "Ghost", false, true)
             -- 2) Unbind semua RenderStep binding
             pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
             pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
@@ -4146,6 +4316,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 setFeature("Tengah", not State.TengahOn)
             elseif input.KeyCode == Enum.KeyCode.R then
                 setFeature("Hide", not State.HideOn)
+            elseif input.KeyCode == Enum.KeyCode.O then
+                setFeature("Ghost", not State.GhostOn)
             elseif input.KeyCode == Enum.KeyCode.P then
                 setFeature("Beku", not State.BekuOn)
             elseif input.KeyCode == Enum.KeyCode.T then
@@ -4180,8 +4352,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end)
         print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon • P beku • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
-        diagSet("BALAP v1.6 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon • P beku • O ghost • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
+        diagSet("BALAP v1.7 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
                 pcall(function()
@@ -4205,7 +4377,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 end, function(e)
     local teks = tostring(e)
     print("==================================================")
-    print("[BALAP v1.6] ERROR SAAT LOAD — kirim teks ini ke dev:")
+    print("[BALAP v1.7] ERROR SAAT LOAD — kirim teks ini ke dev:")
     print(teks)
     pcall(function() print(debug.traceback("", 2)) end)
     print("==================================================")
@@ -4214,5 +4386,5 @@ end, function(e)
     end)
 end)
 if not __BALAP_LOAD_OK__ then
-    warn("[BALAP v1.6] Script GAGAL load — banner MERAH di layar berisi errornya.")
+    warn("[BALAP v1.7] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
