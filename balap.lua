@@ -1,5 +1,5 @@
 --========================================================
---  BALAP v1.6 —
+--  BALAP v1.6.1 —
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  4 TAB:
@@ -16,13 +16,19 @@
 --    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
 --    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor lingkaran mini)
---    F = Moonwalk    R = Hide
+--    F = Moonwalk (saat aktif, tekan S = langsung OFF)    R = Hide
 --    P = Bekukan Karakter (pose beku total — idle/lompat/emot)
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    V = Tambah titik di posisi karakter (tanpa buka GUI)
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab TP): simpan lokasi dgn nama bebas — permanen
 --
+--  v1.6.1 (TWEAK KECIL):
+--    • MOONWALK + TOMBOL S — saat Moonwalk (F) lagi aktif, menekan S
+--      langsung MEMATIKAN moonwalk (toggle di GUI ikut OFF + notif).
+--      Jadi bisa mundur normal tanpa perlu tekan F lagi / buka GUI.
+--      Tekan F lagi untuk menyalakan moonwalk kembali. Fitur lain &
+--      semua data tersimpan 100% tidak berubah.
 --  v1.6 (FITUR BARU):
 --    • BEKUKAN KARAKTER (Beku) — toggle di tab MOVEMENT & VISUAL +
 --      keybind P. Karakter BEKU TOTAL di pose saat itu: HRP di-anchor
@@ -132,7 +138,7 @@
 --          bisa dibaca manusia (contoh: balap-7k2m-9xq4) — dulu cuma
 --          bisa angka. Cara pakai tidak berubah sama sekali.
 --========================================================
-print("[BALAP v1.6] load mulai...")
+print("[BALAP v1.6.1] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -182,7 +188,7 @@ do
     end
 end
 
-local VERSI = "1.6"
+local VERSI = "1.6.1"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -707,7 +713,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Position = UDim2.new(0, 12, 0, 0),
         Size = UDim2.new(1, -104, 1, 0),
         FontFace = fnt("judul"),
-        Text = "⚡ BALAP v1.6 ⚡",
+        Text = "⚡ BALAP v1.6.1 ⚡",
         TextColor3 = Warna.Putih,
         TextSize = 22,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -2692,7 +2698,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             TextWrapped = true,
             Text = "⚡ BALAP v1.6\n"
             .. "TAB 1 MOVEMENT & VISUAL: Speed (Q) • Jump (J)\n"
-            .. "Shiftlock (C) • Shiftlock Tengah (LShift) • Moonwalk (F)\n"
+            .. "Shiftlock (C) • Shiftlock Tengah (LShift) • Moonwalk (F, S = OFF)\n"
             .. "Beku (P) • Hide (R) • Hide Atas\n"
             .. "Cahaya Auto (T) • Lightweight • Dinding Batas (X)\n"
             .. "TAB 2 TITIK: tiang checkpoint + daftar • V = +titik cepat\n"
@@ -2702,7 +2708,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             .. "Rejoin (K×2) • Hapus Script\n"
             .. "Shift/Moonwalk/Tengah/Beku otomatis OFF saat mati/respawn\n"
             .. "v1.4: Moonwalk & Shiftlock Mobile diam saat naik kendaraan —\n"
-            .. "turun = efek balik sendiri • v1.6: Beku = pose beku total",
+            .. "turun = efek balik sendiri • v1.6: Beku = pose beku total\n"
+            .. "• v1.6.1: Moonwalk aktif + tekan S = langsung OFF",
             LayoutOrder = nextOrder(),
         }, scrollSistem)
         buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
@@ -4127,6 +4134,17 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         -- [21] KEYBIND -------------------------------------------------------
         local lastK = 0
         catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            -- v1.6.1 MOONWALK: tekan S = moonwalk langsung OFF. Tombol S
+            -- adalah tombol gerak bawaan, jadi Roblox selalu menandainya
+            -- gameProcessed — karena itu pengecekannya ditaruh SEBELUM
+            -- guard gameProcessed di bawah (tapi tetap tidak jalan saat
+            -- sedang mengetik di kotak teks / chat).
+            if input.KeyCode == Enum.KeyCode.S
+                and not UserInputService:GetFocusedTextBox()
+                and not State.Removed and State.MoonOn then
+                setFeature("Moon", false)
+                return
+            end
             if gameProcessed then return end
             if State.Removed then return end
             -- v1.3.4 FIX: jangan picu hotkey saat sedang mengetik di kotak teks
@@ -4180,8 +4198,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end)
         print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon • P beku • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
-        diagSet("BALAP v1.6 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • P beku • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
+        diagSet("BALAP v1.6.1 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
                 pcall(function()
@@ -4205,7 +4223,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 end, function(e)
     local teks = tostring(e)
     print("==================================================")
-    print("[BALAP v1.6] ERROR SAAT LOAD — kirim teks ini ke dev:")
+    print("[BALAP v1.6.1] ERROR SAAT LOAD — kirim teks ini ke dev:")
     print(teks)
     pcall(function() print(debug.traceback("", 2)) end)
     print("==================================================")
@@ -4214,5 +4232,5 @@ end, function(e)
     end)
 end)
 if not __BALAP_LOAD_OK__ then
-    warn("[BALAP v1.6] Script GAGAL load — banner MERAH di layar berisi errornya.")
+    warn("[BALAP v1.6.1] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
