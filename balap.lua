@@ -1,6 +1,15 @@
 --========================================================
---  BALAP v1.2 —
+--  BALAP v1.3 —
 --  TEMA: SILAU NEON (ungu/biru LED)
+--
+--  CHANGELOG v1.3 (hasil review):
+--    • takeover diam: cleanup instance lama tidak menimpa instance baru
+--    • ☁ sync: 1 unggah rekonsiliasi per sesi + anti balapan pending saat POST
+--    • unbind dulu sebelum bind (KS_SHIFTLOCK / KS_MOONWALK)
+--    • fitPanel ikut kamera aktif (game ganti CurrentCamera = aman)
+--    • semua koneksi ter-catat di registry (unload benar-benar bersih)
+--    • stepper terima desimal koma (17,25) • reset OFF konsisten (17.15)
+--    • mati/respawn = 1 toast ringkas (dulu 3) • dead code dibuang
 --
 --  4 TAB:
 --    1 MOVEMENT & VISUAL : Speed (Q), JumpPower (J), Shiftlock Mobile (C),
@@ -28,10 +37,11 @@
 --  Shiftlock Mobile, Moonwalk & Shiftlock Tengah otomatis OFF saat
 --  mati/respawn. Data (titik, TP, kode sync) tersimpan permanen di device.
 --========================================================
-print("[BALAP v1.2] load mulai...")
+print("[BALAP v1.3] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
+local diagSet   -- v1.3: local file (dulu global function — bocor _G)
 do
     local __dGui, __dLbl
     pcall(function()
@@ -67,7 +77,7 @@ do
             end)
         end
     end)
-    function diagSet(teks, warna)
+    diagSet = function(teks, warna)
         print("[BALAP-DIAG] " .. tostring(teks))
         pcall(function()
             if __dGui and __dGui.Parent and __dLbl then
@@ -78,7 +88,7 @@ do
     end
 end
 
-local VERSI = "1.2"
+local VERSI = "1.3"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -128,7 +138,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     -- Semua konstanta digabung ke dalam 1 table CFG untuk hemat local count
     -- (Luau limit 200 local per function)
     local CFG = {
-        ICON_SIZE       = 36,
         TOGGLE_KEY      = Enum.KeyCode.G,
         LED_TEXT        = "⚡ B A L A P ⚡",
         SOUND_ON        = true,
@@ -294,20 +303,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         if d >= 1000 then return string.format("%.2fkm", d / 1000) end
         return string.format("%.1fm", d)
     end
-    local function nomorBebas(prefix, daftarNama)
-        local pakai = {}
-        for _, nama in ipairs(daftarNama) do
-            local n = tonumber(nama:match("^" .. prefix .. " (%d+)$"))
-            if n then pakai[n] = true end
-        end
-        local n = 1
-        while pakai[n] do n += 1 end
-        return n
-    end
-    local function idBaru()
-        return tostring(os.time()) .. "-" .. tostring(rnd(100000, 999999))
-    end
-
     diagSet("dasar OK — siapkan helper GUI...")
     -- [4b] REGISTRY KONEKSI & FORWARD DECLARE ---------------------------
     local semuaKoneksi = {}
@@ -331,7 +326,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 
     -- Forward declare untuk part3 (FX/footer/icon) — di-expose via buildFX()
     local konfeti, emojiBurst, pusatDiRoot, toast
-    local kumpulkanFade, setFade, fadeVal
     -- Forward declare data TP + modul ☁ SINKRON (didefinisikan di [7a3])
     local TP_MAX, TP_FILE, TP_LOKASI, tpBisaFile
     local tpBulat, tpTulisFile, tpMuat, tpRefresh
@@ -504,13 +498,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     end
 
     -- [7] BANGUN UI: ROOT + OUTER + PANEL -------------------------------
-    local screenFx = buat("Frame", {
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundTransparency = 1,
-        BorderSizePixel = 0,
-        ZIndex = 900,
-    }, screenGui)
-    -- screenFx akan di-akses lintas part (untuk FX overlay teleport)
     local root = buat("Frame", {
         Size = UDim2.fromOffset(CFG.UI_LEBAR, CFG.UI_TINGGI),
         Position = UDim2.new(0.5, 0, 0.10, 0),
@@ -534,10 +521,19 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         )
         fitScale.Scale = math.clamp(s, CFG.UI_SCALE_MIN, CFG.UI_SCALE_MAX)
     end
-    pcall(function()
-        catat(Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitPanel))
-    end)
-    fitPanel()
+    -- v1.3: fitPanel ikut kamera AKTIF — kalau game mengganti CurrentCamera
+    -- (respawn di beberapa game), listener ViewportSize dipasang ulang.
+    local camConn
+    local function ikatKamera()
+        if camConn then camConn:Disconnect() camConn = nil end
+        local cam = Workspace.CurrentCamera
+        if cam then
+            camConn = catat(cam:GetPropertyChangedSignal("ViewportSize"):Connect(fitPanel))
+            fitPanel()
+        end
+    end
+    catat(Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(ikatKamera))
+    ikatKamera()
     local outer = buat("Frame", {
         Size = UDim2.new(1, 0, 1, 0),
         BackgroundColor3 = Warna.Hitam,
@@ -607,7 +603,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Position = UDim2.new(0, 12, 0, 0),
         Size = UDim2.new(1, -104, 1, 0),
         FontFace = fnt("judul"),
-        Text = "⚡ BALAP v1.2 ⚡",
+        Text = "⚡ BALAP v1.3 ⚡",
         TextColor3 = Warna.Putih,
         TextSize = 22,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -1288,7 +1284,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 ["Content-Type"] = body and "application/x-www-form-urlencoded"
                 or "text/plain",
                 -- UA netral: beberapa jaringan menolak request tanpa User-Agent
-                ["User-Agent"]   = "Mozilla/5.0 (BALAP v1.2)",
+                ["User-Agent"]   = "Mozilla/5.0 (BALAP v1.3)",
             },
         }
         if body then opts.Body = body end
@@ -1443,8 +1439,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             bolehUpload = true
         end
         if bolehUpload then
-            local teks = HttpService:JSONEncode(syncPayload())
-            if teks == SYNC.lastPayload then
+            local w0 = SYNC.waktuUbah    -- v1.3 anti balapan: syncTandai saat
+            local teks = HttpService:JSONEncode(syncPayload())  -- POST jalan
+            if teks == SYNC.lastPayload and SYNC.waktuUbah == w0 then
                 SYNC.pending = false      -- isinya sama -> jangan upload ulang
                 syncSimpanFile()
                 sukses = true
@@ -1452,7 +1449,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 local put = syncHttp("POST", CFG.SYNC_URL .. SYNC.kode, syncBodyForm(teks))
                 if put and (put.code == 200 or put.code == 201) then
                     SYNC.lastPayload = teks
-                    SYNC.pending = false
+                    if SYNC.waktuUbah == w0 then
+                        SYNC.pending = false  -- bersih; kalau berubah, antrean lanjut
+                    end
                     SYNC.lastDari = SYNC.labelPerangkat
                     SYNC.kosongSudah = false
                     syncSimpanFile()
@@ -1569,7 +1568,18 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         task.spawn(function()
             task.wait(2.5)                 -- beri waktu GUI & data lokal siap
             if State.Removed then return end
-            if SYNC.kode then syncUnduh() else syncBuatLoker() end
+            if SYNC.kode then
+                syncUnduh()
+                -- v1.3 rekonsiliasi sesi: perubahan lokal yang belum sempat
+                -- terunggah (script ditutup < 30 dtk setelah ubah -> pending
+                -- hilang) dipastikan terunggah di awal sesi.
+                if not SYNC.pending then
+                    SYNC.pending = true
+                    SYNC.waktuUbah = os.clock() - CFG.SYNC_UNGGAH_JEDA
+                end
+            else
+                syncBuatLoker()
+            end
             while not State.Removed do
                 task.wait(1)
                 if State.Removed then break end
@@ -1807,7 +1817,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             minus.MouseButton1Click:Connect(function() setV(clamp2(getV() - 0.25)); refresh(); notifChange() end)
             plus.MouseButton1Click:Connect(function() setV(clamp2(getV() + 0.25)); refresh(); notifChange() end)
             box.FocusLost:Connect(function()
-                local n = tonumber(box.Text)
+                local n = angkaDari(box.Text)  -- v1.3: terima "17,25" (koma)
                 if n then setV(clamp2(math.clamp(n, 0, 1000))) end
                 refresh()
                 notifChange()
@@ -2589,7 +2599,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             TextXAlignment = Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Top,
             TextWrapped = true,
-            Text = "⚡ BALAP v1.2\n"
+            Text = "⚡ BALAP v1.3\n"
             .. "TAB 1 MOVEMENT & VISUAL: Speed (Q) • Jump (J)\n"
             .. "Shiftlock (C) • Shiftlock Tengah (LShift) • Moonwalk (F, S = OFF)\n"
             .. "Hide (R) • Hide Atas • Cahaya Auto (T) • Lightweight\n"
@@ -2675,7 +2685,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             Position = UDim2.fromOffset(360, 0),
             Size = UDim2.fromOffset(1600, 13),
             FontFace = fnt("med"),
-            Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25) • J Jump (51.25/65.25) • C Shift • LShift Tengah • F Moonwalk • V +Titik   ✦   📍 TAB TITIK: tiang + daftar titik   ✦   🌍 TAB TP: simpan/rename/urut terdekat   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ☁ kode sinkron di tab SYSTEM   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+            Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25) • J Jump (51.25/65.25) • C Shift • LShift Tengah • F Moonwalk • V Panah   ✦   📍 TAB TITIK: tiang + daftar titik   ✦   🌍 TAB TP: simpan/rename/urut terdekat   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ☁ kode sinkron di tab SYSTEM   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
             TextColor3 = Warna.AbuGelap,
             TextSize = 10,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -2934,35 +2944,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end
 
-        -- [13] FADE PER-ELEMEN ----------------------------------------------
-        local elemenFade = {}
-        fadeVal = Instance.new("NumberValue")
-        pcall(function() fadeVal.Parent = screenGui end)
-        kumpulkanFade = function()
-            table.clear(elemenFade)
-            local daftar = outer:GetDescendants()
-            table.insert(daftar, outer)
-            for _, obj in ipairs(daftar) do
-                if obj.Name ~= "NoFade" then
-                    if obj:IsA("Frame") or obj:IsA("TextLabel") or obj:IsA("TextBox") then
-                        if obj.BackgroundTransparency < 1 then
-                            table.insert(elemenFade, {obj, "BackgroundTransparency", obj.BackgroundTransparency})
-                        end
-                        if (obj:IsA("TextLabel") or obj:IsA("TextBox")) and obj.TextTransparency < 1 then
-                            table.insert(elemenFade, {obj, "TextTransparency", obj.TextTransparency})
-                        end
-                    elseif obj:IsA("UIStroke") and obj.Transparency < 1 then
-                        table.insert(elemenFade, {obj, "Transparency", obj.Transparency})
-                    end
-                end
-            end
-        end
-        setFade = function(t)
-            for _, e in ipairs(elemenFade) do
-                e[1][e[2]] = e[3] + (1 - e[3]) * t
-            end
-        end
-        fadeVal.Changed:Connect(setFade)
+        -- [13] (v1.3) sistem FADE PER-ELEMEN dihapus — sudah mati sejak
+        -- buka/tutup GUI jadi instan (kumpulkanFade tidak pernah dipanggil),
+        -- cuma numpuk kode & koneksi.
 
     end -- akhir buildFX()
 
@@ -3082,6 +3066,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 if State.TengahOn then setFeature("Tengah", false, true) end
                 local hum = getHum()
                 if hum then hum.AutoRotate = false end
+                -- v1.3: unbind dulu — bind ganda = error + state ON tanpa efek
+                pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
                 RunService:BindToRenderStep("KS_SHIFTLOCK", Enum.RenderPriority.Character.Value + 1, function()
                     local char = getChar()
                     local h = char and char:FindFirstChildOfClass("Humanoid")
@@ -3123,6 +3109,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 if State.TengahOn then setFeature("Tengah", false, true) end
                 local hum = getHum()
                 if hum then hum.AutoRotate = false end
+                -- v1.3: unbind dulu — bind ganda = error + state ON tanpa efek
+                pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
                 RunService:BindToRenderStep("KS_MOONWALK", Enum.RenderPriority.Character.Value + 1, function(dt)
                     local char = getChar()
                     local h = char and char:FindFirstChildOfClass("Humanoid")
@@ -3387,10 +3375,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end
         local function playerHideHook(plr)
             if plr == LocalPlayer then return end
-            plr.CharacterAdded:Connect(function(char)
+            catat(plr.CharacterAdded:Connect(function(char)  -- v1.3: ter-catat
                 task.wait(0.4)
                 if State.HideOn and not State.Removed then hideCharacter(char) end
-            end)
+            end))
             if plr.Character and State.HideOn then hideCharacter(plr.Character) end
         end
         Setters.Hide = function(v, silent)
@@ -3872,7 +3860,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end
 
         -- HAPUS SCRIPT — BERSIH TOTAL, TIDAK ADA YANG TERTINGGAL
-        unloadScript = function()
+        unloadScript = function(tenang)   -- v1.3: tenang = takeover, cleanup ringan
             if State.Removed then return end
             State.Removed = true
             -- 1) Matikan semua fitur (restore visual, kendaraan, dinding, cahaya)
@@ -3888,19 +3876,24 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             pcall(setFeature, "Light", false, true)
             pcall(setFeature, "HideAtas", false, true)
             pcall(setFeature, "Panah", false, true)
-            -- 2) Unbind semua RenderStep binding
+            -- 2) Unbind semua RenderStep binding (selalu)
             pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
             pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
             pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
-            pcall(function() UserInputService.MouseBehavior = Enum.MouseBehavior.Default end)
-            pcall(function()
-                UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.MovementRelative
-            end)
-            pcall(function() UserInputService.MouseIconEnabled = true end)
             pcall(function()
                 if sltDotGui then sltDotGui:Destroy() end
                 sltDotGui, sltDot = nil, nil
             end)
+            -- v1.3: reset mouse HANYA saat hapus manual. Saat takeover
+            -- (tenang), instance baru bisa saja sudah memasang Tengah /
+            -- lingkaran kursor sendiri — jangan ditimpa.
+            if not tenang then
+                pcall(function() UserInputService.MouseBehavior = Enum.MouseBehavior.Default end)
+                pcall(function()
+                    UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.MovementRelative
+                end)
+                pcall(function() UserInputService.MouseIconEnabled = true end)
+            end
             -- 3) Cancel semua task/thread yang masih jalan
             if lightConn then pcall(function() task.cancel(lightConn) end) lightConn = nil end
             -- 3) Disconnect SEMUA event yang di-catat lewat catat()
@@ -3927,22 +3920,27 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                     if Original.WaterWaveSpeed ~= nil then Terrain.WaterWaveSpeed = Original.WaterWaveSpeed end
                 end
             end)
-            -- 6) Reset karakter: WalkSpeed, JumpPower, JumpHeight, AutoRotate
-            pcall(function()
-                local char = LocalPlayer.Character
-                if char then
-                    local h = char:FindFirstChildOfClass("Humanoid")
-                    if h then
-                        h.WalkSpeed = 16
-                        if h.UseJumpPower then
-                            h.JumpPower = 50
-                        else
-                            h.JumpHeight = 7.2
+            -- 6) Reset karakter: WalkSpeed, JumpPower, JumpHeight, AutoRotate.
+            --    v1.3: balik ke nilai "OFF" versi script (konsisten dgn label
+            --    GUI), bukan 16/50/7.2 bawaan. Skip saat takeover (tenang) —
+            --    jangan menimpa nilai yang baru dipasang instance baru.
+            if not tenang then
+                pcall(function()
+                    local char = LocalPlayer.Character
+                    if char then
+                        local h = char:FindFirstChildOfClass("Humanoid")
+                        if h then
+                            h.WalkSpeed = CFG.SPEED_OFF
+                            if h.UseJumpPower then
+                                h.JumpPower = CFG.OFF_JUMP
+                            else
+                                h.JumpHeight = CFG.OFF_JUMP_H
+                            end
+                            h.AutoRotate = true
                         end
-                        h.AutoRotate = true
                     end
-                end
-            end)
+                end)
+            end
             -- 7) Hapus ScreenGui (parent dari semua UI: panel, notif, footer, dll)
             pcall(function() if screenGui then screenGui:Destroy() end end)
             -- 8) Clear global flag supaya script bisa di-execute lagi
@@ -3968,7 +3966,11 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         task.spawn(function()
             while not State.Removed do
                 if _G.__BALAP_TOKEN__ ~= MY_TOKEN or not screenGui.Parent then
-                    pcall(function() unloadScript() end)
+                    -- v1.3: kalau pemicunya TOKEN DIGANTI (ada eksekusi baru),
+                    -- unload "tenang" — cleanup ringan yang tidak menimpa
+                    -- instance baru. GUI hilang tanpa penerus = bersih total.
+                    local adaPenerus = (_G.__BALAP_TOKEN__ ~= MY_TOKEN)
+                    pcall(function() unloadScript(adaPenerus) end)
                     break
                 end
                 task.wait(0.5)
@@ -3988,35 +3990,40 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             -- respawn. Dua lapis: langsung saat humanoid mati (Died) +
             -- jaga-jaga saat spawn baru (karakter diganti tanpa event Died).
             local function matikanGerak()
-                if State.ShiftOn then setFeature("Shift", false) end
-                if State.MoonOn then setFeature("Moon", false) end
-                if State.TengahOn then setFeature("Tengah", false) end
+                local ada = State.ShiftOn or State.MoonOn or State.TengahOn
+                -- v1.3: silent = tanpa toast per fitur (dulu 3 toast sekaligus)
+                if State.ShiftOn then setFeature("Shift", false, true) end
+                if State.MoonOn then setFeature("Moon", false, true) end
+                if State.TengahOn then setFeature("Tengah", false, true) end
+                if ada and not State.Removed then
+                    toast("Shiftlock/Moonwalk OFF (mati/respawn)", Warna.Kuning)
+                end
             end
             matikanGerak()
             catat(hum.Died:Connect(matikanGerak))
-            hum.StateChanged:Connect(function(_, newState)
+            catat(hum.StateChanged:Connect(function(_, newState)  -- v1.3: ter-catat
                 local swimming = (newState == Enum.HumanoidStateType.Swimming)
                 if swimming ~= State.IsSwimming then
                     State.IsSwimming = swimming
                     -- bonus berenang ikut Shiftlock Tengah; pulih otomatis
                     applySpeed()
                 end
-            end)
+            end))
             task.wait(0.25)
             if State.Removed then return end
             if State.SpeedOn then applySpeed() end
             if State.JumpOn then applyJump() end
         end
-        LocalPlayer.CharacterAdded:Connect(initCharacter)
+        catat(LocalPlayer.CharacterAdded:Connect(initCharacter))  -- v1.3: ter-catat
         task.spawn(function()
             local c = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             initCharacter(c)
         end)
-        Players.PlayerAdded:Connect(playerHideHook)
+        catat(Players.PlayerAdded:Connect(playerHideHook))  -- v1.3: ter-catat
         for _, plr in ipairs(Players:GetPlayers()) do playerHideHook(plr) end
-        Players.PlayerRemoving:Connect(function(plr)
+        catat(Players.PlayerRemoving:Connect(function(plr)
             if plr.Character then unhideCharacter(plr.Character) end
-        end)
+        end))
         task.spawn(function()
             while not State.Removed do
                 if State.HideOn then pcall(updateVehicles) end
@@ -4032,7 +4039,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             root.Visible = false
             root.Rotation = 0
             panelScale.Scale = 1
-            fadeVal.Value = 0
         end
         local function bukaGui()
             fitPanel()   -- pastikan skala pas layar setiap kali dibuka
@@ -4040,8 +4046,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             root.Visible = true
             root.Rotation = 0
             panelScale.Scale = 1
-            fadeVal.Value = 0
-            setFade(0)
         end
         togglePanel = function()
             if root.Visible then minimizeGui() else bukaGui() end
@@ -4119,7 +4123,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end)
         print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
         print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • V panah • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
-        diagSet("BALAP v1.2 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+        diagSet("BALAP v1.3 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
                 pcall(function()
@@ -4143,7 +4147,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 end, function(e)
     local teks = tostring(e)
     print("==================================================")
-    print("[BALAP v1.2] ERROR SAAT LOAD — kirim teks ini ke dev:")
+    print("[BALAP v1.3] ERROR SAAT LOAD — kirim teks ini ke dev:")
     print(teks)
     pcall(function() print(debug.traceback("", 2)) end)
     print("==================================================")
@@ -4152,5 +4156,5 @@ end, function(e)
     end)
 end)
 if not __BALAP_LOAD_OK__ then
-    warn("[BALAP v1.2] Script GAGAL load — banner MERAH di layar berisi errornya.")
+    warn("[BALAP v1.3] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
