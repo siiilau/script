@@ -1,5 +1,5 @@
 --========================================================
---  BALAP v1.6.1 —
+--  BALAP v1.6.2 —
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  4 TAB:
@@ -17,12 +17,29 @@
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
 --    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor lingkaran mini)
 --    F = Moonwalk (saat aktif, tekan S = langsung OFF)    R = Hide
---    P = Bekukan Karakter (pose beku total — idle/lompat/emot)
+--    P = Bekukan Karakter (pose beku total — idle/lompat/emot;
+--        otomatis menempel kalau ada kendaraan; kendaraan hilang =
+--        beku lepas sendiri)
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    V = Tambah titik di posisi karakter (tanpa buka GUI)
 --    K = Rejoin (double-tap)
 --    TP = via GUI (tab TP): simpan lokasi dgn nama bebas — permanen
 --
+--  v1.6.2 (PERBAIKAN BEKU + KENDARAAN):
+--    • BEKU MENEMPEL KENDARAAN — perbaikan 2 kasus: (1) beku sambil
+--      duduk lalu kendaraan jalan -> dulu badan melayang tertinggal
+--      di belakang; (2) naik/menumpang kendaraan saat beku -> dulu
+--      melayang di tempat. Sekarang: DUDUK = TANPA anchor (anchor
+--      tidak menular ke kendaraan lewat weld, kendaraan tetap
+--      normal), pose tetap beku & badan ikut kendaraan 100% lewat
+--      weld kursi; gas/steer dinetralkan selama beku (patung tidak
+--      bisa nyetir, balik normal saat lepas beku). MENYENTUH/berdiri
+--      di kendaraan (atap, dek perahu, sayap pesawat) = tetap kaku
+--      tapi posisinya dihitung relatif ke kendaraan tiap frame ->
+--      ikut jalan, belok & naik-turun. Kendaraan hancur/dihapus
+--      server saat patung nempel = beku lepas OTOMATIS (realistis).
+--      Tanpa kendaraan = beku biasa seperti sebelumnya (idle/lompat/
+--      emot). Keybind P & fitur lain 100% tidak berubah.
 --  v1.6.1 (TWEAK KECIL):
 --    • MOONWALK + TOMBOL S — saat Moonwalk (F) lagi aktif, menekan S
 --      langsung MEMATIKAN moonwalk (toggle di GUI ikut OFF + notif).
@@ -138,7 +155,7 @@
 --          bisa dibaca manusia (contoh: balap-7k2m-9xq4) — dulu cuma
 --          bisa angka. Cara pakai tidak berubah sama sekali.
 --========================================================
-print("[BALAP v1.6.1] load mulai...")
+print("[BALAP v1.6.2] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -188,7 +205,7 @@ do
     end
 end
 
-local VERSI = "1.6.1"
+local VERSI = "1.6.2"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -713,7 +730,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Position = UDim2.new(0, 12, 0, 0),
         Size = UDim2.new(1, -104, 1, 0),
         FontFace = fnt("judul"),
-        Text = "⚡ BALAP v1.6.1 ⚡",
+        Text = "⚡ BALAP v1.6.2 ⚡",
         TextColor3 = Warna.Putih,
         TextSize = 22,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -2699,7 +2716,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             Text = "⚡ BALAP v1.6\n"
             .. "TAB 1 MOVEMENT & VISUAL: Speed (Q) • Jump (J)\n"
             .. "Shiftlock (C) • Shiftlock Tengah (LShift) • Moonwalk (F, S = OFF)\n"
-            .. "Beku (P) • Hide (R) • Hide Atas\n"
+            .. "Beku (P, ikut kendaraan) • Hide (R) • Hide Atas\n"
             .. "Cahaya Auto (T) • Lightweight • Dinding Batas (X)\n"
             .. "TAB 2 TITIK: tiang checkpoint + daftar • V = +titik cepat\n"
             .. "TAB 3 TP: simpan/rename/hapus/urut terdekat\n"
@@ -2709,7 +2726,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             .. "Shift/Moonwalk/Tengah/Beku otomatis OFF saat mati/respawn\n"
             .. "v1.4: Moonwalk & Shiftlock Mobile diam saat naik kendaraan —\n"
             .. "turun = efek balik sendiri • v1.6: Beku = pose beku total\n"
-            .. "• v1.6.1: Moonwalk aktif + tekan S = langsung OFF",
+            .. "• v1.6.1: Moonwalk aktif + tekan S = langsung OFF\n"
+            .. "• v1.6.2: Beku menempel kendaraan (duduk/menyentuh),\n"
+            .. "kendaraan hilang = beku lepas otomatis",
             LayoutOrder = nextOrder(),
         }, scrollSistem)
         buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
@@ -3274,32 +3293,94 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             syncNotify("Moon", v, silent, "Moonwalk")
         end
 
-        -- BEKUKAN KARAKTER (v1.6, keybind P) — beku TOTAL di pose saat itu.
-        -- HRP di-anchor + SEMUA animasi yang sedang main dibekukan di frame
-        -- itu (AdjustSpeed 0). Jadi bisa beku pas IDLE (berdiri diam), pas
-        -- LOMPAT (melayang beku di udara), atau pas EMOT (pose emot
-        -- terkunci). Tekan P lagi / toggle OFF = lepas beku: anchor dilepas
-        -- + speed animasi balik normal. Anti bentrok: kalau Shiftlock
-        -- Mobile aktif, itu dimatikan dulu (shiftlock memaksa badan muter
-        -- tiap frame — tidak cocok dgn pose beku). [pola v1.4] duduk di
-        -- kendaraan = beku pause otomatis (anchor bisa merambat ke
-        -- kendaraan lewat weld), turun dari kendaraan = beku jalan lagi
-        -- sendiri (toggle tetap ON). Mati/respawn = beku otomatis OFF
-        -- (lihat matikanGerak). RenderStep nama: KS_BEKU.
-        local bekuAktif = false  -- true = anchor + beku animasi sedang terpasang
-        local function bekuLepas(h, hrp)
-            if not bekuAktif then return end
-            bekuAktif = false
-            if hrp and hrp.Anchored then hrp.Anchored = false end
-            if h then
-                local anim = h:FindFirstChildOfClass("Animator")
-                if anim then
-                    for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
-                        pcall(function() tr:AdjustSpeed(1) end)
-                    end
+        -- BEKUKAN KARAKTER (v1.6, keybind P — diperbarui v1.6.2) — beku
+        -- TOTAL di pose saat itu: SEMUA animasi yang sedang main dibekukan
+        -- di frame itu (AdjustSpeed 0). Bisa beku pas IDLE (berdiri diam),
+        -- pas LOMPAT (melayang beku di udara), atau pas EMOT (pose emot
+        -- terkunci). Tekan P lagi / toggle OFF = lepas beku, animasi &
+        -- gerak balik normal. Anti bentrok: kalau Shiftlock Mobile aktif,
+        -- itu dimatikan dulu (patung tidak boleh muter sendiri).
+        -- Mati/respawn = beku otomatis OFF (matikanGerak). RenderStep: KS_BEKU.
+        --
+        -- [v1.6.2] BEKU + KENDARAAN (mobil/motor/perahu/pesawat):
+        --   • DUDUK di kendaraan -> TANPA anchor sama sekali (anchor tidak
+        --     menular lewat weld, kendaraan tetap hidup normal). Pose tetap
+        --     beku & badan ikut kendaraan 100% lewat weld kursi — tidak
+        --     mungkin melayang tertinggal. Gas/steer dinetralkan selama
+        --     beku (patung tidak bisa nyetir), balik normal saat lepas.
+        --   • MENYENTUH/berdiri di kendaraan (tanpa duduk: atap mobil, dek
+        --     perahu, sayap pesawat) -> tetap anchored (patung kaku) tapi
+        --     posisinya dihitung RELATIF ke part kendaraan tiap frame
+        --     (mode "menempel"): ikut jalan, ikut belok, ikut naik-turun.
+        --   • Kendaraan hancur/dihapus server saat patung duduk/nempel ->
+        --     beku lepas OTOMATIS (realistis, badan ikut berjatuhan).
+        --   • Tidak ada kendaraan -> beku biasa (anchor di tempat).
+        local bekuGluePart, bekuGlueRel = nil, nil   -- mode menempel: part acuan + offset pose
+        local bekuKendAktif = nil                    -- model kendaraan acuan (deteksi hancur)
+
+        local function bekuAnim(h, kecepatan)  -- 0 = beku pose, 1 = normal
+            if not h then return end
+            local anim = h:FindFirstChildOfClass("Animator")
+            if anim then
+                for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
+                    pcall(function() tr:AdjustSpeed(kecepatan) end)
                 end
             end
         end
+
+        local function bekuLepas(h, hrp)
+            bekuAnim(h, 1)
+            if hrp and hrp.Anchored then hrp.Anchored = false end
+            bekuGluePart, bekuGlueRel, bekuKendAktif = nil, nil, nil
+        end
+
+        -- deteksi model kendaraan dari sebuah part (pola sama dgn engine
+        -- Hide: tolak model ber-Humanoid, wajib ada Seat/VehicleSeat;
+        -- cap ukuran 200 stud biar perahu/pesawat besar ikut terdeteksi)
+        local function bekuModelKendaraan(part)
+            local m = part:FindFirstAncestorOfClass("Model")
+            while m do
+                if m:FindFirstChildWhichIsA("Humanoid", true) then return nil end
+                if m:FindFirstChildWhichIsA("VehicleSeat", true) or m:FindFirstChildWhichIsA("Seat", true) then
+                    local s = m:GetExtentsSize()
+                    if math.max(s.X, s.Y, s.Z) <= 200 then return m end
+                    return nil
+                end
+                m = m:FindFirstAncestorOfClass("Model")
+            end
+            return nil
+        end
+
+        -- cari part kendaraan di bawah/sekitar badan (kaki di dek/atap,
+        -- badan bersentuhan sisi kendaraan, dsb.)
+        local function bekuCariKendaraan(hrp)
+            local char = getChar()
+            local ray = RaycastParams.new()
+            ray.FilterType = Enum.RaycastFilterType.Exclude
+            ray.FilterDescendantsInstances = char and {char} or {}
+            ray.IgnoreWater = true
+            local hit = Workspace:Raycast(hrp.Position, Vector3.new(0, -6, 0), ray)
+            if hit and bekuModelKendaraan(hit.Instance) then
+                return hit.Instance
+            end
+            local ol = OverlapParams.new()
+            ol.FilterType = Enum.RaycastFilterType.Exclude
+            ol.FilterDescendantsInstances = char and {char} or {}
+            for _, p in ipairs(Workspace:GetPartBoundsInRadius(hrp.Position, 4, ol)) do
+                if bekuModelKendaraan(p) then return p end
+            end
+            return nil
+        end
+
+        -- lepas beku otomatis (kendaraan hilang) — didefer supaya
+        -- UnbindFromRenderStep dipanggil DI LUAR callback RenderStep
+        local function bekuLepasOtomatis()
+            toast("Beku lepas otomatis — kendaraan hilang", Warna.Merah)
+            task.defer(function()
+                if State.BekuOn and not State.Removed then setFeature("Beku", false) end
+            end)
+        end
+
         Setters.Beku = function(v, silent)
             if State.BekuOn == v then return end
             State.BekuOn = v
@@ -3312,20 +3393,53 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                     local h = char and char:FindFirstChildOfClass("Humanoid")
                     local hrp = char and char:FindFirstChild("HumanoidRootPart")
                     if not (h and hrp) then bekuLepas(nil, nil) return end
-                    -- duduk di kendaraan / mati = beku DI-PAUSE total
-                    -- (toggle tetap ON, efek balik sendiri begitu normal lagi)
-                    if sedangDuduk(h) or h.Health <= 0 then
+                    if h.Health <= 0 then bekuLepas(h, hrp) return end
+
+                    -- kendaraan acuan sudah dihapus/hancur server?
+                    if bekuKendAktif and not bekuKendAktif:IsDescendantOf(Workspace) then
                         bekuLepas(h, hrp)
+                        bekuLepasOtomatis()
                         return
                     end
-                    if not hrp.Anchored then hrp.Anchored = true end
-                    bekuAktif = true
-                    local anim = h:FindFirstChildOfClass("Animator")
-                    if anim then
-                        for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
-                            pcall(function() tr:AdjustSpeed(0) end)
+
+                    local seat = h.SeatPart
+
+                    -- MODE DUDUK: tanpa anchor, ikut kendaraan lewat weld
+                    if seat then
+                        bekuGluePart, bekuGlueRel = nil, nil
+                        if hrp.Anchored then hrp.Anchored = false end
+                        -- patung tidak boleh nyetir: netralkan gas & stir
+                        if seat:IsA("VehicleSeat") then
+                            pcall(function()
+                                seat.ThrottleFloat = 0
+                                seat.SteerFloat = 0
+                                seat.Throttle = 0
+                                seat.Steer = 0
+                            end)
                         end
+                        bekuAnim(h, 0)
+                        bekuKendAktif = bekuModelKendaraan(seat) or seat
+                        return
                     end
+
+                    -- MODE MENEMPEL: bersentuhan dgn kendaraan (tanpa duduk)
+                    local part = bekuCariKendaraan(hrp)
+                    if part then
+                        if bekuGluePart ~= part then
+                            bekuGluePart = part
+                            bekuGlueRel = part.CFrame:ToObjectSpace(hrp.CFrame)
+                        end
+                        bekuKendAktif = bekuModelKendaraan(part) or part
+                        if not hrp.Anchored then hrp.Anchored = true end
+                        hrp.CFrame = bekuGluePart.CFrame * bekuGlueRel
+                        bekuAnim(h, 0)
+                        return
+                    end
+
+                    -- BEKU BIASA: tidak ada kendaraan -> anchor di tempat
+                    bekuGluePart, bekuGlueRel, bekuKendAktif = nil, nil, nil
+                    if not hrp.Anchored then hrp.Anchored = true end
+                    bekuAnim(h, 0)
                 end)
             else
                 RunService:UnbindFromRenderStep("KS_BEKU")
@@ -4198,8 +4312,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end)
         print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • P beku • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
-        diagSet("BALAP v1.6.1 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • P beku(ikut kendaraan) • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
+        diagSet("BALAP v1.6.2 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
                 pcall(function()
@@ -4223,7 +4337,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 end, function(e)
     local teks = tostring(e)
     print("==================================================")
-    print("[BALAP v1.6.1] ERROR SAAT LOAD — kirim teks ini ke dev:")
+    print("[BALAP v1.6.2] ERROR SAAT LOAD — kirim teks ini ke dev:")
     print(teks)
     pcall(function() print(debug.traceback("", 2)) end)
     print("==================================================")
@@ -4232,5 +4346,5 @@ end, function(e)
     end)
 end)
 if not __BALAP_LOAD_OK__ then
-    warn("[BALAP v1.6.1] Script GAGAL load — banner MERAH di layar berisi errornya.")
+    warn("[BALAP v1.6.2] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
