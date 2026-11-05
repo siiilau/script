@@ -1,15 +1,15 @@
 --========================================================
---  BALAP v1.6.2 —
+--  BALAP v1.2 —
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
 --  4 TAB:
---    1 MOVEMENT & VISUAL : Speed, Jump, Shiftlock Mobile, Shiftlock Tengah,
---                          Moonwalk, Bekukan Karakter (P), Hide Player
---                          +Kendaraan, Hide Badan Atas, Cahaya Auto,
---                          Lightweight, Dinding Batas
---    2 TITIK   : tiang checkpoint + daftar titik (tersimpan permanen)
+--    1 MOVEMENT & VISUAL : Speed (Q), JumpPower (J), Shiftlock Mobile (C),
+--                          Shiftlock Tengah (LShift/RShift), Moonwalk (F/S),
+--                          Hide Player (R), Hide Badan Atas, Cahaya Auto (T),
+--                          Lightweight, Dinding Batas (X), Panah Deteksi (V)
+--    2 TITIK   : tiang checkpoint + daftar titik (permanen, murni tombol GUI)
 --    3 TP      : simpan / rename / hapus lokasi teleport + urut terdekat
---    4 SYSTEM  : ☁ SINKRON (kode lintas device), rejoin, hapus script
+--    4 SYSTEM  : ☁ SINKRON (kode lintas device), rejoin (K×2), hapus script
 --
 --  Keybind:
 --    G = buka/tutup GUI (saat tutup = hilang total)
@@ -17,145 +17,18 @@
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
 --    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor lingkaran mini)
 --    F = Moonwalk (saat aktif, tekan S = langsung OFF)    R = Hide
---    P = Bekukan Karakter (pose beku total — idle/lompat/emot;
---        otomatis menempel kalau ada kendaraan; kendaraan hilang =
---        beku lepas sendiri)
+--    P = (kosong)
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
---    V = Tambah titik di posisi karakter (tanpa buka GUI)
+--    V = Panah Deteksi (100 stud tiap arah, depan/belakang 135°:
+--        ↑ MERAH = ada pemain DI DEPAN badan, ↓ MERAH = DI BELAKANG;
+--        samping 45° bebas + kosong = hijau; toggle di tab 1)
 --    K = Rejoin (double-tap)
---    TP = via GUI (tab TP): simpan lokasi dgn nama bebas — permanen
+--    TP & titik = via GUI (tersimpan permanen) • ☁ SINKRON = tab SYSTEM
 --
---  v1.6.2 (PERBAIKAN BEKU + KENDARAAN):
---    • BEKU MENEMPEL KENDARAAN — perbaikan 2 kasus: (1) beku sambil
---      duduk lalu kendaraan jalan -> dulu badan melayang tertinggal
---      di belakang; (2) naik/menumpang kendaraan saat beku -> dulu
---      melayang di tempat. Sekarang: DUDUK = TANPA anchor (anchor
---      tidak menular ke kendaraan lewat weld, kendaraan tetap
---      normal), pose tetap beku & badan ikut kendaraan 100% lewat
---      weld kursi; gas/steer dinetralkan selama beku (patung tidak
---      bisa nyetir, balik normal saat lepas beku). MENYENTUH/berdiri
---      di kendaraan (atap, dek perahu, sayap pesawat) = tetap kaku
---      tapi posisinya dihitung relatif ke kendaraan tiap frame ->
---      ikut jalan, belok & naik-turun. Kendaraan hancur/dihapus
---      server saat patung nempel = beku lepas OTOMATIS (realistis).
---      Tanpa kendaraan = beku biasa seperti sebelumnya (idle/lompat/
---      emot). Keybind P & fitur lain 100% tidak berubah.
---  v1.6.1 (TWEAK KECIL):
---    • MOONWALK + TOMBOL S — saat Moonwalk (F) lagi aktif, menekan S
---      langsung MEMATIKAN moonwalk (toggle di GUI ikut OFF + notif).
---      Jadi bisa mundur normal tanpa perlu tekan F lagi / buka GUI.
---      Tekan F lagi untuk menyalakan moonwalk kembali. Fitur lain &
---      semua data tersimpan 100% tidak berubah.
---  v1.6 (FITUR BARU):
---    • BEKUKAN KARAKTER (Beku) — toggle di tab MOVEMENT & VISUAL +
---      keybind P. Karakter BEKU TOTAL di pose saat itu: HRP di-anchor
---      + semua animasi yang lagi main dibekukan di frame itu
---      (AdjustSpeed 0). Beku bisa pas IDLE, pas LOMPAT (melayang beku
---      di udara), atau pas EMOT (pose emot terkunci). Tekan P lagi =
---      lepas beku, animasi & gerak balik normal. Shiftlock Mobile
---      otomatis mati saat beku (patung tidak boleh muter sendiri).
---      Naik kendaraan = beku pause otomatis (anchor bisa merambat ke
---      kendaraan lewat weld), turun lagi = beku jalan sendiri
---      (toggle tetap ON). Mati/respawn = beku otomatis OFF.
---      Fitur lain & semua data tersimpan 100% tidak berubah.
---  v1.5 (HAPUS FITUR):
---    • Fitur Lompat Udara (Air Jump, v1.3) DIHAPUS total: toggle +
---      stepper "Lompatan ekstra" di tab MOVEMENT & VISUAL, keybind B,
---      mesin JumpRequest (lompatan ekstra di udara) & polling reset
---      mendaratnya. Tombol B kembali bebas (tidak dipakai fitur lain).
---      Fitur lain & semua data tersimpan 100% tidak berubah.
---  v1.4 (PERBAIKAN):
---    • FIX KENDARAAN — Moonwalk (F) & Shiftlock Mobile (C) sekarang
---      TIDAK BEREFEK SAMA SEKALI saat naik kendaraan (mobil, motor,
---      seat apa pun). Dulu mesinnya tetap memaksa badan menghadap
---      kamera padahal badan sudah "menyatu" dgn kendaraan (weld),
---      jadi MOBIL/MOTOR ikut terpaku ke arah kamera / ikut dibalik
---      saat jalan. Sekarang: duduk di kendaraan = kedua mesin berhenti
---      total (tidak sentuh CFrame) + AutoRotate dikembalikan sementara
---      ke bawaan game, jadi kendaraan dikendarai 100% normal. Turun
---      dari kendaraan = efeknya balik OTOMATIS (toggle tetap ON,
---      tidak perlu dimatikan-pasang lagi). Shiftlock Tengah, fitur
---      lain & semua data tersimpan tidak disentuh sama sekali.
---  v1.3 (FITUR BARU):
---    • LOMPAT UDARA (Air Jump) — fitur baru di tab MOVEMENT & VISUAL.
---      Toggle di panel + keybind B (slot B memang dikosongkan sejak
---      v1.2). Saat DI UDARA, tekan lompat lagi (spasi PC / tombol
---      lompat HP) untuk lompatan ekstra — kekuatannya mengikuti
---      JumpPower/JumpHeight aktif (setting J). Jumlah lompatan ekstra
---      diatur stepper "Lompatan ekstra" (1-3, default 1 = double jump).
---      Reset otomatis saat mendarat/respawn • anti-spam 0.25 dtk •
---      tidak aktif saat berenang / duduk di kendaraan.
---    • Fitur lain, semua data tersimpan (penanda_titik.json,
---      BALAP_TP.json, BALAP_SYNC.json) & keybind lain 100% tidak berubah.
---  v1.2 (HAPUS FITUR):
---    • Fitur Fall Resist DIHAPUS total: toggle + stepper di tab
---      MOVEMENT & VISUAL, keybind B, mesin pulse "Landed" (Heartbeat),
---      kurva demage, raycast tanah, dan semua teks/notif terkait.
---      Tombol B sekarang bebas (tidak dipakai fitur lain).
---      Fitur & keybind lain 100% tidak berubah.
---  v1.1 (RAPIKAN KODE + UI LEBAR & PAS LAYAR):
---    • Panel RESPONSIF — skala otomatis mengikuti layar (HP potret/lanskap
---      atau PC): layar besar tampil LEBAR (sampai 1.25x), layar kecil
---      menyusut sendiri supaya tidak ada bagian yang keluar layar.
---      Atur lewat CFG: UI_LEBAR / UI_TINGGI / UI_SCALE_MIN / UI_SCALE_MAX.
---    • Teks DIPERBESAR di seluruh UI (tab, label, tombol, daftar, notif).
---    • Anti teks nyasar keluar frame: daftar titik & status sinkron pakai
---      TextScaled (mengecil sendiri kalau teks panjang), tab di-wrap 2
---      baris, banner diag dapat ClipsDescendants + tinggi ekstra, kartu
---      info dilebarkan.
---    • Kode dirapikan: indentasi konsisten 4 spasi, struktur & komentar
---      dirapiin tanpa mengubah logika; 5 helper tak terpakai dihapus
---      (angkaDari, nomorBebas, idBaru, sorotInput, gayaToggle).
---      FITUR & CARA PAKAI 100% SAMA.
---  v1.0 (rilis restrukturisasi — lanjutan dari BALAP v1.3.5):
---    • TAB BARU: 1 MOVEMENT & VISUAL (gerak + visual dilebur jadi satu),
---      2 TITIK, 3 TP (tab sendiri), 4 SYSTEM
---    • Kartu ☁ SINKRON pindah ke tab SYSTEM; tombol ☁ di header membuka
---      tab SYSTEM. Mesin sync (textdb.dev, merge, tombstone) TIDAK diubah.
---    • Fall Resist: 4 tombol preset diganti STEPPER bebas 0-75% (pola
---      seperti Speed: -/+ 0.25 atau ketik sendiri). 0% = tanpa potongan
---      (pulse tidak ditembakkan, damage normal).
---    • Versi di-reset menjadi v1.0
---  Riwayat versi lama (sebelum reset ke v1.0):
---
---  v1.0.1: Moonwalk halus (putaran natural, CFG.MOON_TURN_MAX)
---  v1.1.0: Anti-AFK / Reset / Hemat GUI / Hide Pemain Lain dihapus
---          Shiftlock & Moonwalk OTOMATIS OFF saat mati / respawn
---  v1.2.0: FITUR BARU — Shiftlock Tengah (LShift/RShift): kamera persis di
---          TENGAH karakter (CameraOffset 0), kursor bawaan komputer,
---          transisi halus. Shiftlock/Moonwalk/Tengah saling menonaktifkan.
---  v1.3.0: TAB BARU 📍 TITIK — penanda checkpoint: tiang neon bernomor +
---          daftar teleport, tiang bisa hide/show, titik TERSIMPAN PERMANEN
---          (file penanda_titik.json — titik dari script lama ikut kebaca)
---  v1.3.1: Tiang TANPA nomor — muncul tiang polos saja (nomor di atas
---          tiang dihapus; daftar di tab tetap ada urutannya)
---  v1.3.2: Shiftlock Tengah — titik bidik TURUN ke pinggang/bawah badan
---          (CFG.SLT_TURUN) + kursor jadi lingkaran mini (panah komputer
---          disembunyikan)
---  v1.3.3: Kamera TIDAK diubah (efek kamera v1.3.2 dibatalkan) — cuma LETAK
---          lingkaran kursor digeser ke bawah (CFG.SLT_DOT_Y, 0.5 = tengah)
---  v1.3.4: ☁ SINKRON — TP & titik ikut tersinkron LINTAS DEVICE via
---          jsonblob.com (gratis, tanpa login). Kode sync angka dibuat
---          otomatis, selalu tampil di kartu ☁ SINKRON (tab TITIK) +
---          tombol SALIN. MASUKKAN KODE = nyambung ke device lain,
---          GANTI KODE = buat loker baru. Merge pintar: TP per nama,
---          titik <1 stud = dianggap kembar, DAFTAR HAPUS ikut
---          tersinkron (max 200) supaya hapusan tidak "bangkit" lagi.
---          Upload jeda 30 dtk • download saat load + tiap 3 menit •
---          offline = diam, data aman di lokal, retry otomatis.
---          Lain-lain: fix hotkey saat mengetik • V = tambah titik •
---          rename TP (✎) • jarak + urut terdekat • hapus semua =
---          konfirmasi 2 langkah • Speed OFF 17.15 • berenang saat
---          Shiftlock Tengah aktif = speed aktif × 1.025
---  v1.3.5: FIX SYNC — jsonblob.com ternyata MEMBLOKIR request dari
---          executor (Cloudflare anti-bot, balasan 403) sehingga kode
---          tidak pernah terbentuk ("Kode belum dibuat"). Layanan
---          diganti ke textdb.dev — sudah diuji: tulis/baca/update OK,
---          payload 320KB aman, tanpa blokir. BONUS: kode sync sekarang
---          bisa dibaca manusia (contoh: balap-7k2m-9xq4) — dulu cuma
---          bisa angka. Cara pakai tidak berubah sama sekali.
+--  Shiftlock Mobile, Moonwalk & Shiftlock Tengah otomatis OFF saat
+--  mati/respawn. Data (titik, TP, kode sync) tersimpan permanen di device.
 --========================================================
-print("[BALAP v1.6.2] load mulai...")
+print("[BALAP v1.2] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -205,7 +78,7 @@ do
     end
 end
 
-local VERSI = "1.6.2"
+local VERSI = "1.2"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -269,28 +142,32 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         ON_JUMP     = 65.25,
         OFF_JUMP_H  = 6.69,
         ON_JUMP_H   = 8.50,
-        -- Moonwalk (F): putaran CEPAT + HENTAKAN — badan dibalikkan kencang
-        --   lalu mengunci tegas di arah tujuan (bukan melayang lambat).
-        --   MOON_TURN_MAX = kecepatan putar maks (rad/dtk). 12 = ±688°/dtk,
-        --     putaran 180° selesai ±0.25 dtk. Lebih kencang? naikkan (mis. 15).
-        --   MOON_SMOOTH = kekerasan kunci/pendaratan (makin besar makin hentak).
-        --   Badan hanya berputar saat karakter BERGERAK; berdiri = diam total.
+        -- Moonwalk (F): putaran cepat + hentakan ke arah tujuan.
+        --   MOON_TURN_MAX = kecepatan putar maks (rad/dtk; 12 ≈ ±688°/dtk)
+        --   MOON_SMOOTH   = kekerasan kunci/pendaratan
+        --   Berputar hanya saat karakter bergerak; berdiri = diam total.
         MOON_TURN_MAX = 12,
         MOON_SMOOTH = 10,
-        -- Shiftlock Tengah (v1.2.0): kamera persis di TENGAH karakter.
-        -- v1.3.3: kamera TIDAK diubah sama sekali — yang digeser ke bawah cuma
-        --         letak lingkaran kursornya (posisi diatur SLT_DOT_Y)
+        -- Shiftlock Tengah: kamera persis di TENGAH karakter & TIDAK diubah —
+        -- yang digeser ke bawah cuma letak lingkaran kursornya (SLT_DOT_Y)
         SLT_WAKTU   = 0.25,  -- durasi transisi halus kamera (detik)
         SLT_DOT     = 7,     -- ukuran lingkaran kursor (px, mini biar ga ganggu)
         SLT_DOT_Y   = 0.60,  -- letak vertikal lingkaran: 0.5 = tengah layar,
         -- makin besar makin ke bawah (0.60 = bawah pinggang)
-        -- Penanda Titik (tab TITIK, v1.3.0): tiang checkpoint + teleport
+        -- Penanda Titik (tab TITIK): tiang checkpoint + teleport
         TITIK_WARNA    = Color3.fromRGB(255, 200, 40), -- kuning neon tiang
         TITIK_TINGGI   = 1.5,   -- tinggi tiang (stud)
         TITIK_DIAMETER = 0.3,   -- diameter tiang (stud)
         TITIK_FILE     = "penanda_titik.json", -- sama dgn script standalone lama
-        -- ☁ SINKRON (v1.3.5): TP + titik lintas device via textdb.dev
-        -- (jsonblob.com diblokir Cloudflare untuk request executor -> 403)
+        -- Panah Deteksi (keybind V): deteksi pemain lain di
+        -- depan/belakang badan (ikut arah badan, bukan kamera).
+        PANAH_JARAK = 100,  -- jarak deteksi TIAP arah (stud): 100 depan +
+                            -- 100 belakang = cakupan penuh 200 stud
+        PANAH_SUDUT = 0.383, -- batas dot LookVector: 0.383 = cos(67.5°)
+                            -- -> depan & belakang 135 derajat penuh,
+                            -- samping kiri/kanan 45 derajat bebas (hijau)
+        -- ☁ SINKRON: TP + titik lintas device via textdb.dev (gratis, tanpa
+        -- blokir executor; jsonblob.com ternyata diblokir Cloudflare)
         SYNC_FILE          = "BALAP_SYNC.json", -- kode sync + daftar hapus
         SYNC_URL           = "https://textdb.dev/api/data/", -- .. kode
         SYNC_TOMBSTONE_MAX = 200,   -- batas daftar hapus yang ikut disinkron
@@ -298,7 +175,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         SYNC_UNDUH_TIAP    = 180,   -- dtk antar unduhan berkala (3 menit)
         TITIK_MAX          = 5000,  -- cap keras titik (praktis unlimited, anti crash)
         SWIM_BONUS         = 1.025, -- berenang + Shiftlock Tengah: speed aktif × 1.025
-        -- UI RESPONSIF (v1.1): panel menyesuaikan ukuran layar otomatis.
+        -- UI RESPONSIF: panel menyesuaikan ukuran layar otomatis.
         -- Layar besar -> panel tampil lebih besar (sampai UI_SCALE_MAX),
         -- layar kecil -> menyusut sendiri (sampai UI_SCALE_MIN) supaya
         -- tidak ada bagian panel/teks yang keluar dari layar.
@@ -412,7 +289,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         s = s:gsub("%.$", "")
         return s
     end
-    -- format jarak utk daftar TP & titik (v1.3.4)
+    -- format jarak utk daftar TP & titik
     local function fmtJarak(d)
         if d >= 1000 then return string.format("%.2fkm", d / 1000) end
         return string.format("%.1fm", d)
@@ -643,7 +520,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Visible = false,
     }, screenGui)
     local panelScale = buat("UIScale", {Scale = 1}, root)
-    -- fitScale = skala otomatis "pas layar" (v1.1). Dihitung ulang tiap
+    -- fitScale = skala otomatis "pas layar". Dihitung ulang tiap
     -- ukuran layar berubah (putar HP, resize jendela). panelScale tetap
     -- dipakai minimize/buka GUI, jadi keduanya saling mengali.
     local fitScale = buat("UIScale", {Scale = 1}, root)
@@ -730,7 +607,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Position = UDim2.new(0, 12, 0, 0),
         Size = UDim2.new(1, -104, 1, 0),
         FontFace = fnt("judul"),
-        Text = "⚡ BALAP v1.6.2 ⚡",
+        Text = "⚡ BALAP v1.2 ⚡",
         TextColor3 = Warna.Putih,
         TextSize = 22,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -781,7 +658,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         setTab(4)
     end)
 
-    -- [7a2] MODUL PENANDA TITIK (tab TITIK, v1.3.0) ---------------------
+    -- [7a2] MODUL PENANDA TITIK (tab TITIK) ----------------------------
     -- Port standalone "PENANDA TITIK" ke dalam GUI BALAP:
     --   • Tiang neon kuning polos TANPA nomor, nempel tanah (raycast ke bawah)
     --   • Daftar titik: klik = teleport, X = hapus titik itu
@@ -853,7 +730,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             Material = Enum.Material.Neon,
             Color = CFG.TITIK_WARNA,
         }, titikFolder)
-        -- v1.3.1: TANPA nomor — muncul tiang polos saja
+        -- TANPA nomor — muncul tiang polos saja
     end
 
     -- render ulang semua tiang (dipakai juga Setters.Tiang saat toggle)
@@ -892,7 +769,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         local hit = Workspace:Raycast(hrp.Position, Vector3.new(0, -100, 0), params)
         local groundY = hit and hit.Position.Y or (hrp.Position.Y - 3)
         local pos = Vector3.new(clamp2(hrp.Position.X), clamp2(groundY), clamp2(hrp.Position.Z))
-        -- anti titik kembar (v1.3.4): ada titik < 1 stud -> tolak
+        -- anti titik kembar: ada titik < 1 stud -> tolak
         for _, p in ipairs(titikList) do
             local dx, dy, dz = p.X - pos.X, p.Y - pos.Y, p.Z - pos.Z
             if dx*dx + dy*dy + dz*dz < 1 then
@@ -921,7 +798,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         toast("Semua titik dihapus", Warna.Merah)
     end
 
-    -- gambar ulang daftar titik di tab TITIK (v1.3.4: + jarak & sync)
+    -- gambar ulang daftar titik di tab TITIK (+ jarak & sync)
     titikRefreshDaftar = function()
         if not titikHolder then return end
         for _, c in ipairs(titikHolder:GetChildren()) do
@@ -989,7 +866,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         syncRefreshKartu()
     end
 
-    -- [7a3] DATA TP + MODUL ☁ SINKRON (v1.3.4) ---------------------------
+    -- [7a3] DATA TP + MODUL ☁ SINKRON ------------------------------------
     -- Data TP dipindah keluar buildUI supaya modul sync bisa mengaksesnya.
     TP_MAX     = 40
     TP_FILE    = "BALAP_TP.json"
@@ -1041,10 +918,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     tpMuat()
 
     -- ======================================================================
-    -- ☁ SINKRON (v1.3.5) — TP + titik lintas device
-    -- Layanan : textdb.dev — gratis, tanpa login, TANPA blokir executor.
-    --           (jsonblob.com diblokir Cloudflare utk request executor ->
-    --           selalu 403; itulah sebabnya v1.3.4 gagal membentuk kode)
+    -- ☁ SINKRON — TP + titik lintas device
+    -- Layanan : textdb.dev — gratis, tanpa login, TANPA blokir executor
+    --           (jsonblob.com ternyata diblokir Cloudflare, diganti)
     -- Kode    : balap-xxxx-xxxx — dibaca manusia, mudah diketik. Selalu
     --           tampil di kartu ☁ SINKRON (tab TITIK) + tombol SALIN.
     --           Device lain bergabung lewat MASUKKAN KODE. GANTI KODE =
@@ -1135,7 +1011,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             if type(data.kode) == "string" then
                 local k = data.kode:lower()
                 if k:match("^%d+$") then
-                    -- kode lama v1.3.4 (jsonblob, sudah mati) -> abaikan
+                    -- kode lama (jsonblob, sudah mati) -> abaikan
                 elseif #k >= 6 and #k <= 40 and k:match("^[a-z0-9%-]+$") then
                     SYNC.kode = k
                 end
@@ -1412,7 +1288,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 ["Content-Type"] = body and "application/x-www-form-urlencoded"
                 or "text/plain",
                 -- UA netral: beberapa jaringan menolak request tanpa User-Agent
-                ["User-Agent"]   = "Mozilla/5.0 (BALAP v1.3.5)",
+                ["User-Agent"]   = "Mozilla/5.0 (BALAP v1.2)",
             },
         }
         if body then opts.Body = body end
@@ -1971,7 +1847,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         State.TengahOn = false -- Shiftlock Tengah (LShift/RShift)
         State.TiangOn  = true  -- Tiang Penanda (tab TITIK, default TAMPIL)
         State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
-        State.BekuOn = false      -- Bekukan Karakter (P, v1.6)
+        State.PanahOn = false    -- Panah Deteksi (V)
 
         -- Original Lighting (untuk restore saat cahaya dimatikan)
         oLight = {
@@ -2021,13 +1897,13 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         buatToggleRow(scrollMove, "Shiftlock Mobile", "C", "Shift")
         buatToggleRow(scrollMove, "Shiftlock Tengah", "Shift", "Tengah")
         buatToggleRow(scrollMove, "Moonwalk", "F", "Moon")
-        buatToggleRow(scrollMove, "Bekukan Karakter", "P", "Beku")
 
         -- ===== VISUAL (dilebur dari tab VISUAL lama ke tab 1) =====
         buatHeader(scrollMove, "Visual")
         buatToggleRow(scrollMove, "Hide Player + Kendaraan", "R", "Hide")
         buatToggleRow(scrollMove, "Hide Badan Atas (kaki tetap)", nil, "HideAtas")
         buatToggleRow(scrollMove, "Cahaya Auto (2 arah)", "T", "Light")
+        buatToggleRow(scrollMove, "Panah Deteksi (depan/belakang)", "V", "Panah")
         buatHeader(scrollMove, "Lightweight")
         buatToggleRow(scrollMove, "Partikel / Bayangan / Efek", nil, "LW")
         buatHeader(scrollMove, "Map")
@@ -2237,7 +2113,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
             for i, L in ipairs(TP_LOKASI) do
                 if i == tpRenameIdx then
-                    -- ===== MODE RENAME (v1.3.4): [nama baru] [SIMPAN] [✕] =====
+                    -- ===== MODE RENAME: [nama baru] [SIMPAN] [✕] =====
                     local row = buat("Frame", {
                         BackgroundColor3 = Warna.BiruMuda,
                         Size = UDim2.new(1, 0, 0, 28),
@@ -2713,22 +2589,19 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             TextXAlignment = Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Top,
             TextWrapped = true,
-            Text = "⚡ BALAP v1.6\n"
+            Text = "⚡ BALAP v1.2\n"
             .. "TAB 1 MOVEMENT & VISUAL: Speed (Q) • Jump (J)\n"
             .. "Shiftlock (C) • Shiftlock Tengah (LShift) • Moonwalk (F, S = OFF)\n"
-            .. "Beku (P, ikut kendaraan) • Hide (R) • Hide Atas\n"
-            .. "Cahaya Auto (T) • Lightweight • Dinding Batas (X)\n"
-            .. "TAB 2 TITIK: tiang checkpoint + daftar • V = +titik cepat\n"
+            .. "Hide (R) • Hide Atas • Cahaya Auto (T) • Lightweight\n"
+            .. "Dinding Batas (X) • Panah Deteksi (V): ↑ merah = ada pemain\n"
+            .. "di depan badan, ↓ merah = di belakang (100 stud tiap arah,\n"
+            .. "samping 45° bebas = hijau)\n"
+            .. "TAB 2 TITIK: tiang checkpoint + daftar (murni tombol GUI)\n"
             .. "TAB 3 TP: simpan/rename/hapus/urut terdekat\n"
             .. "TAB 4 SYSTEM: ☁ SINKRON — kode di kartu SYSTEM,\n"
             .. "salin ke device lain (MASUKKAN KODE untuk nyambung)\n"
             .. "Rejoin (K×2) • Hapus Script\n"
-            .. "Shift/Moonwalk/Tengah/Beku otomatis OFF saat mati/respawn\n"
-            .. "v1.4: Moonwalk & Shiftlock Mobile diam saat naik kendaraan —\n"
-            .. "turun = efek balik sendiri • v1.6: Beku = pose beku total\n"
-            .. "• v1.6.1: Moonwalk aktif + tekan S = langsung OFF\n"
-            .. "• v1.6.2: Beku menempel kendaraan (duduk/menyentuh),\n"
-            .. "kendaraan hilang = beku lepas otomatis",
+            .. "Shift/Moonwalk/Tengah otomatis OFF saat mati/respawn",
             LayoutOrder = nextOrder(),
         }, scrollSistem)
         buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
@@ -3107,7 +2980,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             local hum = getHum()
             if not hum then return end
             local base = State.SpeedOn and State.SpeedValue or CFG.SPEED_OFF
-            -- v1.3.4: bonus berenang HANYA saat Shiftlock Tengah aktif —
+            -- bonus berenang HANYA saat Shiftlock Tengah aktif —
             -- speed aktif × 1.025 (di darat & saat Tengah OFF = tanpa efek)
             if State.TengahOn and State.IsSwimming then
                 base = base * CFG.SWIM_BONUS
@@ -3187,7 +3060,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             syncNotify("Jump", v, silent, "JumpPower")
         end
 
-        -- [v1.4] CEK KENDARAAN — dipakai Shiftlock Mobile & Moonwalk.
+        -- CEK KENDARAAN — dipakai Shiftlock Mobile & Moonwalk.
         -- Duduk di Seat/VehicleSeat apa pun (mobil/motor/kursi) = badan
         -- "menyatu" dgn kendaraan lewat weld. Kalau mesin tetap memaksa
         -- hrp.CFrame menghadap kamera, yang ikut terpaku/terputar justru
@@ -3207,16 +3080,13 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             if v then
                 -- anti bentrok orientasi: Shiftlock Tengah dimatikan dulu
                 if State.TengahOn then setFeature("Tengah", false, true) end
-                -- anti bentrok dgn Beku (v1.6): pose beku tidak boleh
-                -- dipaksa muter tiap frame oleh mesin shiftlock
-                if State.BekuOn then setFeature("Beku", false, true) end
                 local hum = getHum()
                 if hum then hum.AutoRotate = false end
                 RunService:BindToRenderStep("KS_SHIFTLOCK", Enum.RenderPriority.Character.Value + 1, function()
                     local char = getChar()
                     local h = char and char:FindFirstChildOfClass("Humanoid")
                     local r = char and char:FindFirstChild("HumanoidRootPart")
-                    -- [v1.4] naik kendaraan = TANPA EFEK: jangan sentuh CFrame
+                    -- naik kendaraan = TANPA EFEK: jangan sentuh CFrame
                     -- sama sekali, AutoRotate dikembalikan sementara ke bawaan
                     -- game supaya kendaraan dikendarai 100% normal
                     if h and sedangDuduk(h) then
@@ -3257,7 +3127,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                     local char = getChar()
                     local h = char and char:FindFirstChildOfClass("Humanoid")
                     local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    -- [v1.4] naik kendaraan = TANPA EFEK: badan tidak dipaksa
+                    -- naik kendaraan = TANPA EFEK: badan tidak dipaksa
                     -- menghadap kamera, jadi mobil/motor tidak ikut dibalik
                     -- 180° / terpaku ke arah kamera saat digas
                     if h and sedangDuduk(h) then
@@ -3293,167 +3163,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             syncNotify("Moon", v, silent, "Moonwalk")
         end
 
-        -- BEKUKAN KARAKTER (v1.6, keybind P — diperbarui v1.6.2) — beku
-        -- TOTAL di pose saat itu: SEMUA animasi yang sedang main dibekukan
-        -- di frame itu (AdjustSpeed 0). Bisa beku pas IDLE (berdiri diam),
-        -- pas LOMPAT (melayang beku di udara), atau pas EMOT (pose emot
-        -- terkunci). Tekan P lagi / toggle OFF = lepas beku, animasi &
-        -- gerak balik normal. Anti bentrok: kalau Shiftlock Mobile aktif,
-        -- itu dimatikan dulu (patung tidak boleh muter sendiri).
-        -- Mati/respawn = beku otomatis OFF (matikanGerak). RenderStep: KS_BEKU.
-        --
-        -- [v1.6.2] BEKU + KENDARAAN (mobil/motor/perahu/pesawat):
-        --   • DUDUK di kendaraan -> TANPA anchor sama sekali (anchor tidak
-        --     menular lewat weld, kendaraan tetap hidup normal). Pose tetap
-        --     beku & badan ikut kendaraan 100% lewat weld kursi — tidak
-        --     mungkin melayang tertinggal. Gas/steer dinetralkan selama
-        --     beku (patung tidak bisa nyetir), balik normal saat lepas.
-        --   • MENYENTUH/berdiri di kendaraan (tanpa duduk: atap mobil, dek
-        --     perahu, sayap pesawat) -> tetap anchored (patung kaku) tapi
-        --     posisinya dihitung RELATIF ke part kendaraan tiap frame
-        --     (mode "menempel"): ikut jalan, ikut belok, ikut naik-turun.
-        --   • Kendaraan hancur/dihapus server saat patung duduk/nempel ->
-        --     beku lepas OTOMATIS (realistis, badan ikut berjatuhan).
-        --   • Tidak ada kendaraan -> beku biasa (anchor di tempat).
-        local bekuGluePart, bekuGlueRel = nil, nil   -- mode menempel: part acuan + offset pose
-        local bekuKendAktif = nil                    -- model kendaraan acuan (deteksi hancur)
-
-        local function bekuAnim(h, kecepatan)  -- 0 = beku pose, 1 = normal
-            if not h then return end
-            local anim = h:FindFirstChildOfClass("Animator")
-            if anim then
-                for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
-                    pcall(function() tr:AdjustSpeed(kecepatan) end)
-                end
-            end
-        end
-
-        local function bekuLepas(h, hrp)
-            bekuAnim(h, 1)
-            if hrp and hrp.Anchored then hrp.Anchored = false end
-            bekuGluePart, bekuGlueRel, bekuKendAktif = nil, nil, nil
-        end
-
-        -- deteksi model kendaraan dari sebuah part (pola sama dgn engine
-        -- Hide: tolak model ber-Humanoid, wajib ada Seat/VehicleSeat;
-        -- cap ukuran 200 stud biar perahu/pesawat besar ikut terdeteksi)
-        local function bekuModelKendaraan(part)
-            local m = part:FindFirstAncestorOfClass("Model")
-            while m do
-                if m:FindFirstChildWhichIsA("Humanoid", true) then return nil end
-                if m:FindFirstChildWhichIsA("VehicleSeat", true) or m:FindFirstChildWhichIsA("Seat", true) then
-                    local s = m:GetExtentsSize()
-                    if math.max(s.X, s.Y, s.Z) <= 200 then return m end
-                    return nil
-                end
-                m = m:FindFirstAncestorOfClass("Model")
-            end
-            return nil
-        end
-
-        -- cari part kendaraan di bawah/sekitar badan (kaki di dek/atap,
-        -- badan bersentuhan sisi kendaraan, dsb.)
-        local function bekuCariKendaraan(hrp)
-            local char = getChar()
-            local ray = RaycastParams.new()
-            ray.FilterType = Enum.RaycastFilterType.Exclude
-            ray.FilterDescendantsInstances = char and {char} or {}
-            ray.IgnoreWater = true
-            local hit = Workspace:Raycast(hrp.Position, Vector3.new(0, -6, 0), ray)
-            if hit and bekuModelKendaraan(hit.Instance) then
-                return hit.Instance
-            end
-            local ol = OverlapParams.new()
-            ol.FilterType = Enum.RaycastFilterType.Exclude
-            ol.FilterDescendantsInstances = char and {char} or {}
-            for _, p in ipairs(Workspace:GetPartBoundsInRadius(hrp.Position, 4, ol)) do
-                if bekuModelKendaraan(p) then return p end
-            end
-            return nil
-        end
-
-        -- lepas beku otomatis (kendaraan hilang) — didefer supaya
-        -- UnbindFromRenderStep dipanggil DI LUAR callback RenderStep
-        local function bekuLepasOtomatis()
-            toast("Beku lepas otomatis — kendaraan hilang", Warna.Merah)
-            task.defer(function()
-                if State.BekuOn and not State.Removed then setFeature("Beku", false) end
-            end)
-        end
-
-        Setters.Beku = function(v, silent)
-            if State.BekuOn == v then return end
-            State.BekuOn = v
-            if v then
-                -- anti bentrok: Shiftlock Mobile memaksa badan menghadap
-                -- kamera tiap frame -> di beku itu artinya patung muter
-                if State.ShiftOn then setFeature("Shift", false, true) end
-                RunService:BindToRenderStep("KS_BEKU", Enum.RenderPriority.Character.Value + 2, function()
-                    local char = getChar()
-                    local h = char and char:FindFirstChildOfClass("Humanoid")
-                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    if not (h and hrp) then bekuLepas(nil, nil) return end
-                    if h.Health <= 0 then bekuLepas(h, hrp) return end
-
-                    -- kendaraan acuan sudah dihapus/hancur server?
-                    if bekuKendAktif and not bekuKendAktif:IsDescendantOf(Workspace) then
-                        bekuLepas(h, hrp)
-                        bekuLepasOtomatis()
-                        return
-                    end
-
-                    local seat = h.SeatPart
-
-                    -- MODE DUDUK: tanpa anchor, ikut kendaraan lewat weld
-                    if seat then
-                        bekuGluePart, bekuGlueRel = nil, nil
-                        if hrp.Anchored then hrp.Anchored = false end
-                        -- patung tidak boleh nyetir: netralkan gas & stir
-                        if seat:IsA("VehicleSeat") then
-                            pcall(function()
-                                seat.ThrottleFloat = 0
-                                seat.SteerFloat = 0
-                                seat.Throttle = 0
-                                seat.Steer = 0
-                            end)
-                        end
-                        bekuAnim(h, 0)
-                        bekuKendAktif = bekuModelKendaraan(seat) or seat
-                        return
-                    end
-
-                    -- MODE MENEMPEL: bersentuhan dgn kendaraan (tanpa duduk)
-                    local part = bekuCariKendaraan(hrp)
-                    if part then
-                        if bekuGluePart ~= part then
-                            bekuGluePart = part
-                            bekuGlueRel = part.CFrame:ToObjectSpace(hrp.CFrame)
-                        end
-                        bekuKendAktif = bekuModelKendaraan(part) or part
-                        if not hrp.Anchored then hrp.Anchored = true end
-                        hrp.CFrame = bekuGluePart.CFrame * bekuGlueRel
-                        bekuAnim(h, 0)
-                        return
-                    end
-
-                    -- BEKU BIASA: tidak ada kendaraan -> anchor di tempat
-                    bekuGluePart, bekuGlueRel, bekuKendAktif = nil, nil, nil
-                    if not hrp.Anchored then hrp.Anchored = true end
-                    bekuAnim(h, 0)
-                end)
-            else
-                RunService:UnbindFromRenderStep("KS_BEKU")
-                local char = getChar()
-                local h = char and char:FindFirstChildOfClass("Humanoid")
-                local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                bekuLepas(h, hrp)
-            end
-            syncNotify("Beku", v, silent, "Bekukan Karakter")
-        end
-
-        -- SHIFTLOCK TENGAH (v1.2.0, revisi v1.3.3) — port "SHIFT LOCK TENGAH v2"
+        -- SHIFTLOCK TENGAH — port "SHIFT LOCK TENGAH v2"
         -- Kamera TIDAK diubah sama sekali (CameraOffset tetap di-tween ke
-        -- Vector3.zero seperti v1.2.0). Yang digeser cuma LETAK lingkaran kursor:
+        -- Vector3.zero). Yang digeser cuma LETAK lingkaran kursor:
         -- panah komputer disembunyikan (MouseIconEnabled false) dan diganti
         -- lingkaran mini (CFG.SLT_DOT px) yang letaknya digeser ke bawah layar
         -- (CFG.SLT_DOT_Y, default 0.60 = sekitar pinggang/bawah badan karakter),
@@ -3462,10 +3174,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         -- Toggle: LShift / RShift / switch GUI. Auto OFF saat mati/respawn
         -- (matikanGerak) + saling menonaktif dgn Shiftlock Mobile & Moonwalk.
         local sltTween, sltTweening, sltOffsetAsli = nil, false, nil
-        local sltDotGui, sltDot  -- lingkaran kursor mini (revisi v1.3.2/v1.3.3)
+        local sltDotGui, sltDot  -- lingkaran kursor mini
         local sltUGS
         pcall(function() sltUGS = UserSettings():GetService("UserGameSettings") end)
-        -- [v1.3.2/v1.3.3] lingkaran kursor mini, letaknya digeser ke bawah layar
+        -- lingkaran kursor mini, letaknya digeser ke bawah layar
         local function sltDotShow()
             if sltDot then sltDot.Visible = true return end
             sltDotGui = buat("ScreenGui", {
@@ -3537,7 +3249,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                         end
                     end
                 end)
-                -- v1.3.2: sembunyikan panah komputer, tampilkan lingkaran mini
+                -- sembunyikan panah komputer, tampilkan lingkaran mini
                 pcall(function() UserInputService.MouseIconEnabled = false end)
                 sltDotShow()
             else
@@ -3550,11 +3262,11 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 local hum = getHum()
                 if hum and sltOffsetAsli then hum.CameraOffset = sltOffsetAsli end
                 sltOffsetAsli = nil
-                -- v1.3.2: panah komputer balik, lingkaran disembunyikan
+                -- panah komputer balik, lingkaran disembunyikan
                 pcall(function() UserInputService.MouseIconEnabled = true end)
                 sltDotHide()
             end
-            applySpeed()   -- v1.3.4: bonus berenang langsung menyesuaikan / pulih
+            applySpeed()   -- bonus berenang langsung menyesuaikan / pulih
             syncNotify("Tengah", v, silent, "Shiftlock Tengah")
         end
 
@@ -4042,6 +3754,106 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             syncNotify("Light", v, silent, "Cahaya Auto")
         end
 
+        -- PANAH DETEKSI (keybind V) — dua panah kecil di sisi KANAN layar:
+        -- ↑ = MERAH kalau ada karakter lain DI DEPAN badan (ikut arah
+        -- badan / LookVector HRP, BUKAN kamera), ↓ = MERAH kalau ada DI
+        -- BELAKANG; hijau = kosong. Jarak 100 stud tiap arah (cakupan 200
+        -- stud), depan & belakang 135 derajat (PANAH_SUDUT = cos 67.5°),
+        -- samping 45 derajat = zona tenang. Loop task.wait(0.1) hemat.
+        local panahGui, panahAtas, panahBawah, panahConn
+        local PANAH_MERAH = Color3.fromRGB(255, 64, 64)
+        local PANAH_HIJAU = Color3.fromRGB(64, 255, 100)
+        Setters.Panah = function(v, silent)
+            if State.PanahOn == v then return end
+            State.PanahOn = v
+            if v then
+                if not panahGui or not panahGui.Parent then
+                    panahGui = Instance.new("ScreenGui")
+                    panahGui.Name = "BALAP_PANAH"
+                    panahGui.ResetOnSpawn = false
+                    panahGui.IgnoreGuiInset = true
+                    panahGui.DisplayOrder = 9000
+                    -- pasang ke tempat aman (gethui/CoreGui/PlayerGui),
+                    -- buang sisa panah lama dulu
+                    local kandidatP = {}
+                    pcall(function() if gethui then table.insert(kandidatP, gethui()) end end)
+                    pcall(function() table.insert(kandidatP, game:GetService("CoreGui")) end)
+                    pcall(function() table.insert(kandidatP, LocalPlayer:WaitForChild("PlayerGui")) end)
+                    for _, t in ipairs(kandidatP) do
+                        pcall(function()
+                            local lama = t:FindFirstChild("BALAP_PANAH")
+                            if lama and lama ~= panahGui then lama:Destroy() end
+                        end)
+                    end
+                    for _, t in ipairs(kandidatP) do
+                        local ok = pcall(function() panahGui.Parent = t end)
+                        if ok and panahGui.Parent == t then break end
+                    end
+                    local function buatPanah(txt, posY)
+                        local t = Instance.new("TextLabel")
+                        t.Name = (txt == "↑") and "PanahDepan" or "PanahBelakang"
+                        t.BackgroundTransparency = 1
+                        t.AnchorPoint = Vector2.new(1, 0)
+                        t.Position = UDim2.new(1, -12, 0.5, posY)
+                        t.Size = UDim2.new(0, 44, 0, 44)
+                        t.Font = Enum.Font.GothamBlack
+                        t.Text = txt
+                        t.TextSize = 34
+                        t.TextColor3 = PANAH_HIJAU
+                        t.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+                        t.TextStrokeTransparency = 0.15
+                        t.Parent = panahGui
+                        return t
+                    end
+                    panahAtas = buatPanah("↑", -58)   -- ATAS = DEPAN badan
+                    panahBawah = buatPanah("↓", 14)   -- di bawahnya = BELAKANG
+                end
+                panahGui.Enabled = true
+                if panahConn then task.cancel(panahConn) end
+                panahConn = task.spawn(function()
+                    while State.PanahOn and not State.Removed do
+                        task.wait(0.1)
+                        local merahA, merahB = false, false
+                        local char, hrp = getKarakter()
+                        if char and hrp then
+                            local myPos = hrp.Position
+                            local look = hrp.CFrame.LookVector
+                            for _, pl in ipairs(Players:GetPlayers()) do
+                                if pl ~= LocalPlayer then
+                                    local c2 = pl.Character
+                                    local h2 = c2 and c2:FindFirstChildOfClass("Humanoid")
+                                    local r2 = c2 and c2:FindFirstChild("HumanoidRootPart")
+                                    if h2 and r2 and h2.Health > 0 then
+                                        local rel = r2.Position - myPos
+                                        local d = rel.Magnitude
+                                        if d > 0.5 and d <= CFG.PANAH_JARAK then
+                                            local dot = look:Dot(rel / d)
+                                            if dot >= CFG.PANAH_SUDUT then
+                                                merahA = true  -- depan 135°
+                                            elseif dot <= -CFG.PANAH_SUDUT then
+                                                merahB = true  -- belakang 135°
+                                            end -- sisanya samping 45° → tetap hijau
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        if panahAtas and panahAtas.Parent then
+                            panahAtas.TextColor3 = merahA and PANAH_MERAH or PANAH_HIJAU
+                        end
+                        if panahBawah and panahBawah.Parent then
+                            panahBawah.TextColor3 = merahB and PANAH_MERAH or PANAH_HIJAU
+                        end
+                    end
+                end)
+            else
+                if panahConn then task.cancel(panahConn) panahConn = nil end
+                if panahGui then pcall(function() panahGui:Destroy() end) panahGui = nil end
+                panahAtas, panahBawah = nil, nil
+            end
+            syncNotify("Panah", v, silent, "Panah Deteksi")
+        end
+
         -- Q — Speed ON/OFF murni
         -- Nilai ON (17.25 / 21.25, atau di antaranya) dipilih via stepper di Tab GERAK.
         -- Keybind Q langsung panggil setFeature("Speed", ...) dari handler [21].
@@ -4075,12 +3887,11 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             pcall(setFeature, "Walls", false, true)
             pcall(setFeature, "Light", false, true)
             pcall(setFeature, "HideAtas", false, true)
-            pcall(setFeature, "Beku", false, true)
+            pcall(setFeature, "Panah", false, true)
             -- 2) Unbind semua RenderStep binding
             pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
             pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
             pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
-            pcall(function() RunService:UnbindFromRenderStep("KS_BEKU") end)
             pcall(function() UserInputService.MouseBehavior = Enum.MouseBehavior.Default end)
             pcall(function()
                 UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.MovementRelative
@@ -4147,7 +3958,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             print("[BALAP] Script dihapus total — semua dibersihkan ✔")
         end
 
-        -- v1.2.3 WATCHDOG TAKEOVER: instance lama bunuh diri otomatis begitu ada
+        -- WATCHDOG TAKEOVER: instance lama bunuh diri otomatis begitu ada
         -- eksekusi BALAP yang lebih baru. Pemicu (cukup salah satu, cek tiap 0.5 dtk):
         --   (1) _G.__BALAP_TOKEN__ bukan miliknya      -> executor share _G
         --   (2) screenGui sudah dihapus eksekusi baru  -> executor isolasi _G
@@ -4173,15 +3984,13 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             local hum = char:WaitForChild("Humanoid", 10)
             if not hum then return end
             updateJumpLabel()
-            -- REVISI v1.1.0 + v1.2.0: Shiftlock, Moonwalk, Shiftlock Tengah & Beku
-            -- OTOMATIS OFF saat mati/respawn. Dua lapis: langsung saat humanoid
-            -- mati (Died) + jaga-jaga saat spawn baru (karakter diganti tanpa
-            -- event Died sempat jalan).
+            -- Shiftlock, Moonwalk & Shiftlock Tengah OTOMATIS OFF saat mati/
+            -- respawn. Dua lapis: langsung saat humanoid mati (Died) +
+            -- jaga-jaga saat spawn baru (karakter diganti tanpa event Died).
             local function matikanGerak()
                 if State.ShiftOn then setFeature("Shift", false) end
                 if State.MoonOn then setFeature("Moon", false) end
                 if State.TengahOn then setFeature("Tengah", false) end
-                if State.BekuOn then setFeature("Beku", false) end
             end
             matikanGerak()
             catat(hum.Died:Connect(matikanGerak))
@@ -4189,7 +3998,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 local swimming = (newState == Enum.HumanoidStateType.Swimming)
                 if swimming ~= State.IsSwimming then
                     State.IsSwimming = swimming
-                    -- v1.3.4: bonus berenang ikut Shiftlock Tengah; pulih otomatis
+                    -- bonus berenang ikut Shiftlock Tengah; pulih otomatis
                     applySpeed()
                 end
             end)
@@ -4226,7 +4035,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             fadeVal.Value = 0
         end
         local function bukaGui()
-            fitPanel()   -- v1.1: pastikan skala pas layar setiap kali dibuka
+            fitPanel()   -- pastikan skala pas layar setiap kali dibuka
             bunyi(CFG.SND_PING, 0.35, 1.15)
             root.Visible = true
             root.Rotation = 0
@@ -4248,11 +4057,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         -- [21] KEYBIND -------------------------------------------------------
         local lastK = 0
         catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            -- v1.6.1 MOONWALK: tekan S = moonwalk langsung OFF. Tombol S
-            -- adalah tombol gerak bawaan, jadi Roblox selalu menandainya
-            -- gameProcessed — karena itu pengecekannya ditaruh SEBELUM
-            -- guard gameProcessed di bawah (tapi tetap tidak jalan saat
-            -- sedang mengetik di kotak teks / chat).
+            -- MOONWALK: tekan S = moonwalk langsung OFF. Tombol S adalah tombol
+            -- gerak bawaan (gameProcessed selalu true) — pengecekannya
+            -- ditaruh SEBELUM guard gameProcessed (tetap tidak jalan saat
+            -- mengetik di kotak teks / chat).
             if input.KeyCode == Enum.KeyCode.S
                 and not UserInputService:GetFocusedTextBox()
                 and not State.Removed and State.MoonOn then
@@ -4261,8 +4069,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
             if gameProcessed then return end
             if State.Removed then return end
-            -- v1.3.4 FIX: jangan picu hotkey saat sedang mengetik di kotak teks
-            -- (G/Q dst. tidak lagi nyasar saat isi nama TP / stepper / kode sync)
+            -- jangan picu hotkey saat sedang mengetik di kotak teks
+            -- (G/Q dst. tidak nyasar saat isi nama TP / stepper / kode sync)
             if UserInputService:GetFocusedTextBox() then return end
             if input.KeyCode == CFG.TOGGLE_KEY then
                 togglePanel()
@@ -4278,14 +4086,12 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 setFeature("Tengah", not State.TengahOn)
             elseif input.KeyCode == Enum.KeyCode.R then
                 setFeature("Hide", not State.HideOn)
-            elseif input.KeyCode == Enum.KeyCode.P then
-                setFeature("Beku", not State.BekuOn)
             elseif input.KeyCode == Enum.KeyCode.T then
                 setFeature("Light", not State.LightOn)
             elseif input.KeyCode == Enum.KeyCode.X then
                 setFeature("Walls", not State.WallsOn)
             elseif input.KeyCode == Enum.KeyCode.V then
-                titikTambahDiSini()   -- v1.3.4: + titik cepat, tanpa buka GUI
+                setFeature("Panah", not State.PanahOn)  -- Panah Deteksi (titik murni tombol GUI)
             elseif input.KeyCode == Enum.KeyCode.K then
                 local now = os.clock()
                 if now - lastK < 0.45 then
@@ -4299,7 +4105,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end))
 
         diagSet("keybind OK — finalisasi...")
-        -- [21b] MESIN ☁ SINKRON (v1.3.5) — mulai setelah semua siap
+        -- [21b] MESIN ☁ SINKRON — mulai setelah semua siap
         syncMulai()
         -- [22] MULAI ---------------------------------------------------------
         updateSpeedLabel()
@@ -4312,8 +4118,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end)
         print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • P beku(ikut kendaraan) • V titik • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
-        diagSet("BALAP v1.6.2 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • V panah • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
+        diagSet("BALAP v1.2 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
                 pcall(function()
@@ -4337,7 +4143,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 end, function(e)
     local teks = tostring(e)
     print("==================================================")
-    print("[BALAP v1.6.2] ERROR SAAT LOAD — kirim teks ini ke dev:")
+    print("[BALAP v1.2] ERROR SAAT LOAD — kirim teks ini ke dev:")
     print(teks)
     pcall(function() print(debug.traceback("", 2)) end)
     print("==================================================")
@@ -4346,5 +4152,5 @@ end, function(e)
     end)
 end)
 if not __BALAP_LOAD_OK__ then
-    warn("[BALAP v1.6.2] Script GAGAL load — banner MERAH di layar berisi errornya.")
+    warn("[BALAP v1.2] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
