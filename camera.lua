@@ -1,20 +1,55 @@
 --[[
         ═══════════════════════════════════════════════
-          CAMERA · v1.0.12  —  ALL-IN-ONE CINEMATIC CAMERA
-          CINEMATIC + FOTO (v12) · FREE/PRO + TARGET LOCK (v11) · RACE CAM
+          CAMERA · v1.0.14  —  ALL-IN-ONE CINEMATIC CAMERA
+          CINEMATIC DANCE · FREE/PRO + TARGET LOCK · RACE CAM
         ═══════════════════════════════════════════════
           1/2/3/4  = FREE · PRO · CINEMATIC · RACE (tekan lagi = mati)
-          CapsLock = MASTER keybind kamera ON/OFF (F·Z·K·J tetap hidup)
-          F = panel · M = mode foto · T = lock target · C = teleport layar
-          Z = cahaya auto · J = gerak/beku patung · H = sembunyikan UI
+          CapsLock = MASTER keybind kamera ON/OFF (G·T·K·P tetap hidup)
+          G = panel · F = lock target · C = teleport layar
+          T = cahaya auto · P = gerak/beku patung · H = sembunyikan UI
           K 2x = hapus script · RMB = lihat sekeliling · Scroll = FOV/zoom
           Space tahan = turbo (FREE) · Ctrl = slow cinematic (FREE)
+          v1.0.14 — RAPI-IN FITUR: keybind digeser (lock=F · cahaya=T ·
+          panel=G · beku=P) · beku otomatis (kamera/master) dihapus —
+          karakter cuma dibekukan lewat tombol P · watermark, transisi
+          blur antar shot, filter warna, rasio frame, ambil foto & mode
+          foto dihapus · 8 SHOT DANSA BARU buat video geol-geol /
+          joget-joget: Dance Orbit Close · Bounce Push-In · 360 Spin
+          Bass Drop · Low Hero Bob · Whip Spin Orbit · Dutch Dance Spin ·
+          Pulse Dolly Loop · Crane Groove Rise (total 32 shot CINE)
+          v1.0.13 — FIX MODE KAMERA: kamera tak menembus plafon lagi
+          (arah atas floorGuard diperbaiki) · CameraType Scriptable
+          dijaga tiap frame (respawn/ganti kamera tak merusak mode) ·
+          alt-tab tidak bikin tombol nyangkut · slider tetap track
+          walau kursor keluar track · RESET benar-benar balik default ·
+          status MASTER & GERAK terlihat di panel · smoothing DOF foto
+          ikut frame-rate
           v1.0.12 — FIX LOCK KARAKTER SENDIRI: kondisi toggle di versi
           lama terbalik (tombol tak pernah mengunci) — kini benar; status
           lock terlihat di CONSOLE eksekutor
           Sebelumnya: lock karakter sendiri · stabilizer PRO·CINE·RACE
           TANPA notifikasi popup sama sekali — status jalan: console eksekutor
           Efek client-side · aman di-execute ulang (auto bersihkan versi lama)
+        ─────────────────────────────────────────────────
+          FITUR & FUNGSI (ringkas):
+          · 1 FREE CAM — kamera bebas: WASD gerak, Q/E turun/naik,
+            RMB lihat sekeliling, Scroll FOV, tahan Space turbo, Ctrl slow
+          · 2 PRO CAM — kamera mengikuti kamu/target lock: RMB putar halus,
+            Scroll zoom 4-80 stud, stabilizer lompat/jatuh
+          · 3 CINEMATIC — sutradara otomatis 32 shot film (dolly, crane,
+            orbit, vertigo, drone, tele sniper + 8 shot dansa geol-geol)
+            memilih angle sendiri sesuai aktivitas subjek: diam=dekat,
+            lari=jauh, kerumunan=wide
+          · 4 RACE CAM — 17 shot balap otomatis saat naik kendaraan
+            (chase, side-by-side, drift, drone atas, wheel close-up…)
+          · TARGET — F lock terdekat · panel: pilih pemain, AUTO LOCK,
+            LOCK KARAKTER SENDIRI (semua mode mengambil gambar kamu)
+          · SISTEM — C teleport di belakang layar · T cahaya auto 2 arah
+            (malam diterangi, siang anti-silau) · P gerak⇄beku patung ·
+            blur DOF fokus target · RESET default · K 2x hapus script ·
+            CapsLock = MASTER
+          · LAIN — letterbox bioskop, anti-temboss dinding/tanah,
+            panel bisa digeser/dilipat, H sembunyikan UI, G panel
         ═══════════════════════════════════════════════
 ]]
 
@@ -31,7 +66,7 @@ task.wait(0.05)
 local DBGWARN = true -- ubah ke false kalau tidak mau log console
 local function dbg(tag)
         if DBGWARN then
-                warn("[CAM v1.0.12] " .. tag)
+                warn("[CAM v1.0.14] " .. tag)
         end
 end
 dbg("1: script mulai dijalankan")
@@ -62,7 +97,6 @@ local CFG = {
         CRPass    = true, -- CINE/RACE: benda KECIL bisa ditembus kamera (plang kayu, papan, karakter lain, mobil) — dinding besar tetap menahan
         CRSmall   = 4,    -- sisi terpanjang < ini (stud) = benda kecil → kamera bisa melewatinya
         CRThin    = 1.1,  -- benda pipih (sisi tengah < ini: papan/plang/tiang/kabel) → tetap bisa ditembus walau agak panjang
-        Anchor    = true,  -- karakter beku TOTAL saat kamera/CapsLock on (toggle SISTEM)
         Smoothness    = 0.12,  -- kehalusan gerak free cam (makin kecil = makin responsif)
         FreeLook      = 0.045, -- FREE: kelembutan gerakan mouse RMB (putaran larut, anti sentak)
         ProVelH       = 0.16,  -- PRO: kelembutan ikut LAJU horizontal (feed-forward — maju konstan = mulus penuh)
@@ -74,7 +108,6 @@ local CFG = {
         SlowMult      = 0.25,  -- pengali kecepatan slow (Ctrl)
         ModeBlend     = 0.5,   -- masuk / pindah antar mode kamera (1/2/3/4)
         ExitBlend     = 0.45,  -- keluar mode: balik ke kamera normal dgn glide halus
-        ShotBlur      = 0,     -- CUT LANGSUNG antar shot (v1.0.12; bisa dinyalakan lagi di panel SISTEM)
         LensPool      = true,  -- FOV tiap shot bervariasi (bobot cerdas) — dibatasi slider LENSA CINE
         CineFovMin    = 30,    -- LENSA CINE·RACE MIN (slider 30-100°, juga RACE) — v1.0.12
         CineFovMax    = 70,    -- LENSA CINE·RACE MAX (slider 30-100°, juga RACE) — v1.0.12
@@ -114,7 +147,7 @@ local CFG = {
 local S = {
         mode = "NONE", -- NONE | FREE | PRO | CINE
         master = false,       -- CapsLock MASTER fitur kamera: false = keybind kamera mati (F/Z/K/J tetap hidup)
-        gerakMode = nil,      -- tombol J: nil = otomatis · "GERAK" = boleh jalan · "BEKU" = diam total
+        gerakMode = nil,      -- tombol P: nil = bebas gerak · "GERAK" = boleh jalan · "BEKU" = diam total
         lastMode = "NONE",    -- mode terakhir yang dipakai
         panelOpen = true,
         uiHidden = false,
@@ -177,14 +210,10 @@ local S = {
                 distK = nil,     -- pengali jarak adaptif balap (pelan = dekat · ngebut = jauh)
         },
         foto = {
-                filter = "OFF",
                 dof = false,
                 focus = 14,
                 blur = 65,
-                ratio = "FULL",
-                wm = false,
         },
-        fotoAktif = false, -- layer MODE FOTO (M) aktif → letterbox ikut tampil
         lightOn = false,
         lightPernahAktif = false,
         lightConn = nil,   -- loop penjaga cahaya
@@ -192,7 +221,6 @@ local S = {
         savedCam = nil,
         trans = nil,         -- mesin blending perpindahan mode (update 0.3)
         exitGlide = nil,     -- glide halus balik ke kamera normal saat mode off
-        shooting = false,
 }
 
 local keys = {}        -- status tombol gerak
@@ -200,18 +228,14 @@ local unloadDone = false -- guard anchor: berhenti saat script sudah dihapus
 local CONNS = {}       -- koneksi (dibersihkan saat unload)
 local boundSpace = false
 local UI = {}          -- referensi elemen UI
-local DOF              -- DepthOfFieldEffect (dipakai cine + foto)
-local DOF_TRANS        -- DepthOfFieldEffect transisi defokus antar shot (update 0.4)
-local PHOTO_CC         -- ColorCorrectionEffect (filter foto)
-local PHOTO_BLOOM      -- BloomEffect (filter tertentu)
+UI.tg = {}             -- v1.0.13: handle toggle (dipakai RESET ke default)
+local DOF              -- DepthOfFieldEffect (dipakai cine + blur DOF)
 
 -- ═══════════════ DEKLARASI MAJU ═══════════════
 local notify, flash, setAnchorState, updateChip, applyLetterbox, applyDof
 local applyUIVisibility, togglePanel, toggleHideUI
 local setMode, toggleLock, doTeleport, toggleCahaya, matikanCahaya, goToSelf, resetScript, unloadAll
 local getSubjectChar, refreshTargetList, refreshModeUI, updateLockBtn
-local setFilter, setRatio, takePhoto, setWatermark
-local updateRatioMasks
 local findNearestPlayer, lockPick, lockAutoToggle, setMaster, toggleGerak
 
 -- ═══════════════ UTIL ═══════════════
@@ -279,32 +303,6 @@ DOF.FocusDistance = 12
 DOF.InFocusRadius = 7
 DOF.Parent = Lighting
 
-PHOTO_CC = Instance.new("ColorCorrectionEffect")
-PHOTO_CC.Name = "CAMERA_FOTO_CC"
-PHOTO_CC.Enabled = false
-PHOTO_CC.Parent = Lighting
-
-PHOTO_BLOOM = Instance.new("BloomEffect")
-PHOTO_BLOOM.Name = "CAMERA_FOTO_BLOOM"
-PHOTO_BLOOM.Enabled = false
-PHOTO_BLOOM.Intensity = 0.3
-PHOTO_BLOOM.Size = 24
-PHOTO_BLOOM.Threshold = 0.85
-PHOTO_BLOOM.Parent = Lighting
-
--- v1.0.12 FIX: hanya properti DepthOfFieldEffect yang ASLI di Roblox —
--- 2 properti DOF tidak resmi dihapus (penyebab v1.0.4-6 mati total sebelum GUI)
-DOF_TRANS = Instance.new("DepthOfFieldEffect")
-pcall(function()
-        DOF_TRANS.Name = "CAMERA_DOF_TRANS"
-        DOF_TRANS.Enabled = false
-        DOF_TRANS.NearIntensity = 0
-        DOF_TRANS.FarIntensity = 0
-        DOF_TRANS.FocusDistance = 0.05
-        DOF_TRANS.FocusDistanceRange = NumberRange.new(0, 0)
-        DOF_TRANS.InFocusRadius = 0
-end)
-DOF_TRANS.Parent = Lighting
 dbg("2: efek lighting siap")
 
 -- ═══════════════ GUI ROOT ═══════════════
@@ -446,11 +444,6 @@ UI.lbB = new("Frame", {
         ZIndex = 3,
 }, gui)
 
-UI.maskT = new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 0), Position = UDim2.new(0, 0, 0, 0), ZIndex = 4 }, gui)
-UI.maskB = new("Frame", { AnchorPoint = Vector2.new(0, 1), BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 0), Position = UDim2.new(0, 0, 1, 0), ZIndex = 4 }, gui)
-UI.maskL = new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, Size = UDim2.new(0, 0, 1, 0), Position = UDim2.new(0, 0, 0, 0), ZIndex = 4 }, gui)
-UI.maskR = new("Frame", { AnchorPoint = Vector2.new(1, 0), BackgroundColor3 = Color3.new(0, 0, 0), BorderSizePixel = 0, Size = UDim2.new(0, 0, 1, 0), Position = UDim2.new(1, 0, 0, 0), ZIndex = 4 }, gui)
-
 UI.flash = new("Frame", {
         BackgroundColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 1,
@@ -473,24 +466,6 @@ new("UIListLayout", {
         SortOrder = Enum.SortOrder.LayoutOrder,
         VerticalAlignment = Enum.VerticalAlignment.Top,
 }, UI.notifBox)
-
-UI.wm = new("TextLabel", {
-        AnchorPoint = Vector2.new(1, 1),
-        Position = UDim2.new(1, -10, 1, -10),
-        Size = UDim2.new(0, 0, 0, 20),
-        AutomaticSize = Enum.AutomaticSize.X,
-        BackgroundColor3 = CFG.BG,
-        BackgroundTransparency = 0.35,
-        BorderSizePixel = 0,
-        Font = Enum.Font.GothamBold,
-        Text = " CAMERA v1.0.12 ",
-        TextColor3 = CFG.TXT,
-        TextSize = 10,
-        Visible = false,
-        ZIndex = 20,
-}, gui)
-corner(UI.wm, 999)
-stroke(UI.wm, CFG.Neon1, 1, 0.5)
 
 -- ═══════════════ PANEL UTAMA ═══════════════
 UI.panel = new("Frame", {
@@ -522,7 +497,7 @@ UI.title = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 8),
         Size = UDim2.new(1, -60, 0, 22),
         Font = Enum.Font.GothamBlack,
-        Text = "CAMERA<font color=\"#FF2DAA\"> v1.0.12</font>",
+        Text = "CAMERA<font color=\"#FF2DAA\"> v1.0.14</font>",
         RichText = true,
         TextColor3 = CFG.TXT,
         TextSize = 16,
@@ -535,7 +510,7 @@ UI.sub = new("TextLabel", {
         Position = UDim2.new(0, 16, 0, 31),
         Size = UDim2.new(1, -60, 0, 14),
         Font = Enum.Font.GothamMedium,
-        Text = "v1.0.12 · 1/2/3/4 = MODE",
+        Text = "v1.0.14 · CAPSLOCK OFF — keybind kamera terkunci",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -589,7 +564,7 @@ UI.foot = new("TextLabel", {
         Size = UDim2.new(1, 0, 0, 14),
         BackgroundTransparency = 1,
         Font = Enum.Font.GothamMedium,
-        Text = "F panel · H sembunyikan · K 2x hapus",
+        Text = "G panel · H sembunyikan · K 2x hapus",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 9,
         TextTransparency = 0.15,
@@ -617,14 +592,6 @@ UI.tabSISTEM = new("Frame", {
         BackgroundTransparency = 1,
         Visible = false,
         LayoutOrder = 3,
-        ZIndex = 6,
-}, UI.body)
-UI.tabFOTO = new("Frame", {
-        Size = UDim2.new(1, -20, 0, 0),
-        AutomaticSize = Enum.AutomaticSize.Y,
-        BackgroundTransparency = 1,
-        Visible = false,
-        LayoutOrder = 4,
         ZIndex = 6,
 }, UI.body)
 -- ═══════════════ WIDGET UI ═══════════════
@@ -667,19 +634,33 @@ end
 local function makeToggle(parent, label, default, onSet, order)
         local b = makePill(parent, label .. "   ·   " .. (default and "ON" or "OFF"), 32, order, nil)
         local st = b:FindFirstChildOfClass("UIStroke")
-        local state = default
-        if not state then
-                b.TextColor3 = CFG.TXT_DIM
-                st.Color = CFG.TXT_DIM
-        end
-        b.MouseButton1Click:Connect(function()
-                state = not state
+        local state = default and true or false
+        local function render()
                 b.Text = label .. "   ·   " .. (state and "ON" or "OFF")
                 b.TextColor3 = state and CFG.TXT or CFG.TXT_DIM
                 st.Color = state and CFG.Neon1 or CFG.TXT_DIM
+        end
+        if not state then
+                render()
+        end
+        b.MouseButton1Click:Connect(function()
+                state = not state
+                render()
                 onSet(state)
         end)
-        return b
+        -- v1.0.13: kembalikan handle {Get, Set} supaya RESET bisa mengembalikan toggle
+        return {
+                Get = function()
+                        return state
+                end,
+                Set = function(v, silent)
+                        state = v and true or false
+                        render()
+                        if not silent then
+                                onSet(state)
+                        end
+                end,
+        }
 end
 
 local function makeSlider(parent, label, minv, maxv, default, fmt, onSet, order)
@@ -765,11 +746,12 @@ local function makeSlider(parent, label, minv, maxv, default, fmt, onSet, order)
                         setFromX(i.Position.X)
                 end
         end)
-        track.InputChanged:Connect(function(i)
+        -- v1.0.13: drag dilacak lewat UserInputService — kursor keluar track, slider tetap ikut
+        table.insert(CONNS, UserInputService.InputChanged:Connect(function(i)
                 if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
                         setFromX(i.Position.X)
                 end
-        end)
+        end))
         table.insert(CONNS, UserInputService.InputEnded:Connect(function(i)
                 if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
                         dragging = false
@@ -863,7 +845,7 @@ end, function(v)
                 UI.fovMinSlider.Set(v, true)
         end
 end, 11)
-makeToggle(UI.tabCAM, "STABILIZER LOMPAT/JATUH (PRO·CINE·RACE)", CFG.ProStab, function(state)
+UI.tg.Stab = makeToggle(UI.tabCAM, "STABILIZER LOMPAT/JATUH (PRO·CINE·RACE)", CFG.ProStab, function(state)
         CFG.ProStab = state
 end, 12)
 
@@ -907,7 +889,7 @@ new("TextLabel", {
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 40),
         Font = Enum.Font.GothamMedium,
-        Text = "PRO & SINEMATIK ikut: lock > pilihan > terdekat (dari KAMERA) > diri sendiri.\n◉ LOCK KARAKTER SENDIRI = FREE/PRO/CINE/RACE mengambil gambar karakter kamu.\nT = lock pemain terdekat dari KAMERA · AUTO LOCK pindah sendiri kalau target hilang.\nBlur foto fokus otomatis ke avatar target.",
+        Text = "PRO & SINEMATIK ikut: lock > pilihan > terdekat (dari KAMERA) > diri sendiri.\n◉ LOCK KARAKTER SENDIRI = FREE/PRO/CINE/RACE mengambil gambar karakter kamu.\nF = lock pemain terdekat dari KAMERA · AUTO LOCK pindah sendiri kalau target hilang.\nBlur foto fokus otomatis ke avatar target.",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextWrapped = true,
@@ -930,198 +912,78 @@ end, function(v)
 end, 3)
 
 secLabel(UI.tabSISTEM, "Utilitas", 4)
-UI.waktuBtn = makePill(UI.tabSISTEM, "Z · CAHAYA AUTO (2 ARAH) · OFF", 32, 5, function()
+UI.waktuBtn = makePill(UI.tabSISTEM, "T · CAHAYA AUTO (2 ARAH) · OFF", 32, 5, function()
         toggleCahaya()
 end)
-UI.gerakBtn = makePill(UI.tabSISTEM, "J · GERAK ⇄ BEKU KARAKTER", 32, 6, function()
+UI.gerakBtn = makePill(UI.tabSISTEM, "P · GERAK ⇄ BEKU KARAKTER", 32, 6, function()
         toggleGerak()
 end)
-makeToggle(UI.tabSISTEM, "BEKUKAN KARAKTER (KAMERA/MASTER)", CFG.Anchor, function(state)
-        CFG.Anchor = state
-        setAnchorState()
-end, 7)
-makeToggle(UI.tabSISTEM, "LETTERBOX SINEMATIK (SEMUA MODE)", CFG.Letterbox, function(state)
+UI.tg.Letterbox = makeToggle(UI.tabSISTEM, "LETTERBOX SINEMATIK (SEMUA MODE)", CFG.Letterbox, function(state)
         CFG.Letterbox = state
         applyLetterbox()
-end, 8)
-makeToggle(UI.tabSISTEM, "KAMERA ANTI-TEMBOSS (FREE/PRO TANAH SAJA)", CFG.AntiClip, function(state)
+end, 7)
+UI.tg.AntiClip = makeToggle(UI.tabSISTEM, "KAMERA ANTI-TEMBOSS (FREE/PRO TANAH SAJA)", CFG.AntiClip, function(state)
         CFG.AntiClip = state
-end, 9)
-makeToggle(UI.tabSISTEM, "CINE · TRANSISI BLUR ANTAR SHOT", CFG.ShotBlur > 0, function(state)
-        CFG.ShotBlur = state and 0.2 or 0
-        if not state then
-                DOF_TRANS.Enabled = false
-        end
-end, 10)
-makeToggle(UI.tabSISTEM, "CINE · VARIASI LENSA (BOBOT CERDAS)", CFG.LensPool, function(state)
+end, 8)
+UI.tg.LensPool = makeToggle(UI.tabSISTEM, "CINE · VARIASI LENSA (BOBOT CERDAS)", CFG.LensPool, function(state)
         CFG.LensPool = state
-end, 11)
-makeToggle(UI.tabSISTEM, "CINE · SHOT JAUH 30-120 STUD (DRONE/TELE)", CFG.FarShots, function(state)
+end, 9)
+UI.tg.FarShots = makeToggle(UI.tabSISTEM, "CINE · SHOT JAUH 30-120 STUD (DRONE/TELE)", CFG.FarShots, function(state)
         CFG.FarShots = state
-end, 12)
+end, 10)
 
-secLabel(UI.tabSISTEM, "Keybind", 13)
-new("TextLabel", {
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, 0, 0, 86),
-        Font = Enum.Font.GothamMedium,
-        Text = "CapsLock · MASTER kamera (OFF = keybind kamera mati)\n1/2/3/4 mode · M foto · T lock · C teleport · H hide UI\nF panel · Z cahaya · K 2x hapus · J gerak⇄beku (mandiri)\nRMB lihat · Scroll zoom/FOV · Space (tahan) turbo\nCtrl slow cinematic (FREE)",
-        TextColor3 = CFG.TXT_DIM,
-        TextSize = 10,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Top,
-        LayoutOrder = 14,
-        ZIndex = 6,
-}, UI.tabSISTEM)
-
-makePill(UI.tabSISTEM, "↻  RESET SCRIPT (BALIK KE DEFAULT)", 32, 12, function()
-        resetScript()
-end)
-
-local dangerBtn = makePill(UI.tabSISTEM, "K 2x · HAPUS SCRIPT", 32, 13, function()
-        unloadAll()
-end)
-dangerBtn.TextColor3 = CFG.DANGER
-dangerBtn:FindFirstChildOfClass("UIStroke").Color = CFG.DANGER
-
--- ═══════════════ ISI TAB FOTO ═══════════════
-new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder }, UI.tabFOTO)
-pad(UI.tabFOTO, 2, 8, 0, 0)
-
-secLabel(UI.tabFOTO, "Filter Warna", 1)
-UI.filterBtns = {}
-do
-        local wrap = new("Frame", {
-                Size = UDim2.new(1, 0, 0, 0),
-                AutomaticSize = Enum.AutomaticSize.Y,
-                BackgroundTransparency = 1,
-                LayoutOrder = 2,
-                ZIndex = 6,
-        }, UI.tabFOTO)
-        new("UIGridLayout", {
-                CellSize = UDim2.new(0.5, -4, 0, 26),
-                CellPadding = UDim2.new(0, 4, 0, 5),
-                SortOrder = Enum.SortOrder.LayoutOrder,
-        }, wrap)
-        local FILTERS = {
-                { id = "OFF",     label = "ASLI" },
-                { id = "TEAL",    label = "TEAL&ORANGE" },
-                { id = "GOLDEN",  label = "GOLDEN HOUR" },
-                { id = "NEON",    label = "NEON NIGHT" },
-                { id = "VINTAGE", label = "VINTAGE" },
-                { id = "BW",      label = "HITAM PUTIH" },
-                { id = "VIVID",   label = "VIVID" },
-                { id = "DREAMY",  label = "DREAMY" },
-        }
-        for i, f in ipairs(FILTERS) do
-                local b = new("TextButton", {
-                        BackgroundColor3 = CFG.BGCard,
-                        BackgroundTransparency = 0.2,
-                        BorderSizePixel = 0,
-                        Font = Enum.Font.GothamBold,
-                        Text = f.label,
-                        TextColor3 = CFG.TXT,
-                        TextSize = 10,
-                        AutoButtonColor = true,
-                        LayoutOrder = i,
-                        ZIndex = 6,
-                }, wrap)
-                corner(b, 999)
-                stroke(b, CFG.Neon1, 1, 0.65)
-                b.MouseButton1Click:Connect(function()
-                        setFilter(f.id)
-                end)
-                UI.filterBtns[f.id] = b
-        end
-end
-
-secLabel(UI.tabFOTO, "Rasio Frame", 2)
-UI.ratioBtns = {}
-do
-        local row = new("Frame", {
-                Size = UDim2.new(1, 0, 0, 0),
-                AutomaticSize = Enum.AutomaticSize.Y,
-                BackgroundTransparency = 1,
-                LayoutOrder = 4,
-                ZIndex = 6,
-        }, UI.tabFOTO)
-        new("UIGridLayout", {
-                CellSize = UDim2.new(1 / 3, -4, 0, 24),
-                CellPadding = UDim2.new(0, 4, 0, 5),
-                SortOrder = Enum.SortOrder.LayoutOrder,
-        }, row)
-        local RATIOS = {
-                { id = "FULL", label = "BEBAS" },
-                { id = "21:9", label = "21:9 SINEMA" },
-                { id = "16:9", label = "16:9" },
-                { id = "4:5",  label = "4:5 IG" },
-                { id = "1:1",  label = "1:1" },
-                { id = "9:16", label = "9:16 TIKTOK" },
-        }
-        for i, r in ipairs(RATIOS) do
-                local b = new("TextButton", {
-                        BackgroundColor3 = CFG.BGCard,
-                        BackgroundTransparency = 0.2,
-                        BorderSizePixel = 0,
-                        Font = Enum.Font.GothamBold,
-                        Text = r.label,
-                        TextColor3 = CFG.TXT,
-                        TextSize = 10,
-                        AutoButtonColor = true,
-                        LayoutOrder = i,
-                        ZIndex = 6,
-                }, row)
-                corner(b, 999)
-                stroke(b, CFG.Neon2, 1, 0.65)
-                b.MouseButton1Click:Connect(function()
-                        setRatio(r.id)
-                end)
-                UI.ratioBtns[r.id] = b
-        end
-end
-
-secLabel(UI.tabFOTO, "Blur Otomatis (Fokus Target)", 5)
-makeToggle(UI.tabFOTO, "BLUR OTOMATIS · ON/OFF", false, function(state)
+secLabel(UI.tabSISTEM, "Blur DOF (Fokus Target)", 11) -- v1.0.14: pindah dari tab FOTO
+UI.tg.BlurFoto = makeToggle(UI.tabSISTEM, "BLUR OTOMATIS · ON/OFF", false, function(state)
         S.foto.dof = state
         if state then
-                notify("Blur ON — fokus otomatis ke avatar target lock (T)")
+                notify("Blur ON — fokus otomatis ke avatar target lock (F)")
         end
-end, 6)
+end, 12)
 new("TextLabel", {
         BackgroundTransparency = 1,
         Size = UDim2.new(1, 0, 0, 26),
         Font = Enum.Font.GothamMedium,
-        Text = "Fokus mengikuti avatar target lock (T) / subjek kamera.\nSlider bawah cuma dipakai kalau tidak ada target.",
+        Text = "Fokus mengikuti avatar target lock (F) / subjek kamera.\nSlider bawah cuma dipakai kalau tidak ada target.",
         TextColor3 = CFG.TXT_DIM,
         TextSize = 10,
         TextWrapped = true,
-        LayoutOrder = 7,
+        LayoutOrder = 13,
         ZIndex = 6,
-}, UI.tabFOTO)
-makeSlider(UI.tabFOTO, "FALLBACK FOKUS (TANPA TARGET)", 2, 100, S.foto.focus, function(v)
+}, UI.tabSISTEM)
+UI.fokusSlider = makeSlider(UI.tabSISTEM, "FALLBACK FOKUS (TANPA TARGET)", 2, 100, S.foto.focus, function(v)
         return math.floor(v) .. " stud"
 end, function(v)
         S.foto.focus = v
-end, 8)
-makeSlider(UI.tabFOTO, "KEKUATAN BLUR", 0, 100, S.foto.blur, function(v)
+end, 14)
+UI.blurSlider = makeSlider(UI.tabSISTEM, "KEKUATAN BLUR", 0, 100, S.foto.blur, function(v)
         return math.floor(v) .. "%"
 end, function(v)
         S.foto.blur = v
-end, 9)
+end, 15)
 
-secLabel(UI.tabFOTO, "Ambil Foto", 10)
-do
-        local shotBtn = makePill(UI.tabFOTO, "●  AMBIL FOTO  (LAYAR BERSIH 5 DETIK)", 38, 11, function()
-                takePhoto()
-        end)
-        shotBtn.TextSize = 12
-        local g = grad(shotBtn, CFG.Neon1, CFG.Neon2, 0)
-        g.Enabled = true
-        shotBtn.TextColor3 = Color3.fromRGB(10, 10, 18)
-end
-makeToggle(UI.tabFOTO, "WATERMARK CAMERA", false, function(state)
-        setWatermark(state)
-end, 12)
+secLabel(UI.tabSISTEM, "Keybind", 16)
+new("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, 0, 0, 86),
+        Font = Enum.Font.GothamMedium,
+        Text = "CapsLock · MASTER kamera (OFF = keybind kamera mati)\n1/2/3/4 mode · F lock · C teleport · H hide UI\nG panel · T cahaya · K 2x hapus · P gerak⇄beku (mandiri)\nRMB lihat · Scroll zoom/FOV · Space (tahan) turbo\nCtrl slow cinematic (FREE)",
+        TextColor3 = CFG.TXT_DIM,
+        TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        LayoutOrder = 17,
+        ZIndex = 6,
+}, UI.tabSISTEM)
+
+makePill(UI.tabSISTEM, "↻  RESET SCRIPT (BALIK KE DEFAULT)", 32, 18, function()
+        resetScript()
+end)
+
+local dangerBtn = makePill(UI.tabSISTEM, "K 2x · HAPUS SCRIPT", 32, 19, function()
+        unloadAll()
+end)
+dangerBtn.TextColor3 = CFG.DANGER
+dangerBtn:FindFirstChildOfClass("UIStroke").Color = CFG.DANGER
 
 -- ═══════════════ TAB BAR + LOGIKA TAB ═══════════════
 UI.tabBtns = {}
@@ -1129,7 +991,6 @@ local tabDefs = {
         { id = "CAM",    f = UI.tabCAM },
         { id = "TARGET", f = UI.tabTARGET },
         { id = "SISTEM", f = UI.tabSISTEM },
-        { id = "FOTO",   f = UI.tabFOTO },
 }
 local activeTab = "CAM"
 
@@ -1151,7 +1012,7 @@ end
 
 for i, td in ipairs(tabDefs) do
         local b = new("TextButton", {
-                Size = UDim2.new(0, 73, 0, 28),
+                Size = UDim2.new(0, 102, 0, 28),
                 BackgroundColor3 = CFG.BGCard,
                 BackgroundTransparency = 0.2,
                 BorderSizePixel = 0,
@@ -1254,8 +1115,8 @@ function flash()
 end
 
 function applyLetterbox()
-        local modeOn = (S.mode ~= "NONE") or S.fotoAktif
-        local on = modeOn and CFG.Letterbox and (S.foto.ratio == "FULL")
+        local modeOn = (S.mode ~= "NONE")
+        local on = modeOn and CFG.Letterbox
         local target = on and 62 or 0
         local tw = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
         TweenService:Create(UI.lbT, tw, { Size = UDim2.new(1, 0, 0, target) }):Play()
@@ -1462,16 +1323,14 @@ local function lebaskanKarakter()
 end
 
 local function hitungBeku()
+        -- v1.0.14: beku otomatis (kamera/master) DIHAPUS — beku hanya lewat tombol P
         if S.gerakMode == "GERAK" then
-                return false -- J: boleh jalan walau kamera/master aktif
+                return false -- P: boleh jalan
         end
         if S.gerakMode == "BEKU" then
-                return S.mode ~= "RACE" -- J: beku patung walau master off / toggle SISTEM off
+                return S.mode ~= "RACE" -- P: beku patung (kecuali mode RACE)
         end
-        if not CFG.Anchor then
-                return false -- sistem beku dimatikan lewat toggle SISTEM
-        end
-        return (S.master or S.mode ~= "NONE") and S.mode ~= "RACE"
+        return false
 end
 
 function setAnchorState()
@@ -1490,15 +1349,18 @@ function setAnchorState()
                         hrp.Anchored = false
                 end
         end
+        if UI.gerakBtn then -- v1.0.13: status beku/gerak terlihat di tombol (popup dimatikan)
+                UI.gerakBtn.Text = BEKU.on and "P · GERAK ⇄ BEKU · KARAKTER: BEKU" or "P · GERAK ⇄ BEKU · KARAKTER: GERAK"
+        end
 end
 
 function toggleGerak()
         S.gerakMode = (BEKU.on or hitungBeku()) and "GERAK" or "BEKU"
         setAnchorState()
         if S.gerakMode == "GERAK" then
-                notify("GERAK — karakter bisa jalan lagi (J lagi = bekukan)", 1.8)
+                notify("GERAK — karakter bisa jalan lagi (P lagi = bekukan)", 1.8)
         else
-                notify("BEKU — PATUNG: diam total, pose terkunci di frame ini (J lagi = gerak)", 2.2)
+                notify("BEKU — PATUNG: diam total, pose terkunci di frame ini (P lagi = gerak)", 2.2)
         end
 end
 
@@ -1881,7 +1743,7 @@ function matikanCahaya(silent)
                 end
         end)
         if UI.waktuBtn then
-                UI.waktuBtn.Text = "Z · CAHAYA AUTO (2 ARAH) · OFF"
+                UI.waktuBtn.Text = "T · CAHAYA AUTO (2 ARAH) · OFF"
         end
         if not silent then
                 notify("CAHAYA AUTO OFF — lighting asli dikembalikan")
@@ -1921,7 +1783,7 @@ function toggleCahaya()
                 end
         end)
         if UI.waktuBtn then
-                UI.waktuBtn.Text = "Z · CAHAYA AUTO (2 ARAH) · ON"
+                UI.waktuBtn.Text = "T · CAHAYA AUTO (2 ARAH) · ON"
         end
         notify("CAHAYA AUTO ON — malam diterangi · siang dilembutkan")
         updateChip()
@@ -1978,7 +1840,7 @@ end
 
 -- ═══════════════ RESET SCRIPT ═══════════════
 function resetScript()
-        S.gerakMode = nil -- J balik ke aturan otomatis
+        S.gerakMode = nil -- P balik ke bebas gerak
         if S.mode ~= "NONE" then
                 setMode("NONE")
         end
@@ -2007,8 +1869,37 @@ function resetScript()
         if UI.fovMaxSlider then
                 UI.fovMaxSlider.Set(70)
         end
-        setFilter("OFF")
-        setRatio("FULL")
+        CFG.CineTempo = 5.5
+        if UI.tempoSlider then
+                UI.tempoSlider.Set(5.5)
+        end
+        -- v1.0.13: RESET kini mengembalikan SEMUA toggle & pengaturan foto ke default
+        if UI.tg.Stab then
+                UI.tg.Stab.Set(true)
+        end
+        if UI.tg.Letterbox then
+                UI.tg.Letterbox.Set(true)
+        end
+        if UI.tg.AntiClip then
+                UI.tg.AntiClip.Set(true)
+        end
+        if UI.tg.LensPool then
+                UI.tg.LensPool.Set(true)
+        end
+        if UI.tg.FarShots then
+                UI.tg.FarShots.Set(true)
+        end
+        if UI.tg.BlurFoto then
+                UI.tg.BlurFoto.Set(false)
+        end
+        S.foto.focus = 14
+        S.foto.blur = 65
+        if UI.fokusSlider then
+                UI.fokusSlider.Set(14)
+        end
+        if UI.blurSlider then
+                UI.blurSlider.Set(65)
+        end
         updateChip()
         refreshTargetList()
         if UI.updateLockBtn then
@@ -2018,114 +1909,9 @@ function resetScript()
         notify("Script di-RESET ke pengaturan awal")
 end
 
--- ═══════════════ LAYER FOTO ═══════════════
-local FILTER_PRESETS = {
-        TEAL    = { Tint = Color3.fromRGB(255, 236, 214), Sat = 0.18,  Con = 0.12,  Bri = -0.01, Bloom = nil },
-        GOLDEN  = { Tint = Color3.fromRGB(255, 214, 170), Sat = 0.22,  Con = 0.06,  Bri = 0.02,  Bloom = nil },
-        NEON    = { Tint = Color3.fromRGB(214, 224, 255), Sat = 0.35,  Con = 0.18,  Bri = -0.04, Bloom = nil },
-        VINTAGE = { Tint = Color3.fromRGB(255, 238, 205), Sat = -0.25, Con = 0.02,  Bri = 0.03,  Bloom = nil },
-        BW      = { Tint = Color3.fromRGB(255, 255, 255), Sat = -1,    Con = 0.15,  Bri = 0,     Bloom = nil },
-        VIVID   = { Tint = Color3.fromRGB(255, 255, 255), Sat = 0.45,  Con = 0.15,  Bri = 0.01,  Bloom = 0.15 },
-        DREAMY  = { Tint = Color3.fromRGB(255, 228, 240), Sat = 0.12,  Con = -0.05, Bri = 0.06,  Bloom = 0.35 },
-}
-
-function setFilter(id)
-        S.foto.filter = id
-        if id == "OFF" then
-                PHOTO_CC.Enabled = false
-                PHOTO_BLOOM.Enabled = false
-        else
-                local f = FILTER_PRESETS[id]
-                if f then
-                        PHOTO_CC.Enabled = true
-                        PHOTO_CC.TintColor = f.Tint
-                        PHOTO_CC.Saturation = f.Sat
-                        PHOTO_CC.Contrast = f.Con
-                        PHOTO_CC.Brightness = f.Bri
-                        if f.Bloom then
-                                PHOTO_BLOOM.Enabled = true
-                                PHOTO_BLOOM.Intensity = f.Bloom
-                        else
-                                PHOTO_BLOOM.Enabled = false
-                        end
-                end
-        end
-        for fid, btn in pairs(UI.filterBtns) do
-                local st = btn:FindFirstChildOfClass("UIStroke")
-                if fid == id then
-                        st.Transparency = 0.05
-                        btn.TextColor3 = CFG.Neon1
-                else
-                        st.Transparency = 0.65
-                        btn.TextColor3 = CFG.TXT
-                end
-        end
-end
-
-local RATIO_VALUES = {
-        ["21:9"] = 21 / 9,
-        ["16:9"] = 16 / 9,
-        ["4:5"]  = 4 / 5,
-        ["1:1"]  = 1,
-        ["9:16"] = 9 / 16,
-}
-
-function updateRatioMasks()
-        local id = S.foto.ratio
-        local cam = workspace.CurrentCamera
-        local vp = cam.ViewportSize
-        if id == "FULL" then
-                UI.maskT.Size = UDim2.new(1, 0, 0, 0)
-                UI.maskB.Size = UDim2.new(1, 0, 0, 0)
-                UI.maskL.Size = UDim2.new(0, 0, 1, 0)
-                UI.maskR.Size = UDim2.new(0, 0, 1, 0)
-        else
-                local R = RATIO_VALUES[id]
-                local va = vp.X / vp.Y
-                if R > va then
-                        local barH = (vp.Y - vp.X / R) / 2
-                        UI.maskT.Size = UDim2.new(1, 0, 0, barH)
-                        UI.maskB.Size = UDim2.new(1, 0, 0, barH)
-                        UI.maskL.Size = UDim2.new(0, 0, 1, 0)
-                        UI.maskR.Size = UDim2.new(0, 0, 1, 0)
-                else
-                        local barW = (vp.X - vp.Y * R) / 2
-                        UI.maskT.Size = UDim2.new(1, 0, 0, 0)
-                        UI.maskB.Size = UDim2.new(1, 0, 0, 0)
-                        UI.maskL.Size = UDim2.new(0, barW, 1, 0)
-                        UI.maskR.Size = UDim2.new(0, barW, 1, 0)
-                end
-        end
-        applyLetterbox()
-end
-
-function setRatio(id)
-        S.foto.ratio = id
-        updateRatioMasks()
-        for rid, btn in pairs(UI.ratioBtns) do
-                local st = btn:FindFirstChildOfClass("UIStroke")
-                if rid == id then
-                        st.Transparency = 0.05
-                        btn.TextColor3 = CFG.Neon2
-                else
-                        st.Transparency = 0.65
-                        btn.TextColor3 = CFG.TXT
-                end
-        end
-        if id ~= "FULL" then
-                notify("Rasio " .. id .. " aktif")
-        end
-end
-
-function setWatermark(state)
-        S.foto.wm = state
-        UI.wm.Visible = state
-end
-
-function applyDof()
-        if S.mode ~= "CINE" and DOF_TRANS.Enabled then
-                DOF_TRANS.Enabled = false -- transisi defokus hanya di CINE
-        end
+-- ═══════════════ BLUR DOF (FOKUS TARGET) ═══════════════
+-- v1.0.14: filter warna / rasio / watermark / ambil foto dihapus — sisa applyDof saja
+function applyDof(dt)
         if S.foto.dof then
                 DOF.Enabled = true
                 local want = S.foto.focus
@@ -2136,7 +1922,8 @@ function applyDof()
                 if not S.fotoFocus then
                         S.fotoFocus = want
                 end
-                S.fotoFocus = S.fotoFocus + (want - S.fotoFocus) * 0.3
+                -- v1.0.13: smoothing berbasis dt (dulu 0.3 per frame — kecepatannya tergantung FPS)
+                S.fotoFocus = S.fotoFocus + (want - S.fotoFocus) * (1 - math.exp(-(dt or 0.016) * 10))
                 DOF.FocusDistance = S.fotoFocus
                 DOF.InFocusRadius = 6 + S.foto.blur * 0.06
                 DOF.FarIntensity = 0.15 + (S.foto.blur / 100) * 0.65
@@ -2156,26 +1943,6 @@ function applyDof()
         else
                 DOF.Enabled = false
         end
-end
-
-function takePhoto()
-        if S.shooting then
-                return
-        end
-        S.shooting = true
-        notify("Layar bersih 5 detik — ambil screenshotmu!", 2)
-        local els = { UI.panel, UI.notifBox }
-        local states = {}
-        for i, el in ipairs(els) do
-                states[i] = el.Visible
-                el.Visible = false
-        end
-        task.delay(5, function()
-                for i, el in ipairs(els) do
-                        el.Visible = states[i]
-                end
-                S.shooting = false
-        end)
 end
 
 -- ═══════════════ KAMERA ANTI-TEMBOSS (DINDING / TANAH / OBJEK) ═══════════════
@@ -2325,7 +2092,9 @@ local function floorGuard(pos)
         end
         hit = workspace:Raycast(pos, Vector3.new(0, 3, 0), camRay)
         if hit and hit.Instance.CanCollide and hit.Normal.Y < -0.55 then
-                pos = Vector3.new(pos.X, hit.Position.Y + clr, pos.Z)
+                -- v1.0.13 FIX: permukaan di ATAS kamera (plafon/dasar jembatan) —
+                -- kamera ditahan 0.3 stud DI BAWAH permukaan (dulu +clr malah mendorong menembus ke atas)
+                pos = Vector3.new(pos.X, hit.Position.Y - clr, pos.Z)
         end
         return pos
 end
@@ -2635,7 +2404,7 @@ local function cineCtx(dt)
         }
 end
 
--- ═══════════════ LIBRARY SHOT CINEMATIC (21 SHOT · 2 KATEGORI · PENUH GERAKAN) ═══════════════
+-- ═══════════════ LIBRARY SHOT CINEMATIC (21 SHOT INTI + 8 SHOT DANSA · PENUH GERAKAN) ═══════════════
 local SHOTS = {}
 
 SHOTS["REVEAL SHOT"] = {
@@ -3117,6 +2886,200 @@ SHOTS["S-CURVE FLYBY"] = {
         end,
 }
 
+-- ═══════════════ LIBRARY SHOT DANSA v1.0.14 (GEOL-GEOL / JOGET-JOGET) ═══════════════
+-- 8 shot berirama: bounce, spin cepat, dutch roll, dolly napas — pas buat edit dansa TikTok
+
+SHOTS["DANCE ORBIT CLOSE"] = {
+        cat = "CLOSE",
+        face = "SAMPING", -- orbit erat memutari penari
+        weights = { idle = 5, walk = 1.2, run = 0.6, vehicle = 0.5 },
+        dmK = 0.5, -- dansa = tetap dekat walau pengali jarak aktif
+        enter = function(ctx, P)
+                P.r = rr(7.5, 10.5) * P.dm
+                P.h = rr(1.4, 2.2)
+                P.ang = rr(0, math.pi * 2)
+                P.spd = (math.random() < 0.5 and -1 or 1) * math.rad(rr(55, 75))
+                P.hz = rr(1.5, 2) -- irama bounce (kali per detik)
+                P.fov = rr(44, 52)
+                seedSway(P, 0.8)
+        end,
+        update = function(P, t, dt, ctx)
+                P.ang = P.ang + P.spd * dt
+                local h = P.h + math.abs(math.sin(t * math.pi * P.hz)) * 0.35 -- bounce ikut irama
+                local p = ctx.pos + Vector3.new(math.cos(P.ang) * P.r, h, math.sin(P.ang) * P.r) + sway(P, t, 0.06)
+                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(P.r, 6)
+        end,
+}
+
+SHOTS["BOUNCE PUSH-IN"] = {
+        cat = "CLOSE",
+        face = "DEPAN", -- dorongan ke depan dengan lonjakan irama
+        weights = { idle = 4.5, walk = 1, run = 0.5, vehicle = 0.4 },
+        dmK = 0.5,
+        enter = function(ctx, P)
+                P.dirMode = "look"
+                P.dir = ctx.look
+                P.d0 = rr(12, 15) * P.dm
+                P.d1 = rr(6.5, 8.5) * P.dm
+                P.h = rr(1.3, 1.9)
+                P.hz = rr(1.6, 2.1)
+                P.fov = rr(46, 54)
+                seedSway(P, 0.7)
+        end,
+        update = function(P, t, dt, ctx)
+                local face = smoothDir(P, ctx, dt, 2.2)
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local d = P.d0 + (P.d1 - P.d0) * k
+                local bounce = math.abs(math.sin(t * math.pi * P.hz))
+                local p = ctx.pos + face * d + Vector3.new(0, P.h + bounce * 0.5, 0) + sway(P, t, 0.05)
+                return CFrame.lookAt(p, ctx.head), P.fov - 4 * bounce, closeDof(d, 5)
+        end,
+}
+
+SHOTS["360 SPIN BASS DROP"] = {
+        cat = "BOTH",
+        face = "SAMPING", -- putaran penuh, FOV "jatuh" di akhir shot ala bass drop
+        weights = { idle = 3.5, walk = 1.5, run = 1, vehicle = 1 },
+        dmK = 0.55,
+        enter = function(ctx, P)
+                P.r0 = rr(13, 16) * P.dm
+                P.r1 = rr(8, 10) * P.dm
+                P.h0 = rr(2.2, 3)
+                P.h1 = rr(1.4, 1.9)
+                P.ang = rr(0, math.pi * 2)
+                P.spd = (math.random() < 0.5 and -1 or 1) * math.rad(rr(65, 85))
+                P.fov0 = rr(56, 62)
+                P.fov1 = rr(40, 46)
+                seedSway(P, 0.7)
+        end,
+        update = function(P, t, dt, ctx)
+                P.ang = P.ang + P.spd * dt
+                local k = smoothstep(t / math.max(S.cine.dur, 0.1))
+                local r = P.r0 + (P.r1 - P.r0) * k
+                local h = P.h0 + (P.h1 - P.h0) * k
+                local fov = P.fov0 + (P.fov1 - P.fov0) * k
+                local p = ctx.pos + Vector3.new(math.cos(P.ang) * r, h, math.sin(P.ang) * r) + sway(P, t, 0.07)
+                return CFrame.lookAt(p, ctx.head), fov, closeDof(r, 5)
+        end,
+}
+
+SHOTS["LOW HERO BOB"] = {
+        cat = "CLOSE",
+        face = "DEPAN", -- super rendah dari depan, kamera ikut memantul
+        weights = { idle = 4, walk = 1.2, run = 0.6, vehicle = 0.5 },
+        dmK = 0.5,
+        enter = function(ctx, P)
+                P.dirMode = "look"
+                P.dir = ctx.look
+                P.d = rr(9, 12) * P.dm
+                P.h = rr(0.35, 0.7)
+                P.hz = rr(1.5, 2)
+                P.roll = math.rad(rr(1.5, 3))
+                P.fov = rr(48, 56)
+                seedSway(P, 0.6)
+        end,
+        update = function(P, t, dt, ctx)
+                local face = smoothDir(P, ctx, dt, 2.2)
+                local bounce = math.abs(math.sin(t * math.pi * P.hz))
+                local p = ctx.pos + face * P.d + Vector3.new(0, P.h + bounce * 0.45, 0) + sway(P, t, 0.04)
+                local cf = CFrame.lookAt(p, ctx.head + Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, 0, math.sin(t * math.pi * P.hz) * P.roll)
+                return cf, P.fov, closeDof(P.d, 4)
+        end,
+}
+
+SHOTS["WHIP SPIN ORBIT"] = {
+        cat = "BOTH",
+        face = "SAMPING", -- dicambuk: menyapu cepat lalu balik — pas untuk cut dansa
+        weights = { idle = 3, walk = 2, run = 1.2, vehicle = 1 },
+        dmK = 0.6,
+        enter = function(ctx, P)
+                P.r = rr(10, 13) * P.dm
+                P.h = rr(1.5, 2.4)
+                P.ang0 = rr(0, math.pi * 2)
+                P.swing = (math.random() < 0.5 and -1 or 1) * math.rad(rr(95, 130))
+                P.fov = rr(50, 58)
+                seedSway(P, 0.8)
+        end,
+        update = function(P, t, dt, ctx)
+                local k = math.clamp(t / math.max(S.cine.dur, 0.1), 0, 1)
+                local ang = P.ang0 + math.sin(k * math.pi) * P.swing
+                local p = ctx.pos + Vector3.new(math.cos(ang) * P.r, P.h, math.sin(ang) * P.r) + sway(P, t, 0.06)
+                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(P.r, 5)
+        end,
+}
+
+SHOTS["DUTCH DANCE SPIN"] = {
+        cat = "CLOSE",
+        face = "SAMPING", -- orbit sambil kamera miring bergoyang (dutch roll)
+        weights = { idle = 3.2, walk = 1.4, run = 0.8, vehicle = 0.6 },
+        dmK = 0.55,
+        enter = function(ctx, P)
+                P.r = rr(9, 12) * P.dm
+                P.h = rr(1.6, 2.6)
+                P.ang = rr(0, math.pi * 2)
+                P.spd = (math.random() < 0.5 and -1 or 1) * math.rad(rr(40, 55))
+                P.rollAmp = math.rad(rr(5, 8))
+                P.rollHz = rr(0.5, 0.8)
+                P.fov = rr(48, 56)
+                seedSway(P, 0.8)
+        end,
+        update = function(P, t, dt, ctx)
+                P.ang = P.ang + P.spd * dt
+                local roll = math.sin(t * math.pi * P.rollHz * 2) * P.rollAmp
+                local p = ctx.pos + Vector3.new(math.cos(P.ang) * P.r, P.h, math.sin(P.ang) * P.r) + sway(P, t, 0.06)
+                return CFrame.lookAt(p, ctx.head) * CFrame.Angles(0, 0, roll), P.fov, closeDof(P.r, 5)
+        end,
+}
+
+SHOTS["PULSE DOLLY LOOP"] = {
+        cat = "CLOSE",
+        face = "DEPAN", -- dolly maju-mundur berirama — loop pas untuk geol-geol
+        weights = { idle = 4.2, walk = 1, run = 0.5, vehicle = 0.4 },
+        dmK = 0.5,
+        enter = function(ctx, P)
+                P.dirMode = "look"
+                P.dir = ctx.look
+                P.dMid = rr(9.5, 12) * P.dm
+                P.dAmp = rr(2.2, 3.2)
+                P.hz = rr(0.55, 0.75) -- siklus napas per detik (loop ~1.5 detik)
+                P.h = rr(1.4, 2)
+                P.fov = rr(46, 52)
+                seedSway(P, 0.6)
+        end,
+        update = function(P, t, dt, ctx)
+                local face = smoothDir(P, ctx, dt, 2)
+                local w = math.sin(t * math.pi * 2 * P.hz)
+                local d = P.dMid + w * P.dAmp
+                local p = ctx.pos + face * d + Vector3.new(0, P.h, 0) + sway(P, t, 0.05)
+                return CFrame.lookAt(p, ctx.head), P.fov - w * 5, closeDof(d, 5)
+        end,
+}
+
+SHOTS["CRANE GROOVE RISE"] = {
+        cat = "BOTH",
+        face = "SAMPING", -- crane naik-turun bergoyang sambil orbit pelan
+        weights = { idle = 2.8, walk = 1.8, run = 1, vehicle = 1 },
+        dmK = 0.65,
+        enter = function(ctx, P)
+                P.r = rr(11, 14) * P.dm
+                P.hLow = rr(1.2, 1.7)
+                P.hHigh = rr(3.8, 5)
+                P.hz = rr(0.35, 0.5)
+                P.ang = rr(0, math.pi * 2)
+                P.spd = (math.random() < 0.5 and -1 or 1) * math.rad(rr(28, 40))
+                P.fov = rr(50, 58)
+                seedSway(P, 0.7)
+        end,
+        update = function(P, t, dt, ctx)
+                P.ang = P.ang + P.spd * dt
+                local hMid = (P.hLow + P.hHigh) * 0.5
+                local hAmp = (P.hHigh - P.hLow) * 0.5
+                local h = hMid + math.sin(t * math.pi * 2 * P.hz) * hAmp
+                local p = ctx.pos + Vector3.new(math.cos(P.ang) * P.r, h, math.sin(P.ang) * P.r) + sway(P, t, 0.07)
+                return CFrame.lookAt(p, ctx.head), P.fov, closeDof(P.r, 5)
+        end,
+}
+
 -- ═══════════════ DETEKSI KERUMUNAN & PEMILIH SHOT ═══════════════
 local function crowdCount(root)
         if not root then
@@ -3246,17 +3209,7 @@ local function pickShot(cat)
         return pool[1].name
 end
 
--- ═══════════════ UPDATE 0.4: TRANSISI DEFOKUS + SHOT JARAK JAUH ═══════════════
-local function transBlur(k)
-        if not DOF_TRANS then
-                return
-        end
-        DOF_TRANS.Enabled = k > 0.01
-        DOF_TRANS.FocusDistance = 0.05
-        DOF_TRANS.InFocusRadius = 0
-        DOF_TRANS.NearIntensity = 2.2 * k
-        DOF_TRANS.FarIntensity = 5 * k
-end
+-- ═══════════════ SHOT JARAK JAUH (UPDATE 0.4) — TRANSISI BLUR DIHAPUS v1.0.14 ═══════════════
 
 SHOTS["ESTABLISHING DRONE"] = {
         cat = "BOTH",
@@ -3378,12 +3331,6 @@ local function startShot()
                         S.cine.P.fov = math.clamp(f + (L.fov - f) * 0.8, 26, 120)
                 end
         end
-        if (CFG.ShotBlur or 0) > 0.01 then
-                S.cine.blurT = 0
-                S.cine.blurDur = math.max(CFG.ShotBlur, 0.1)
-        else
-                S.cine.blurT = nil
-        end
 end
 
 local function cineUpdate(dt)
@@ -3398,21 +3345,8 @@ local function cineUpdate(dt)
                 return
         end
         S.cine.t = S.cine.t + dt
-        if (CFG.ShotBlur or 0) > 0.01 and (S.cine.dur - S.cine.t) < 0.08 then
-                transBlur(math.clamp(1 - (S.cine.dur - S.cine.t) / 0.08, 0, 1))
-        end
         if ctx.char ~= S.cine.char or S.cine.t >= S.cine.dur then
                 startShot()
-        end
-        if S.cine.blurT then
-                S.cine.blurT = S.cine.blurT + dt
-                local bk = math.clamp(1 - S.cine.blurT / S.cine.blurDur, 0, 1)
-                if bk <= 0 then
-                        S.cine.blurT = nil
-                        DOF_TRANS.Enabled = false
-                else
-                        transBlur(bk * bk * (3 - 2 * bk))
-                end
         end
         local cf, fov, dofK = S.cine.def.update(S.cine.P, S.cine.t, dt, ctx)
         fov = fov + math.sin(os.clock() * 1.2) * 1.2
@@ -4119,8 +4053,8 @@ function setMode(m)
                 mulaiTransisi() -- update 0.3: shot pertama dilebur dari tampilan terakhir
                 S.cine.def = nil
                 S.cine.smCf = nil
-                setAnchorState() -- karakter beku total, biar shot tetap rapi
-                notify("CINEMATIC — 21 shot penuh gerakan · cut antar shot gaya film · 60% depan · 20% samping · 20% belakang · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s · nembus benda kecil", 1.4)
+                setAnchorState() -- segarkan status beku (P)
+                notify("CINEMATIC — 32 shot (21 inti + 3 jauh + 8 dansa geol-geol) · cut antar shot gaya film · 60% depan · 20% samping · 20% belakang · tempo " .. string.format("%.1f", CFG.CineTempo) .. "s · nembus benda kecil", 1.4)
         elseif m == "RACE" then
                 Camera.CameraType = Enum.CameraType.Scriptable
                 mulaiTransisi() -- update 0.3: shot pertama dilebur dari tampilan terakhir
@@ -4142,23 +4076,23 @@ end
 function setMaster(on)
         S.master = on and true or false
         S.uiHidden = false
+        if UI.sub then -- v1.0.13: status MASTER terlihat di panel
+                UI.sub.Text = S.master and "v1.0.14 · MASTER ON · 1/2/3/4 = MODE" or "v1.0.14 · CAPSLOCK OFF — keybind kamera terkunci"
+        end
         if S.master then
-                S.gerakMode = nil -- sesi filming baru: kembali ke aturan otomatis (beku)
+                S.gerakMode = nil -- sesi filming baru: karakter bebas gerak (beku lewat tombol P)
                 setAnchorState()
                 applyUIVisibility()
-                notify("CAPSLOCK ON — keybind kamera AKTIF (1/2/3/4 · M · T · C)", 2.2)
+                notify("CAPSLOCK ON — keybind kamera AKTIF (1/2/3/4 · F · C)", 2.2)
         else
                 if S.mode ~= "NONE" then
                         setMode("NONE") -- matikan mode kamera + kembalikan kamera semula
                 end
-                if S.fotoAktif then
-                        S.fotoAktif = false
-                        applyLetterbox()
+                if UI.tg.BlurFoto then
+                        UI.tg.BlurFoto.Set(false) -- efek layar aktif ikut dibersihkan (blur DOF)
+                else
+                        S.foto.dof = false
                 end
-                S.foto.dof = false -- efek layar aktif ikut dibersihkan (blur foto)
-                setFilter("OFF")
-                setRatio("FULL")
-                setWatermark(false)
                 if S.locked then
                         S.locked = false
                         S.lockPlayer = nil
@@ -4170,13 +4104,13 @@ function setMaster(on)
                 S.rmb = false
                 S.turbo = false
                 S.ctrlDown = false
-                S.gerakMode = nil -- balik ke aturan otomatis (master off = bebas gerak)
+                S.gerakMode = nil -- balik ke bebas gerak (beku manual lewat tombol P)
                 setAnchorState()
                 applyUIVisibility()
                 pcall(function()
                         UserInputService.MouseBehavior = Enum.MouseBehavior.Default
                 end)
-                notify("CAPSLOCK OFF — keybind kamera MATI (F · Z · K · J tetap hidup)", 2.4)
+                notify("CAPSLOCK OFF — keybind kamera MATI (G · T · K · P tetap hidup)", 2.4)
         end
 end
 
@@ -4206,15 +4140,15 @@ table.insert(CONNS, UserInputService.InputBegan:Connect(function(input, gp)
                 setMaster(not S.master)
                 return
         end
-        if kc == Enum.KeyCode.Z then
+        if kc == Enum.KeyCode.T then
                 toggleCahaya()
                 return
         end
-        if kc == Enum.KeyCode.F then
+        if kc == Enum.KeyCode.G then
                 togglePanel()
                 return
         end
-        if kc == Enum.KeyCode.J then
+        if kc == Enum.KeyCode.P then
                 toggleGerak()
                 return
         end
@@ -4239,19 +4173,7 @@ table.insert(CONNS, UserInputService.InputBegan:Connect(function(input, gp)
                 setMode("CINE")
         elseif kc == Enum.KeyCode.Four then
                 setMode("RACE")
-        elseif kc == Enum.KeyCode.M then
-                S.fotoAktif = not S.fotoAktif
-                if S.fotoAktif then
-                        if S.uiHidden then
-                                toggleHideUI()
-                        end
-                        S.panelOpen = true
-                        UI.panel.Visible = true
-                        switchTab("FOTO")
-                end
-                applyLetterbox()
-                notify(S.fotoAktif and "MODE FOTO ON — letterbox bioskop aktif (M lagi = mati)" or "MODE FOTO OFF", 1.4)
-        elseif kc == Enum.KeyCode.T then
+        elseif kc == Enum.KeyCode.F then
                 toggleLock()
         elseif kc == Enum.KeyCode.C then
                 doTeleport()
@@ -4275,6 +4197,17 @@ table.insert(CONNS, UserInputService.InputEnded:Connect(function(input)
                         S.ctrlDown = false
                 end
         end
+end))
+
+-- v1.0.13: alt-tab / fokus hilang — tombol "nyangkut" dibersihkan (kamera tak jalan sendiri)
+table.insert(CONNS, UserInputService.WindowFocusReleased:Connect(function()
+        table.clear(keys)
+        S.rmb = false
+        S.turbo = false
+        S.ctrlDown = false
+        pcall(function()
+                UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        end)
 end))
 
 table.insert(CONNS, UserInputService.InputChanged:Connect(function(input)
@@ -4310,6 +4243,11 @@ local camFilterCheck = 0
 table.insert(CONNS, RunService.RenderStepped:Connect(function(dt)
         dt = math.min(dt, 0.066) -- PENTING: dt dipatok — kamera tidak melompat setelah lag/spike
         Camera = workspace.CurrentCamera
+        if S.mode ~= "NONE" and Camera.CameraType ~= Enum.CameraType.Scriptable then
+                -- v1.0.13: respawn / script game kadang mengembalikan CameraType ke Custom —
+                -- dijaga kembali ke Scriptable supaya kamera script tidak "bertarung" dengan kamera default
+                Camera.CameraType = Enum.CameraType.Scriptable
+        end
         if os.clock() - camFilterCheck > 0.5 then
                 camFilterCheck = os.clock()
                 refreshCamFilter()
@@ -4385,7 +4323,7 @@ table.insert(CONNS, RunService.RenderStepped:Connect(function(dt)
                         Camera.FieldOfView = CFG.FOV
                 end
         end
-        applyDof()
+        applyDof(dt)
 end))
 
 -- ═══════════════ RESPAWN & PEMAIN KELUAR ═══════════════
@@ -4429,12 +4367,11 @@ table.insert(CONNS, Players.PlayerRemoving:Connect(function(pl)
         refreshTargetList()
 end))
 
-table.insert(CONNS, workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateRatioMasks))
+local vpConnCam = workspace.CurrentCamera
 table.insert(CONNS, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-        Camera = workspace.CurrentCamera
-        if Camera then
-                updateRatioMasks()
-                table.insert(CONNS, Camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateRatioMasks))
+        Camera = workspace.CurrentCamera -- v1.0.14: ikut kamera baru (mask rasio sudah dihapus)
+        if Camera and Camera ~= vpConnCam then
+                vpConnCam = Camera
         end
 end))
 
@@ -4469,9 +4406,6 @@ function unloadAll()
         end)
         pcall(function()
                 DOF:Destroy()
-                DOF_TRANS:Destroy()
-                PHOTO_CC:Destroy()
-                PHOTO_BLOOM:Destroy()
         end)
         pcall(function()
                 Camera.CameraType = Enum.CameraType.Custom
@@ -4499,7 +4433,7 @@ function unloadAll()
         end)
         _G.CAMERA_V101_UNLOAD = nil
         _G.SIIILAU_CAM_UNLOAD = nil
-        print("[CAMERA v1.0.12] script dihapus — sampai jumpa!")
+        print("[CAMERA v1.0.14] script dihapus — sampai jumpa!")
 end
 _G.CAMERA_V101_UNLOAD = unloadAll
 
@@ -4508,9 +4442,7 @@ setAnchorState()
 updateChip()
 refreshTargetList()
 refreshModeUI()
-setFilter("OFF")
-setRatio("FULL")
 dbg("3: gui & keybind selesai")
 applyLetterbox()
 applyUIVisibility()
-dbg("4: SEMUA SIAP — tekan F untuk buka panel")
+dbg("4: SEMUA SIAP — tekan G untuk buka panel")
