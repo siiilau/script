@@ -2,14 +2,25 @@
 --  BALAP v1.4 —
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
---  CHANGELOG v1.4 (tab EMOTE):
---    • TAB BARU EMOTE: 9 slot animasi kustom
---      IDLE • WALK • RUN • JUMP • FALL • CLIMB • SIT • DANCE • SWIM
---    • tiap slot: preset gaya resmi Roblox (Ninja, Zombie, Robot, dst)
---      + ID KUSTOM bebas + ASLI (animasi default game)
+--  CHANGELOG v1.4 (tab ANIMASI):
+--    • TAB 2 ANIMASI — terbagi 2 kartu:
+--      ANIMASI : 7 slot gaya gerak (IDLE JALAN LARI RENANG MANJAT LOMPAT
+--                JATUH) + kolom ID/BUNDLE → slot + reset semua
+--      EMOT    : daftar emote resmi main langsung (Dance, Wave, Tawa,
+--                Cheer, Duduk, Stop) + emote kustom ID/BUNDLE dengan
+--                NAMA tersimpan (bisa diganti lewat ✎)
+--    • preset diperluas: 17 pack resmi Roblox per slot (Astronaut,
+--      Bubbly, Cartoony, Elder, Knight, Levitation, Mage, Ninja, Pirate,
+--      Robot, Rthro, Stylish, Superhero, Toy, Vampire, Werewolf, Zombie)
+--    • ID kustom otomatis DICEK dulu (PAKAI): salah angka? bukan animasi?
+--      bukan milik Roblox/dev game? — semuanya diberi tahu lewat notif
+--    • ID BUNDLE katalog emote: animasi di dalamnya diekstrak otomatis
+--      (AssetService:GetBundleDetailsAsync) — ID kustom ikut menyimpan
+--      NAMA aset (otomatis dari Roblox, bisa diganti lewat ✎)
 --    • gaya jalan/lari/dll TERLIHAT OLEH PEMAIN LAIN (animasi karakter
 --      dijalankan client & direplikasi ke server)
 --    • mati/respawn = baseline dicatat ulang + gaya dipasang otomatis
+--    • SEMUA kode MOVEMENT & VISUAL 100% ASLI v1.3 — tidak disentuh
 --    • tab TITIK & TP DIHAPUS — script lebih ramping
 --    • ☁ SINKRON ganti tugas: menyinkronkan CONFIG EMOTE lintas device
 --      (kode loker balap-xxxx-xxxx • per-slot terbaru menang • tanpa
@@ -20,8 +31,10 @@
 --                          Shiftlock Tengah (LShift/RShift), Moonwalk (F/S),
 --                          Hide Player (R), Hide Badan Atas, Cahaya Auto (T),
 --                          Lightweight, Dinding Batas (X), Panah Deteksi (V)
---    2 EMOTE   : 9 slot animasi kustom — klik slot = pilih gaya,
---                master ON/OFF, DANCE play/stop, reset semua
+--    2 ANIMASI : kartu ANIMASI = 7 slot gaya gerak (klik slot = pilih
+--                gaya) + kolom ID/BUNDLE; kartu EMOT = emote main
+--                langsung + Duduk/Stop + emote kustom bernama;
+--                master ON/OFF, reset semua
 --    3 SYSTEM  : ☁ SINKRON (config emote lintas device), rejoin (K×2),
 --                hapus script
 --
@@ -43,10 +56,16 @@
 --  mati/respawn. Config emote & kode sync tersimpan permanen di device.
 --
 --  CATATAN EMOTE: preset memakai animasi RESMI Roblox (public) sehingga
---  bisa load di game mana pun. ID kustom milik orang lain BISA ditolak
---  game tertentu (aturan ownership Roblox) — kalau gagal, pilih gaya
---  lain / balik ke ASLI. Game dengan sistem animasi sendiri (Animate
---  diubah dev game) mungkin mengabaikan gaya kustom.
+--  bisa load di game mana pun. Aturan Roblox (per Jul 2025, aset
+--  Animation = RESTRICTED): sebuah game hanya boleh memuat animasi
+--  milik ROBLOX, milik pembuat game itu sendiri, atau yang diberi izin
+--  khusus ke game tsb. Karena itu ID yang disalin dari pemain lain
+--  (bahkan animasi buatan sendiri) sering DITOLAK di game orang —
+--  bukan bug script. Tombol PAKAI sekarang mengecek ID dulu dan
+--  memberi tahu alasannya lewat notif. Game dengan sistem animasi
+--  sendiri (Animate diubah dev game) mungkin mengabaikan gaya kustom.
+--  ID BUNDLE katalog emote: script ambil animasi di dalamnya lewat
+--  AssetService:GetBundleDetailsAsync — nama bundle jadi nama gaya.
 --========================================================
 print("[BALAP v1.4] load mulai...")
 
@@ -164,22 +183,29 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         OFF_JUMP_H  = 6.69,
         ON_JUMP_H   = 8.50,
         -- Moonwalk (F): putaran cepat + hentakan ke arah tujuan.
+        --   MOON_TURN_MAX = kecepatan putar maks (rad/dtk; 12 ≈ ±688°/dtk)
+        --   MOON_SMOOTH   = kekerasan kunci/pendaratan
+        --   Berputar hanya saat karakter bergerak; berdiri = diam total.
         MOON_TURN_MAX = 12,
         MOON_SMOOTH = 10,
         -- Shiftlock Tengah: kamera persis di TENGAH karakter & TIDAK diubah —
         -- yang digeser ke bawah cuma letak lingkaran kursornya (SLT_DOT_Y)
-        SLT_WAKTU   = 0.25,
-        SLT_DOT     = 7,
-        SLT_DOT_Y   = 0.60,
-        -- EMOTE (tab EMOTE): 9 slot animasi kustom.
+        SLT_WAKTU   = 0.25,  -- durasi transisi halus kamera (detik)
+        SLT_DOT     = 7,     -- ukuran lingkaran kursor (px, mini biar ga ganggu)
+        SLT_DOT_Y   = 0.60,  -- letak vertikal lingkaran: 0.5 = tengah layar,
+        -- makin besar makin ke bawah (0.60 = bawah pinggang)
+        -- ANIMASI (tab ANIMASI): 7 slot gaya gerak + kartu EMOT.
         --   EMOTE_FILE  = config permanen (pilihan preset + ID kustom)
         --   EMOTE_TUNGGAK = jeda setelah Animate siap sebelum gaya dipasang
         EMOTE_FILE     = "BALAP_EMOTE.json",
         EMOTE_TUNGGAK  = 0.25,
         -- Panah Deteksi (keybind V): deteksi pemain lain di
         -- depan/belakang badan (ikut arah badan, bukan kamera).
-        PANAH_JARAK = 100,
-        PANAH_SUDUT = 0.383, -- cos(67.5°) -> depan/belakang 135°, samping 45°
+        PANAH_JARAK = 100,  -- jarak deteksi TIAP arah (stud): 100 depan +
+                            -- 100 belakang = cakupan penuh 200 stud
+        PANAH_SUDUT = 0.383, -- batas dot LookVector: 0.383 = cos(67.5°)
+                            -- -> depan & belakang 135 derajat penuh,
+                            -- samping kiri/kanan 45 derajat bebas (hijau)
         -- ☁ SINKRON: config emote lintas device via textdb.dev (gratis,
         -- tanpa blokir executor; BUKAN HttpService Roblox jadi tidak
         -- kelihatan oleh server game)
@@ -189,14 +215,17 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         SYNC_UNDUH_TIAP    = 180,   -- dtk antar unduhan berkala (3 menit)
         SWIM_BONUS         = 1.025, -- berenang + Shiftlock Tengah: speed aktif × 1.025
         -- UI RESPONSIF: panel menyesuaikan ukuran layar otomatis.
-        UI_LEBAR     = 360,
-        UI_TINGGI    = 720,
-        UI_SCALE_MIN = 0.45,
-        UI_SCALE_MAX = 1.25,
+        -- Layar besar -> panel tampil lebih besar (sampai UI_SCALE_MAX),
+        -- layar kecil -> menyusut sendiri (sampai UI_SCALE_MIN) supaya
+        -- tidak ada bagian panel/teks yang keluar dari layar.
+        UI_LEBAR     = 360,  -- lebar dasar panel (px)
+        UI_TINGGI    = 720,  -- tinggi dasar panel (px)
+        UI_SCALE_MIN = 0.45, -- skala minimum (layar sangat kecil)
+        UI_SCALE_MAX = 1.25, -- skala maksimum (layar besar = lebih besar)
         SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
         SND_SNAP   = "rbxasset://sounds/snap.mp3",
     }
-
+    -- shorthand alias untuk konstanta yang dipakai banyak (tetap hemat local)
     local Warna = {
         Ungu      = Color3.fromRGB(124, 58, 237),
         Ungu2     = Color3.fromRGB(167, 139, 250),
@@ -329,7 +358,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     local konfeti, emojiBurst, pusatDiRoot, toast
     -- Forward declare modul ☁ SINKRON + EMOTE (didefinisikan di [7a]/[7a3])
     local syncTandai, syncRefreshKartu
-    local emoteSetMaster, emotePilihPreset, emoteRefreshGrid
+    local emoteSetMaster, emotePilihPreset, emoteRefreshGrid, emoteCekId
 
     -- Forward declare untuk part2 (UI builder) — di-expose via buildUI()
     local tabBtns, kontenTabs, setTab
@@ -654,8 +683,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     end)
 
     -- ======================================================================
-    -- [7a] MODUL EMOTE — 9 SLOT ANIMASI KUSTOM (tab EMOTE)
-    --   • Slot state (IDLE/WALK/RUN/JUMP/FALL/CLIMB/SIT/SWIM) bekerja
+    -- [7a] MODUL ANIMASI — 7 SLOT GAYA GERAK + EMOT (tab ANIMASI)
+    --   • Slot state (IDLE/WALK/RUN/SWIM/CLIMB/JUMP/FALL) bekerja
     --     dengan MENGGANTI ID animasi di script "Animate" bawaan karakter,
     --     lalu Animate di-restart. Hasilnya DIREPLIKASI: pemain lain juga
     --     melihat gaya baru kamu.
@@ -673,61 +702,162 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     --   - devforum "List of the Default R15 Animation IDs" (5077xxx)
     --   - devforum "R6 to R15 Animation List from Roblox" (pasangan R6/R15)
     -- ======================================================================
-    local EMOTE_PRESET = {
-        idle = {
-            { n = "Santai B", i15 = 507766951, i6 = 180435792 }, -- idle varian #2 (default Roblox)
-            { n = "Ninja",    i15 = 656117400 },                 -- pack resmi (R15)
-            { n = "Zombie",   i15 = 616158929 },
-            { n = "Robot",    i15 = 616088211 },
-            { n = "Melayang", i15 = 616006778 },                 -- Levitation pack
-        },
-        walk = {
-            { n = "Langkah Baru", i15 = 12518152696 },           -- refresh 2022 (R15)
-            { n = "Ninja",        i15 = 656121766 },
-            { n = "Zombie",       i15 = 616168032 },
-            { n = "Robot",        i15 = 616095330 },
-        },
-        run = {
-            { n = "Ninja",  i15 = 656118852 },
-            { n = "Zombie", i15 = 616163682 },
-            { n = "Robot",  i15 = 616091570 },
-            { n = "Pirate", i15 = 750783738 },
-        },
-        jump = {
-            { n = "Ninja",    i15 = 656117878 },
-            { n = "Cartoony", i15 = 742637942 },
-            { n = "Robot",    i15 = 616090535 },
-        },
-        fall = {
-            { n = "Ninja",  i15 = 656115606 },
-            { n = "Zombie", i15 = 616157476 },
-            { n = "Elder",  i15 = 845396048 },
-        },
-        climb = {
-            { n = "Ninja",     i15 = 656114359 },
-            { n = "Zombie",    i15 = 616156119 },
-            { n = "Superhero", i15 = 616104706 },
-        },
-        sit = {
-            { n = "Klasik Turun", i15 = 12520993168 },           -- gaya duduk lama (R15)
-        },
-        dance = {
-            { n = "Klasik",     i15 = 507771019, i6 = 182435998 },
-            { n = "Hip Hop",    i15 = 507776043, i6 = 182491037 },
-            { n = "Breakdance", i15 = 507777268, i6 = 182491065 },
-            { n = "Berputar",   i6 = 188632011 },                -- Spinner (R6)
-            { n = "Melayang",   i6 = 313762630 },                -- Levitate (R6)
-            { n = "Pingsan",    i6 = 181526230 },                -- Faint (R6)
-        },
-        swim = {
-            -- i15b = animasi SWIM IDLE (R15) pasangan dari i15
-            { n = "Ninja",    i15 = 656119721, i15b = 656121397 },
-            { n = "Zombie",   i15 = 616165109, i15b = 616166655 },
-            { n = "Cartoony", i15 = 742639220, i15b = 742639812 },
-        },
-    }
+local EMOTE_PRESET = {
+    -- 17 pack resmi Roblox (docs: create.roblox.com/docs/animation/using,
+    -- tabel "Catalog animations") — semua R15.
+    idle = {
+        { n = "Santai B",  i15 = 507766951 },  -- varian #2 animasi default
+        { n = "Astronaut", i15 = 891621366 },
+        { n = "Bubbly",    i15 = 910004836 },
+        { n = "Cartoony",  i15 = 742637544 },
+        { n = "Elder",     i15 = 845397899 },
+        { n = "Knight",    i15 = 657595757 },
+        { n = "Levitation",i15 = 616006778 },
+        { n = "Mage",      i15 = 707742142 },
+        { n = "Ninja",     i15 = 656117400 },
+        { n = "Pirate",    i15 = 750781874 },
+        { n = "Robot",     i15 = 616088211 },
+        { n = "Rthro",     i15 = 2510197257 },
+        { n = "Stylish",   i15 = 616136790 },
+        { n = "Superhero", i15 = 616111295 },
+        { n = "Toy",       i15 = 782841498 },
+        { n = "Vampire",   i15 = 1083445855 },
+        { n = "Werewolf",  i15 = 1083195517 },
+        { n = "Zombie",    i15 = 616158929 },
+    },
+    walk = {
+        { n = "Langkah Baru", i15 = 12518152696 },  -- refresh 2022
+        { n = "Astronaut", i15 = 891636393 },
+        { n = "Bubbly",    i15 = 910034870 },
+        { n = "Cartoony",  i15 = 742640026 },
+        { n = "Elder",     i15 = 845403856 },
+        { n = "Knight",    i15 = 657552124 },
+        { n = "Levitation",i15 = 616013216 },
+        { n = "Mage",      i15 = 707897309 },
+        { n = "Ninja",     i15 = 656121766 },
+        { n = "Pirate",    i15 = 750785693 },
+        { n = "Robot",     i15 = 616095330 },
+        { n = "Rthro",     i15 = 2510202577 },
+        { n = "Stylish",   i15 = 616146177 },
+        { n = "Superhero", i15 = 616122287 },
+        { n = "Toy",       i15 = 782843345 },
+        { n = "Vampire",   i15 = 1083473930 },
+        { n = "Werewolf",  i15 = 1083178339 },
+        { n = "Zombie",    i15 = 616168032 },
+    },
+    run = {
+        { n = "Astronaut", i15 = 891636393 },
+        { n = "Bubbly",    i15 = 910025107 },
+        { n = "Cartoony",  i15 = 742638842 },
+        { n = "Elder",     i15 = 845386501 },
+        { n = "Knight",    i15 = 657564596 },
+        { n = "Levitation",i15 = 616010382 },
+        { n = "Mage",      i15 = 707861613 },
+        { n = "Ninja",     i15 = 656118852 },
+        { n = "Pirate",    i15 = 750783738 },
+        { n = "Robot",     i15 = 616091570 },
+        { n = "Rthro",     i15 = 2510198475 },
+        { n = "Stylish",   i15 = 616140816 },
+        { n = "Superhero", i15 = 616117076 },
+        { n = "Toy",       i15 = 782842708 },
+        { n = "Vampire",   i15 = 1083462077 },
+        { n = "Werewolf",  i15 = 1083216690 },
+        { n = "Zombie",    i15 = 616163682 },
+    },
+    jump = {
+        { n = "Astronaut", i15 = 891627522 },
+        { n = "Bubbly",    i15 = 910016857 },
+        { n = "Cartoony",  i15 = 742637942 },
+        { n = "Elder",     i15 = 845398858 },
+        { n = "Knight",    i15 = 658409194 },
+        { n = "Levitation",i15 = 616008936 },
+        { n = "Mage",      i15 = 707853694 },
+        { n = "Ninja",     i15 = 656117878 },
+        { n = "Pirate",    i15 = 750782230 },
+        { n = "Robot",     i15 = 616090535 },
+        { n = "Rthro",     i15 = 2510197830 },
+        { n = "Stylish",   i15 = 616139451 },
+        { n = "Superhero", i15 = 616115533 },
+        { n = "Toy",       i15 = 782847020 },
+        { n = "Vampire",   i15 = 1083455352 },
+        { n = "Werewolf",  i15 = 1083218792 },
+        { n = "Zombie",    i15 = 616161997 },
+    },
+    fall = {
+        { n = "Astronaut", i15 = 891617961 },
+        { n = "Bubbly",    i15 = 910001910 },
+        { n = "Cartoony",  i15 = 742637151 },
+        { n = "Elder",     i15 = 845396048 },
+        { n = "Knight",    i15 = 657600338 },
+        { n = "Levitation",i15 = 616005863 },
+        { n = "Mage",      i15 = 707829716 },
+        { n = "Ninja",     i15 = 656115606 },
+        { n = "Pirate",    i15 = 750780242 },
+        { n = "Robot",     i15 = 616087089 },
+        { n = "Rthro",     i15 = 2510195892 },
+        { n = "Stylish",   i15 = 616134815 },
+        { n = "Superhero", i15 = 616108001 },
+        { n = "Toy",       i15 = 782846423 },
+        { n = "Vampire",   i15 = 1083443587 },
+        { n = "Werewolf",  i15 = 1083189019 },
+        { n = "Zombie",    i15 = 616157476 },
+    },
+    climb = {
+        { n = "Astronaut", i15 = 891609353 },
+        { n = "Bubbly",    i15 = 909997997 },
+        { n = "Cartoony",  i15 = 742636889 },
+        { n = "Elder",     i15 = 845392038 },
+        { n = "Knight",    i15 = 658360781 },
+        { n = "Levitation",i15 = 616003713 },
+        { n = "Mage",      i15 = 707826056 },
+        { n = "Ninja",     i15 = 656114359 },
+        { n = "Pirate",    i15 = 750779899 },
+        { n = "Robot",     i15 = 616086039 },
+        { n = "Rthro",     i15 = 2510192778 },
+        { n = "Stylish",   i15 = 616133594 },
+        { n = "Superhero", i15 = 616104706 },
+        { n = "Toy",       i15 = 782843869 },
+        { n = "Vampire",   i15 = 1083439238 },
+        { n = "Werewolf",  i15 = 1083182000 },
+        { n = "Zombie",    i15 = 616156119 },
+    },
+    swim = {
+        -- i15b = animasi SWIM IDLE (R15) pasangan dari i15
+        { n = "Astronaut", i15 = 891639666, i15b = 891663592 },
+        { n = "Bubbly",    i15 = 910028158, i15b = 910030921 },
+        { n = "Cartoony",  i15 = 742639220, i15b = 742639812 },
+        { n = "Elder",     i15 = 845401742, i15b = 845403127 },
+        { n = "Knight",    i15 = 657560551, i15b = 657557095 },
+        { n = "Levitation",i15 = 616011509, i15b = 616012453 },
+        { n = "Mage",      i15 = 707876443, i15b = 707894699 },
+        { n = "Ninja",     i15 = 656119721, i15b = 656121397 },
+        { n = "Pirate",    i15 = 750784579, i15b = 750785176 },
+        { n = "Robot",     i15 = 616092998, i15b = 616094091 },
+        { n = "Rthro",     i15 = 2510199791, i15b = 2510201162 },
+        { n = "Stylish",   i15 = 616143378, i15b = 616144772 },
+        { n = "Superhero", i15 = 616119360, i15b = 616120861 },
+        { n = "Toy",       i15 = 782844582, i15b = 782845186 },
+        { n = "Vampire",   i15 = 1083464683, i15b = 1083467779 },
+        { n = "Werewolf",  i15 = 1083222527, i15b = 1083225406 },
+        { n = "Zombie",    i15 = 616165109, i15b = 616166655 },
+    },
+}
 
-    -- folder target di script Animate per slot (dance = overlay, tanpa folder)
+-- emote MAIN LANGSUNG (kartu EMOT) — semua animasi resmi Roblox (public)
+local EMOTE_DAFTAR = {
+    { n = "Dance Klasik",  i15 = 507771019, i6 = 182435998 },
+    { n = "Dance Hip Hop", i15 = 507776043, i6 = 182491037 },
+    { n = "Breakdance",    i15 = 507777268, i6 = 182491065 },
+    { n = "Wave",          i15 = 507770239, i6 = 128777973 },
+    { n = "Arah",          i15 = 507770453, i6 = 128853357 },
+    { n = "Tawa",          i15 = 507770818, i6 = 129423131 },
+    { n = "Cheer",         i15 = 507770677, i6 = 129423030 },
+    { n = "Berputar",      i6 = 188632011 },              -- R6
+    { n = "Melayang",      i6 = 313762630 },              -- R6
+    { n = "Pingsan",       i6 = 181526230 },              -- R6
+}
+
+    -- folder target di script Animate per slot (7 slot: idle s/d swim)
     local SLOT_FOLDERS = {
         idle  = { "idle" },
         walk  = { "walk" },
@@ -735,31 +865,57 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         jump  = { "jump" },
         fall  = { "fall" },
         climb = { "climb" },
-        sit   = { "sit" },
-        dance = {},
         swim  = { "swim", "swimidle" },
     }
 
     local SLOT_LIST = {
-        { k = "idle",  t = "IDLE"  },
-        { k = "walk",  t = "WALK"  },
-        { k = "run",   t = "RUN"   },
-        { k = "jump",  t = "JUMP"  },
-        { k = "fall",  t = "FALL"  },
-        { k = "climb", t = "CLIMB" },
-        { k = "sit",   t = "SIT"   },
-        { k = "dance", t = "DANCE" },
-        { k = "swim",  t = "SWIM"  },
+        { k = "idle",  t = "IDLE"   },
+        { k = "walk",  t = "JALAN"  },
+        { k = "run",   t = "LARI"   },
+        { k = "swim",  t = "RENANG" },
+        { k = "climb", t = "MANJAT" },
+        { k = "jump",  t = "LOMPAT" },
+        { k = "fall",  t = "JATUH"  },
     }
     local SLOT_BY_KEY = {}
     for i, s in ipairs(SLOT_LIST) do SLOT_BY_KEY[s.k] = i end
+    local function slotLabel(k)
+        local sv = SLOT_LIST[SLOT_BY_KEY[k]]
+        return sv and sv.t or string.upper(k)
+    end
+
+    -- kustom v2 = { id = ID yg ditempel, anim = ID animasi yg dipakai,
+    -- nama = nama tampil }. Config lama (string angka) dinormalkan.
+    local function emoteNormKustom(v)
+        if type(v) == "string" and #v > 0 and #v <= 24 and v:match("^%d+$") then
+            return { id = v, anim = v, nama = v }
+        end
+        if type(v) == "table" and type(v.id) == "string"
+            and #v.id > 0 and #v.id <= 24 and v.id:match("^%d+$") then
+            local anim = (type(v.anim) == "string" and #v.anim <= 24
+                          and v.anim:match("^%d+$")) and v.anim or v.id
+            local nama = tostring(v.nama or v.id)
+            if #nama > 40 then nama = nama:sub(1, 40) end
+            return { id = v.id, anim = anim, nama = nama }
+        end
+        return nil
+    end
+
+    local function emoteKKey(v)
+        if type(v) == "table" then
+            return tostring(v.id) .. "|" .. tostring(v.anim) .. "|" .. tostring(v.nama)
+        end
+        return "s|" .. tostring(v)
+    end
 
     local EMOTE = {
         master     = true,   -- master toggle (ikut disinkron)
         preset     = {},     -- [slotKey] = index preset (0 = ASLI, -1 = kustom)
-        kustom     = {},     -- [slotKey] = "123456789" (ID kustom)
+        kustom     = {},     -- [slotKey] = { id, anim, nama } (kustom v2)
         baseline   = {},     -- [slotKey] = { [Animation] = idAsli } (runtime)
         danceTrack = nil,
+        danceTrackJudul = nil,
+        kustomEmote = nil,   -- { id, anim, nama } — emote kustom kartu EMOT
         rig        = "?",    -- "R15" / "R6" / "?"
         bisaFile   = (type(writefile) == "function") and (type(readfile) == "function")
                      and (type(isfile) == "function"),
@@ -767,9 +923,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 
     -- ---- resolve slot -> (id | nil, namaGaya) ----
     local function emoteResolveSlot(k)
-        local cid = EMOTE.kustom[k]
-        if type(cid) == "string" and #cid > 0 then
-            return "rbxassetid://" .. cid, ("★ " .. cid)
+        local kv = EMOTE.kustom[k]
+        if type(kv) == "table" and kv.anim then
+            return "rbxassetid://" .. kv.anim, ("★ " .. tostring(kv.nama or kv.id))
         end
         local pi = EMOTE.preset[k] or 0
         local p = (EMOTE_PRESET[k] or {})[pi]
@@ -789,7 +945,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 
     -- ---- simpan / muat config (permanen + cadangan sesi) ----
     local function emoteSimpan()
-        getgenv().BALAP_EMOTE_DATA = { master = EMOTE.master, preset = EMOTE.preset, kustom = EMOTE.kustom }
+        getgenv().BALAP_EMOTE_DATA = {
+            master = EMOTE.master, preset = EMOTE.preset,
+            kustom = EMOTE.kustom, kustomEmote = EMOTE.kustomEmote,
+        }
         if not EMOTE.bisaFile then return end
         pcall(function()
             writefile(CFG.EMOTE_FILE, HttpService:JSONEncode({
@@ -797,6 +956,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 master = EMOTE.master,
                 preset = EMOTE.preset,
                 kustom = EMOTE.kustom,
+                kustomEmote = EMOTE.kustomEmote,
                 waktu  = os.time(),
             }))
         end)
@@ -821,17 +981,21 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             EMOTE.master = (data.master ~= false)
             if type(data.preset) == "table" then
                 for k, v in pairs(data.preset) do
-                    if SLOT_BY_KEY[k] and type(v) == "number" and v == math.floor(v) and v >= -1 and v <= 20 then
+                    if SLOT_BY_KEY[k] and type(v) == "number" and v == math.floor(v) and v >= -1 and v <= 30 then
                         EMOTE.preset[k] = v
                     end
                 end
             end
             if type(data.kustom) == "table" then
                 for k, v in pairs(data.kustom) do
-                    if SLOT_BY_KEY[k] and type(v) == "string" and #v > 0 and #v <= 24 and v:match("^%d+$") then
-                        EMOTE.kustom[k] = v
+                    local nv = emoteNormKustom(v)
+                    if SLOT_BY_KEY[k] and nv then
+                        EMOTE.kustom[k] = nv
                     end
                 end
+            end
+            if type(data.kustomEmote) == "table" then
+                EMOTE.kustomEmote = emoteNormKustom(data.kustomEmote)
             end
         end
         print("[BALAP-EMOTE] muat config: master=" .. tostring(EMOTE.master)
@@ -914,7 +1078,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end)
     end
 
-    -- ---- DANCE (overlay emote) ----
+    -- ---- EMOTE OVERLAY (main langsung — kartu EMOT) ----
     local function emoteDanceStop()
         local t = EMOTE.danceTrack
         EMOTE.danceTrack = nil
@@ -924,11 +1088,14 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end
     end
 
-    local function emoteDancePlay()
+    local function emoteMainkan(idAnim, judul)
+        if not idAnim then return end
+        if EMOTE.danceTrack and EMOTE.danceTrackJudul == judul then
+            emoteDanceStop()   -- ketuk emote yang sama = stop
+            return
+        end
         emoteDanceStop()
-        if not EMOTE.master then return end
-        local id = emoteResolveSlot("dance")
-        if not id then return end
+        local id = idAnim
         local char = getChar()
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return end
@@ -941,12 +1108,13 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         anim.AnimationId = id
         local okTrack, track = pcall(function() return animator:LoadAnimation(anim) end)
         if not okTrack or not track then
-            toast("🎭 ID dance gagal load (ID tidak boleh dipakai game ini)", Warna.Kuning)
+            toast("🎭 Emote gagal load (ID tidak boleh dipakai game ini)", Warna.Kuning)
             return
         end
         track.Priority = Enum.AnimationPriority.Action
         track.Looped = true
         EMOTE.danceTrack = track
+        EMOTE.danceTrackJudul = judul
         track:Play(0.15)
         -- pengawas: dance stop otomatis saat bergerak / lompat / renang / mati
         task.spawn(function()
@@ -974,13 +1142,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         if not char:FindFirstChild("Animate") then return end
         for _, s in ipairs(SLOT_LIST) do
             local k = s.k
-            if k == "dance" then
-                if not EMOTE.master then emoteDanceStop() end
-            else
-                local id = nil
-                if EMOTE.master then id = emoteResolveSlot(k) end
-                emoteSetSlotId(k, char, id)
-            end
+            local id = nil
+            if EMOTE.master then id = emoteResolveSlot(k) end
+            emoteSetSlotId(k, char, id)
         end
         emoteRestartAnimate()
     end
@@ -1005,10 +1169,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         syncTandai()
     end
 
-    emotePilihPreset = function(k, pi, idKustom)
+    emotePilihPreset = function(k, pi, kv)
         if not SLOT_FOLDERS[k] then return end
-        if idKustom then
-            EMOTE.kustom[k] = idKustom
+        if kv then
+            EMOTE.kustom[k] = kv        -- { id, anim, nama }
             EMOTE.preset[k] = -1
         else
             EMOTE.preset[k] = pi
@@ -1017,32 +1181,117 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         emoteSimpan()
         local char = getChar()
         if char then
-            if k == "dance" then
-                if EMOTE.master then emoteDancePlay() end
-            else
-                local id = nil
-                if EMOTE.master then id = emoteResolveSlot(k) end
-                emoteSetSlotId(k, char, id)
-                emoteRestartAnimate()
-                if k == "sit" and EMOTE.master and id then
-                    local hum = char:FindFirstChildOfClass("Humanoid")
-                    if hum and hum.Health > 0 then hum.Sit = true end
-                end
-            end
+            local id = nil
+            if EMOTE.master then id = emoteResolveSlot(k) end
+            emoteSetSlotId(k, char, id)
+            emoteRestartAnimate()
         end
         if emoteRefreshGrid then emoteRefreshGrid() end
         syncTandai()
         local _, nama = emoteResolveSlot(k)
-        toast((k == "dance" and "🎭 " or "🎬 ") .. string.upper(k) .. ": " .. tostring(nama), Warna.Ungu2)
+        toast("🎬 " .. slotLabel(k) .. ": " .. tostring(nama), Warna.Ungu2)
     end
 
-    -- ---- pasang ulang otomatis tiap spawn ----
+    -- ---- CEK ID KUSTOM — jelaskan KENAPA sebuah ID bisa / tidak bisa ----
+    --  Aturan Roblox (per Jul 2025, aset Animation = RESTRICTED): sebuah
+    --  game hanya boleh memuat animasi milik Roblox (userId 1), milik
+    --  pembuat game itu sendiri (game.CreatorId), atau aset yang secara
+    --  eksplisit diberi izin ke game tsb. Selain itu → gagal dimuat.
+    --  Hasil cek: cb(okeh, pesanNotif, namaAset)
+    emoteCekId = function(id, cb)
+        task.spawn(function()
+            local num = tonumber(id)
+            local okI, info = pcall(function()
+                return game:GetService("MarketplaceService"):GetProductInfo(num)
+            end)
+            local tipe = (okI and type(info) == "table") and tonumber(info.AssetTypeId) or nil
+            local nama = (okI and type(info) == "table" and info.Name)
+                and tostring(info.Name) or ("ID " .. tostring(id))
+            -- 1) BUNDLE katalog? ekstrak animasi di dalamnya (AssetService)
+            if tipe ~= Enum.AssetType.Animation.Value then
+                local okB, b = pcall(function()
+                    return game:GetService("AssetService"):GetBundleDetailsAsync(num)
+                end)
+                local items = nil
+                if okB and type(b) == "table" then
+                    items = b.Items or (type(b.BundleInfo) == "table" and b.BundleInfo.Items) or nil
+                end
+                if type(items) == "table" then
+                    local idAnim = nil
+                    for _, it in ipairs(items) do
+                        if type(it) == "table" and it.Type == "Animation" and tonumber(it.Id) then
+                            idAnim = tostring(it.Id)
+                            if type(it.Name) == "string" and #it.Name > 1 then nama = tostring(it.Name) end
+                            break
+                        end
+                    end
+                    if idAnim then
+                        -- pastikan animasi bundle benar2 bisa dimuat game ini
+                        local bisa = false
+                        pcall(function()
+                            local a = Instance.new("Animation")
+                            a.AnimationId = "rbxassetid://" .. idAnim
+                            local st
+                            game:GetService("ContentProvider"):PreloadAsync({ a }, function(_, st2) st = st2 end)
+                            bisa = (st == Enum.AssetFetchStatus.Success)
+                        end)
+                        if bisa then
+                            cb(true, "OK — bundle '" .. nama .. "' → animasi siap",
+                                { nama = nama, anim = idAnim, tipe = "bundle" })
+                        else
+                            cb(false, "Bundle '" .. nama .. "' DITOLAK game ini "
+                                .. "(animasinya bukan milik Roblox/dev game)")
+                        end
+                        return
+                    end
+                end
+            end
+            if not okI or type(info) ~= "table" then
+                cb(false, "ID " .. tostring(id) .. " tidak dikenal Roblox — cek angkanya lagi")
+                return
+            end
+            if tipe ~= Enum.AssetType.Animation.Value then
+                cb(false, "Bukan animasi (" .. nama .. ") — halamannya harus bertipe Animation atau Bundle emote")
+                return
+            end
+            local cr = (type(info.Creator) == "table") and info.Creator or {}
+            local cTipe = tostring(cr.CreatorType or info.CreatorType or "?")
+            local cId = tonumber(cr.TargetId or cr.Id or info.CreatorTargetId)
+            local milikRoblox = (cTipe == "User" and cId == 1)
+            local milikGame = (cId ~= nil and cTipe == tostring(game.CreatorType)
+                               and cId == game.CreatorId)
+            if milikRoblox or milikGame then
+                cb(true, "OK — animasi resmi (" .. nama .. ") bisa dimuat",
+                    { nama = nama, anim = tostring(id), tipe = "anim" })
+                return
+            end
+            local pemilik = tostring(cr.Name or "pengguna lain")
+            -- mungkin dev game memberi izin khusus ke aset ini → cek beneran
+            local bisa = false
+            pcall(function()
+                local a = Instance.new("Animation")
+                a.AnimationId = "rbxassetid://" .. tostring(id)
+                local st
+                game:GetService("ContentProvider"):PreloadAsync({ a }, function(_, st2) st = st2 end)
+                bisa = (st == Enum.AssetFetchStatus.Success)
+            end)
+            if bisa then
+                cb(true, "OK — game ini punya izin khusus (" .. nama .. ")",
+                    { nama = nama, anim = tostring(id), tipe = "anim" })
+            else
+                cb(false, "Animasi '" .. nama .. "' milik " .. pemilik
+                    .. " → DITOLAK game ini. Harus milik Roblox / dev game")
+            end
+        end)
+    end
+
+    -- ---- pasang ulang otomatis tiap spawn ----    -- ---- pasang ulang otomatis tiap spawn ----
     local emoteCharSudah = {}
 
     local function emoteInitCharacter(char)
         if not char or emoteCharSudah[char] then return end
         emoteCharSudah[char] = true
-        EMOTE.danceTrack = nil
+        EMOTE.danceTrack, EMOTE.danceTrackJudul = nil, nil
         task.spawn(function()
             local a = char:WaitForChild("Animate", 15)
             if not a then return end
@@ -1062,9 +1311,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         local char = getChar()
         if char then emoteInitCharacter(char) end
     end)
-    print("[BALAP-EMOTE] siap — 9 slot • preset resmi Roblox • master "
+    print("[BALAP-ANIMASI] siap — 7 slot gaya gerak + " .. #EMOTE_DAFTAR .. " emote • master "
     .. (EMOTE.master and "ON" or "OFF")
-    .. " • aktif " .. emoteJumlahAktif() .. "/9")
+    .. " • aktif " .. emoteJumlahAktif() .. "/7")
 
     -- ======================================================================
     -- ☁ SINKRON — CONFIG EMOTE lintas device
@@ -1075,11 +1324,11 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     --           Device lain bergabung lewat MASUKKAN KODE. GANTI KODE =
     --           loker baru.
     -- Isi sync: CONFIG EMOTE saja — master ON/OFF + pilihan preset per
-    --           slot + ID kustom per slot (9 slot). Pengaturan lain
+    --           slot + ID kustom per slot (7 slot) + emote kustom.
     --           (speed/jump/dll) TIDAK ikut.
     -- Merge   : per-slot TERBARU MENANG. Slot yang tidak disentuh device
     --           lain tetap milik device ini. Tidak ada tombstone — config
-    --           hanya 9 slot kecil, tidak mungkin "bangkit dari kubur".
+    --           hanya config kecil, tidak mungkin "bangkit dari kubur".
     -- Ritme   : upload ditunda 30 dtk setelah perubahan terakhir •
     --           download saat load + tiap 3 menit • anti ping-pong.
     -- Offline : diam + toast sekali, config aman di lokal, retry otomatis.
@@ -1180,10 +1429,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         if ui.info then
             local n = emoteJumlahAktif()
             if not SYNC.bisaHttp then
-                ui.info.Text = ("%d/9 slot • executor tanpa HTTP — sync nonaktif"):format(n)
+                ui.info.Text = ("%d/7 slot • executor tanpa HTTP — sync nonaktif"):format(n)
             else
                 local kodeTeks = SYNC.kode and ("Kode: " .. SYNC.kode) or "Kode: belum dibuat"
-                ui.info.Text = ("%d/9 slot • %s • %s"):format(n, EMOTE.rig, kodeTeks)
+                ui.info.Text = ("%d/7 slot • %s • %s"):format(n, EMOTE.rig, kodeTeks)
             end
         end
         if ui.dari then
@@ -1225,6 +1474,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             master = EMOTE.master,
             preset = EMOTE.preset,
             kustom = EMOTE.kustom,
+            kustomEmote = EMOTE.kustomEmote,
             dari   = SYNC.labelPerangkat,
             waktu  = os.time(),
         }
@@ -1239,7 +1489,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             local n = 0
             for k, v in pairs(data.preset) do
                 if SLOT_BY_KEY[k] and type(v) == "number" and v == math.floor(v)
-                    and v >= -1 and v <= 20 then
+                    and v >= -1 and v <= 30 then
                     t[k] = v
                     n = n + 1
                     if n > 24 then return nil end
@@ -1252,9 +1502,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             if type(data.kustom) ~= "table" then return t end
             local n = 0
             for k, v in pairs(data.kustom) do
-                if SLOT_BY_KEY[k] and type(v) == "string" and #v > 0 and #v <= 24
-                    and v:match("^%d+$") then
-                    t[k] = v
+                local nv = emoteNormKustom(v)
+                if SLOT_BY_KEY[k] and nv then
+                    t[k] = nv
                     n = n + 1
                     if n > 24 then return nil end
                 end
@@ -1269,6 +1519,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             master = data.master == true,
             preset = preset,
             kustom = kustom,
+            kustomEmote = emoteNormKustom(data.kustomEmote),
             dari   = type(data.dari) == "string" and data.dari:sub(1, 60) or "?",
             waktu  = tonumber(data.waktu) or 0,
         }
@@ -1295,12 +1546,18 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end
         for k, v in pairs(cloud.kustom) do
-            if EMOTE.kustom[k] ~= v then
+            if emoteKKey(EMOTE.kustom[k]) ~= emoteKKey(v) then
                 EMOTE.kustom[k] = v
                 EMOTE.preset[k] = -1
                 berubah = berubah + 1
                 rincian[#rincian + 1] = k .. " (kustom)"
             end
+        end
+        if type(cloud.kustomEmote) == "table"
+            and emoteKKey(EMOTE.kustomEmote) ~= emoteKKey(cloud.kustomEmote) then
+            EMOTE.kustomEmote = cloud.kustomEmote
+            berubah = berubah + 1
+            rincian[#rincian + 1] = "emote kustom"
         end
         if berubah > 0 then
             emoteSimpan()
@@ -1666,7 +1923,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     -- Bungkus dengan function untuk hemat local count (Luau limit 200)
     local function buildUI()
         tabBtns = {}
-        local tabLabels = {"MOVEMENT & VISUAL", "EMOTE", "SYSTEM"}
+        local tabLabels = {"MOVEMENT & VISUAL", "ANIMASI", "SYSTEM"}
         local tabColors = {Warna.Ungu2, Warna.Kuning, Warna.AbuGelap}
         kontenTabs = {}
         for i, lbl in ipairs(tabLabels) do
@@ -1902,7 +2159,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         State.LightOn = false
         State.MoonOn  = false  -- Moonwalk (F)
         State.TengahOn = false -- Shiftlock Tengah (LShift/RShift)
-        State.EmoteOn  = EMOTE.master  -- Master Animasi Kustom (tab EMOTE, ikut config tersimpan)
+        State.EmoteOn  = EMOTE.master  -- Master Animasi Kustom (tab ANIMASI, ikut config tersimpan)
         State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
         State.PanahOn = false    -- Panah Deteksi (V)
 
@@ -1988,9 +2245,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollSistem)
 
 
-        -- [7e] KONTEN TAB 2: EMOTE -------------------------------------------
-        -- 9 slot animasi kustom: klik slot -> popup pilih gaya
-        -- (ASLI / preset resmi Roblox / ID kustom)
+        -- [7e] KONTEN TAB 2: ANIMASI ------------------------------------------
+        -- Kartu 1 ANIMASI: 7 slot gaya gerak (klik slot -> popup gaya)
+        -- Kartu 2 EMOT   : daftar emote main langsung + kustom ID/bundle
         kontenEmote = buat("Frame", {
             Position = UDim2.new(0, 0, 0, 80),
             Size = UDim2.new(1, 0, 1, -110),
@@ -2041,6 +2298,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         }, emoteGrid)
         local emoteSubs = {}
         local emoteBukaChooser  -- forward declare (didefinisikan di bawah)
+        local emoteBukaRename   -- popup ganti nama (kustom slot / emote)
+        local emoteRefreshEmot  -- refresh tanda ▶ daftar emote (kartu EMOT)
+        local lbKustomEmot      -- baris ★ emote kustom
         for i, s in ipairs(SLOT_LIST) do
             local b = buat("TextButton", {
                 BackgroundColor3 = Warna.AbuItem,
@@ -2097,20 +2357,99 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             local n = emoteJumlahAktif()
             local rigTeks = tostring(EMOTE.rig)
             local masterTeks = EMOTE.master and "master ON" or "master OFF"
-            emoteStatus.Text = "Rig: " .. rigTeks .. " • " .. n .. "/9 slot gaya baru • " .. masterTeks
+            emoteStatus.Text = "Rig: " .. rigTeks .. " • " .. n .. "/7 slot gaya baru • " .. masterTeks
         end
 
-        -- tombol cepat DANCE play/stop
-        buatActionRow(scrollEmote, "🎭 DANCE: PLAY / STOP", Warna.Biru, function()
-            if EMOTE.danceTrack then
-                emoteDanceStop()
-                toast("🎭 Dance stop", Warna.Kuning)
-            else
-                emoteDancePlay()
-                if not EMOTE.danceTrack then
-                    toast("Pilih gaya DANCE dulu (klik slot DANCE)", Warna.Kuning)
+        -- ===== kartu 1b: ID / BUNDLE → SLOT =====
+        buatHeader(scrollEmote, "ID / BUNDLE → SLOT")
+        local function buatInputId()
+            local row = buat("Frame", {
+                BackgroundColor3 = Warna.Hitam,
+                Size = UDim2.new(1, 0, 0, 30),
+                LayoutOrder = nextOrder(),
+            }, scrollEmote)
+            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
+            local box = buat("TextBox", {
+                BackgroundColor3 = Warna.Card2,
+                Position = UDim2.new(0, 6, 0.5, -11),
+                Size = UDim2.new(1, -74, 0, 22),
+                FontFace = fnt("reg"),
+                TextSize = 12,
+                TextColor3 = Warna.Putih,
+                PlaceholderText = "ID animasi / ID bundle (angka)",
+                PlaceholderColor3 = Warna.AbuTeks,
+                ClearTextOnFocus = false,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, box)
+            local btn = buat("TextButton", {
+                AnchorPoint = Vector2.new(1, 0.5),
+                Position = UDim2.new(1, -6, 0.5, 0),
+                Size = UDim2.new(0, 58, 0, 22),
+                BackgroundColor3 = Warna.Hijau,
+                FontFace = fnt("bold"),
+                TextSize = 10,
+                TextColor3 = Warna.HijauMuda,
+                Text = "PAKAI",
+                AutoButtonColor = false,
+            }, row)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btn)
+            return box, btn
+        end
+        local bundleTarget = nil
+        local chipFrame = buat("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 48),
+            LayoutOrder = nextOrder(),
+        }, scrollEmote)
+        buat("UIGridLayout", {
+            CellSize = UDim2.new(1 / 4, -3, 0, 22),
+            CellPadding = UDim2.new(0, 3, 0, 3),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }, chipFrame)
+        local chips = {}
+        for _, s in ipairs(SLOT_LIST) do
+            local c = buat("TextButton", {
+                BackgroundColor3 = Warna.AbuItem,
+                Text = s.t,
+                FontFace = fnt("bold"),
+                TextSize = 10,
+                TextColor3 = Warna.TeksGelap,
+                AutoButtonColor = false,
+            }, chipFrame)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, c)
+            chips[s.k] = c
+            c.MouseButton1Click:Connect(function()
+                bundleTarget = (bundleTarget == s.k) and nil or s.k
+                for kk, cc in pairs(chips) do
+                    cc.BackgroundColor3 = (kk == bundleTarget) and Warna.Ungu or Warna.AbuItem
+                    cc.TextColor3 = (kk == bundleTarget) and Warna.Putih or Warna.TeksGelap
                 end
+            end)
+        end
+        local boxB, pakaiB = buatInputId()
+        pakaiB.MouseButton1Click:Connect(function()
+            local teks = tostring(boxB.Text):gsub("^%s+", ""):gsub("%s+$", "")
+            local id = teks:match("^rbxassetid://(%d+)$") or teks:match("^(%d+)$")
+            if not id then
+                toast("Isi angka ID dulu (animasi / bundle)", Warna.Kuning)
+                return
             end
+            if not bundleTarget then
+                toast("Ketuk dulu SLOT target di atas (IDLE/JALAN/...)", Warna.Kuning)
+                return
+            end
+            pakaiB.Text = "CEK..."
+            emoteCekId(id, function(okeh, pesan, d)
+                pakaiB.Text = "PAKAI"
+                if not okeh then
+                    toast(pesan, Warna.Merah)
+                    return
+                end
+                emotePilihPreset(bundleTarget, -1, { id = id, anim = d.anim, nama = d.nama })
+                toast("✔ " .. slotLabel(bundleTarget) .. " → " .. tostring(d.nama or id), Warna.Hijau)
+                boxB.Text = ""
+            end)
         end)
 
         -- RESET SEMUA — konfirmasi 2 langkah (3 dtk)
@@ -2143,6 +2482,94 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end)
 
+        -- ===== kartu 2: EMOT — main langsung =====
+        buatHeader(scrollEmote, "EMOT — MAIN SEKARANG")
+        local emotLbl = {}
+        for i, p in ipairs(EMOTE_DAFTAR) do
+            local tag = (p.i15 and p.i6 and " (R15+R6)") or (p.i15 and " (R15)") or " (R6)"
+            local lb = buatActionRow(scrollEmote, p.n .. tag, Warna.Biru, function()
+                local id = (EMOTE.rig == "R6") and p.i6 or p.i15
+                if not id then
+                    toast("Emote " .. p.n .. " untuk rig " .. (p.i6 and "R6" or "R15") .. " saja", Warna.Kuning)
+                    return
+                end
+                emoteMainkan("rbxassetid://" .. id, p.n)
+                emoteRefreshEmot()
+            end)
+            emotLbl[i] = lb
+        end
+        buatActionRow(scrollEmote, "🪑 Duduk", Warna.Biru, function()
+            local char = getChar()
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then return end
+            emoteDanceStop()
+            hum.Sit = true
+            emoteRefreshEmot()
+            toast("🪑 Duduk — gerak untuk berdiri", Warna.Biru)
+        end)
+        buatActionRow(scrollEmote, "⏹ STOP EMOTE", Warna.Merah, function()
+            emoteDanceStop()
+            emoteRefreshEmot()
+            toast("⏹ Emote dihentikan", Warna.Kuning)
+        end)
+
+        -- ===== kartu 2b: EMOTE KUSTOM (ID / BUNDLE, simpan nama) =====
+        buatHeader(scrollEmote, "EMOTE KUSTOM (ID / BUNDLE)")
+        local boxKE, pakaiKE = buatInputId()
+        lbKustomEmot = buatActionRow(scrollEmote, "★ emote kustom", Warna.Ungu, function()
+            local ke = EMOTE.kustomEmote
+            if not ke then
+                toast("Belum ada emote kustom — tempel ID dulu di atas", Warna.Kuning)
+                return
+            end
+            emoteMainkan("rbxassetid://" .. tostring(ke.anim), "★ " .. tostring(ke.nama or ke.id))
+            emoteRefreshEmot()
+        end)
+        buatActionRow(scrollEmote, "✎ GANTI NAMA EMOTE KUSTOM", Warna.Biru, function()
+            if not EMOTE.kustomEmote then
+                toast("Belum ada emote kustom", Warna.Kuning)
+                return
+            end
+            if emoteBukaRename then emoteBukaRename("emote") end
+        end)
+        emoteRefreshEmot = function()
+            for i, p in ipairs(EMOTE_DAFTAR) do
+                local lb = emotLbl[i]
+                if lb then
+                    local aktif = EMOTE.danceTrack and (EMOTE.danceTrackJudul == p.n)
+                    lb.Text = (aktif and "▶ " or "") .. p.n
+                        .. ((p.i15 and p.i6 and " (R15+R6)") or (p.i15 and " (R15)") or " (R6)")
+                end
+            end
+            local ke = EMOTE.kustomEmote
+            lbKustomEmot.Text = ke
+                and ("★ " .. tostring(ke.nama or ke.id) .. " — ketuk = main")
+                or "★ emote kustom (kosong — tempel ID di atas)"
+        end
+        emoteRefreshEmot()
+        pakaiKE.MouseButton1Click:Connect(function()
+            local teks = tostring(boxKE.Text):gsub("^%s+", ""):gsub("%s+$", "")
+            local id = teks:match("^rbxassetid://(%d+)$") or teks:match("^(%d+)$")
+            if not id then
+                toast("Isi angka ID dulu (animasi / bundle)", Warna.Kuning)
+                return
+            end
+            pakaiKE.Text = "CEK..."
+            emoteCekId(id, function(okeh, pesan, d)
+                pakaiKE.Text = "PAKAI"
+                if not okeh then
+                    toast(pesan, Warna.Merah)
+                    return
+                end
+                EMOTE.kustomEmote = { id = id, anim = d.anim, nama = d.nama }
+                emoteSimpan()
+                syncTandai()
+                emoteRefreshEmot()
+                toast("✔ Emote kustom: " .. tostring(d.nama or id) .. " — ketuk baris ★ untuk main", Warna.Hijau)
+                boxKE.Text = ""
+            end)
+        end)
+
         -- catatan kecil
         buat("TextLabel", {
             BackgroundTransparency = 1,
@@ -2152,7 +2579,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             TextColor3 = Warna.AbuTeks,
             TextWrapped = true,
             TextXAlignment = Enum.TextXAlignment.Left,
-            Text = "Gaya WALK/RUN/dll terlihat juga oleh pemain lain. DANCE berhenti sendiri saat bergerak. ID kustom milik orang lain bisa ditolak game tertentu.",
+            Text = "Kartu ANIMASI: gaya gerak terlihat juga oleh pemain lain. Kartu EMOT: main langsung, berhenti sendiri saat bergerak. ID bundle katalog = otomatis ambil animasinya. Nama kustom bisa diganti (✎). ID milik orang lain bisa ditolak game.",
             LayoutOrder = nextOrder(),
         }, scrollEmote)
 
@@ -2221,7 +2648,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             local rig = EMOTE.rig
             local aktifPi = EMOTE.preset[skey] or 0
             local aktifKustom = EMOTE.kustom[skey]
-            chooserJudul.Text = "GAYA " .. string.upper(skey) .. "  (rig " .. rig .. ")"
+            chooserJudul.Text = "GAYA " .. slotLabel(skey) .. "  (rig " .. rig .. ")"
             chooserOrder = 0
             for _, c in ipairs(chooserList:GetChildren()) do
                 if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end
@@ -2276,6 +2703,12 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                     tambahBar(teks .. "  ✕", Warna.AbuTeks, false, nil)
                 end
             end
+            -- 2b) ganti nama kustom aktif
+            if type(aktifKustom) == "table" and aktifKustom.nama then
+                tambahBar("✎ GANTI NAMA: " .. tostring(aktifKustom.nama), Warna.Biru, true, function()
+                    if emoteBukaRename then emoteBukaRename("slot", skey) end
+                end)
+            end
             -- 3) kustom (input ID)
             local rowK = buat("Frame", {
                 Size = UDim2.new(1, -6, 0, 30),
@@ -2292,9 +2725,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 FontFace = fnt("reg"),
                 TextSize = 12,
                 TextColor3 = Warna.Putih,
-                PlaceholderText = "ID kustom (angka / rbxassetid://angka)",
+                PlaceholderText = "ID animasi / ID bundle (angka)",
                 PlaceholderColor3 = Warna.AbuTeks,
-                Text = aktifKustom or "",
+                Text = (type(aktifKustom) == "table") and tostring(aktifKustom.id) or "",
                 ClearTextOnFocus = false,
                 TextXAlignment = Enum.TextXAlignment.Left,
             }, rowK)
@@ -2319,9 +2752,19 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                     toast("ID kustom: angka saja / rbxassetid://ANGKA", Warna.Kuning)
                     return
                 end
-                emotePilihPreset(skey, -1, id)
-                chooserBackdrop.Visible = false
-                chooser.Visible = false
+                -- cek dulu: valid? animasi? boleh dimuat di game ini?
+                pakaiBtn.Text = "CEK..."
+                emoteCekId(id, function(okeh, pesan, d)
+                    pakaiBtn.Text = "PAKAI"
+                    if not okeh then
+                        toast(pesan, Warna.Merah)
+                        return
+                    end
+                    emotePilihPreset(skey, -1, { id = id, anim = d.anim, nama = d.nama })
+                    chooserBackdrop.Visible = false
+                    chooser.Visible = false
+                    toast("✔ " .. slotLabel(skey) .. " → " .. tostring(d.nama or id), Warna.Hijau)
+                end)
             end)
             chooserBackdrop.Visible = true
             chooser.Visible = true
@@ -2334,6 +2777,79 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             chooserBackdrop.Visible = false
             chooser.Visible = false
         end)
+
+        -- ===== popup GANTI NAMA (kustom slot / emote kustom) =====
+        emoteBukaRename = function(mode, skey)
+            local cur = ""
+            if mode == "slot" then
+                local kv = EMOTE.kustom[skey]
+                cur = (type(kv) == "table") and tostring(kv.nama or kv.id) or ""
+            else
+                cur = EMOTE.kustomEmote and tostring(EMOTE.kustomEmote.nama or EMOTE.kustomEmote.id) or ""
+            end
+            chooserJudul.Text = "✎ GANTI NAMA"
+            chooserOrder = 0
+            for _, c in ipairs(chooserList:GetChildren()) do
+                if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end
+            end
+            local rowN = buat("Frame", {
+                Size = UDim2.new(1, -6, 0, 30),
+                BackgroundColor3 = Warna.Hitam,
+                ZIndex = 50,
+                LayoutOrder = chooserNext(),
+            }, chooserList)
+            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, rowN)
+            local boxN = buat("TextBox", {
+                BackgroundColor3 = Warna.Card2,
+                Position = UDim2.new(0, 6, 0.5, -11),
+                Size = UDim2.new(1, -12, 0, 22),
+                ZIndex = 50,
+                FontFace = fnt("reg"),
+                TextSize = 12,
+                TextColor3 = Warna.Putih,
+                PlaceholderText = "nama gaya / emote",
+                PlaceholderColor3 = Warna.AbuTeks,
+                Text = cur,
+                ClearTextOnFocus = false,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, rowN)
+            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, boxN)
+            local sv = buat("TextButton", {
+                Size = UDim2.new(1, -6, 0, 30),
+                BackgroundColor3 = Warna.Hijau,
+                ZIndex = 50,
+                FontFace = fnt("bold"),
+                TextSize = 12,
+                TextColor3 = Warna.HijauMuda,
+                Text = "SIMPAN NAMA",
+                AutoButtonColor = false,
+                LayoutOrder = chooserNext(),
+            }, chooserList)
+            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, sv)
+            sv.MouseButton1Click:Connect(function()
+                local nm = tostring(boxN.Text):gsub("^%s+", ""):gsub("%s+$", "")
+                if #nm == 0 then
+                    toast("Nama tidak boleh kosong", Warna.Kuning)
+                    return
+                end
+                if #nm > 40 then nm = nm:sub(1, 40) end
+                if mode == "slot" then
+                    local kv = EMOTE.kustom[skey]
+                    if type(kv) == "table" then kv.nama = nm end
+                else
+                    if EMOTE.kustomEmote then EMOTE.kustomEmote.nama = nm end
+                end
+                emoteSimpan()
+                syncTandai()
+                if emoteRefreshGrid then emoteRefreshGrid() end
+                if emoteRefreshEmot then emoteRefreshEmot() end
+                chooserBackdrop.Visible = false
+                chooser.Visible = false
+                toast("✎ Nama disimpan: " .. nm, Warna.Hijau)
+            end)
+            chooserBackdrop.Visible = true
+            chooser.Visible = true
+        end
 
 
         -- urutan kontenTabs = urutan tab: 1 MOVEMENT & VISUAL • 2 EMOTE • 3 SYSTEM
@@ -2598,8 +3114,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             .. "Dinding Batas (X) • Panah Deteksi (V): ↑ merah = ada pemain\n"
             .. "di depan badan, ↓ merah = di belakang (100 stud tiap arah,\n"
             .. "samping 45° bebas = hijau)\n"
-            .. "TAB 2 EMOTE: 9 slot animasi kustom (IDLE s/d SWIM).\n"
-            .. "Klik slot = pilih gaya: ASLI / preset resmi Roblox / ID kustom.\n"
+            .. "TAB 2 ANIMASI: kartu gaya gerak — 7 slot (IDLE JALAN LARI\n"
+            .. "RENANG MANJAT LOMPAT JATUH), klik slot = pilih gaya (ASLI /\n"
+            .. "preset resmi Roblox / ID kustom+nama / ID bundle). Kartu EMOT:\n"
+            .. "emote resmi main langsung + Duduk + Stop + emote kustom.\n"
             .. "Gaya jalan/lari/dll terlihat juga pemain lain; DANCE stop\n"
             .. "otomatis saat bergerak; gaya dipasang ulang setelah respawn.\n"
             .. "TAB 3 SYSTEM: ☁ SINKRON — config emote lintas device,\n"
@@ -2679,7 +3197,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             Position = UDim2.fromOffset(360, 0),
             Size = UDim2.fromOffset(1600, 13),
             FontFace = fnt("med"),
-            Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25) • J Jump (51.25/65.25) • C Shift • LShift Tengah • F Moonwalk • V Panah   ✦   🎭 TAB EMOTE: 9 slot animasi (idle s/d renang) + ID kustom   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ☁ config emote tersinkron — kode di tab SYSTEM   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+            Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25) • J Jump (51.25/65.25) • C Shift • LShift Tengah • F Moonwalk • V Panah   ✦   🎭 TAB ANIMASI: 7 gaya gerak + EMOT main langsung + ID/bundle kustom   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ☁ config emote tersinkron — kode di tab SYSTEM   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
             TextColor3 = Warna.AbuGelap,
             TextSize = 10,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -3252,8 +3770,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             syncNotify("Tengah", v, silent, "Shiftlock Tengah")
         end
 
-        -- MASTER EMOTE (tab EMOTE) — ON = gaya kustom aktif, OFF = default game.
-        -- Dipanggil toggle tab EMOTE & sync (merge config cloud).
+        -- MASTER EMOTE (tab ANIMASI) — ON = gaya kustom aktif, OFF = default game.
+        -- Dipanggil toggle tab ANIMASI & sync (merge config cloud).
         Setters.Emote = function(v, silent)
             emoteSetMaster(v, silent)   -- toast spesifik ada di emoteSetMaster
             syncNotify("Emote", v, true, "Animasi Kustom")  -- silent: anti dobel toast
@@ -4083,7 +4601,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             elseif input.KeyCode == Enum.KeyCode.X then
                 setFeature("Walls", not State.WallsOn)
             elseif input.KeyCode == Enum.KeyCode.V then
-                setFeature("Panah", not State.PanahOn)  -- Panah Deteksi (murni tombol GUI)
+                setFeature("Panah", not State.PanahOn)  -- Panah Deteksi (titik murni tombol GUI)
             elseif input.KeyCode == Enum.KeyCode.K then
                 local now = os.clock()
                 if now - lastK < 0.45 then
@@ -4110,7 +4628,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end)
         print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | EMOTE | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • V panah • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync config emote di tab SYSTEM")
+        print("[BALAP] MOVE&VISUAL | ANIMASI | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • V panah • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync config emote di tab SYSTEM")
         diagSet("BALAP v1.4 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
