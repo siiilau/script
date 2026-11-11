@@ -1,17 +1,43 @@
 --========================================================
---  BALAP v1.4 —
+--  EMOT V1.03 —
 --  TEMA: SILAU NEON (ungu/biru LED)
+--
+--  CHANGELOG v1.03 (EMOT — daftar EMOT dirapikan):
+--    • kartu "PACK ANIMASI ROBLOX (18 PACK • 126 ANIMASI)" DIHAPUS
+--      dari daftar EMOT (permintaan user) — animasi bundle pack bukan
+--      emote, jadi tidak perlu ada di daftar main langsung
+--    • 18 pack TETAP ADA sebagai preset 7 slot gaya gerak — klik slot
+--      IDLE/JALAN/LARI/... untuk memakai gaya pack (tidak berubah)
+--    • EMOTE_DAFTAR kini hanya berisi 80 EMOTE ROBLOX (7 gratis +
+--      73 berbayar) — klik = main langsung, TANPA perlu membeli
+--    • identitas: EMOT V1.02 → EMOT V1.03
+--
+--  CHANGELOG v1.02 (EMOT — katalog penuh buatan Roblox):
+--    • EMOTE_PRESET = 18 pack resmi Roblox (i15 = docs teruji v1.3,
+--      i6 = isi bundle katalog) — 10-pack uji v1.01 dihapus
+--      (4 hijau naik ke daftar, 6 komunitas 🔴 dipensiunkan)
+--    • EMOTE_DAFTAR diisi 126 animasi pack + 80 EMOTE ROBLOX
+--      (7 gratis + 73 berbayar) — klik = main, TANPA perlu membeli
+--    • kolom "ID/BUNDLE → SLOT", kartu "EMOTE KUSTOM" (tempel ID),
+--      tombol ✎ GANTI NAMA & popup rename DIHAPUS — semua ID kini
+--      bawaan Roblox, tidak ada input manual lagi
+--    • identitas: EMOT V1.01 → EMOT V1.02
+--
+--  CHANGELOG v1.01 (EMOT — pengujian 10 pack):
+--    • EMOTE_PRESET diisi 10 pack uji kiriman user (4 Roblox 🟢 +
+--      6 komunitas 🔴 untuk uji aturan RESTRICTED langsung di lapangan)
+--    • pack klasik Roblox = entri 2 rig: i15 (varian R15 teruji v1.3)
+--      + i6 (varian R6 isi bundle) → jalan di karakter R15 maupun R6
+--    • identitas script: BALAP v1.4 → EMOT V1.01 (banner, diag, log)
 --
 --  CHANGELOG v1.4 (tab ANIMASI):
 --    • TAB 2 ANIMASI — terbagi 2 kartu:
 --      ANIMASI : 7 slot gaya gerak (IDLE JALAN LARI RENANG MANJAT LOMPAT
 --                JATUH) + kolom ID/BUNDLE → slot + reset semua
---      EMOT    : daftar emote resmi main langsung (Dance, Wave, Tawa,
---                Cheer, Duduk, Stop) + emote kustom ID/BUNDLE dengan
---                NAMA tersimpan (bisa diganti lewat ✎)
---    • preset diperluas: 17 pack resmi Roblox per slot (Astronaut,
---      Bubbly, Cartoony, Elder, Knight, Levitation, Mage, Ninja, Pirate,
---      Robot, Rthro, Stylish, Superhero, Toy, Vampire, Werewolf, Zombie)
+--      EMOT    : daftar emot main langsung + Stop + emote
+--                kustom ID/BUNDLE dengan NAMA tersimpan (✎ ganti nama)
+--    • daftar preset & emot DIKOSONGKAN (permintaan user) — struktur
+--      slot & kolom ID tetap; isi ulang saat daftar animasi sudah ada
 --    • ID kustom otomatis DICEK dulu (PAKAI): salah angka? bukan animasi?
 --      bukan milik Roblox/dev game? — semuanya diberi tahu lewat notif
 --    • ID BUNDLE katalog emote: animasi di dalamnya diekstrak otomatis
@@ -32,8 +58,8 @@
 --                          Hide Player (R), Hide Badan Atas, Cahaya Auto (T),
 --                          Lightweight, Dinding Batas (X), Panah Deteksi (V)
 --    2 ANIMASI : kartu ANIMASI = 7 slot gaya gerak (klik slot = pilih
---                gaya) + kolom ID/BUNDLE; kartu EMOT = emote main
---                langsung + Duduk/Stop + emote kustom bernama;
+--                gaya dari 18 pack resmi Roblox); kartu EMOT = 80
+--                emote Roblox main langsung + Stop;
 --                master ON/OFF, reset semua
 --    3 SYSTEM  : ☁ SINKRON (config emote lintas device), rejoin (K×2),
 --                hapus script
@@ -55,19 +81,14 @@
 --  Shiftlock Mobile, Moonwalk & Shiftlock Tengah otomatis OFF saat
 --  mati/respawn. Config emote & kode sync tersimpan permanen di device.
 --
---  CATATAN EMOTE: preset memakai animasi RESMI Roblox (public) sehingga
---  bisa load di game mana pun. Aturan Roblox (per Jul 2025, aset
---  Animation = RESTRICTED): sebuah game hanya boleh memuat animasi
---  milik ROBLOX, milik pembuat game itu sendiri, atau yang diberi izin
---  khusus ke game tsb. Karena itu ID yang disalin dari pemain lain
---  (bahkan animasi buatan sendiri) sering DITOLAK di game orang —
---  bukan bug script. Tombol PAKAI sekarang mengecek ID dulu dan
---  memberi tahu alasannya lewat notif. Game dengan sistem animasi
---  sendiri (Animate diubah dev game) mungkin mengabaikan gaya kustom.
---  ID BUNDLE katalog emote: script ambil animasi di dalamnya lewat
---  AssetService:GetBundleDetailsAsync — nama bundle jadi nama gaya.
+--  CATATAN EMOTE: SEMUA animasi di script ini (18 pack + 80 emote)
+--  milik akun Roblox (id=1) → lolos aturan Roblox (per Jul 2025 aset
+--  Animation = RESTRICTED) dan bisa di-load di game mana pun TANPA
+--  membeli. Kolom input ID manual DIHAPUS di v1.02 — tidak ada ID
+--  pihak ketiga yang bisa ditolak. Game dengan sistem animasi sendiri
+--  (Animate diubah dev game) mungkin mengabaikan gaya kustom.
 --========================================================
-print("[BALAP v1.4] load mulai...")
+print("[EMOT v1.03] load mulai...")
 
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
@@ -91,7 +112,7 @@ do
         __dLbl.TextSize = 14
         __dLbl.TextWrapped = true
         __dLbl.ClipsDescendants = true
-        __dLbl.Text = "BALAP: memulai..."
+        __dLbl.Text = "EMOT: memulai..."
         __dLbl.Parent = __dGui
         local cr = Instance.new("UICorner")
         cr.CornerRadius = UDim.new(0, 8)
@@ -119,7 +140,7 @@ do
     end
 end
 
-local VERSI = "1.4"
+local VERSI = "1.03"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -631,7 +652,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Position = UDim2.new(0, 12, 0, 0),
         Size = UDim2.new(1, -104, 1, 0),
         FontFace = fnt("judul"),
-        Text = "⚡ BALAP v1.4 ⚡",
+        Text = "⚡ EMOT V1.03 ⚡",
         TextColor3 = Warna.Putih,
         TextSize = 22,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -692,169 +713,251 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     --   • Otomatis deteksi R15 / R6 (struktur Animate kedua rig diikuti).
     --   • Baseline (animasi asli game) dicatat tiap spawn → RESET/OFF
     --     mengembalikan persis seperti semula.
-    --   • Preset = animasi RESMI Roblox (public) → aman di semua game.
+    --   • Preset = 18 pack resmi Roblox (semua 🟢) — R15 dari docs
+    --     Roblox (preset v1.3 teruji) + R6 dari isi bundle katalog.
     --   • Config (preset/kustom/master) permanen: BALAP_EMOTE.json.
-    -- Sumber ID (semua resmi Roblox, public):
-    --   - create.roblox.com/docs/animation/using → tabel katalog
-    --     (Astronaut, Bubbly, Cartoony, Elder, Knight, Levitation, Mage,
-    --      Ninja, Pirate, Robot, Rthro, Stylish, Superhero, Toy, Vampire,
-    --      Werewolf, Zombie)
-    --   - devforum "List of the Default R15 Animation IDs" (5077xxx)
-    --   - devforum "R6 to R15 Animation List from Roblox" (pasangan R6/R15)
+    -- Sumber ID: create.roblox.com/docs/animation/using (tabel katalog)
+    --   + bundle katalog Roblox (scan otomatis 11 Nov 2025).
     -- ======================================================================
 local EMOTE_PRESET = {
-    -- 17 pack resmi Roblox (docs: create.roblox.com/docs/animation/using,
-    -- tabel "Catalog animations") — semua R15.
-    idle = {
-        { n = "Santai B",  i15 = 507766951 },  -- varian #2 animasi default
-        { n = "Astronaut", i15 = 891621366 },
-        { n = "Bubbly",    i15 = 910004836 },
-        { n = "Cartoony",  i15 = 742637544 },
-        { n = "Elder",     i15 = 845397899 },
-        { n = "Knight",    i15 = 657595757 },
-        { n = "Levitation",i15 = 616006778 },
-        { n = "Mage",      i15 = 707742142 },
-        { n = "Ninja",     i15 = 656117400 },
-        { n = "Pirate",    i15 = 750781874 },
-        { n = "Robot",     i15 = 616088211 },
-        { n = "Rthro",     i15 = 2510197257 },
-        { n = "Stylish",   i15 = 616136790 },
-        { n = "Superhero", i15 = 616111295 },
-        { n = "Toy",       i15 = 782841498 },
-        { n = "Vampire",   i15 = 1083445855 },
-        { n = "Werewolf",  i15 = 1083195517 },
-        { n = "Zombie",    i15 = 616158929 },
+    -- ===== 18 PACK RESMI ROBLOX — semua milik akun Roblox =====
+    -- 🟢 Semua ID = animasi milik Roblox (id=1) → lolos aturan RESTRICTED
+    --    Jul 2025 dan jalan di semua game (terbukti: 4 pack hijau v1.01).
+    -- i15 = varian R15 (docs Roblox 'Catalog animations', preset v1.3
+    --    teruji in-game) • i6 = varian R6 (isi bundle katalog Roblox) →
+    --    pilihan tampil R15+R6 di chooser. Rthro = R15 saja (tanpa i6).
+    -- swim: i15b = swim idle R15; tanpa i15b → swimidle ikut ID swim.
+    idle  = {
+        { n = "Astronaut", i15 = 891621366, i6 = 1090133099 },        -- 🟢 Roblox R$500
+        { n = "Bubbly", i15 = 910004836, i6 = 1018553897 },        -- 🟢 Roblox R$300
+        { n = "Cartoony", i15 = 742637544, i6 = 837011741 },        -- 🟢 Roblox R$300
+        { n = "Elder", i15 = 845397899, i6 = 892268340 },        -- 🟢 Roblox R$300
+        { n = "Knight", i15 = 657595757, i6 = 734327140 },        -- 🟢 Roblox R$500
+        { n = "Levitation", i15 = 616006778, i6 = 619542203 },        -- 🟢 Roblox R$1000
+        { n = "Mage", i15 = 707742142, i6 = 754637456 },        -- 🟢 Roblox R$300
+        { n = "Ninja", i15 = 656117400, i6 = 658832408 },        -- 🟢 Roblox R$750
+        { n = "Oldschool", i15 = 5319828216, i6 = 5319922112 },        -- 🟢 Roblox R$300
+        { n = "Pirate", i15 = 750781874, i6 = 837024662 },        -- 🟢 Roblox R$750
+        { n = "Robot", i15 = 616088211, i6 = 619521748 },        -- 🟢 Roblox R$300
+        { n = "Rthro", i15 = 2510197257 },        -- 🟢 Roblox GRATIS
+        { n = "Stylish", i15 = 616136790, i6 = 619511648 },        -- 🟢 Roblox R$300
+        { n = "Superhero", i15 = 616111295, i6 = 619528125 },        -- 🟢 Roblox R$300
+        { n = "Toy", i15 = 782841498, i6 = 973771666 },        -- 🟢 Roblox R$300
+        { n = "Vampire", i15 = 1083445855, i6 = 1113742618 },        -- 🟢 Roblox R$500
+        { n = "Werewolf", i15 = 1083195517, i6 = 1113752682 },        -- 🟢 Roblox R$500
+        { n = "Zombie", i15 = 616158929, i6 = 619535834 },        -- 🟢 Roblox R$500
     },
-    walk = {
-        { n = "Langkah Baru", i15 = 12518152696 },  -- refresh 2022
-        { n = "Astronaut", i15 = 891636393 },
-        { n = "Bubbly",    i15 = 910034870 },
-        { n = "Cartoony",  i15 = 742640026 },
-        { n = "Elder",     i15 = 845403856 },
-        { n = "Knight",    i15 = 657552124 },
-        { n = "Levitation",i15 = 616013216 },
-        { n = "Mage",      i15 = 707897309 },
-        { n = "Ninja",     i15 = 656121766 },
-        { n = "Pirate",    i15 = 750785693 },
-        { n = "Robot",     i15 = 616095330 },
-        { n = "Rthro",     i15 = 2510202577 },
-        { n = "Stylish",   i15 = 616146177 },
-        { n = "Superhero", i15 = 616122287 },
-        { n = "Toy",       i15 = 782843345 },
-        { n = "Vampire",   i15 = 1083473930 },
-        { n = "Werewolf",  i15 = 1083178339 },
-        { n = "Zombie",    i15 = 616168032 },
+    walk  = {
+        { n = "Astronaut", i15 = 891636393, i6 = 1090131576 },        -- 🟢 Roblox R$500
+        { n = "Bubbly", i15 = 910034870, i6 = 1018549681 },        -- 🟢 Roblox R$300
+        { n = "Cartoony", i15 = 742640026, i6 = 837010234 },        -- 🟢 Roblox R$300
+        { n = "Elder", i15 = 845403856, i6 = 892267099 },        -- 🟢 Roblox R$300
+        { n = "Knight", i15 = 657552124, i6 = 734326330 },        -- 🟢 Roblox R$500
+        { n = "Levitation", i15 = 616013216, i6 = 619544080 },        -- 🟢 Roblox R$1000
+        { n = "Mage", i15 = 707897309, i6 = 754636298 },        -- 🟢 Roblox R$300
+        { n = "Ninja", i15 = 656121766, i6 = 658831143 },        -- 🟢 Roblox R$750
+        { n = "Oldschool", i15 = 5319847204, i6 = 5319909330 },        -- 🟢 Roblox R$300
+        { n = "Pirate", i15 = 750785693, i6 = 837023892 },        -- 🟢 Roblox R$750
+        { n = "Robot", i15 = 616095330, i6 = 619522849 },        -- 🟢 Roblox R$300
+        { n = "Rthro", i15 = 2510202577 },        -- 🟢 Roblox GRATIS
+        { n = "Stylish", i15 = 616146177, i6 = 619512767 },        -- 🟢 Roblox R$300
+        { n = "Superhero", i15 = 616122287, i6 = 619529601 },        -- 🟢 Roblox R$300
+        { n = "Toy", i15 = 782843345, i6 = 973767371 },        -- 🟢 Roblox R$300
+        { n = "Vampire", i15 = 1083473930, i6 = 1113741192 },        -- 🟢 Roblox R$500
+        { n = "Werewolf", i15 = 1083178339, i6 = 1113751657 },        -- 🟢 Roblox R$500
+        { n = "Zombie", i15 = 616168032, i6 = 619537468 },        -- 🟢 Roblox R$500
     },
-    run = {
-        { n = "Astronaut", i15 = 891636393 },
-        { n = "Bubbly",    i15 = 910025107 },
-        { n = "Cartoony",  i15 = 742638842 },
-        { n = "Elder",     i15 = 845386501 },
-        { n = "Knight",    i15 = 657564596 },
-        { n = "Levitation",i15 = 616010382 },
-        { n = "Mage",      i15 = 707861613 },
-        { n = "Ninja",     i15 = 656118852 },
-        { n = "Pirate",    i15 = 750783738 },
-        { n = "Robot",     i15 = 616091570 },
-        { n = "Rthro",     i15 = 2510198475 },
-        { n = "Stylish",   i15 = 616140816 },
-        { n = "Superhero", i15 = 616117076 },
-        { n = "Toy",       i15 = 782842708 },
-        { n = "Vampire",   i15 = 1083462077 },
-        { n = "Werewolf",  i15 = 1083216690 },
-        { n = "Zombie",    i15 = 616163682 },
+    run   = {
+        { n = "Astronaut", i15 = 891636393, i6 = 1090130630 },        -- 🟢 Roblox R$500
+        { n = "Bubbly", i15 = 910025107, i6 = 1018548665 },        -- 🟢 Roblox R$300
+        { n = "Cartoony", i15 = 742638842, i6 = 837009922 },        -- 🟢 Roblox R$300
+        { n = "Elder", i15 = 845386501, i6 = 892265784 },        -- 🟢 Roblox R$300
+        { n = "Knight", i15 = 657564596, i6 = 734325948 },        -- 🟢 Roblox R$500
+        { n = "Levitation", i15 = 616010382, i6 = 619543231 },        -- 🟢 Roblox R$1000
+        { n = "Mage", i15 = 707861613, i6 = 754635032 },        -- 🟢 Roblox R$300
+        { n = "Ninja", i15 = 656118852, i6 = 658830056 },        -- 🟢 Roblox R$750
+        { n = "Oldschool", i15 = 5319844329, i6 = 5319900634 },        -- 🟢 Roblox R$300
+        { n = "Pirate", i15 = 750783738, i6 = 837023444 },        -- 🟢 Roblox R$750
+        { n = "Robot", i15 = 616091570, i6 = 619522386 },        -- 🟢 Roblox R$300
+        { n = "Rthro", i15 = 2510198475 },        -- 🟢 Roblox GRATIS
+        { n = "Stylish", i15 = 616140816, i6 = 619512153 },        -- 🟢 Roblox R$300
+        { n = "Superhero", i15 = 616117076, i6 = 619528716 },        -- 🟢 Roblox R$300
+        { n = "Toy", i15 = 782842708, i6 = 973766674 },        -- 🟢 Roblox R$300
+        { n = "Vampire", i15 = 1083462077, i6 = 1113740510 },        -- 🟢 Roblox R$500
+        { n = "Werewolf", i15 = 1083216690, i6 = 1113750642 },        -- 🟢 Roblox R$500
+        { n = "Zombie", i15 = 616163682, i6 = 619536621 },        -- 🟢 Roblox R$500
     },
-    jump = {
-        { n = "Astronaut", i15 = 891627522 },
-        { n = "Bubbly",    i15 = 910016857 },
-        { n = "Cartoony",  i15 = 742637942 },
-        { n = "Elder",     i15 = 845398858 },
-        { n = "Knight",    i15 = 658409194 },
-        { n = "Levitation",i15 = 616008936 },
-        { n = "Mage",      i15 = 707853694 },
-        { n = "Ninja",     i15 = 656117878 },
-        { n = "Pirate",    i15 = 750782230 },
-        { n = "Robot",     i15 = 616090535 },
-        { n = "Rthro",     i15 = 2510197830 },
-        { n = "Stylish",   i15 = 616139451 },
-        { n = "Superhero", i15 = 616115533 },
-        { n = "Toy",       i15 = 782847020 },
-        { n = "Vampire",   i15 = 1083455352 },
-        { n = "Werewolf",  i15 = 1083218792 },
-        { n = "Zombie",    i15 = 616161997 },
+    jump  = {
+        { n = "Astronaut", i15 = 891627522, i6 = 1090132507 },        -- 🟢 Roblox R$500
+        { n = "Bubbly", i15 = 910016857, i6 = 1018553240 },        -- 🟢 Roblox R$300
+        { n = "Cartoony", i15 = 742637942, i6 = 837011171 },        -- 🟢 Roblox R$300
+        { n = "Elder", i15 = 845398858, i6 = 892267917 },        -- 🟢 Roblox R$300
+        { n = "Knight", i15 = 658409194, i6 = 734326930 },        -- 🟢 Roblox R$500
+        { n = "Levitation", i15 = 616008936, i6 = 619542888 },        -- 🟢 Roblox R$1000
+        { n = "Mage", i15 = 707853694, i6 = 754637084 },        -- 🟢 Roblox R$300
+        { n = "Ninja", i15 = 656117878, i6 = 658832070 },        -- 🟢 Roblox R$750
+        { n = "Oldschool", i15 = 5319841935, i6 = 5319917561 },        -- 🟢 Roblox R$300
+        { n = "Pirate", i15 = 750782230, i6 = 837024350 },        -- 🟢 Roblox R$750
+        { n = "Robot", i15 = 616090535, i6 = 619522088 },        -- 🟢 Roblox R$300
+        { n = "Rthro", i15 = 2510197830 },        -- 🟢 Roblox GRATIS
+        { n = "Stylish", i15 = 616139451, i6 = 619511974 },        -- 🟢 Roblox R$300
+        { n = "Superhero", i15 = 616115533, i6 = 619528412 },        -- 🟢 Roblox R$300
+        { n = "Toy", i15 = 782847020, i6 = 973770652 },        -- 🟢 Roblox R$300
+        { n = "Vampire", i15 = 1083455352, i6 = 1113742359 },        -- 🟢 Roblox R$500
+        { n = "Werewolf", i15 = 1083218792, i6 = 1113752285 },        -- 🟢 Roblox R$500
+        { n = "Zombie", i15 = 616161997, i6 = 619536283 },        -- 🟢 Roblox R$500
     },
-    fall = {
-        { n = "Astronaut", i15 = 891617961 },
-        { n = "Bubbly",    i15 = 910001910 },
-        { n = "Cartoony",  i15 = 742637151 },
-        { n = "Elder",     i15 = 845396048 },
-        { n = "Knight",    i15 = 657600338 },
-        { n = "Levitation",i15 = 616005863 },
-        { n = "Mage",      i15 = 707829716 },
-        { n = "Ninja",     i15 = 656115606 },
-        { n = "Pirate",    i15 = 750780242 },
-        { n = "Robot",     i15 = 616087089 },
-        { n = "Rthro",     i15 = 2510195892 },
-        { n = "Stylish",   i15 = 616134815 },
-        { n = "Superhero", i15 = 616108001 },
-        { n = "Toy",       i15 = 782846423 },
-        { n = "Vampire",   i15 = 1083443587 },
-        { n = "Werewolf",  i15 = 1083189019 },
-        { n = "Zombie",    i15 = 616157476 },
+    fall  = {
+        { n = "Astronaut", i15 = 891617961, i6 = 1090132063 },        -- 🟢 Roblox R$500
+        { n = "Bubbly", i15 = 910001910, i6 = 1018552770 },        -- 🟢 Roblox R$300
+        { n = "Cartoony", i15 = 742637151, i6 = 837010685 },        -- 🟢 Roblox R$300
+        { n = "Elder", i15 = 845396048, i6 = 892267521 },        -- 🟢 Roblox R$300
+        { n = "Knight", i15 = 657600338, i6 = 734326679 },        -- 🟢 Roblox R$500
+        { n = "Levitation", i15 = 616005863, i6 = 619541867 },        -- 🟢 Roblox R$1000
+        { n = "Mage", i15 = 707829716, i6 = 754636589 },        -- 🟢 Roblox R$300
+        { n = "Ninja", i15 = 656115606, i6 = 658831500 },        -- 🟢 Roblox R$750
+        { n = "Oldschool", i15 = 5319839762, i6 = 5319914476 },        -- 🟢 Roblox R$300
+        { n = "Pirate", i15 = 750780242, i6 = 837024147 },        -- 🟢 Roblox R$750
+        { n = "Robot", i15 = 616087089, i6 = 619521521 },        -- 🟢 Roblox R$300
+        { n = "Rthro", i15 = 2510195892 },        -- 🟢 Roblox GRATIS
+        { n = "Stylish", i15 = 616134815, i6 = 619511417 },        -- 🟢 Roblox R$300
+        { n = "Superhero", i15 = 616108001, i6 = 619527817 },        -- 🟢 Roblox R$300
+        { n = "Toy", i15 = 782846423, i6 = 973768058 },        -- 🟢 Roblox R$300
+        { n = "Vampire", i15 = 1083443587, i6 = 1113742092 },        -- 🟢 Roblox R$500
+        { n = "Werewolf", i15 = 1083189019, i6 = 1113751889 },        -- 🟢 Roblox R$500
+        { n = "Zombie", i15 = 616157476, i6 = 619535616 },        -- 🟢 Roblox R$500
     },
     climb = {
-        { n = "Astronaut", i15 = 891609353 },
-        { n = "Bubbly",    i15 = 909997997 },
-        { n = "Cartoony",  i15 = 742636889 },
-        { n = "Elder",     i15 = 845392038 },
-        { n = "Knight",    i15 = 658360781 },
-        { n = "Levitation",i15 = 616003713 },
-        { n = "Mage",      i15 = 707826056 },
-        { n = "Ninja",     i15 = 656114359 },
-        { n = "Pirate",    i15 = 750779899 },
-        { n = "Robot",     i15 = 616086039 },
-        { n = "Rthro",     i15 = 2510192778 },
-        { n = "Stylish",   i15 = 616133594 },
-        { n = "Superhero", i15 = 616104706 },
-        { n = "Toy",       i15 = 782843869 },
-        { n = "Vampire",   i15 = 1083439238 },
-        { n = "Werewolf",  i15 = 1083182000 },
-        { n = "Zombie",    i15 = 616156119 },
+        { n = "Astronaut", i15 = 891609353, i6 = 1090134016 },        -- 🟢 Roblox R$500
+        { n = "Bubbly", i15 = 909997997, i6 = 1018554668 },        -- 🟢 Roblox R$300
+        { n = "Cartoony", i15 = 742636889, i6 = 837013990 },        -- 🟢 Roblox R$300
+        { n = "Elder", i15 = 845392038, i6 = 892269341 },        -- 🟢 Roblox R$300
+        { n = "Knight", i15 = 658360781, i6 = 734329002 },        -- 🟢 Roblox R$500
+        { n = "Levitation", i15 = 616003713, i6 = 619541458 },        -- 🟢 Roblox R$1000
+        { n = "Mage", i15 = 707826056, i6 = 754639239 },        -- 🟢 Roblox R$300
+        { n = "Ninja", i15 = 656114359, i6 = 658833139 },        -- 🟢 Roblox R$750
+        { n = "Oldschool", i15 = 5319816685, i6 = 5319931619 },        -- 🟢 Roblox R$300
+        { n = "Pirate", i15 = 750779899, i6 = 837025325 },        -- 🟢 Roblox R$750
+        { n = "Robot", i15 = 616086039, i6 = 619521311 },        -- 🟢 Roblox R$300
+        { n = "Rthro", i15 = 2510192778 },        -- 🟢 Roblox GRATIS
+        { n = "Stylish", i15 = 616133594, i6 = 619509955 },        -- 🟢 Roblox R$300
+        { n = "Superhero", i15 = 616104706, i6 = 619527470 },        -- 🟢 Roblox R$300
+        { n = "Toy", i15 = 782843869, i6 = 973773170 },        -- 🟢 Roblox R$300
+        { n = "Vampire", i15 = 1083439238, i6 = 1113743239 },        -- 🟢 Roblox R$500
+        { n = "Werewolf", i15 = 1083182000, i6 = 1113754738 },        -- 🟢 Roblox R$500
+        { n = "Zombie", i15 = 616156119, i6 = 619535091 },        -- 🟢 Roblox R$500
     },
-    swim = {
-        -- i15b = animasi SWIM IDLE (R15) pasangan dari i15
-        { n = "Astronaut", i15 = 891639666, i15b = 891663592 },
-        { n = "Bubbly",    i15 = 910028158, i15b = 910030921 },
-        { n = "Cartoony",  i15 = 742639220, i15b = 742639812 },
-        { n = "Elder",     i15 = 845401742, i15b = 845403127 },
-        { n = "Knight",    i15 = 657560551, i15b = 657557095 },
-        { n = "Levitation",i15 = 616011509, i15b = 616012453 },
-        { n = "Mage",      i15 = 707876443, i15b = 707894699 },
-        { n = "Ninja",     i15 = 656119721, i15b = 656121397 },
-        { n = "Pirate",    i15 = 750784579, i15b = 750785176 },
-        { n = "Robot",     i15 = 616092998, i15b = 616094091 },
-        { n = "Rthro",     i15 = 2510199791, i15b = 2510201162 },
-        { n = "Stylish",   i15 = 616143378, i15b = 616144772 },
-        { n = "Superhero", i15 = 616119360, i15b = 616120861 },
-        { n = "Toy",       i15 = 782844582, i15b = 782845186 },
-        { n = "Vampire",   i15 = 1083464683, i15b = 1083467779 },
-        { n = "Werewolf",  i15 = 1083222527, i15b = 1083225406 },
-        { n = "Zombie",    i15 = 616165109, i15b = 616166655 },
+    swim  = {
+        { n = "Astronaut", i15 = 891639666, i6 = 1090133583, i15b = 891663592 },        -- 🟢 Roblox R$500
+        { n = "Bubbly", i15 = 910028158, i6 = 1018554245, i15b = 910030921 },        -- 🟢 Roblox R$300
+        { n = "Cartoony", i15 = 742639220, i6 = 837012509, i15b = 742639812 },        -- 🟢 Roblox R$300
+        { n = "Elder", i15 = 845401742, i6 = 892268710, i15b = 845403127 },        -- 🟢 Roblox R$300
+        { n = "Knight", i15 = 657560551, i6 = 734327363, i15b = 657557095 },        -- 🟢 Roblox R$500
+        { n = "Levitation", i15 = 616011509, i6 = 619543721, i15b = 616012453 },        -- 🟢 Roblox R$1000
+        { n = "Mage", i15 = 707876443, i6 = 754638471, i15b = 707894699 },        -- 🟢 Roblox R$300
+        { n = "Ninja", i15 = 656119721, i6 = 658832807, i15b = 656121397 },        -- 🟢 Roblox R$750
+        { n = "Oldschool", i15 = 5319850266, i6 = 5319927054, i15b = 5319852613 },        -- 🟢 Roblox R$300
+        { n = "Pirate", i15 = 750784579, i6 = 837025054, i15b = 750785176 },        -- 🟢 Roblox R$750
+        { n = "Robot", i15 = 616092998, i6 = 619522642, i15b = 616094091 },        -- 🟢 Roblox R$300
+        { n = "Rthro", i15 = 2510199791, i15b = 2510201162 },        -- 🟢 Roblox GRATIS
+        { n = "Stylish", i15 = 616143378, i6 = 619512450, i15b = 616144772 },        -- 🟢 Roblox R$300
+        { n = "Superhero", i15 = 616119360, i6 = 619529095, i15b = 616120861 },        -- 🟢 Roblox R$300
+        { n = "Toy", i15 = 782844582, i6 = 973772659, i15b = 782845186 },        -- 🟢 Roblox R$300
+        { n = "Vampire", i15 = 1083464683, i6 = 1113742944, i15b = 1083467779 },        -- 🟢 Roblox R$500
+        { n = "Werewolf", i15 = 1083222527, i6 = 1113752975, i15b = 1083225406 },        -- 🟢 Roblox R$500
+        { n = "Zombie", i15 = 616165109, i6 = 619537096, i15b = 616166655 },        -- 🟢 Roblox R$500
     },
 }
 
--- emote MAIN LANGSUNG (kartu EMOT) — semua animasi resmi Roblox (public)
+-- emote MAIN LANGSUNG (kartu EMOT) — EMOT V1.03: 80 EMOTE ROBLOX
+-- (7 gratis + 73 berbayar — semua bisa dimainkan TANPA membeli,
+-- pemiliknya akun Roblox). Kartu "PACK ANIMASI ROBLOX" (126 animasi
+-- bundle) DIHAPUS di v1.03 (permintaan user) — animasi pack kini
+-- hanya preset slot gaya gerak (EMOTE_PRESET), bukan emote.
+-- Entri { g = "..." } = judul kelompok (bukan tombol).
+-- Format tombol: { n = "Nama", i15 = ID_R15, i6 = ID_R6_opsional }
 local EMOTE_DAFTAR = {
-    { n = "Dance Klasik",  i15 = 507771019, i6 = 182435998 },
-    { n = "Dance Hip Hop", i15 = 507776043, i6 = 182491037 },
-    { n = "Breakdance",    i15 = 507777268, i6 = 182491065 },
-    { n = "Wave",          i15 = 507770239, i6 = 128777973 },
-    { n = "Arah",          i15 = 507770453, i6 = 128853357 },
-    { n = "Tawa",          i15 = 507770818, i6 = 129423131 },
-    { n = "Cheer",         i15 = 507770677, i6 = 129423030 },
-    { n = "Berputar",      i6 = 188632011 },              -- R6
-    { n = "Melayang",      i6 = 313762630 },              -- R6
-    { n = "Pingsan",       i6 = 181526230 },              -- R6
+    { g = "EMOTE ROBLOX (80 EMOTE)" },
+    { n = "Salute", i15 = 3360689775 },
+    { n = "Applaud", i15 = 5915779043 },
+    { n = "Tilt", i15 = 3360692915 },
+    { n = "Sad", i15 = 4849502101 },
+    { n = "Hello", i15 = 3576686446 },
+    { n = "Shrug", i15 = 3576968026 },
+    { n = "Point2", i15 = 3576823880 },
+    { n = "Stadium", i15 = 3360686498 },
+    { n = "Bored", i15 = 5230661597 },
+    { n = "Monkey", i15 = 3716636630 },
+    { n = "Sleep", i15 = 4689362868 },
+    { n = "Curtsy", i15 = 4646306583 },
+    { n = "Happy", i15 = 4849499887 },
+    { n = "Floss Dance", i15 = 5917570207 },
+    { n = "Hero Landing", i15 = 5104377791 },
+    { n = "Greatest", i15 = 3762654854 },
+    { n = "Shy", i15 = 3576717965 },
+    { n = "Zombie", i15 = 4212496830 },
+    { n = "Godlike", i15 = 3823158750 },
+    { n = "Haha", i15 = 4102315500 },
+    { n = "Quiet Waves", i15 = 7466046574 },
+    { n = "Bodybuilder", i15 = 3994130516 },
+    { n = "Fashionable", i15 = 3576745472 },
+    { n = "Cower", i15 = 4940597758 },
+    { n = "Chappell Roan HOT TO GO!", i15 = 79312439851071 },
+    { n = "Dizzy", i15 = 3934986896 },
+    { n = "Line Dance", i15 = 4049646104 },
+    { n = "High Wave", i15 = 5915776835 },
+    { n = "Beckon", i15 = 5230615437 },
+    { n = "Jumping Wave", i15 = 4940602656 },
+    { n = "Baby Dance", i15 = 4272484885 },
+    { n = "Show Dem Wrists - KSI", i15 = 7202898984 },
+    { n = "Rock On", i15 = 5915782672 },
+    { n = "Celebrate", i15 = 3994127840 },
+    { n = "Wake Up Call - KSI", i15 = 7202900159 },
+    { n = "Dolphin Dance", i15 = 5938365243 },
+    { n = "Confused", i15 = 4940592718 },
+    { n = "Samba", i15 = 6869813008 },
+    { n = "Fast Hands", i15 = 4272351660 },
+    { n = "Boxing Punch - KSI", i15 = 7202896732 },
+    { n = "Shuffle", i15 = 4391208058 },
+    { n = "Agree", i15 = 4849487550 },
+    { n = "Cha Cha", i15 = 6865013133 },
+    { n = "Dancin' Shoes - Twenty One Pilots", i15 = 7405123844 },
+    { n = "Around Town", i15 = 3576747102 },
+    { n = "Power Blast", i15 = 4849497510 },
+    { n = "Disagree", i15 = 4849495710 },
+    { n = "Side to Side", i15 = 3762641826 },
+    { n = "Dorky Dance", i15 = 4212499637 },
+    { n = "Break Dance", i15 = 5915773992 },
+    { n = "Twirl", i15 = 3716633898 },
+    { n = "T", i15 = 3576719440 },
+    { n = "Robot", i15 = 3576721660 },
+    { n = "Flowing Breeze", i15 = 7466047578 },
+    { n = "Tree", i15 = 4049634387 },
+    { n = "Top Rock", i15 = 3570535774 },
+    { n = "Fishing", i15 = 3994129128 },
+    { n = "Jumping Cheer", i15 = 5895009708 },
+    { n = "Y", i15 = 4391211308 },
+    { n = "Keeping Time", i15 = 4646306072 },
+    { n = "Tantrum", i15 = 5104374556 },
+    { n = "Shrek Roar", i15 = 18524331128 },
+    { n = "Saturday Dance - Twenty One Pilots", i15 = 7422833723 },
+    { n = "Get Out", i15 = 3934984583 },
+    { n = "Drum Solo - Royal Blood", i15 = 6532844183 },
+    { n = "Rock Guitar - Royal Blood", i15 = 6532155086 },
+    { n = "Fancy Feet", i15 = 3934988903 },
+    { n = "Air Dance", i15 = 4646302011 },
+    { n = "Block Partier", i15 = 6865011755 },
+    { n = "Louder", i15 = 3576751796 },
+    { n = "Sneaky", i15 = 3576754235 },
+    { n = "Jacks", i15 = 3570649048 },
+    { n = "Rock Star - Royal Blood", i15 = 6533100850 },
+    { n = "On The Outside - Twenty One Pilots", i15 = 7422841700 },
+    { n = "Swan Dance", i15 = 7466048475 },
+    { n = "Idol", i15 = 4102317848 },
+    { n = "Up and Down - Twenty One Pilots", i15 = 7422843994 },
+    { n = "Drummer Moves - Twenty One Pilots", i15 = 7422838770 },
+    { n = "Drum Master - Royal Blood", i15 = 6531538868 },
+    { n = "Swish", i15 = 3821527813 },
 }
 
     -- folder target di script Animate per slot (7 slot: idle s/d swim)
@@ -996,6 +1099,13 @@ local EMOTE_DAFTAR = {
             end
             if type(data.kustomEmote) == "table" then
                 EMOTE.kustomEmote = emoteNormKustom(data.kustomEmote)
+            end
+        end
+        -- buang pilihan preset yang menunjuk daftar preset yang sudah
+        -- tidak ada (mis. daftar dikosongkan) → slot balik ke ASLI
+        for k, v in pairs(EMOTE.preset) do
+            if v > 0 and not (EMOTE_PRESET[k] or {})[v] then
+                EMOTE.preset[k] = nil
             end
         end
         print("[BALAP-EMOTE] muat config: master=" .. tostring(EMOTE.master)
@@ -1311,7 +1421,9 @@ local EMOTE_DAFTAR = {
         local char = getChar()
         if char then emoteInitCharacter(char) end
     end)
-    print("[BALAP-ANIMASI] siap — 7 slot gaya gerak + " .. #EMOTE_DAFTAR .. " emote • master "
+    local emoteHitung = 0
+    for _, p in ipairs(EMOTE_DAFTAR) do if p.n then emoteHitung = emoteHitung + 1 end end
+    print("[BALAP-ANIMASI] siap — 7 slot gaya gerak + " .. emoteHitung .. " emote • master "
     .. (EMOTE.master and "ON" or "OFF")
     .. " • aktif " .. emoteJumlahAktif() .. "/7")
 
@@ -2360,98 +2472,10 @@ local EMOTE_DAFTAR = {
             emoteStatus.Text = "Rig: " .. rigTeks .. " • " .. n .. "/7 slot gaya baru • " .. masterTeks
         end
 
-        -- ===== kartu 1b: ID / BUNDLE → SLOT =====
-        buatHeader(scrollEmote, "ID / BUNDLE → SLOT")
-        local function buatInputId()
-            local row = buat("Frame", {
-                BackgroundColor3 = Warna.Hitam,
-                Size = UDim2.new(1, 0, 0, 30),
-                LayoutOrder = nextOrder(),
-            }, scrollEmote)
-            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
-            local box = buat("TextBox", {
-                BackgroundColor3 = Warna.Card2,
-                Position = UDim2.new(0, 6, 0.5, -11),
-                Size = UDim2.new(1, -74, 0, 22),
-                FontFace = fnt("reg"),
-                TextSize = 12,
-                TextColor3 = Warna.Putih,
-                PlaceholderText = "ID animasi / ID bundle (angka)",
-                PlaceholderColor3 = Warna.AbuTeks,
-                ClearTextOnFocus = false,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, row)
-            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, box)
-            local btn = buat("TextButton", {
-                AnchorPoint = Vector2.new(1, 0.5),
-                Position = UDim2.new(1, -6, 0.5, 0),
-                Size = UDim2.new(0, 58, 0, 22),
-                BackgroundColor3 = Warna.Hijau,
-                FontFace = fnt("bold"),
-                TextSize = 10,
-                TextColor3 = Warna.HijauMuda,
-                Text = "PAKAI",
-                AutoButtonColor = false,
-            }, row)
-            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btn)
-            return box, btn
-        end
-        local bundleTarget = nil
-        local chipFrame = buat("Frame", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 48),
-            LayoutOrder = nextOrder(),
-        }, scrollEmote)
-        buat("UIGridLayout", {
-            CellSize = UDim2.new(1 / 4, -3, 0, 22),
-            CellPadding = UDim2.new(0, 3, 0, 3),
-            SortOrder = Enum.SortOrder.LayoutOrder,
-        }, chipFrame)
-        local chips = {}
-        for _, s in ipairs(SLOT_LIST) do
-            local c = buat("TextButton", {
-                BackgroundColor3 = Warna.AbuItem,
-                Text = s.t,
-                FontFace = fnt("bold"),
-                TextSize = 10,
-                TextColor3 = Warna.TeksGelap,
-                AutoButtonColor = false,
-            }, chipFrame)
-            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, c)
-            chips[s.k] = c
-            c.MouseButton1Click:Connect(function()
-                bundleTarget = (bundleTarget == s.k) and nil or s.k
-                for kk, cc in pairs(chips) do
-                    cc.BackgroundColor3 = (kk == bundleTarget) and Warna.Ungu or Warna.AbuItem
-                    cc.TextColor3 = (kk == bundleTarget) and Warna.Putih or Warna.TeksGelap
-                end
-            end)
-        end
-        local boxB, pakaiB = buatInputId()
-        pakaiB.MouseButton1Click:Connect(function()
-            local teks = tostring(boxB.Text):gsub("^%s+", ""):gsub("%s+$", "")
-            local id = teks:match("^rbxassetid://(%d+)$") or teks:match("^(%d+)$")
-            if not id then
-                toast("Isi angka ID dulu (animasi / bundle)", Warna.Kuning)
-                return
-            end
-            if not bundleTarget then
-                toast("Ketuk dulu SLOT target di atas (IDLE/JALAN/...)", Warna.Kuning)
-                return
-            end
-            pakaiB.Text = "CEK..."
-            emoteCekId(id, function(okeh, pesan, d)
-                pakaiB.Text = "PAKAI"
-                if not okeh then
-                    toast(pesan, Warna.Merah)
-                    return
-                end
-                emotePilihPreset(bundleTarget, -1, { id = id, anim = d.anim, nama = d.nama })
-                toast("✔ " .. slotLabel(bundleTarget) .. " → " .. tostring(d.nama or id), Warna.Hijau)
-                boxB.Text = ""
-            end)
-        end)
-
+        -- ===== kolom ID/BUNDLE → SLOT DIHAPUS (v1.02) =====
+        -- Semua ID sekarang bawaan Roblox (ada di PRESET & DAFTAR);
+        -- tidak ada lagi input ID manual untuk slot.
+        -- --------------------------------------------------------------
         -- RESET SEMUA — konfirmasi 2 langkah (3 dtk)
         local armResetEmote = 0
         local btnResetEmote
@@ -2486,52 +2510,34 @@ local EMOTE_DAFTAR = {
         buatHeader(scrollEmote, "EMOT — MAIN SEKARANG")
         local emotLbl = {}
         for i, p in ipairs(EMOTE_DAFTAR) do
-            local tag = (p.i15 and p.i6 and " (R15+R6)") or (p.i15 and " (R15)") or " (R6)"
-            local lb = buatActionRow(scrollEmote, p.n .. tag, Warna.Biru, function()
-                local id = (EMOTE.rig == "R6") and p.i6 or p.i15
-                if not id then
-                    toast("Emote " .. p.n .. " untuk rig " .. (p.i6 and "R6" or "R15") .. " saja", Warna.Kuning)
-                    return
-                end
-                emoteMainkan("rbxassetid://" .. id, p.n)
-                emoteRefreshEmot()
-            end)
-            emotLbl[i] = lb
+            if p.g then
+                buatHeader(scrollEmote, p.g)
+            else
+                local tag = (p.i15 and p.i6 and " (R15+R6)") or (p.i15 and " (R15)") or " (R6)"
+                local lb = buatActionRow(scrollEmote, p.n .. tag, Warna.Biru, function()
+                    local id = (EMOTE.rig == "R6") and p.i6 or p.i15
+                    if not id then
+                        toast("Emote " .. p.n .. " untuk rig " .. (p.i6 and "R6" or "R15") .. " saja", Warna.Kuning)
+                        return
+                    end
+                    emoteMainkan("rbxassetid://" .. id, p.n)
+                    emoteRefreshEmot()
+                end)
+                emotLbl[i] = lb
+            end
         end
-        buatActionRow(scrollEmote, "🪑 Duduk", Warna.Biru, function()
-            local char = getChar()
-            local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if not hum or hum.Health <= 0 then return end
-            emoteDanceStop()
-            hum.Sit = true
-            emoteRefreshEmot()
-            toast("🪑 Duduk — gerak untuk berdiri", Warna.Biru)
-        end)
+        -- 🪑 Duduk dihapus (permintaan user) — ⏹ STOP tetap ada untuk
+        -- menghentikan emote yang sedang main.
         buatActionRow(scrollEmote, "⏹ STOP EMOTE", Warna.Merah, function()
             emoteDanceStop()
             emoteRefreshEmot()
             toast("⏹ Emote dihentikan", Warna.Kuning)
         end)
 
-        -- ===== kartu 2b: EMOTE KUSTOM (ID / BUNDLE, simpan nama) =====
-        buatHeader(scrollEmote, "EMOTE KUSTOM (ID / BUNDLE)")
-        local boxKE, pakaiKE = buatInputId()
-        lbKustomEmot = buatActionRow(scrollEmote, "★ emote kustom", Warna.Ungu, function()
-            local ke = EMOTE.kustomEmote
-            if not ke then
-                toast("Belum ada emote kustom — tempel ID dulu di atas", Warna.Kuning)
-                return
-            end
-            emoteMainkan("rbxassetid://" .. tostring(ke.anim), "★ " .. tostring(ke.nama or ke.id))
-            emoteRefreshEmot()
-        end)
-        buatActionRow(scrollEmote, "✎ GANTI NAMA EMOTE KUSTOM", Warna.Biru, function()
-            if not EMOTE.kustomEmote then
-                toast("Belum ada emote kustom", Warna.Kuning)
-                return
-            end
-            if emoteBukaRename then emoteBukaRename("emote") end
-        end)
+        -- ===== kartu EMOTE KUSTOM DIHAPUS (v1.02) =====
+        -- Tempel ID kustom & ganti nama dihapus — daftar sudah diisi
+        -- 80 emote resmi Roblox.
+        -- --------------------------------------------------------------
         emoteRefreshEmot = function()
             for i, p in ipairs(EMOTE_DAFTAR) do
                 local lb = emotLbl[i]
@@ -2541,35 +2547,8 @@ local EMOTE_DAFTAR = {
                         .. ((p.i15 and p.i6 and " (R15+R6)") or (p.i15 and " (R15)") or " (R6)")
                 end
             end
-            local ke = EMOTE.kustomEmote
-            lbKustomEmot.Text = ke
-                and ("★ " .. tostring(ke.nama or ke.id) .. " — ketuk = main")
-                or "★ emote kustom (kosong — tempel ID di atas)"
         end
         emoteRefreshEmot()
-        pakaiKE.MouseButton1Click:Connect(function()
-            local teks = tostring(boxKE.Text):gsub("^%s+", ""):gsub("%s+$", "")
-            local id = teks:match("^rbxassetid://(%d+)$") or teks:match("^(%d+)$")
-            if not id then
-                toast("Isi angka ID dulu (animasi / bundle)", Warna.Kuning)
-                return
-            end
-            pakaiKE.Text = "CEK..."
-            emoteCekId(id, function(okeh, pesan, d)
-                pakaiKE.Text = "PAKAI"
-                if not okeh then
-                    toast(pesan, Warna.Merah)
-                    return
-                end
-                EMOTE.kustomEmote = { id = id, anim = d.anim, nama = d.nama }
-                emoteSimpan()
-                syncTandai()
-                emoteRefreshEmot()
-                toast("✔ Emote kustom: " .. tostring(d.nama or id) .. " — ketuk baris ★ untuk main", Warna.Hijau)
-                boxKE.Text = ""
-            end)
-        end)
-
         -- catatan kecil
         buat("TextLabel", {
             BackgroundTransparency = 1,
@@ -2579,7 +2558,7 @@ local EMOTE_DAFTAR = {
             TextColor3 = Warna.AbuTeks,
             TextWrapped = true,
             TextXAlignment = Enum.TextXAlignment.Left,
-            Text = "Kartu ANIMASI: gaya gerak terlihat juga oleh pemain lain. Kartu EMOT: main langsung, berhenti sendiri saat bergerak. ID bundle katalog = otomatis ambil animasinya. Nama kustom bisa diganti (✎). ID milik orang lain bisa ditolak game.",
+            Text = "Kartu ANIMASI: gaya gerak terlihat juga oleh pemain lain. Kartu EMOT: main langsung, berhenti sendiri saat bergerak. Semua animasi milik Roblox — jalan di game mana pun tanpa membeli.",
             LayoutOrder = nextOrder(),
         }, scrollEmote)
 
@@ -2703,69 +2682,6 @@ local EMOTE_DAFTAR = {
                     tambahBar(teks .. "  ✕", Warna.AbuTeks, false, nil)
                 end
             end
-            -- 2b) ganti nama kustom aktif
-            if type(aktifKustom) == "table" and aktifKustom.nama then
-                tambahBar("✎ GANTI NAMA: " .. tostring(aktifKustom.nama), Warna.Biru, true, function()
-                    if emoteBukaRename then emoteBukaRename("slot", skey) end
-                end)
-            end
-            -- 3) kustom (input ID)
-            local rowK = buat("Frame", {
-                Size = UDim2.new(1, -6, 0, 30),
-                BackgroundColor3 = Warna.Hitam,
-                ZIndex = 50,
-                LayoutOrder = chooserNext(),
-            }, chooserList)
-            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, rowK)
-            local boxId = buat("TextBox", {
-                BackgroundColor3 = Warna.Card2,
-                Position = UDim2.new(0, 6, 0.5, -11),
-                Size = UDim2.new(1, -74, 0, 22),
-                ZIndex = 50,
-                FontFace = fnt("reg"),
-                TextSize = 12,
-                TextColor3 = Warna.Putih,
-                PlaceholderText = "ID animasi / ID bundle (angka)",
-                PlaceholderColor3 = Warna.AbuTeks,
-                Text = (type(aktifKustom) == "table") and tostring(aktifKustom.id) or "",
-                ClearTextOnFocus = false,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, rowK)
-            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, boxId)
-            local pakaiBtn = buat("TextButton", {
-                AnchorPoint = Vector2.new(1, 0.5),
-                Position = UDim2.new(1, -6, 0.5, 0),
-                Size = UDim2.new(0, 58, 0, 22),
-                ZIndex = 50,
-                BackgroundColor3 = Warna.Hijau,
-                FontFace = fnt("bold"),
-                TextSize = 10,
-                TextColor3 = Warna.HijauMuda,
-                Text = "PAKAI",
-                AutoButtonColor = false,
-            }, rowK)
-            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, pakaiBtn)
-            pakaiBtn.MouseButton1Click:Connect(function()
-                local teks = tostring(boxId.Text):gsub("^%s+", ""):gsub("%s+$", "")
-                local id = teks:match("^rbxassetid://(%d+)$") or teks:match("^(%d+)$")
-                if not id then
-                    toast("ID kustom: angka saja / rbxassetid://ANGKA", Warna.Kuning)
-                    return
-                end
-                -- cek dulu: valid? animasi? boleh dimuat di game ini?
-                pakaiBtn.Text = "CEK..."
-                emoteCekId(id, function(okeh, pesan, d)
-                    pakaiBtn.Text = "PAKAI"
-                    if not okeh then
-                        toast(pesan, Warna.Merah)
-                        return
-                    end
-                    emotePilihPreset(skey, -1, { id = id, anim = d.anim, nama = d.nama })
-                    chooserBackdrop.Visible = false
-                    chooser.Visible = false
-                    toast("✔ " .. slotLabel(skey) .. " → " .. tostring(d.nama or id), Warna.Hijau)
-                end)
-            end)
             chooserBackdrop.Visible = true
             chooser.Visible = true
         end
@@ -2778,79 +2694,8 @@ local EMOTE_DAFTAR = {
             chooser.Visible = false
         end)
 
-        -- ===== popup GANTI NAMA (kustom slot / emote kustom) =====
-        emoteBukaRename = function(mode, skey)
-            local cur = ""
-            if mode == "slot" then
-                local kv = EMOTE.kustom[skey]
-                cur = (type(kv) == "table") and tostring(kv.nama or kv.id) or ""
-            else
-                cur = EMOTE.kustomEmote and tostring(EMOTE.kustomEmote.nama or EMOTE.kustomEmote.id) or ""
-            end
-            chooserJudul.Text = "✎ GANTI NAMA"
-            chooserOrder = 0
-            for _, c in ipairs(chooserList:GetChildren()) do
-                if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end
-            end
-            local rowN = buat("Frame", {
-                Size = UDim2.new(1, -6, 0, 30),
-                BackgroundColor3 = Warna.Hitam,
-                ZIndex = 50,
-                LayoutOrder = chooserNext(),
-            }, chooserList)
-            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, rowN)
-            local boxN = buat("TextBox", {
-                BackgroundColor3 = Warna.Card2,
-                Position = UDim2.new(0, 6, 0.5, -11),
-                Size = UDim2.new(1, -12, 0, 22),
-                ZIndex = 50,
-                FontFace = fnt("reg"),
-                TextSize = 12,
-                TextColor3 = Warna.Putih,
-                PlaceholderText = "nama gaya / emote",
-                PlaceholderColor3 = Warna.AbuTeks,
-                Text = cur,
-                ClearTextOnFocus = false,
-                TextXAlignment = Enum.TextXAlignment.Left,
-            }, rowN)
-            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, boxN)
-            local sv = buat("TextButton", {
-                Size = UDim2.new(1, -6, 0, 30),
-                BackgroundColor3 = Warna.Hijau,
-                ZIndex = 50,
-                FontFace = fnt("bold"),
-                TextSize = 12,
-                TextColor3 = Warna.HijauMuda,
-                Text = "SIMPAN NAMA",
-                AutoButtonColor = false,
-                LayoutOrder = chooserNext(),
-            }, chooserList)
-            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, sv)
-            sv.MouseButton1Click:Connect(function()
-                local nm = tostring(boxN.Text):gsub("^%s+", ""):gsub("%s+$", "")
-                if #nm == 0 then
-                    toast("Nama tidak boleh kosong", Warna.Kuning)
-                    return
-                end
-                if #nm > 40 then nm = nm:sub(1, 40) end
-                if mode == "slot" then
-                    local kv = EMOTE.kustom[skey]
-                    if type(kv) == "table" then kv.nama = nm end
-                else
-                    if EMOTE.kustomEmote then EMOTE.kustomEmote.nama = nm end
-                end
-                emoteSimpan()
-                syncTandai()
-                if emoteRefreshGrid then emoteRefreshGrid() end
-                if emoteRefreshEmot then emoteRefreshEmot() end
-                chooserBackdrop.Visible = false
-                chooser.Visible = false
-                toast("✎ Nama disimpan: " .. nm, Warna.Hijau)
-            end)
-            chooserBackdrop.Visible = true
-            chooser.Visible = true
-        end
-
+        -- ===== popup GANTI NAMA dihapus (v1.02 — tidak ada lagi nama
+        -- kustom yang bisa diganti) =====
 
         -- urutan kontenTabs = urutan tab: 1 MOVEMENT & VISUAL • 2 EMOTE • 3 SYSTEM
         table.insert(kontenTabs, kontenSistem)
@@ -3107,7 +2952,7 @@ local EMOTE_DAFTAR = {
             TextXAlignment = Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Top,
             TextWrapped = true,
-            Text = "⚡ BALAP v1.4\n"
+            Text = "⚡ EMOT V1.03\n"
             .. "TAB 1 MOVEMENT & VISUAL: Speed (Q) • Jump (J)\n"
             .. "Shiftlock (C) • Shiftlock Tengah (LShift) • Moonwalk (F, S = OFF)\n"
             .. "Hide (R) • Hide Atas • Cahaya Auto (T) • Lightweight\n"
@@ -3116,8 +2961,8 @@ local EMOTE_DAFTAR = {
             .. "samping 45° bebas = hijau)\n"
             .. "TAB 2 ANIMASI: kartu gaya gerak — 7 slot (IDLE JALAN LARI\n"
             .. "RENANG MANJAT LOMPAT JATUH), klik slot = pilih gaya (ASLI /\n"
-            .. "preset resmi Roblox / ID kustom+nama / ID bundle). Kartu EMOT:\n"
-            .. "emote resmi main langsung + Duduk + Stop + emote kustom.\n"
+            .. "18 pack resmi Roblox). Kartu EMOT: 80 emote Roblox main\n"
+            .. "langsung + Stop.\n"
             .. "Gaya jalan/lari/dll terlihat juga pemain lain; DANCE stop\n"
             .. "otomatis saat bergerak; gaya dipasang ulang setelah respawn.\n"
             .. "TAB 3 SYSTEM: ☁ SINKRON — config emote lintas device,\n"
@@ -4627,9 +4472,9 @@ local EMOTE_DAFTAR = {
                 warn("[BALAP] bukaGui error: " .. tostring(errG))
             end
         end)
-        print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | ANIMASI | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • V panah • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync config emote di tab SYSTEM")
-        diagSet("BALAP v1.4 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+        print("[EMOT v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
+        print("[EMOT] MOVE&VISUAL | ANIMASI | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • V panah • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync config emote di tab SYSTEM")
+        diagSet("EMOT V1.03 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
                 pcall(function()
@@ -4653,7 +4498,7 @@ local EMOTE_DAFTAR = {
 end, function(e)
     local teks = tostring(e)
     print("==================================================")
-    print("[BALAP v1.4] ERROR SAAT LOAD — kirim teks ini ke dev:")
+    print("[EMOT v1.03] ERROR SAAT LOAD — kirim teks ini ke dev:")
     print(teks)
     pcall(function() print(debug.traceback("", 2)) end)
     print("==================================================")
@@ -4662,5 +4507,5 @@ end, function(e)
     end)
 end)
 if not __BALAP_LOAD_OK__ then
-    warn("[BALAP v1.4] Script GAGAL load — banner MERAH di layar berisi errornya.")
+    warn("[EMOT v1.03] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
