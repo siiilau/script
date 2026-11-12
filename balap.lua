@@ -1,43 +1,85 @@
 --========================================================
---  BALAP v1.3 —
+--  BALAP v1.6 —
 --  TEMA: SILAU NEON (ungu/biru LED)
 --
---  CHANGELOG v1.3 (hasil review):
---    • takeover diam: cleanup instance lama tidak menimpa instance baru
---    • ☁ sync: 1 unggah rekonsiliasi per sesi + anti balapan pending saat POST
---    • unbind dulu sebelum bind (KS_SHIFTLOCK / KS_MOONWALK)
---    • fitPanel ikut kamera aktif (game ganti CurrentCamera = aman)
---    • semua koneksi ter-catat di registry (unload benar-benar bersih)
---    • stepper terima desimal koma (17,25) • reset OFF konsisten (17.15)
---    • mati/respawn = 1 toast ringkas (dulu 3) • dead code dibuang
+--  CHANGELOG v1.6 (ringkas tab TITIK + Animasi mulai bersih):
+--    • TAB TITIK dirampingkan. DIHAPUS dari tab:
+--        - kartu 👁 Tampilan (Tampilkan Semua)
+--        - tombol 📍 + TAMBAH TITIK DI SINI
+--        - kartu Garis Rute (garis antar titik)
+--        - kartu Jalur Balapan (rekam/putar jalur)
+--        - kartu Map Baru (ARSIP + RESET SEMUA DATA MAP)
+--      Sisa di tab TITIK: Tiang Penanda (Tampilkan Tiang • Mode Titik
+--      Ctrl+klik • HAPUS SEMUA TITIK • URUTKAN TERDEKAT) + Daftar
+--      Titik (klik item = teleport — satu-satunya cara TP).
+--    • File lama BALAP_JALUR.json & BALAP_ARSIP.json tidak dibaca lagi
+--      (tidak dihapus otomatis — biarkan saja). penanda_titik.json
+--      (titik) tetap dipakai seperti biasa.
+--    • TAB ANIMASI: awal load selalu master OFF + SEMUA slot ASLI
+--      (default). Pilihan gaya cuma aktif selama sesi; BALAP_EMOTE.json
+--      tidak dibaca/ditulis lagi — tiap load kembali ke animasi asli.
+--
+--  CHANGELOG v1.5 (rombak tab TITIK + tab ANIMASI baru + sederhanakan):
+--    • TAB TITIK rombak total: konten digabung dalam KARTU berwarna
+--      (Tiang kuning • Garis ungu • Jalur biru • Map Baru oranye)
+--    • BARU Mode Titik: toggle ON -> tahan Ctrl + klik permukaan map =
+--      titik kepasang PERSIS di titik yang diklik (tembok/bangunan OK,
+--      dikasih offset tipis biar nggak nyangkut setengah ke tembok).
+--      Klik di GUI diabaikan, klik langit ditolak, klik pemain diabaikan.
+--    • BARU toggle 👁 Tampilkan Semua: sembunyikan/munculkan tiang +
+--      garis rute sekaligus (jalur tetap punya toggle sendiri)
+--    • BARU TAB ANIMASI (pengganti tab TP): ⚡ master + grid 7 slot gaya
+--      gerak (IDLE/JALAN/LARI/RENANG/MANJAT/LOMPAT/JATUH) + 18 pack
+--      resmi Roblox lewat popup pilih gaya. Hasil DIREPLIKASI: pemain
+--      lain ikut melihat. Config permanen: BALAP_EMOTE.json.
+--    • HAPUS fitur TP lokasi (tab TP dibuang) — teleport sekarang
+--      HANYA lewat titik: klik item di Daftar Titik. File lama
+--      BALAP_TP.json diabaikan (tidak dibaca, tidak dihapus).
+--    • HAPUS keybind N — TP titik berikutnya dihapus
+--    • ☁ SINKRON dirampingkan: hanya TITIK yang disinkron (TP tidak
+--      ada lagi, jalur tetap lokal per device). Format payload v2,
+--      loker lama v1 tetap bisa dibaca (field tp diabaikan).
+--    • Info tab SYSTEM kini LIVE: 👤 User • 💻 Device • 🔧 Executor •
+--      📊 FPS (angka bergerak) • 🗺️ Map (nama game + PlaceId)
+--    • Speed: OFF 17.10 (dulu 17.15) • ON 17.25 - 35 (dulu 17.25-21.25)
+--    • ARSIP + RESET menyesuaikan: arsip isinya titik + jalur saja
+--
+--  (v1.4) raycast tanah 500 stud • kode angka ditolak • TP titik nol
+--  kecepatan • respawn aman • seed acak
+--  (v1.3) takeover diam • rekonsiliasi sesi • registry koneksi lengkap
 --
 --  4 TAB:
 --    1 MOVEMENT & VISUAL : Speed (Q), JumpPower (J), Shiftlock Mobile (C),
 --                          Shiftlock Tengah (LShift/RShift), Moonwalk (F/S),
 --                          Hide Player (R), Hide Badan Atas, Cahaya Auto (T),
 --                          Lightweight, Dinding Batas (X), Panah Deteksi (V)
---    2 TITIK   : tiang checkpoint + daftar titik (permanen, murni tombol GUI)
---    3 TP      : simpan / rename / hapus lokasi teleport + urut terdekat
---    4 SYSTEM  : ☁ SINKRON (kode lintas device), rejoin (K×2), hapus script
+--    2 TITIK   : Tiang Penanda (Tampilkan Tiang • Mode Titik Ctrl+klik •
+--                HAPUS SEMUA TITIK • URUTKAN TERDEKAT) • Daftar Titik
+--                (klik = teleport)
+--    3 ANIMASI : ⚡ master (awal OFF) + grid 7 slot gaya gerak + 18 pack
+--                Roblox (popup pilih gaya) + reset ke animasi asli
+--    4 SYSTEM  : ☁ SINKRON titik (kode lintas device), Info live
+--                (User/Device/Executor/FPS/Map), rejoin (K×2), hapus script
 --
 --  Keybind:
 --    G = buka/tutup GUI (saat tutup = hilang total)
---    Q = Speed ON/OFF (nilai ON dipilih di panel: 17.25-21.25)
+--    Q = Speed ON/OFF (OFF 17.10; nilai ON dipilih di panel: 17.25-35)
 --    J = JumpPower (51.25 ⇄ 65.25)    C = Shiftlock Mobile
 --    LShift/RShift = Shiftlock Tengah (kamera tengah, kursor lingkaran mini)
 --    F = Moonwalk (saat aktif, tekan S = langsung OFF)    R = Hide
---    P = (kosong)
 --    T = Cahaya Auto (2 arah)    X = Dinding Batas
 --    V = Panah Deteksi (100 stud tiap arah, depan/belakang 135°:
 --        ↑ MERAH = ada pemain DI DEPAN badan, ↓ MERAH = DI BELAKANG;
 --        samping 45° bebas + kosong = hijau; toggle di tab 1)
 --    K = Rejoin (double-tap)
---    TP & titik = via GUI (tersimpan permanen) • ☁ SINKRON = tab SYSTEM
+--    Ctrl+klik map = titik baru (hanya saat Mode Titik ON di kartu Tiang)
+--    Teleport = klik titik di Daftar Titik (satu-satunya cara TP)
+--    Titik = via GUI (tersimpan permanen) • ☁ SINKRON = tab SYSTEM
 --
 --  Shiftlock Mobile, Moonwalk & Shiftlock Tengah otomatis OFF saat
---  mati/respawn. Data (titik, TP, kode sync) tersimpan permanen di device.
+--  mati/respawn. Data (titik + kode sync) tersimpan permanen di device.
 --========================================================
-print("[BALAP v1.3] load mulai...")
+print("[BALAP v1.6] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -88,7 +130,7 @@ do
     end
 end
 
-local VERSI = "1.3"
+local VERSI = "1.5"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -142,10 +184,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         LED_TEXT        = "⚡ B A L A P ⚡",
         SOUND_ON        = true,
         FX_LEVEL        = 1,
-        -- Speed cycle 3 state (17.15 → 17.25 → 21.25 → balik OFF)
-        SPEED_OFF   = 17.15,
+        -- Speed cycle 3 state (17.10 → 17.25 → 35 → balik OFF)
+        SPEED_OFF   = 17.10,
         SPEED_ON_1  = 17.25,
-        SPEED_ON_2  = 21.25,
+        SPEED_ON_2  = 35,
         -- Jump: OFF 51.25 ⇄ ON 65.25 (kondisional UseJumpPower / JumpHeight)
         OFF_JUMP    = 51.25,
         ON_JUMP     = 65.25,
@@ -168,6 +210,12 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         TITIK_TINGGI   = 1.5,   -- tinggi tiang (stud)
         TITIK_DIAMETER = 0.3,   -- diameter tiang (stud)
         TITIK_FILE     = "penanda_titik.json", -- sama dgn script standalone lama
+        -- v1.4 adaptasi map baru:
+        TITIK_RAYCAST  = 500,  -- kedalaman cari tanah dulu 100 stud — map baru
+                               -- punya ramp/jembatan tinggi, tiang jangan ngambang
+        -- Animasi kustom (v1.5, tab ANIMASI): port ANIMASI BUNDLE V6
+        -- v1.6: tanpa file config — tiap load selalu default (master OFF).
+        EMOTE_TUNGGAK    = 0.25,  -- jeda dtk setelah spawn sebelum pasang gaya
         -- Panah Deteksi (keybind V): deteksi pemain lain di
         -- depan/belakang badan (ikut arah badan, bukan kamera).
         PANAH_JARAK = 100,  -- jarak deteksi TIAP arah (stud): 100 depan +
@@ -175,7 +223,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         PANAH_SUDUT = 0.383, -- batas dot LookVector: 0.383 = cos(67.5°)
                             -- -> depan & belakang 135 derajat penuh,
                             -- samping kiri/kanan 45 derajat bebas (hijau)
-        -- ☁ SINKRON: TP + titik lintas device via textdb.dev (gratis, tanpa
+        -- ☁ SINKRON: titik lintas device via textdb.dev (gratis, tanpa
         -- blokir executor; jsonblob.com ternyata diblokir Cloudflare)
         SYNC_FILE          = "BALAP_SYNC.json", -- kode sync + daftar hapus
         SYNC_URL           = "https://textdb.dev/api/data/", -- .. kode
@@ -218,6 +266,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Hijau2    = Color3.fromRGB(16, 185, 129),
         HijauMuda = Color3.fromRGB(187, 247, 208),
         Kuning    = Color3.fromRGB(250, 204, 21),
+        Oranye    = Color3.fromRGB(249, 115, 22),
         Gray      = Color3.fromRGB(72, 72, 94),
         Card2     = Color3.fromRGB(40, 40, 62),
     }
@@ -267,6 +316,11 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 
     -- [4] HELPER --------------------------------------------------------
     local rnd = math.random
+    -- v1.4: seed acak — kode loker tidak kembar antar device/eksekusi
+    -- (executor biasanya sudah seed sendiri, tapi tidak semua)
+    pcall(function()
+        math.randomseed(os.time() + math.floor((os.clock() % 1) * 100000))
+    end)
     local function buat(class, props, parent)
         local obj = Instance.new(class)
         local isTextClass = (class == "TextLabel" or class == "TextButton" or class == "TextBox")
@@ -326,17 +380,17 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 
     -- Forward declare untuk part3 (FX/footer/icon) — di-expose via buildFX()
     local konfeti, emojiBurst, pusatDiRoot, toast
-    -- Forward declare data TP + modul ☁ SINKRON (didefinisikan di [7a3])
-    local TP_MAX, TP_FILE, TP_LOKASI, tpBisaFile
-    local tpBulat, tpTulisFile, tpMuat, tpRefresh
-    local syncTandai, syncCatatHapusTp, syncCatatHapusTiang
-    local syncBuangHapusTp, syncBuangHapusTiang, syncRefreshKartu
+    -- Forward declare modul ANIMASI + ☁ SINKRON (didefinisikan di [7a2d]/[7a3])
+    -- v1.5: data TP dihapus — sinkron hanya titik
+    local emoteSetMaster, emotePilihPreset, emoteRefreshGrid, emoteBukaChooser
+    local syncTandai, syncCatatHapusTiang
+    local syncBuangHapusTiang, syncRefreshKartu
 
     -- Forward declare untuk part2 (UI builder) — di-expose via buildUI()
     local tabBtns, kontenTabs, setTab
     local kontenMove, scrollMove
     local kontenTitik, scrollTitik
-    local kontenTP, scrollTP
+    local kontenAnim, scrollAnim
     local kontenSistem, scrollSistem
     setFeature = function(name, v, silent)
         local f = Setters[name]
@@ -603,7 +657,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Position = UDim2.new(0, 12, 0, 0),
         Size = UDim2.new(1, -104, 1, 0),
         FontFace = fnt("judul"),
-        Text = "⚡ BALAP v1.3 ⚡",
+        Text = "⚡ BALAP v" .. VERSI .. " ⚡",
         TextColor3 = Warna.Putih,
         TextSize = 22,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -730,15 +784,16 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     end
 
     -- render ulang semua tiang (dipakai juga Setters.Tiang saat toggle)
+    -- v1.6: garis antar titik DIHAPUS — cuma tiang yang dirender.
     local function titikRender()
         if titikFolder then titikFolder:Destroy() titikFolder = nil end
-        if not State.TiangOn then return end
-        if #titikList == 0 then return end
-        titikFolder = Instance.new("Folder")
-        titikFolder.Name = "BALAP_TitikPenanda"
-        titikFolder.Parent = Workspace
-        for i, pos in ipairs(titikList) do
-            titikBuatTiang(i, pos)
+        if State.TiangOn and #titikList > 0 then
+            titikFolder = Instance.new("Folder")
+            titikFolder.Name = "BALAP_TitikPenanda"
+            titikFolder.Parent = Workspace
+            for i, pos in ipairs(titikList) do
+                titikBuatTiang(i, pos)
+            end
         end
     end
 
@@ -748,23 +803,20 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         if not hrp then toast("Karakter tidak ketemu!", Warna.Merah) return end
         bunyi(CFG.SND_PING, 0.3, 1.1)
         hrp.CFrame = CFrame.new(pos.X, pos.Y + 3.5, pos.Z)
+        -- v1.4: nol-kan kecepatan — dulu karakter bisa terpental/guling
+        -- setelah TP (kecepatan jatuh lama ikut terbawa)
+        hrp.AssemblyLinearVelocity = Vector3.zero
     end
 
-    local function titikTambahDiSini()
-        local char = getChar()
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then toast("Karakter tidak ketemu!", Warna.Merah) return end
+    -- v1.6: tambah titik di posisi SEMBARANG (hasil Ctrl+klik Mode Titik).
+    -- Semua cek di satu tempat:
+    -- batas max, anti titik kembar (< 1 stud), tombstone sync, simpan.
+    local function titikTambahDiPosisi(pos)
         if #titikList >= CFG.TITIK_MAX then
             toast("Penuh (max " .. CFG.TITIK_MAX .. " titik)", Warna.Kuning)
             return
         end
-        -- cari tanah di bawah kaki biar tiang nempel lantai
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        params.FilterDescendantsInstances = { char }
-        local hit = Workspace:Raycast(hrp.Position, Vector3.new(0, -100, 0), params)
-        local groundY = hit and hit.Position.Y or (hrp.Position.Y - 3)
-        local pos = Vector3.new(clamp2(hrp.Position.X), clamp2(groundY), clamp2(hrp.Position.Z))
+        pos = Vector3.new(clamp2(pos.X), clamp2(pos.Y), clamp2(pos.Z))
         -- anti titik kembar: ada titik < 1 stud -> tolak
         for _, p in ipairs(titikList) do
             local dx, dy, dz = p.X - pos.X, p.Y - pos.Y, p.Z - pos.Z
@@ -779,6 +831,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         titikRender()
         titikRefreshDaftar()
         syncTandai()
+        bunyi(CFG.SND_PING, 0.25, 1.3)
         toast("+ Titik #" .. #titikList .. " ditambahkan"
         .. (titikBisaFile and " (tersimpan)" or " (sesi saja)"), Warna.Hijau)
     end
@@ -862,69 +915,371 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         syncRefreshKartu()
     end
 
-    -- [7a3] DATA TP + MODUL ☁ SINKRON ------------------------------------
-    -- Data TP dipindah keluar buildUI supaya modul sync bisa mengaksesnya.
-    TP_MAX     = 40
-    TP_FILE    = "BALAP_TP.json"
-    TP_LOKASI  = {}
-    tpBisaFile = (type(writefile) == "function") and (type(readfile) == "function")
+    -- ======================================================================
+    -- [7a2d] MODUL ANIMASI (v1.5, tab ANIMASI) — port ANIMASI BUNDLE V6
+    --   • Slot state (IDLE/WALK/RUN/SWIM/CLIMB/JUMP/FALL) bekerja dengan
+    --     MENGGANTI ID animasi di script "Animate" bawaan karakter, lalu
+    --     Animate di-restart. Hasilnya DIREPLIKASI: pemain lain juga
+    --     melihat gaya baru (track dibuat script core Roblox, lolos).
+    --   • Otomatis deteksi R15 / R6 (struktur Animate kedua rig diikuti).
+    --   • Baseline (animasi asli game) dicatat tiap spawn -> RESET/OFF
+    --     mengembalikan persis seperti semula.
+    --   • Preset = 18 pack resmi Roblox (semua Creator.Id = 1).
+    --   • Config (preset/master) permanen: BALAP_EMOTE.json.
+    --   • Keybind G milik script standalone DIHAPUS — ikut GUI utama (G).
+    -- ======================================================================
+local EMOTE_PRESET = {
+    idle  = {
+        { n = "Astronaut", i15 = 891621366, i6 = 1090133099 },
+        { n = "Bubbly", i15 = 910004836, i6 = 1018553897 },
+        { n = "Cartoony", i15 = 742637544, i6 = 837011741 },
+        { n = "Elder", i15 = 845397899, i6 = 892268340 },
+        { n = "Knight", i15 = 657595757, i6 = 734327140 },
+        { n = "Levitation", i15 = 616006778, i6 = 619542203 },
+        { n = "Mage", i15 = 707742142, i6 = 754637456 },
+        { n = "Ninja", i15 = 656117400, i6 = 658832408 },
+        { n = "Oldschool", i15 = 5319828216, i6 = 5319922112 },
+        { n = "Pirate", i15 = 750781874, i6 = 837024662 },
+        { n = "Robot", i15 = 616088211, i6 = 619521748 },
+        { n = "Rthro", i15 = 2510197257 },
+        { n = "Stylish", i15 = 616136790, i6 = 619511648 },
+        { n = "Superhero", i15 = 616111295, i6 = 619528125 },
+        { n = "Toy", i15 = 782841498, i6 = 973771666 },
+        { n = "Vampire", i15 = 1083445855, i6 = 1113742618 },
+        { n = "Werewolf", i15 = 1083195517, i6 = 1113752682 },
+        { n = "Zombie", i15 = 616158929, i6 = 619535834 },
+    },
+    walk  = {
+        { n = "Astronaut", i15 = 891636393, i6 = 1090131576 },
+        { n = "Bubbly", i15 = 910034870, i6 = 1018549681 },
+        { n = "Cartoony", i15 = 742640026, i6 = 837010234 },
+        { n = "Elder", i15 = 845403856, i6 = 892267099 },
+        { n = "Knight", i15 = 657552124, i6 = 734326330 },
+        { n = "Levitation", i15 = 616013216, i6 = 619544080 },
+        { n = "Mage", i15 = 707897309, i6 = 754636298 },
+        { n = "Ninja", i15 = 656121766, i6 = 658831143 },
+        { n = "Oldschool", i15 = 5319847204, i6 = 5319909330 },
+        { n = "Pirate", i15 = 750785693, i6 = 837023892 },
+        { n = "Robot", i15 = 616095330, i6 = 619522849 },
+        { n = "Rthro", i15 = 2510202577 },
+        { n = "Stylish", i15 = 616146177, i6 = 619512767 },
+        { n = "Superhero", i15 = 616122287, i6 = 619529601 },
+        { n = "Toy", i15 = 782843345, i6 = 973767371 },
+        { n = "Vampire", i15 = 1083473930, i6 = 1113741192 },
+        { n = "Werewolf", i15 = 1083178339, i6 = 1113751657 },
+        { n = "Zombie", i15 = 616168032, i6 = 619537468 },
+    },
+    run   = {
+        { n = "Astronaut", i15 = 891636393, i6 = 1090130630 },
+        { n = "Bubbly", i15 = 910025107, i6 = 1018548665 },
+        { n = "Cartoony", i15 = 742638842, i6 = 837009922 },
+        { n = "Elder", i15 = 845386501, i6 = 892265784 },
+        { n = "Knight", i15 = 657564596, i6 = 734325948 },
+        { n = "Levitation", i15 = 616010382, i6 = 619543231 },
+        { n = "Mage", i15 = 707861613, i6 = 754635032 },
+        { n = "Ninja", i15 = 656118852, i6 = 658830056 },
+        { n = "Oldschool", i15 = 5319844329, i6 = 5319900634 },
+        { n = "Pirate", i15 = 750783738, i6 = 837023444 },
+        { n = "Robot", i15 = 616091570, i6 = 619522386 },
+        { n = "Rthro", i15 = 2510198475 },
+        { n = "Stylish", i15 = 616140816, i6 = 619512153 },
+        { n = "Superhero", i15 = 616117076, i6 = 619528716 },
+        { n = "Toy", i15 = 782842708, i6 = 973766674 },
+        { n = "Vampire", i15 = 1083462077, i6 = 1113740510 },
+        { n = "Werewolf", i15 = 1083216690, i6 = 1113750642 },
+        { n = "Zombie", i15 = 616163682, i6 = 619536621 },
+    },
+    jump  = {
+        { n = "Astronaut", i15 = 891627522, i6 = 1090132507 },
+        { n = "Bubbly", i15 = 910016857, i6 = 1018553240 },
+        { n = "Cartoony", i15 = 742637942, i6 = 837011171 },
+        { n = "Elder", i15 = 845398858, i6 = 892267917 },
+        { n = "Knight", i15 = 658409194, i6 = 734326930 },
+        { n = "Levitation", i15 = 616008936, i6 = 619542888 },
+        { n = "Mage", i15 = 707853694, i6 = 754637084 },
+        { n = "Ninja", i15 = 656117878, i6 = 658832070 },
+        { n = "Oldschool", i15 = 5319841935, i6 = 5319917561 },
+        { n = "Pirate", i15 = 750782230, i6 = 837024350 },
+        { n = "Robot", i15 = 616090535, i6 = 619522088 },
+        { n = "Rthro", i15 = 2510197830 },
+        { n = "Stylish", i15 = 616139451, i6 = 619511974 },
+        { n = "Superhero", i15 = 616115533, i6 = 619528412 },
+        { n = "Toy", i15 = 782847020, i6 = 973770652 },
+        { n = "Vampire", i15 = 1083455352, i6 = 1113742359 },
+        { n = "Werewolf", i15 = 1083218792, i6 = 1113752285 },
+        { n = "Zombie", i15 = 616161997, i6 = 619536283 },
+    },
+    fall  = {
+        { n = "Astronaut", i15 = 891617961, i6 = 1090132063 },
+        { n = "Bubbly", i15 = 910001910, i6 = 1018552770 },
+        { n = "Cartoony", i15 = 742637151, i6 = 837010685 },
+        { n = "Elder", i15 = 845396048, i6 = 892267521 },
+        { n = "Knight", i15 = 657600338, i6 = 734326679 },
+        { n = "Levitation", i15 = 616005863, i6 = 619541867 },
+        { n = "Mage", i15 = 707829716, i6 = 754636589 },
+        { n = "Ninja", i15 = 656115606, i6 = 658831500 },
+        { n = "Oldschool", i15 = 5319839762, i6 = 5319914476 },
+        { n = "Pirate", i15 = 750780242, i6 = 837024147 },
+        { n = "Robot", i15 = 616087089, i6 = 619521521 },
+        { n = "Rthro", i15 = 2510195892 },
+        { n = "Stylish", i15 = 616134815, i6 = 619511417 },
+        { n = "Superhero", i15 = 616108001, i6 = 619527817 },
+        { n = "Toy", i15 = 782846423, i6 = 973768058 },
+        { n = "Vampire", i15 = 1083443587, i6 = 1113742092 },
+        { n = "Werewolf", i15 = 1083189019, i6 = 1113751889 },
+        { n = "Zombie", i15 = 616157476, i6 = 619535616 },
+    },
+    climb = {
+        { n = "Astronaut", i15 = 891609353, i6 = 1090134016 },
+        { n = "Bubbly", i15 = 909997997, i6 = 1018554668 },
+        { n = "Cartoony", i15 = 742636889, i6 = 837013990 },
+        { n = "Elder", i15 = 845392038, i6 = 892269341 },
+        { n = "Knight", i15 = 658360781, i6 = 734329002 },
+        { n = "Levitation", i15 = 616003713, i6 = 619541458 },
+        { n = "Mage", i15 = 707826056, i6 = 754639239 },
+        { n = "Ninja", i15 = 656114359, i6 = 658833139 },
+        { n = "Oldschool", i15 = 5319816685, i6 = 5319931619 },
+        { n = "Pirate", i15 = 750779899, i6 = 837025325 },
+        { n = "Robot", i15 = 616086039, i6 = 619521311 },
+        { n = "Rthro", i15 = 2510192778 },
+        { n = "Stylish", i15 = 616133594, i6 = 619509955 },
+        { n = "Superhero", i15 = 616104706, i6 = 619527470 },
+        { n = "Toy", i15 = 782843869, i6 = 973773170 },
+        { n = "Vampire", i15 = 1083439238, i6 = 1113743239 },
+        { n = "Werewolf", i15 = 1083182000, i6 = 1113754738 },
+        { n = "Zombie", i15 = 616156119, i6 = 619535091 },
+    },
+    swim  = {
+        { n = "Astronaut", i15 = 891639666, i6 = 1090133583, i15b = 891663592 },
+        { n = "Bubbly", i15 = 910028158, i6 = 1018554245, i15b = 910030921 },
+        { n = "Cartoony", i15 = 742639220, i6 = 837012509, i15b = 742639812 },
+        { n = "Elder", i15 = 845401742, i6 = 892268710, i15b = 845403127 },
+        { n = "Knight", i15 = 657560551, i6 = 734327363, i15b = 657557095 },
+        { n = "Levitation", i15 = 616011509, i6 = 619543721, i15b = 616012453 },
+        { n = "Mage", i15 = 707876443, i6 = 754638471, i15b = 707894699 },
+        { n = "Ninja", i15 = 656119721, i6 = 658832807, i15b = 656121397 },
+        { n = "Oldschool", i15 = 5319850266, i6 = 5319927054, i15b = 5319852613 },
+        { n = "Pirate", i15 = 750784579, i6 = 837025054, i15b = 750785176 },
+        { n = "Robot", i15 = 616092998, i6 = 619522642, i15b = 616094091 },
+        { n = "Rthro", i15 = 2510199791, i15b = 2510201162 },
+        { n = "Stylish", i15 = 616143378, i6 = 619512450, i15b = 616144772 },
+        { n = "Superhero", i15 = 616119360, i6 = 619529095, i15b = 616120861 },
+        { n = "Toy", i15 = 782844582, i6 = 973772659, i15b = 782845186 },
+        { n = "Vampire", i15 = 1083464683, i6 = 1113742944, i15b = 1083467779 },
+        { n = "Werewolf", i15 = 1083222527, i6 = 1113752975, i15b = 1083225406 },
+        { n = "Zombie", i15 = 616165109, i6 = 619537096, i15b = 616166655 },
+    },
+}
 
-    tpBulat = function(v)
-        return math.floor(v * 100 + 0.5) / 100
+    -- folder target di script Animate per slot
+    local SLOT_FOLDERS = {
+        idle  = { "idle" },
+        walk  = { "walk" },
+        run   = { "run" },
+        jump  = { "jump" },
+        fall  = { "fall" },
+        climb = { "climb" },
+        swim  = { "swim", "swimidle" },
+    }
+    local SLOT_LIST = {
+        { k = "idle",  t = "IDLE"   },
+        { k = "walk",  t = "JALAN"  },
+        { k = "run",   t = "LARI"   },
+        { k = "swim",  t = "RENANG" },
+        { k = "climb", t = "MANJAT" },
+        { k = "jump",  t = "LOMPAT" },
+        { k = "fall",  t = "JATUH"  },
+    }
+    local SLOT_BY_KEY = {}
+    for i, s in ipairs(SLOT_LIST) do SLOT_BY_KEY[s.k] = i end
+    local function slotLabel(k)
+        local sv = SLOT_LIST[SLOT_BY_KEY[k]]
+        return sv and sv.t or string.upper(k)
     end
 
-    tpTulisFile = function()
-        getgenv().BALAP_TP_DATA = TP_LOKASI            -- cadangan sesi (re-execute)
-        if not tpBisaFile then return end
-        local data = {}
-        for i = 1, #TP_LOKASI do
-            local L = TP_LOKASI[i]
-            data[i] = { nama = L.nama, x = tpBulat(L.x), y = tpBulat(L.y), z = tpBulat(L.z) }
+    local EMOTE = {
+        -- v1.6: awal load SELALU OFF + semua slot ASLI (default).
+        -- Pilihan gaya cuma hidup selama sesi — tidak dibaca/ditulis
+        -- ke file lagi (BALAP_EMOTE.json lama diabaikan).
+        master     = false,
+        preset     = {},
+        baseline   = {},
+        rig        = "?",
+    }
+    local function emoteResolveSlot(k)
+        local pi = EMOTE.preset[k] or 0
+        local p = (EMOTE_PRESET[k] or {})[pi]
+        if pi == 0 or not p then return nil, "ASLI" end
+        local utama = (EMOTE.rig == "R6") and p.i6 or p.i15
+        if not utama then return nil, p.n .. " (beda rig)" end
+        return "rbxassetid://" .. utama, p.n
+    end
+    local function emoteJumlahAktif()
+        local n = 0
+        for _, s in ipairs(SLOT_LIST) do
+            if emoteResolveSlot(s.k) then n = n + 1 end
         end
-        local ok, err = pcall(function()
-            writefile(TP_FILE, HttpService:JSONEncode(data))
-        end)
-        if not ok then warn("[BALAP-TP] gagal tulis file: " .. tostring(err)) end
+        return n
     end
-
-    tpMuat = function()
-        local data
-        if tpBisaFile then
-            local ada = false
-            pcall(function() ada = isfile(TP_FILE) end)
-            if ada then
-                pcall(function() data = HttpService:JSONDecode(readfile(TP_FILE)) end)
+    local function emoteSimpan()
+        -- v1.6: cadangan sesi saja (getgenv) — tanpa file.
+        getgenv().BALAP_EMOTE_DATA = { master = EMOTE.master, preset = EMOTE.preset }
+    end
+    local function emoteDeteksiRig(char)
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            if hum.RigType == Enum.HumanoidRigType.R15 then EMOTE.rig = "R15"
+            elseif hum.RigType == Enum.HumanoidRigType.R6 then EMOTE.rig = "R6" end
+        end
+        return EMOTE.rig
+    end
+    local function emoteCaptureBaseline(char)
+        local a = char and char:FindFirstChild("Animate")
+        if not a then return end
+        for k, folders in pairs(SLOT_FOLDERS) do
+            if #folders > 0 then
+                local simpan = {}
+                for _, fname in ipairs(folders) do
+                    local f = a:FindFirstChild(fname)
+                    if f then
+                        for _, an in ipairs(f:GetDescendants()) do
+                            if an:IsA("Animation") then simpan[an] = an.AnimationId end
+                        end
+                    end
+                end
+                EMOTE.baseline[k] = simpan
             end
         end
-        if type(data) ~= "table" then
-            data = rawget(getgenv(), "BALAP_TP_DATA")   -- fallback: sesi yang sama
+    end
+    local function emoteSetSlotId(k, char, id)
+        local a = char and char:FindFirstChild("Animate")
+        if not a then return false end
+        local folders = SLOT_FOLDERS[k]
+        if not folders or #folders == 0 then return false end
+        local idB = nil
+        if id and k == "swim" then
+            local p = (EMOTE_PRESET[k] or {})[EMOTE.preset[k] or 0]
+            if p then idB = p.i15b end
         end
-        if type(data) == "table" then
-            for _, v in ipairs(data) do
-                if type(v) == "table" and type(v.nama) == "string" and #v.nama > 0
-                    and type(v.x) == "number" and type(v.y) == "number" and type(v.z) == "number" then
-                    TP_LOKASI[#TP_LOKASI + 1] = { nama = v.nama, x = v.x, y = v.y, z = v.z }
+        for _, fname in ipairs(folders) do
+            local f = a:FindFirstChild(fname)
+            if f then
+                local target = id
+                if target and fname == "swimidle" then
+                    target = (idB and EMOTE.rig ~= "R6") and ("rbxassetid://" .. idB) or id
+                end
+                for _, an in ipairs(f:GetDescendants()) do
+                    if an:IsA("Animation") then
+                        if target then
+                            an.AnimationId = target
+                        else
+                            local asli = EMOTE.baseline[k] and EMOTE.baseline[k][an]
+                            if asli then an.AnimationId = asli end
+                        end
+                    end
                 end
             end
         end
-        getgenv().BALAP_TP_DATA = TP_LOKASI
-        print("[BALAP-TP] muat " .. #TP_LOKASI .. " lokasi"
-        .. (tpBisaFile and " (file: " .. TP_FILE .. ")" or " (mode SESI — executor tanpa writefile)"))
+        return true
     end
-    tpMuat()
+    local function emoteRestartAnimate()
+        local char = getChar()
+        local a = char and char:FindFirstChild("Animate")
+        if not a then return end
+        pcall(function()
+            a.Disabled = true
+            task.wait()
+            a.Disabled = false
+        end)
+    end
+    local function emoteTerapkanSemua(char)
+        char = char or getChar()
+        if not char then return end
+        if not char:FindFirstChild("Animate") then return end
+        for _, s in ipairs(SLOT_LIST) do
+            local k = s.k
+            local id = nil
+            if EMOTE.master then id = emoteResolveSlot(k) end
+            emoteSetSlotId(k, char, id)
+        end
+        emoteRestartAnimate()
+    end
+    emoteSetMaster = function(on, silent)
+        on = on and true or false
+        if EMOTE.master == on and State.EmoteOn == on then return end
+        EMOTE.master = on
+        State.EmoteOn = on
+        emoteSimpan()
+        emoteTerapkanSemua()
+        if not silent then
+            if on then
+                toast("⚡ Animasi kustom ON — gaya pilihanmu aktif", Warna.Hijau)
+            else
+                toast("⚡ Animasi kustom OFF — balik ke animasi game", Warna.Kuning)
+            end
+        end
+        if Switches["Emote"] then Switches["Emote"].set(on) end
+        if emoteRefreshGrid then emoteRefreshGrid() end
+    end
+    emotePilihPreset = function(k, pi)
+        if not SLOT_FOLDERS[k] then return end
+        EMOTE.preset[k] = pi
+        emoteSimpan()
+        local char = getChar()
+        if char then
+            local id = nil
+            if EMOTE.master then id = emoteResolveSlot(k) end
+            emoteSetSlotId(k, char, id)
+            emoteRestartAnimate()
+        end
+        if emoteRefreshGrid then emoteRefreshGrid() end
+        local _, nama = emoteResolveSlot(k)
+        toast("🎬 " .. slotLabel(k) .. ": " .. tostring(nama), Warna.Ungu2)
+    end
+    local emoteCharSudah = {}
+    local function emoteInitCharacter(char)
+        if not char or emoteCharSudah[char] then return end
+        emoteCharSudah[char] = true
+        task.spawn(function()
+            local a = char:WaitForChild("Animate", 15)
+            if not a then return end
+            task.wait(CFG.EMOTE_TUNGGAK)
+            if State.Removed or not char.Parent then return end
+            emoteDeteksiRig(char)
+            emoteCaptureBaseline(char)
+            emoteTerapkanSemua(char)
+            if emoteRefreshGrid then emoteRefreshGrid() end
+        end)
+    end
+    -- v1.6: TANPA emoteMuat — tidak ada config yang dimuat, awal selalu
+    -- master OFF + semua slot ASLI (default pabrik).
+    State.EmoteOn = EMOTE.master
+    catat(LocalPlayer.CharacterAdded:Connect(function(char) emoteInitCharacter(char) end))
+    task.spawn(function()
+        task.wait(1.0)
+        local char = getChar()
+        if char then emoteInitCharacter(char) end
+    end)
+    print("[BALAP-EMOTE] siap — 7 slot • master "
+    .. (EMOTE.master and "ON" or "OFF")
+    .. " • aktif " .. emoteJumlahAktif() .. "/7")
+
+    -- [7a3] MODUL ☁ SINKRON ----------------------------------------------
+    -- v1.5: fitur TP lokasi DIHAPUS — sinkron sekarang hanya titik tiang.
+    -- File BALAP_TP.json dari versi lama diabaikan (tidak dibaca/dihapus).
 
     -- ======================================================================
-    -- ☁ SINKRON — TP + titik lintas device
+    -- ☁ SINKRON — titik lintas device
     -- Layanan : textdb.dev — gratis, tanpa login, TANPA blokir executor
     --           (jsonblob.com ternyata diblokir Cloudflare, diganti)
     -- Kode    : balap-xxxx-xxxx — dibaca manusia, mudah diketik. Selalu
     --           tampil di kartu ☁ SINKRON (tab TITIK) + tombol SALIN.
     --           Device lain bergabung lewat MASUKKAN KODE. GANTI KODE =
     --           loker baru.
-    -- Isi sync: HANYA titik tiang + TP (pengaturan tidak ikut).
-    -- Merge   : TP per nama (nama sama = posisi di-update) • titik per
-    --           posisi (< 1 stud = kembar, ditolak) • DAFTAR HAPUS ikut
-    --           tersinkron (max 200) — hapusan tidak bangkit lagi.
+    -- Isi sync: HANYA titik tiang (pengaturan tidak ikut; TP sudah
+    -- dihapus sejak v1.5).
+    -- Merge   : titik per posisi (< 1 stud = kembar, ditolak) • DAFTAR
+    --           HAPUS ikut tersinkron (max 200) — hapusan tidak bangkit.
     -- Ritme   : upload ditunda 30 dtk setelah perubahan terakhir •
     --           download saat load + tiap 3 menit • anti ping-pong.
     -- Offline : diam + toast sekali, data aman di lokal, retry otomatis.
@@ -932,7 +1287,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     -- ======================================================================
     local SYNC = {
         kode          = nil,   -- ID loker (contoh: balap-7k2m-9xq4)
-        hapus         = {},    -- tombstone: {t="tp", n=nama} / {t="tiang", x,y,z}
+        hapus         = {},    -- tombstone: {t="tiang", x,y,z}
         bisaHttp      = false,
         sibuk         = false, -- mutex: cuma 1 operasi jaringan
         pending       = false, -- ada perubahan menunggu diunggah
@@ -1013,10 +1368,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 end
             end
             if type(data.hapus) == "table" then
+                -- v1.5: hanya tombstone tiang — TP tidak ada lagi (tombstone
+                -- tp sisa format lama diabaikan begitu saja)
                 for _, h in ipairs(data.hapus) do
-                    if type(h) == "table" and h.t == "tp" and type(h.n) == "string" and #h.n > 0 then
-                        SYNC.hapus[#SYNC.hapus + 1] = { t = "tp", n = h.n }
-                    elseif type(h) == "table" and h.t == "tiang"
+                    if type(h) == "table" and h.t == "tiang"
                         and type(h.x) == "number" and type(h.y) == "number" and type(h.z) == "number" then
                         SYNC.hapus[#SYNC.hapus + 1] = { t = "tiang", x = h.x, y = h.y, z = h.z }
                     end
@@ -1034,12 +1389,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             table.remove(SYNC.hapus, 1)   -- buang yang tertua
         end
     end
-    local function syncHapusTpAda(nama)
-        for _, h in ipairs(SYNC.hapus) do
-            if h.t == "tp" and h.n == nama then return true end
-        end
-        return false
-    end
     -- titik dianggap terhapus kalau ada tombstone < 1 stud darinya
     local function syncHapusTiangAda(px, py, pz)
         for _, h in ipairs(SYNC.hapus) do
@@ -1050,21 +1399,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end
         return false
     end
-    syncCatatHapusTp = function(nama)
-        if syncHapusTpAda(nama) then return end
-        SYNC.hapus[#SYNC.hapus + 1] = { t = "tp", n = nama }
-        syncPotongHapus()
-    end
     syncCatatHapusTiang = function(pos)
         if syncHapusTiangAda(pos.X, pos.Y, pos.Z) then return end
         SYNC.hapus[#SYNC.hapus + 1] = { t = "tiang", x = clamp2(pos.X), y = clamp2(pos.Y), z = clamp2(pos.Z) }
         syncPotongHapus()
-    end
-    syncBuangHapusTp = function(nama)
-        for i = #SYNC.hapus, 1, -1 do
-            local h = SYNC.hapus[i]
-            if h.t == "tp" and h.n == nama then table.remove(SYNC.hapus, i) end
-        end
     end
     syncBuangHapusTiang = function(pos)
         for i = #SYNC.hapus, 1, -1 do
@@ -1087,11 +1425,11 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         if ui.ikon then ui.ikon.TextColor3 = warna end
         if ui.info then
             if not SYNC.bisaHttp then
-                ui.info.Text = ("%d TP • %d titik • executor tanpa HTTP — sync nonaktif")
-                :format(#TP_LOKASI, #titikList)
+                ui.info.Text = ("%d titik • executor tanpa HTTP — sync nonaktif")
+                :format(#titikList)
             else
                 local kodeTeks = SYNC.kode and ("Kode: " .. SYNC.kode) or "Kode: belum dibuat"
-                ui.info.Text = ("%d TP • %d titik • %s"):format(#TP_LOKASI, #titikList, kodeTeks)
+                ui.info.Text = ("%d titik • %s"):format(#titikList, kodeTeks)
             end
         end
         if ui.dari then
@@ -1120,6 +1458,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 
     syncTandai = function()
         syncSimpanFile()               -- tombstone langsung aman di file
+        -- v1.4: executor tanpa HTTP tidak lagi pura-pura status "kirim"
+        -- (dulu titik status kuning kedip terus tanpa pernah kirim)
+        if not SYNC.bisaHttp then return end
         SYNC.pending = true
         SYNC.waktuUbah = os.clock()
         SYNC.status = "kirim"
@@ -1127,20 +1468,17 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     end
 
     -- ---- payload & validasi ----
+    -- ---- payload & validasi ----
+    -- v1.5: format v2 — isi payload hanya TITIK (TP dihapus dari format).
+    -- Payload v1 (loker lama) tetap bisa dibaca: field tp diabaikan.
     local function syncPayload()
-        local tp = {}
-        for i = 1, #TP_LOKASI do
-            local L = TP_LOKASI[i]
-            tp[i] = { n = L.nama, x = tpBulat(L.x), y = tpBulat(L.y), z = tpBulat(L.z) }
-        end
         local tg = {}
         for i = 1, #titikList do
             local p = titikList[i]
             tg[i] = { x = clamp2(p.X), y = clamp2(p.Y), z = clamp2(p.Z) }
         end
         return {
-            v     = 1,
-            tp    = tp,
+            v     = 2,
             tiang = tg,
             hapus = SYNC.hapus,
             dari  = SYNC.labelPerangkat,
@@ -1150,18 +1488,11 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 
     -- validasi struktur data cloud (anti sabotase — kode bisa tersebar)
     local function syncValidasi(data)
-        if type(data) ~= "table" or data.v ~= 1 then return nil end
-        if type(data.tp) ~= "table" or type(data.tiang) ~= "table"
-            or type(data.hapus) ~= "table" then return nil end
+        if type(data) ~= "table" then return nil end
+        if data.v ~= 1 and data.v ~= 2 then return nil end
+        if type(data.tiang) ~= "table" or type(data.hapus) ~= "table" then return nil end
         local function num(v)
             return type(v) == "number" and v == v and math.abs(v) < 100000
-        end
-        local tp = {}
-        for _, e in ipairs(data.tp) do
-            if type(e) == "table" and type(e.n) == "string" and #e.n > 0 and #e.n <= 60
-                and num(e.x) and num(e.y) and num(e.z) then
-                tp[#tp + 1] = { n = e.n, x = e.x, y = e.y, z = e.z }
-            end
         end
         local tg = {}
         for _, e in ipairs(data.tiang) do
@@ -1171,15 +1502,13 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end
         local hp = {}
         for _, e in ipairs(data.hapus) do
-            if type(e) == "table" and e.t == "tp" and type(e.n) == "string" and #e.n > 0 and #e.n <= 60 then
-                hp[#hp + 1] = { t = "tp", n = e.n }
-            elseif type(e) == "table" and e.t == "tiang" and num(e.x) and num(e.y) and num(e.z) then
+            if type(e) == "table" and e.t == "tiang" and num(e.x) and num(e.y) and num(e.z) then
                 hp[#hp + 1] = { t = "tiang", x = e.x, y = e.y, z = e.z }
             end
         end
-        if #tp > 5000 or #tg > 5000 or #hp > 500 then return nil end
+        if #tg > 5000 or #hp > 500 then return nil end
         return {
-            tp = tp, tiang = tg, hapus = hp,
+            tiang = tg, hapus = hp,
             dari  = type(data.dari) == "string" and data.dari:sub(1, 60) or "?",
             waktu = tonumber(data.waktu) or 0,
         }
@@ -1187,51 +1516,21 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 
     -- ---- merge cloud -> lokal (dipakai saat unduh & sebelum unggah) ----
     local function syncMerge(cloud)
-        local nTambahTp, nUpdateTp, nTambahTg, nHapusTp, nHapusTg = 0, 0, 0, 0, 0
+        local nTambahTg, nHapusTg = 0, 0
         local hapusSebelum = #SYNC.hapus
         -- 1) gabungkan daftar hapus (union dua arah)
         for _, h in ipairs(cloud.hapus) do
-            if h.t == "tp" then
-                if not syncHapusTpAda(h.n) then SYNC.hapus[#SYNC.hapus + 1] = h end
-            else
-                if not syncHapusTiangAda(h.x, h.y, h.z) then SYNC.hapus[#SYNC.hapus + 1] = h end
-            end
+            if not syncHapusTiangAda(h.x, h.y, h.z) then SYNC.hapus[#SYNC.hapus + 1] = h end
         end
         syncPotongHapus()
         -- 2) terapkan hapusan ke data lokal
-        for i = #TP_LOKASI, 1, -1 do
-            if syncHapusTpAda(TP_LOKASI[i].nama) then
-                table.remove(TP_LOKASI, i)
-                nHapusTp += 1
-            end
-        end
         for i = #titikList, 1, -1 do
             if syncHapusTiangAda(titikList[i].X, titikList[i].Y, titikList[i].Z) then
                 table.remove(titikList, i)
                 nHapusTg += 1
             end
         end
-        -- 3) terima data cloud yang lolos daftar hapus
-        for _, c in ipairs(cloud.tp) do
-            if not syncHapusTpAda(c.n) then
-                local ketemu = false
-                for _, L in ipairs(TP_LOKASI) do
-                    if L.nama == c.n then
-                        ketemu = true
-                        if tpBulat(L.x) ~= tpBulat(c.x) or tpBulat(L.y) ~= tpBulat(c.y)
-                            or tpBulat(L.z) ~= tpBulat(c.z) then
-                            L.x, L.y, L.z = c.x, c.y, c.z   -- nama sama = posisi di-update
-                            nUpdateTp += 1
-                        end
-                        break
-                    end
-                end
-                if not ketemu and #TP_LOKASI < TP_MAX then
-                    TP_LOKASI[#TP_LOKASI + 1] = { nama = c.n, x = c.x, y = c.y, z = c.z }
-                    nTambahTp += 1
-                end
-            end
-        end
+        -- 3) terima titik cloud yang lolos daftar hapus
         for _, c in ipairs(cloud.tiang) do
             if not syncHapusTiangAda(c.x, c.y, c.z) then
                 local kembar = false
@@ -1249,27 +1548,21 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end
         -- 4) simpan & gambar ulang bila ada yang berubah
-        local berubah = nTambahTp + nUpdateTp + nTambahTg + nHapusTp + nHapusTg
-        + (#SYNC.hapus - hapusSebelum)
+        local berubah = nTambahTg + nHapusTg + (#SYNC.hapus - hapusSebelum)
         if berubah > 0 then
             titikSimpan()
-            tpTulisFile()
             titikRender()
             titikRefreshDaftar()
-            tpRefresh()
         end
         return berubah, {
-            tambahTp = nTambahTp, updateTp = nUpdateTp, tambahTg = nTambahTg,
-            hapusTp = nHapusTp, hapusTg = nHapusTg,
+            tambahTg = nTambahTg, hapusTg = nHapusTg,
         }
     end
 
     local function syncRingkas(d)
         local b = {}
         if d.tambahTg > 0 then b[#b + 1] = "+" .. d.tambahTg .. " titik" end
-        if d.tambahTp > 0 then b[#b + 1] = "+" .. d.tambahTp .. " TP" end
-        if d.updateTp > 0 then b[#b + 1] = d.updateTp .. " TP diperbarui" end
-        if d.hapusTp + d.hapusTg > 0 then b[#b + 1] = (d.hapusTp + d.hapusTg) .. " terhapus" end
+        if d.hapusTg > 0 then b[#b + 1] = d.hapusTg .. " terhapus" end
         return table.concat(b, ", ")
     end
 
@@ -1284,7 +1577,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 ["Content-Type"] = body and "application/x-www-form-urlencoded"
                 or "text/plain",
                 -- UA netral: beberapa jaringan menolak request tanpa User-Agent
-                ["User-Agent"]   = "Mozilla/5.0 (BALAP v1.3)",
+                ["User-Agent"]   = "Mozilla/5.0 (BALAP v" .. VERSI .. ")",
             },
         }
         if body then opts.Body = body end
@@ -1474,6 +1767,13 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         local kodeBaru = tostring(kodeMasuk):lower()
         kodeBaru = kodeBaru:gsub("^%s+", "")
         kodeBaru = kodeBaru:gsub("%s+$", "")
+        -- v1.4: kode angka = format jsonblob lama yang sudah mati — tolak
+        -- (dulu bisa tersambung, tapi kode diabaikan saat file dimuat ulang,
+        -- jadi hilang diam-diam setelah rejoin)
+        if kodeBaru:match("^%d+$") then
+            toast("Kode angka = format lama yang sudah mati — pakai kode balap-xxxx-xxxx", Warna.Merah)
+            return
+        end
         if #kodeBaru < 6 or #kodeBaru > 40 or not kodeBaru:match("^[a-z0-9%-]+$") then
             toast("Kode: huruf kecil/angka/tanda - (contoh: balap-7k2m-9xq4)", Warna.Kuning)
             return
@@ -1619,7 +1919,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     -- Bungkus dengan function untuk hemat local count (Luau limit 200)
     local function buildUI()
         tabBtns = {}
-        local tabLabels = {"MOVEMENT & VISUAL", "TITIK", "TP", "SYSTEM"}
+        local tabLabels = {"MOVEMENT & VISUAL", "TITIK", "ANIMASI", "SYSTEM"}
         local tabColors = {Warna.Ungu2, Warna.Kuning, Warna.Biru, Warna.AbuGelap}
         kontenTabs = {}
         for i, lbl in ipairs(tabLabels) do
@@ -1856,6 +2156,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         State.MoonOn  = false  -- Moonwalk (F)
         State.TengahOn = false -- Shiftlock Tengah (LShift/RShift)
         State.TiangOn  = true  -- Tiang Penanda (tab TITIK, default TAMPIL)
+        State.ModeTitikOn = false  -- v1.5 Mode Titik (Ctrl+klik map) default OFF
         State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
         State.PanahOn = false    -- Panah Deteksi (V)
 
@@ -1940,7 +2241,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         }, kontenSistem)
         buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollSistem)
 
-        -- [7f] KONTEN TAB 2: TITIK ------------------------------------------
+        -- [7f] KONTEN TAB 2: TITIK (v1.6 — dirampingkan: Tiang + Daftar) ----
         kontenTitik = buat("Frame", {
             Position = UDim2.new(0, 0, 0, 80),
             Size = UDim2.new(1, 0, 1, -110),
@@ -1961,14 +2262,45 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         }, kontenTitik)
         buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTitik)
 
-        buatHeader(scrollTitik, "Tiang Penanda")
-        buatToggleRow(scrollTitik, "Tampilkan Tiang", nil, "Tiang")
-        buatActionRow(scrollTitik, "📍 + TAMBAH TITIK DI SINI", Warna.Hijau, function()
-            titikTambahDiSini()
-        end)
+        -- kartu berkelompok: frame berbingkai warna + judul + baris-baris.
+        -- Return: frame "isi" tempat baris (toggle/action/stepper) ditempel.
+        local function buatKartu(judul, aksen)
+            local kartu = buat("Frame", {
+                BackgroundColor3 = Warna.AbuItem,
+                Size = UDim2.new(1, 0, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+                LayoutOrder = nextOrder(),
+            }, scrollTitik)
+            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, kartu)
+            buat("UIStroke", {Color = aksen, Thickness = 1, Transparency = 0.45}, kartu)
+            buat("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 10, 0, 4),
+                Size = UDim2.new(1, -20, 0, 18),
+                FontFace = fnt("bold"),
+                TextSize = 12,
+                TextColor3 = aksen,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Text = "▎" .. judul,
+            }, kartu)
+            local isi = buat("Frame", {
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 8, 0, 24),
+                Size = UDim2.new(1, -16, 0, 0),
+                AutomaticSize = Enum.AutomaticSize.Y,
+            }, kartu)
+            buat("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, isi)
+            buat("UIPadding", {PaddingBottom = UDim.new(0, 6)}, isi)
+            return isi
+        end
+
+        -- ===== 🟡 TIANG PENANDA (v1.6: satu-satunya kartu kontrol titik) =====
+        local kartuTiang = buatKartu("📍 Tiang Penanda", Warna.Kuning)
+        buatToggleRow(kartuTiang, "Tampilkan Tiang", nil, "Tiang")
+        buatToggleRow(kartuTiang, "📍 Mode Titik (Ctrl+klik map)", nil, "ModeTitik")
         -- HAPUS SEMUA — konfirmasi 2 langkah (rawan kepencet kalau 1 tekan)
         local armTg = 0
-        local btnHapusTgSemua = buatActionRow(scrollTitik, "🗑️ HAPUS SEMUA TITIK", Warna.Merah, function()
+        local btnHapusTgSemua = buatActionRow(kartuTiang, "🗑️ HAPUS SEMUA TITIK", Warna.Merah, function()
             local now = os.clock()
             if now - armTg > 3 then
                 armTg = now
@@ -1985,7 +2317,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 titikHapusSemua()
             end
         end)
-        buatActionRow(scrollTitik, "⇅ URUTKAN TITIK TERDEKAT", Warna.Biru, function()
+        buatActionRow(kartuTiang, "⇅ URUTKAN TITIK TERDEKAT", Warna.Biru, function()
             local _, hrp = getKarakter()
             if not hrp then toast("Karakter belum ada", Warna.Merah) return end
             if #titikList < 2 then toast("Butuh minimal 2 titik", Warna.Kuning) return end
@@ -1999,13 +2331,28 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             titikRefreshDaftar()
             toast("Titik diurutkan dari yang terdekat", Warna.Biru)
         end)
-        buatHeader(scrollTitik, "Daftar Titik")
+        buat("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 40),
+            FontFace = fnt("reg"),
+            TextSize = 10,
+            TextColor3 = Warna.AbuTeks,
+            TextWrapped = true,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = "Mode Titik ON: tahan Ctrl lalu klik permukaan map — titik "
+            .. "kepasang persis di titik yang diklik (tembok/bangunan boleh). "
+            .. "Klik di GUI diabaikan, klik langit/kosong ditolak, klik pemain diabaikan.",
+            LayoutOrder = nextOrder(),
+        }, kartuTiang)
+
+        -- ===== DAFTAR TITIK (klik item = teleport — satu-satunya TP di v1.5) =====
+        local kartuDaftar = buatKartu("Daftar Titik", Warna.AbuGelap)
         titikHolder = buat("Frame", {
             BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 0, 0),
             AutomaticSize = Enum.AutomaticSize.Y,
             LayoutOrder = nextOrder(),
-        }, scrollTitik)
+        }, kartuDaftar)
         buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, titikHolder)
         titikLabelJumlah = buat("TextLabel", {
             BackgroundTransparency = 1,
@@ -2016,335 +2363,265 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             TextXAlignment = Enum.TextXAlignment.Left,
             Text = "Total: 0 titik • klik item = teleport",
             LayoutOrder = nextOrder(),
-        }, scrollTitik)
+        }, kartuDaftar)
         -- muat data lama (file / getgenv) lalu render pertama
         titikMuat()
         titikRender()
         titikRefreshDaftar()
 
-        -- [7e] KONTEN TAB 3: TP ---------------------------------------------
-        kontenTP = buat("Frame", {
+        -- [7e] KONTEN TAB 3: ANIMASI (v1.5 — pengganti tab TP) ----------------
+        -- Port ANIMASI BUNDLE V6: 7 slot gaya gerak + 18 pack resmi Roblox.
+        -- Ganti AnimationId di script "Animate" bawaan -> restart -> hasil
+        -- DIREPLIKASI (pemain lain ikut melihat).
+        -- v1.6: tanpa config — awal load selalu master OFF, semua slot ASLI.
+        -- Logika slot ada di [7a2d]; di sini hanya UI + popup pilih gaya.
+        kontenAnim = buat("Frame", {
             Position = UDim2.new(0, 0, 0, 80),
             Size = UDim2.new(1, 0, 1, -110),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             Visible = false,
         }, panel)
-        scrollTP = buat("ScrollingFrame", {
+        scrollAnim = buat("ScrollingFrame", {
             Position = UDim2.new(0, 12, 0, 2),
             Size = UDim2.new(1, -24, 1, -6),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             ScrollBarThickness = 4,
-            ScrollBarImageColor3 = Warna.Biru,
+            ScrollBarImageColor3 = Warna.Ungu2,
             ScrollingDirection = Enum.ScrollingDirection.Y,
             CanvasSize = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        }, kontenTP)
-        buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTP)
+        }, kontenAnim)
+        buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollAnim)
 
-        -- ===== TP — TELEPORT + SIMPAN LOKASI (nama bebas, permanen) ==========
-        -- Berdiri di tempat -> ketik nama -> 💾 SIMPAN -> muncul di daftar.
-        -- Tombol TP = teleport, ✎ = rename (posisi tetap), X = hapus.
-        -- Daftar menampilkan JARAK dari posisi sekarang + bisa diurutkan
-        -- dari terdekat. Data TP (TP_MAX/TP_FILE/TP_LOKASI/tpTulisFile)
-        -- didefinisikan di [7a3] bersama modul ☁ SINKRON. Perubahan TP
-        -- otomatis masuk antrean sinkron cloud (syncTandai).
+        buatHeader(scrollAnim, "Gaya Gerak")
+        buatToggleRow(scrollAnim, "⚡ Animasi Kustom (master)", nil, "Emote")
 
-        buatHeader(scrollTP, "Teleport (TP)")
-
-        -- baris input: [nama bebas] [💾 SIMPAN]
-        local tpInputRow = buat("Frame", {
+        -- status bar: rig + jumlah slot aktif
+        local emoteStatus = buat("TextLabel", {
             BackgroundColor3 = Warna.AbuItem,
-            Size = UDim2.new(1, 0, 0, 30),
-            LayoutOrder = nextOrder(),
-        }, scrollTP)
-        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, tpInputRow)
-        local tpInput = buat("TextBox", {
-            BackgroundTransparency = 1,
-            Position = UDim2.new(0, 10, 0.5, -11),
-            Size = UDim2.new(1, -118, 0, 22),
+            Size = UDim2.new(1, 0, 0, 26),
             FontFace = fnt("med"),
-            TextSize = 12,
-            TextColor3 = Warna.TeksGelap,
-            PlaceholderText = "Nama lokasi (bebas)...",
-            PlaceholderColor3 = Warna.AbuTeks,
-            Text = "",
-            TextXAlignment = Enum.TextXAlignment.Left,
-            ClearTextOnFocus = false,
-        }, tpInputRow)
-        local tpSaveBtn = buat("TextButton", {
-            BackgroundColor3 = Warna.Hijau,
-            Position = UDim2.new(1, -100, 0.5, -11),
-            Size = UDim2.new(0, 92, 0, 22),
-            FontFace = fnt("bold"),
             TextSize = 11,
-            TextColor3 = Warna.HijauMuda,
-            Text = "SIMPAN",
-            AutoButtonColor = false,
-        }, tpInputRow)
-        buat("UICorner", {CornerRadius = UDim.new(0, 6)}, tpSaveBtn)
-
-        -- daftar lokasi (membesar otomatis, ikut scroll tab GERAK)
-        local tpList = buat("Frame", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 0),
-            AutomaticSize = Enum.AutomaticSize.Y,
+            TextColor3 = Warna.AbuTeks,
+            TextXAlignment = Enum.TextXAlignment.Center,
+            Text = "Rig: mendeteksi... • klik slot = pilih gaya",
             LayoutOrder = nextOrder(),
-        }, scrollTP)
-        buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, tpList)
+        }, scrollAnim)
+        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, emoteStatus)
 
-        local tpRenameIdx = nil   -- indeks TP yang sedang direname (✎)
-        local function jarakMeter(x, y, z)
-            local char = getChar()
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return nil end
-            local dx, dy, dz = x - hrp.Position.X, y - hrp.Position.Y, z - hrp.Position.Z
-            return math.sqrt(dx*dx + dy*dy + dz*dz)
-        end
-
-        tpRefresh = function()
-            for _, c in ipairs(tpList:GetChildren()) do
-                if c:IsA("TextButton") or c:IsA("TextLabel") or c:IsA("Frame") then c:Destroy() end
-            end
-            if #TP_LOKASI == 0 then
-                buat("TextLabel", {
-                    BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, 18),
-                    FontFace = fnt("reg"),
-                    TextSize = 11,
-                    TextColor3 = Warna.AbuTeks,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                    Text = "Belum ada lokasi — berdiri di tempat, ketik nama, tekan SIMPAN",
-                    LayoutOrder = 0,
-                }, tpList)
-                syncRefreshKartu()
-                return
-            end
-            for i, L in ipairs(TP_LOKASI) do
-                if i == tpRenameIdx then
-                    -- ===== MODE RENAME: [nama baru] [SIMPAN] [✕] =====
-                    local row = buat("Frame", {
-                        BackgroundColor3 = Warna.BiruMuda,
-                        Size = UDim2.new(1, 0, 0, 28),
-                        LayoutOrder = i,
-                    }, tpList)
-                    buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
-                    local box = buat("TextBox", {
-                        BackgroundColor3 = Warna.Putih,
-                        Position = UDim2.new(0, 8, 0.5, -10),
-                        Size = UDim2.new(1, -128, 0, 20),
-                        FontFace = fnt("med"),
-                        TextSize = 11,
-                        TextColor3 = Warna.TeksGelap,
-                        Text = L.nama,
-                        ClearTextOnFocus = false,
-                        TextXAlignment = Enum.TextXAlignment.Left,
-                    }, row)
-                    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, box)
-                    local btnOk = buat("TextButton", {
-                        BackgroundColor3 = Warna.Hijau,
-                        Position = UDim2.new(1, -92, 0.5, -10),
-                        Size = UDim2.new(0, 54, 0, 20),
-                        FontFace = fnt("bold"),
-                        TextSize = 10,
-                        TextColor3 = Warna.HijauMuda,
-                        Text = "SIMPAN",
-                        AutoButtonColor = false,
-                    }, row)
-                    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnOk)
-                    local btnNo = buat("TextButton", {
-                        BackgroundColor3 = Warna.Merah,
-                        Position = UDim2.new(1, -32, 0.5, -10),
-                        Size = UDim2.new(0, 26, 0, 20),
-                        FontFace = fnt("bold"),
-                        TextSize = 11,
-                        TextColor3 = Warna.Putih,
-                        Text = "✕",
-                        AutoButtonColor = false,
-                    }, row)
-                    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnNo)
-                    btnOk.MouseButton1Click:Connect(function()
-                        local namaBaru = tostring(box.Text):gsub("^%s+", ""):gsub("%s+$", "")
-                        if #namaBaru == 0 then toast("Tulis dulu nama barunya", Warna.Kuning) return end
-                        if namaBaru ~= L.nama then
-                            for j, O in ipairs(TP_LOKASI) do
-                                if j ~= i and O.nama == namaBaru then
-                                    toast("Nama '" .. namaBaru .. "' sudah dipakai", Warna.Kuning)
-                                    return
-                                end
-                            end
-                        end
-                        local lama = L.nama
-                        L.nama = namaBaru          -- posisi (x,y,z) TETAP
-                        tpRenameIdx = nil
-                        if namaBaru ~= lama then
-                            syncCatatHapusTp(lama)        -- nama lama = dihapus di cloud
-                            syncBuangHapusTp(namaBaru)    -- nama baru = tambahan baru
-                            tpTulisFile()
-                            syncTandai()
-                        else
-                            tpTulisFile()
-                        end
-                        tpRefresh()
-                        toast("Diubah: " .. lama .. " → " .. namaBaru, Warna.Hijau)
-                    end)
-                    btnNo.MouseButton1Click:Connect(function()
-                        tpRenameIdx = nil
-                        tpRefresh()
-                    end)
-                else
-                    local jarak = jarakMeter(L.x, L.y, L.z)
-                    local row = buat("Frame", {
-                        BackgroundColor3 = Warna.AbuItem,
-                        Size = UDim2.new(1, 0, 0, 28),
-                        LayoutOrder = i,
-                    }, tpList)
-                    buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
-                    buat("TextLabel", {
-                        BackgroundTransparency = 1,
-                        Position = UDim2.new(0, 10, 0, 0),
-                        Size = UDim2.new(1, -150, 1, 0),
-                        FontFace = fnt("med"),
-                        TextSize = 11,
-                        TextColor3 = Warna.TeksGelap,
-                        TextXAlignment = Enum.TextXAlignment.Left,
-                        TextTruncate = Enum.TextTruncate.AtEnd,
-                        Text = L.nama .. (jarak and ("  (" .. fmtJarak(jarak) .. ")") or ""),
-                    }, row)
-                    local btnRen = buat("TextButton", {
-                        BackgroundColor3 = Warna.Card2,
-                        Position = UDim2.new(1, -94, 0.5, -10),
-                        Size = UDim2.new(0, 22, 0, 20),
-                        FontFace = fnt("bold"),
-                        TextSize = 12,
-                        TextColor3 = Warna.Putih,
-                        Text = "✎",
-                        AutoButtonColor = false,
-                    }, row)
-                    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnRen)
-                    local btnTp = buat("TextButton", {
-                        BackgroundColor3 = Warna.Biru,
-                        Position = UDim2.new(1, -68, 0.5, -10),
-                        Size = UDim2.new(0, 40, 0, 20),
-                        FontFace = fnt("bold"),
-                        TextSize = 11,
-                        TextColor3 = Warna.Putih,
-                        Text = "TP",
-                        AutoButtonColor = false,
-                    }, row)
-                    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnTp)
-                    local btnHps = buat("TextButton", {
-                        BackgroundColor3 = Warna.Merah,
-                        Position = UDim2.new(1, -32, 0.5, -10),
-                        Size = UDim2.new(0, 26, 0, 20),
-                        FontFace = fnt("bold"),
-                        TextSize = 11,
-                        TextColor3 = Warna.Putih,
-                        Text = "X",
-                        AutoButtonColor = false,
-                    }, row)
-                    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, btnHps)
-                    btnRen.MouseButton1Click:Connect(function()
-                        tpRenameIdx = i
-                        tpRefresh()
-                    end)
-                    btnTp.MouseButton1Click:Connect(function()
-                        local _, hrp = getKarakter()
-                        if not hrp then toast("TP gagal — karakter belum ada", Warna.Merah) return end
-                        hrp.CFrame = CFrame.new(L.x, L.y + 3, L.z)
-                        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                        print("[BALAP-TP] teleport ke '" .. L.nama .. "'")
-                        toast("TP: " .. L.nama, Warna.Biru)
-                    end)
-                    btnHps.MouseButton1Click:Connect(function()
-                        syncCatatHapusTp(L.nama)   -- tombstone: tidak bangkit dari cloud
-                        table.remove(TP_LOKASI, i)
-                        tpTulisFile()
-                        tpRefresh()
-                        syncTandai()
-                        print("[BALAP-TP] hapus '" .. L.nama .. "' (sisa " .. #TP_LOKASI .. ")")
-                        toast("Hapus: " .. L.nama, Warna.Merah)
-                    end)
-                end
-            end
-            syncRefreshKartu()
-        end
-
-        tpSaveBtn.MouseButton1Click:Connect(function()
-            local nama = tostring(tpInput.Text):gsub("^%s+", ""):gsub("%s+$", "")
-            if #nama == 0 then toast("Tulis dulu nama lokasinya", Warna.Kuning) return end
-            local _, hrp = getKarakter()
-            if not hrp then toast("Karakter belum ada — coba lagi", Warna.Merah) return end
-            local p = hrp.Position
-            for _, L in ipairs(TP_LOKASI) do
-                if L.nama == nama then                    -- nama sama = update posisi
-                    L.x, L.y, L.z = p.X, p.Y, p.Z
-                    tpTulisFile()
-                    tpRefresh()
-                    tpInput.Text = ""
-                    syncTandai()
-                    print("[BALAP-TP] update '" .. nama .. "' (total " .. #TP_LOKASI .. ")")
-                    toast("Diperbarui: " .. nama, Warna.Hijau)
-                    return
-                end
-            end
-            if #TP_LOKASI >= TP_MAX then toast("Penuh (max " .. TP_MAX .. " lokasi)", Warna.Kuning) return end
-            syncBuangHapusTp(nama)   -- dipasang lagi -> hapus tombstone lamanya
-            TP_LOKASI[#TP_LOKASI + 1] = { nama = nama, x = p.X, y = p.Y, z = p.Z }
-            tpTulisFile()
-            tpRefresh()
-            tpInput.Text = ""
-            syncTandai()
-            print("[BALAP-TP] simpan '" .. nama .. "' (total " .. #TP_LOKASI .. ")"
-            .. (tpBisaFile and " -> file" or " -> SESI SAJA (executor tanpa writefile)"))
-            toast("Tersimpan: " .. nama, Warna.Hijau)
-        end)
-
-        tpRefresh()
-
-        -- ⇅ urutkan TP dari terdekat + hapus semua TP (konfirmasi 2 langkah)
-        local armTp = 0
-        buatActionRow(scrollTP, "⇅ URUTKAN TP TERDEKAT", Warna.Biru, function()
-            local _, hrp = getKarakter()
-            if not hrp then toast("Karakter belum ada", Warna.Merah) return end
-            if #TP_LOKASI < 2 then toast("Butuh minimal 2 TP", Warna.Kuning) return end
-            table.sort(TP_LOKASI, function(a, b)
-                local da = (a.x - hrp.Position.X)^2 + (a.y - hrp.Position.Y)^2 + (a.z - hrp.Position.Z)^2
-                local db = (b.x - hrp.Position.X)^2 + (b.y - hrp.Position.Y)^2 + (b.z - hrp.Position.Z)^2
-                return da < db
+        -- grid 3x3 slot gaya (klik = buka popup pilih gaya)
+        local emoteSubs = {}
+        local emoteGrid = buat("Frame", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 156),
+            LayoutOrder = nextOrder(),
+        }, scrollAnim)
+        buat("UIGridLayout", {
+            CellSize = UDim2.new(1 / 3, -4, 0, 48),
+            CellPadding = UDim2.new(0, 4, 0, 4),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+        }, emoteGrid)
+        for i, s in ipairs(SLOT_LIST) do
+            local b = buat("TextButton", {
+                BackgroundColor3 = Warna.AbuItem, BorderSizePixel = 0,
+                Text = "", AutoButtonColor = false, LayoutOrder = i,
+            }, emoteGrid)
+            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, b)
+            buat("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 0, 0, 6),
+                Size = UDim2.new(1, 0, 0, 16),
+                FontFace = fnt("bold"), TextSize = 12,
+                TextColor3 = Warna.TeksGelap, Text = s.t,
+            }, b)
+            local sub = buat("TextLabel", {
+                BackgroundTransparency = 1,
+                Position = UDim2.new(0, 4, 0, 24),
+                Size = UDim2.new(1, -8, 0, 16),
+                FontFace = fnt("reg"), TextSize = 10, TextScaled = true,
+                TextColor3 = Warna.AbuTeks, Text = "ASLI",
+            }, b)
+            buat("UITextSizeConstraint", {MaxTextSize = 10}, sub)
+            efekTombol(b, 1.05)
+            local skey = s.k
+            b.MouseButton1Click:Connect(function()
+                ripple(b, Warna.Putih)
+                if emoteBukaChooser then emoteBukaChooser(skey) end
             end)
-            tpTulisFile()
-            tpRefresh()
-            toast("TP diurutkan dari yang terdekat", Warna.Biru)
-        end)
-        local btnHapusTpSemua = buatActionRow(scrollTP, "🗑️ HAPUS SEMUA TP", Warna.Merah, function()
+            emoteSubs[s.k] = sub
+        end
+        emoteRefreshGrid = function()
+            for _, s in ipairs(SLOT_LIST) do
+                local sub = emoteSubs[s.k]
+                if sub then
+                    local id, nama = emoteResolveSlot(s.k)
+                    if EMOTE.master and id then
+                        sub.Text = tostring(nama)
+                        sub.TextColor3 = Warna.Ungu
+                    else
+                        sub.Text = "ASLI"
+                        sub.TextColor3 = Warna.AbuTeks
+                    end
+                end
+            end
+            local n = emoteJumlahAktif()
+            emoteStatus.Text = "Rig: " .. tostring(EMOTE.rig) .. " • " .. n .. "/7 slot gaya baru • "
+            .. (EMOTE.master and "master ON" or "master OFF")
+        end
+
+        -- RESET SEMUA — konfirmasi 2 langkah
+        local armResetEmote = 0
+        local btnResetEmote = buatActionRow(scrollAnim, "↺ RESET SEMUA → ANIMASI ASLI", Warna.Merah, function()
             local now = os.clock()
-            if now - armTp > 3 then
-                armTp = now
-                btnHapusTpSemua.Text = "⚠️ YAKIN? TEKAN LAGI (3 dtk)"
-                toast("Tekan LAGI dalam 3 dtk — semua TP terhapus", Warna.Merah)
+            if now - armResetEmote > 3 then
+                armResetEmote = now
+                btnResetEmote.Text = "⚠️ YAKIN? TEKAN LAGI"
+                toast("Semua slot balik ke animasi ASLI — tekan lagi", Warna.Kuning)
                 task.delay(3, function()
-                    if btnHapusTpSemua.Parent and btnHapusTpSemua.Text ~= "🗑️ HAPUS SEMUA TP" then
-                        btnHapusTpSemua.Text = "🗑️ HAPUS SEMUA TP"
+                    if btnResetEmote.Parent and btnResetEmote.Text ~= "↺ RESET SEMUA → ANIMASI ASLI" then
+                        btnResetEmote.Text = "↺ RESET SEMUA → ANIMASI ASLI"
                     end
                 end)
             else
-                armTp = 0
-                btnHapusTpSemua.Text = "🗑️ HAPUS SEMUA TP"
-                if #TP_LOKASI == 0 then toast("Belum ada TP", Warna.Kuning) return end
-                for _, L in ipairs(TP_LOKASI) do syncCatatHapusTp(L.nama) end
-                table.clear(TP_LOKASI)
-                tpTulisFile()
-                tpRefresh()
-                syncTandai()
-                toast("Semua TP dihapus", Warna.Merah)
+                armResetEmote = 0
+                btnResetEmote.Text = "↺ RESET SEMUA → ANIMASI ASLI"
+                for _, s in ipairs(SLOT_LIST) do
+                    EMOTE.preset[s.k] = nil
+                end
+                emoteSimpan()
+                emoteTerapkanSemua()
+                if emoteRefreshGrid then emoteRefreshGrid() end
+                toast("Semua slot balik ke animasi ASLI", Warna.Merah)
             end
         end)
 
-        -- urutan kontenTabs = urutan tab: 1 MOVEMENT & VISUAL • 2 TITIK • 3 TP • 4 SYSTEM
+        -- catatan
+        buat("TextLabel", {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 0, 40),
+            FontFace = fnt("reg"), TextSize = 10,
+            TextColor3 = Warna.AbuTeks, TextWrapped = true,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = "Gaya jalan/lari/dll terlihat juga oleh pemain lain (direplikasi server). "
+            .. "18 pack milik Roblox (Creator.Id = 1) — bisa dipakai di game mana pun tanpa "
+            .. "membeli. Gaya otomatis dipasang lagi setelah mati/respawn. v1.6: awal load "
+            .. "selalu OFF + semua slot ASLI — nyalakan ⚡ master dulu, gaya pilihanmu "
+            .. "aktif selama sesi saja (script dijalankan ulang = balik default).",
+            LayoutOrder = nextOrder(),
+        }, scrollAnim)
+
+        -- ===== POPUP PILIH GAYA (overlay di panel, di atas semua tab) =====
+        local chooserBackdrop = buat("TextButton", {
+            Visible = false, ZIndex = 60,
+            BackgroundColor3 = Warna.Hitam, BackgroundTransparency = 0.35,
+            Size = UDim2.new(1, 0, 1, 0), Text = "", AutoButtonColor = false,
+        }, panel)
+        local chooser = buat("Frame", {
+            Visible = false, ZIndex = 61,
+            AnchorPoint = Vector2.new(0.5, 0.5),
+            Position = UDim2.new(0.5, 0, 0.5, 0),
+            Size = UDim2.new(1, -30, 0, 330),
+            BackgroundColor3 = Warna.Hitam2, BorderSizePixel = 0,
+        }, panel)
+        buat("UICorner", {CornerRadius = UDim.new(0, 12)}, chooser)
+        buat("UIStroke", {Color = Warna.Ungu2, Thickness = 2}, chooser)
+        local chooserJudul = buat("TextLabel", {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0, 12, 0, 8),
+            Size = UDim2.new(1, -64, 0, 18),
+            FontFace = fnt("bold"), TextSize = 13,
+            TextColor3 = Warna.Putih,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = "PILIH GAYA",
+        }, chooser)
+        local chooserTutupBtn = buat("TextButton", {
+            Position = UDim2.new(1, -34, 0, 6),
+            Size = UDim2.fromOffset(28, 22),
+            BackgroundColor3 = Warna.Merah,
+            FontFace = fnt("bold"), TextSize = 12,
+            TextColor3 = Warna.Putih, Text = "✕", AutoButtonColor = false,
+        }, chooser)
+        buat("UICorner", {CornerRadius = UDim.new(0, 6)}, chooserTutupBtn)
+        local chooserList = buat("ScrollingFrame", {
+            Position = UDim2.new(0, 10, 0, 30),
+            Size = UDim2.new(1, -20, 1, -40),
+            BackgroundTransparency = 1, BorderSizePixel = 0,
+            ScrollBarThickness = 3, ScrollBarImageColor3 = Warna.Ungu2,
+            ScrollingDirection = Enum.ScrollingDirection.Y,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        }, chooser)
+        buat("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, chooserList)
+        local chooserOrder = 0
+        local function chooserNext() chooserOrder = chooserOrder + 1 return chooserOrder end
+
+        emoteBukaChooser = function(skey)
+            if not SLOT_FOLDERS[skey] then return end
+            local rig = EMOTE.rig
+            local aktifPi = EMOTE.preset[skey] or 0
+            chooserJudul.Text = "GAYA " .. slotLabel(skey) .. "  (rig " .. rig .. ")"
+            chooserOrder = 0
+            for _, c in ipairs(chooserList:GetChildren()) do
+                if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end
+            end
+            local function tambahBar(teks, warna, bisa, cb)
+                local br = buat("TextButton", {
+                    Size = UDim2.new(1, -6, 0, 30),
+                    BackgroundColor3 = bisa and Warna.Card2 or Warna.Hitam,
+                    Text = "", AutoButtonColor = false,
+                    LayoutOrder = chooserNext(),
+                }, chooserList)
+                buat("UICorner", {CornerRadius = UDim.new(0, 8)}, br)
+                buat("TextLabel", {
+                    BackgroundTransparency = 1,
+                    Position = UDim2.new(0, 10, 0, 0),
+                    Size = UDim2.new(1, -20, 1, 0),
+                    FontFace = fnt("med"), TextSize = 12,
+                    TextColor3 = warna,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
+                    Text = teks,
+                }, br)
+                br.MouseButton1Click:Connect(function()
+                    if bisa then cb() else toast("Preset ini tidak untuk rig " .. rig, Warna.Kuning) end
+                end)
+            end
+            tambahBar("ASLI — animasi default game" .. (aktifPi == 0 and "   ✓" or ""),
+                Warna.Putih, true, function()
+                emotePilihPreset(skey, 0)
+                chooserBackdrop.Visible = false; chooser.Visible = false
+            end)
+            for pi, p in ipairs(EMOTE_PRESET[skey] or {}) do
+                local id = (rig == "R6") and p.i6 or p.i15
+                local tagRig = (p.i15 and p.i6 and "(R15+R6)") or (p.i15 and "(R15)") or "(R6)"
+                local teks = p.n .. "  " .. tagRig
+                if aktifPi == pi then teks = teks .. "   ✓" end
+                if id then
+                    tambahBar(teks, Warna.Ungu2, true, function()
+                        emotePilihPreset(skey, pi)
+                        chooserBackdrop.Visible = false; chooser.Visible = false
+                    end)
+                else
+                    tambahBar(teks, Warna.AbuGelap, false, nil)
+                end
+            end
+            chooserBackdrop.Visible = true
+            chooser.Visible = true
+        end
+        chooserBackdrop.MouseButton1Click:Connect(function()
+            chooserBackdrop.Visible = false
+            chooser.Visible = false
+        end)
+        chooserTutupBtn.MouseButton1Click:Connect(function()
+            chooserBackdrop.Visible = false
+            chooser.Visible = false
+        end)
+
+        -- urutan kontenTabs = urutan tab: 1 MOVEMENT & VISUAL • 2 TITIK • 3 ANIMASI • 4 SYSTEM
         table.insert(kontenTabs, kontenTitik)
-        table.insert(kontenTabs, kontenTP)
+        table.insert(kontenTabs, kontenAnim)
         table.insert(kontenTabs, kontenSistem)
 
         -- ===== kartu ☁ SINKRON — status sinkronisasi cloud (pindahan dari tab TITIK ke tab SYSTEM) =====
@@ -2363,7 +2640,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             TextSize = 12,
             TextColor3 = Warna.BiruMuda,
             TextXAlignment = Enum.TextXAlignment.Left,
-            Text = "☁ SINKRON — TP + titik lintas device",
+            Text = "☁ SINKRON — titik lintas device",
         }, kartuSync)
         local syncDot = buat("Frame", {
             AnchorPoint = Vector2.new(1, 0),
@@ -2589,33 +2866,76 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         syncRefreshKartu()
 
         buatHeader(scrollSistem, "Info")
-        local infoVersi = buat("TextLabel", {
+        local infoUser = buat("TextLabel", {
             BackgroundColor3 = Warna.AbuItem,
             Size = UDim2.new(1, 0, 0, 0),
-            AutomaticSize = Enum.AutomaticSize.Y, -- tinggi ikut isi teks (anti teks keluar frame)
+            AutomaticSize = Enum.AutomaticSize.Y,
             FontFace = fnt("med"),
             TextSize = 12,
             TextColor3 = Warna.TeksGelap,
             TextXAlignment = Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Top,
             TextWrapped = true,
-            Text = "⚡ BALAP v1.3\n"
-            .. "TAB 1 MOVEMENT & VISUAL: Speed (Q) • Jump (J)\n"
-            .. "Shiftlock (C) • Shiftlock Tengah (LShift) • Moonwalk (F, S = OFF)\n"
-            .. "Hide (R) • Hide Atas • Cahaya Auto (T) • Lightweight\n"
-            .. "Dinding Batas (X) • Panah Deteksi (V): ↑ merah = ada pemain\n"
-            .. "di depan badan, ↓ merah = di belakang (100 stud tiap arah,\n"
-            .. "samping 45° bebas = hijau)\n"
-            .. "TAB 2 TITIK: tiang checkpoint + daftar (murni tombol GUI)\n"
-            .. "TAB 3 TP: simpan/rename/hapus/urut terdekat\n"
-            .. "TAB 4 SYSTEM: ☁ SINKRON — kode di kartu SYSTEM,\n"
-            .. "salin ke device lain (MASUKKAN KODE untuk nyambung)\n"
-            .. "Rejoin (K×2) • Hapus Script\n"
-            .. "Shift/Moonwalk/Tengah otomatis OFF saat mati/respawn",
+            Text = "⚡ BALAP v" .. VERSI .. "\n"
+            .. "👤 User: " .. tostring(LocalPlayer.Name) .. " (" .. tostring(LocalPlayer.DisplayName) .. ")\n"
+            .. "💻 Device: " .. (UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+                and "HP" or "PC"),
             LayoutOrder = nextOrder(),
         }, scrollSistem)
-        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoVersi)
-        buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoVersi)
+        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoUser)
+        buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoUser)
+        -- nama executor: cek global executor yang umum (tidak semua punya)
+        do
+            local executorTeks = "tidak dikenal"
+            pcall(function()
+                if type(identifyexecutor) == "function" then
+                    executorTeks = tostring(identifyexecutor())
+                elseif type(getexecutorname) == "function" then
+                    executorTeks = tostring(getexecutorname())
+                end
+            end)
+            infoUser.Text = infoUser.Text .. "\n🔧 Executor: " .. executorTeks
+        end
+        -- nama map: via MarketplaceService (bisa butuh waktu / gagal offline)
+        task.spawn(function()
+            local namaMap = tostring(game.Name)
+            pcall(function()
+                local info = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId)
+                if info and info.Name and #info.Name > 0 then namaMap = info.Name end
+            end)
+            if infoUser and infoUser.Parent then
+                infoUser.Text = infoUser.Text
+                .. "\n🗺️ Map: " .. namaMap .. " (" .. tostring(game.PlaceId) .. ")"
+            end
+        end)
+        -- FPS live: dihitung dari RenderStepped, angka bergerak tiap 0.5 dtk
+        local infoFps = buat("TextLabel", {
+            BackgroundColor3 = Warna.AbuItem,
+            Size = UDim2.new(1, 0, 0, 26),
+            FontFace = fnt("med"),
+            TextSize = 12,
+            TextColor3 = Warna.TeksGelap,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Text = "📊 FPS: mengukur...",
+            LayoutOrder = nextOrder(),
+        }, scrollSistem)
+        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, infoFps)
+        buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8)}, infoFps)
+        do
+            local frames, cekTerakhir = 0, os.clock()
+            catat(RunService.RenderStepped:Connect(function()
+                frames += 1
+                local now = os.clock()
+                if now - cekTerakhir >= 0.5 then
+                    local fps = math.floor(frames / (now - cekTerakhir) + 0.5)
+                    frames = 0
+                    cekTerakhir = now
+                    if infoFps and infoFps.Parent then
+                        infoFps.Text = "📊 FPS: " .. fps
+                    end
+                end
+            end))
+        end
         buatHeader(scrollSistem, "Aksi")
         buatActionRow(scrollSistem, "🔁 REJOIN SERVER  [K×2]", Warna.Biru, function() rejoin() end)
         buatActionRow(scrollSistem, "🗑️ HAPUS SCRIPT", Warna.Merah, function()
@@ -2685,7 +3005,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             Position = UDim2.fromOffset(360, 0),
             Size = UDim2.fromOffset(1600, 13),
             FontFace = fnt("med"),
-            Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (nilai ON 17.25-21.25) • J Jump (51.25/65.25) • C Shift • LShift Tengah • F Moonwalk • V Panah   ✦   📍 TAB TITIK: tiang + daftar titik   ✦   🌍 TAB TP: simpan/rename/urut terdekat   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ☁ kode sinkron di tab SYSTEM   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+            Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (OFF 17.10, ON 17.25-35) • J Jump (51.25/65.25) • C Shift • LShift Tengah • F Moonwalk • V Panah   ✦   📍 TAB TITIK: Mode Titik = Ctrl+klik map • klik titik di Daftar Titik = TP   ✦   🎬 TAB ANIMASI: 7 slot gaya • 18 pack Roblox (awal OFF default)   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ☁ kode sinkron (titik) di tab SYSTEM   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
             TextColor3 = Warna.AbuGelap,
             TextSize = 10,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -3269,6 +3589,28 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 if titikFolder then titikFolder:Destroy() titikFolder = nil end
             end
             syncNotify("Tiang", v, silent, "Tampilkan Tiang")
+        end
+
+        -- MODE TITIK (v1.5) — gerbang Ctrl+klik: toggle ON dulu di kartu
+        -- Tiang, baru Ctrl+klik permukaan map menaruh titik (lihat [21c])
+        Setters.ModeTitik = function(v, silent)
+            if State.ModeTitikOn == v then return end
+            State.ModeTitikOn = v
+            local sw = Switches["ModeTitik"]
+            if sw then sw.set(v) end
+            if not silent then
+                if v then
+                    toast("📍 Mode Titik ON — tahan Ctrl lalu klik permukaan map", Warna.Hijau)
+                else
+                    toast("📍 Mode Titik OFF", Warna.Kuning)
+                end
+            end
+        end
+
+        -- ⚡ ANIMASI KUSTOM (v1.5, tab ANIMASI) — master semua slot gaya.
+        -- emoteSetMaster mengurus state, apply, switch & toast sendiri.
+        Setters.Emote = function(v, silent)
+            emoteSetMaster(v, silent)
         end
 
         -- HIDE PLAYER + KENDARAAN
@@ -3876,6 +4218,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             pcall(setFeature, "Light", false, true)
             pcall(setFeature, "HideAtas", false, true)
             pcall(setFeature, "Panah", false, true)
+            pcall(setFeature, "Emote", false, true)      -- v1.5: balik ke animasi asli
+            pcall(setFeature, "ModeTitik", false, true)  -- v1.5
             -- 2) Unbind semua RenderStep binding (selalu)
             pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
             pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
@@ -3982,9 +4326,12 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         local function initCharacter(char)
             if State.Removed then return end
             if initedChar == char then return end
-            initedChar = char
             local hum = char:WaitForChild("Humanoid", 10)
             if not hum then return end
+            -- v1.4: penanda respawn dipasang SETELAH Humanoid ketemu —
+            -- dulu bisa terlewat (fitur tidak dipasang ulang) saat
+            -- Humanoid lambat muncul di map baru yang berat
+            initedChar = char
             updateJumpLabel()
             -- Shiftlock, Moonwalk & Shiftlock Tengah OTOMATIS OFF saat mati/
             -- respawn. Dua lapis: langsung saat humanoid mati (Died) +
@@ -4074,7 +4421,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             if gameProcessed then return end
             if State.Removed then return end
             -- jangan picu hotkey saat sedang mengetik di kotak teks
-            -- (G/Q dst. tidak nyasar saat isi nama TP / stepper / kode sync)
+            -- (G/Q dst. tidak nyasar saat isi stepper / kode sync)
             if UserInputService:GetFocusedTextBox() then return end
             if input.KeyCode == CFG.TOGGLE_KEY then
                 togglePanel()
@@ -4108,6 +4455,53 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end))
 
+        -- [21c] MODE TITIK (v1.5) — Ctrl+klik permukaan map = titik di situ.
+        -- Gerbang: toggle "Mode Titik" di kartu Tiang harus ON dulu.
+        -- Klik di atas panel GUI diabaikan (dicek manual — klik di Frame
+        -- polos tidak men-set gameProcessed); klik langit/kosong ditolak;
+        -- klik ke karakter pemain (sendiri/orang lain) diabaikan.
+        catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if not State.ModeTitikOn or State.Removed then return end
+            if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+            if UserInputService:GetFocusedTextBox() then return end
+            if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+                or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
+                return
+            end
+            local lok = UserInputService:GetMouseLocation()
+            if root.Visible then
+                local p, s = panel.AbsolutePosition, panel.AbsoluteSize
+                if lok.X >= p.X and lok.X <= p.X + s.X
+                    and lok.Y >= p.Y and lok.Y <= p.Y + s.Y then
+                    return
+                end
+            end
+            if gameProcessed then return end            -- klik di tombol/GUI
+            local cam = Workspace.CurrentCamera
+            if not cam then return end
+            local ray = cam:ViewportPointToRay(lok.X, lok.Y)
+            local params = RaycastParams.new()
+            params.FilterType = Enum.RaycastFilterType.Exclude
+            local exclude = {}
+            if titikFolder then exclude[#exclude + 1] = titikFolder end
+            local char = LocalPlayer.Character
+            if char then exclude[#exclude + 1] = char end
+            for _, pl in ipairs(Players:GetPlayers()) do
+                if pl ~= LocalPlayer and pl.Character then
+                    exclude[#exclude + 1] = pl.Character
+                end
+            end
+            params.FilterDescendantsInstances = exclude
+            local hit = Workspace:Raycast(ray.Origin, ray.Direction * 5000, params)
+            if not hit then
+                toast("Klik ke permukaan map — langit/kosong tidak dihitung", Warna.Kuning)
+                return
+            end
+            -- offset tipis ke arah keluar permukaan (normal) biar tiang
+            -- tidak nyangkut setengah ke dalam tembok/bangunan
+            titikTambahDiPosisi(hit.Position + hit.Normal * 0.3)
+        end))
+
         diagSet("keybind OK — finalisasi...")
         -- [21b] MESIN ☁ SINKRON — mulai setelah semua siap
         syncMulai()
@@ -4122,8 +4516,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end)
         print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | TITIK | TP | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • V panah • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync di tab SYSTEM")
-        diagSet("BALAP v1.3 SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+        print("[BALAP] MOVE&VISUAL | TITIK | ANIMASI | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • V panah • R hide • T cahaya • X dinding • K×2 rejoin • ☁ sync (titik) di tab SYSTEM • Ctrl+klik titik saat Mode Titik ON")
+        diagSet("BALAP v" .. VERSI .. " SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
                 pcall(function()
@@ -4147,7 +4541,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 end, function(e)
     local teks = tostring(e)
     print("==================================================")
-    print("[BALAP v1.3] ERROR SAAT LOAD — kirim teks ini ke dev:")
+    print("[BALAP v" .. VERSI .. "] ERROR SAAT LOAD — kirim teks ini ke dev:")
     print(teks)
     pcall(function() print(debug.traceback("", 2)) end)
     print("==================================================")
@@ -4156,5 +4550,5 @@ end, function(e)
     end)
 end)
 if not __BALAP_LOAD_OK__ then
-    warn("[BALAP v1.3] Script GAGAL load — banner MERAH di layar berisi errornya.")
+    warn("[BALAP v" .. VERSI .. "] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
