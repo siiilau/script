@@ -2,8 +2,8 @@
 --  BALAP V1.0 — TEMA: SILAU NEON (ungu/biru LED) — LOCAL ONLY
 --
 --  Ringkasan fitur aktif:
---    • Fitur titik dan teleport dihapus; semua fitur aktif hanya untuk pengguna lokal.
---    • Tab: MOVEMENT & VISUAL, ANIMASI, dan SYSTEM.
+--    • Tab TITIK lokal: simpan titik, titik kecil, Ctrl + klik kiri, teleport lokal.
+--    • Tab: MOVEMENT & VISUAL, ANIMASI, EMOTE, TITIK, dan SYSTEM.
 --
 --  Keybind:
 --    G = buka/tutup GUI • Q = Speed • J = JumpPower • C = Shiftlock Mobile
@@ -303,6 +303,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     local kontenMove, scrollMove
     local kontenAnim, scrollAnim
     local kontenEmote, scrollEmote
+    local kontenTitik, scrollTitik
     local kontenSistem, scrollSistem
     setFeature = function(name, v, silent)
         local f = Setters[name]
@@ -313,6 +314,141 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         local c = getChar()
         return c and c:FindFirstChildOfClass("Humanoid")
     end
+
+    -- [5a] TITIK LOKAL --------------------------------------------------
+    -- Semua titik kecil hanya terlihat di sisi pengguna sendiri.
+    local TITIK_FILE = "BALAP_TITIK.json"
+    local TITIK = { poin = {}, aktif = false, tampilTitik = true, folder = nil }
+    local titikRenderUI = function() end
+    local titikStatusUI = function() end
+
+    local function titikFolder()
+        if TITIK.folder and TITIK.folder.Parent then return TITIK.folder end
+        local f = Instance.new("Folder")
+        f.Name = "BALAP_TITIK_MARKERS"
+        f.Parent = Workspace
+        TITIK.folder = f
+        return f
+    end
+    local function titikSimpan()
+        local data = {}
+        for _, p in ipairs(TITIK.poin) do
+            data[#data + 1] = {name = p.name, x = p.pos.X, y = p.pos.Y, z = p.pos.Z, nx = p.normal.X, ny = p.normal.Y, nz = p.normal.Z}
+        end
+        getgenv().BALAP_TITIK_DATA = data
+        if type(writefile) == "function" then
+            pcall(function() writefile(TITIK_FILE, HttpService:JSONEncode(data)) end)
+        end
+    end
+    local function titikMuat()
+        local data
+        if type(readfile) == "function" and type(isfile) == "function" then
+            pcall(function()
+                if isfile(TITIK_FILE) then data = HttpService:JSONDecode(readfile(TITIK_FILE)) end
+            end)
+        end
+        if type(data) ~= "table" then data = rawget(getgenv(), "BALAP_TITIK_DATA") end
+        if type(data) == "table" then
+            for _, v in ipairs(data) do
+                local x, y, z = tonumber(v.x), tonumber(v.y), tonumber(v.z)
+                local nx, ny, nz = tonumber(v.nx) or 0, tonumber(v.ny) or 1, tonumber(v.nz) or 0
+                if x and y and z then
+                    TITIK.poin[#TITIK.poin + 1] = {
+                        name = tostring(v.name or ("Titik " .. (#TITIK.poin + 1))),
+                        pos = Vector3.new(x, y, z),
+                        normal = Vector3.new(nx, ny, nz),
+                    }
+                end
+            end
+        end
+    end
+    local function titikBersihkanDot()
+        if TITIK.folder then
+            for _, obj in ipairs(TITIK.folder:GetChildren()) do obj:Destroy() end
+        end
+    end
+    local function titikBuatDot(p, nomor)
+        local folder = titikFolder()
+        local dot = Instance.new("Part")
+        dot.Name = "Titik_" .. tostring(nomor)
+        dot.Shape = Enum.PartType.Ball
+        dot.Anchored = true
+        dot.CanCollide = false
+        dot.CanTouch = false
+        dot.CanQuery = false
+        dot.CastShadow = false
+        dot.Material = Enum.Material.Neon
+        dot.Color = Warna.Ungu2
+        dot.Size = Vector3.new(0.22, 0.22, 0.22)
+        local normal = p.normal or Vector3.new(0, 1, 0)
+        if normal.Magnitude < 0.01 then normal = Vector3.new(0, 1, 0) end
+        dot.Position = p.pos + normal.Unit * 0.025
+        dot.Parent = folder
+    end
+    local function titikRefreshDot()
+        titikBersihkanDot()
+        if not TITIK.tampilTitik then return end
+        for i, p in ipairs(TITIK.poin) do titikBuatDot(p, i) end
+    end
+    local function titikTambah(name, pos, normal)
+        if typeof(pos) ~= "Vector3" then return false end
+        normal = (typeof(normal) == "Vector3" and normal.Magnitude > 0.01) and normal.Unit or Vector3.new(0, 1, 0)
+        name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if name == "" then name = "Titik " .. (#TITIK.poin + 1) end
+        TITIK.poin[#TITIK.poin + 1] = {name = name, pos = pos, normal = normal}
+        titikSimpan()
+        titikRefreshDot()
+        titikRenderUI()
+        titikStatusUI("Titik ditambahkan: " .. name)
+        return true
+    end
+    local function titikHapus(nomor)
+        if TITIK.poin[nomor] then
+            local nama = TITIK.poin[nomor].name
+            table.remove(TITIK.poin, nomor)
+            titikSimpan(); titikRefreshDot(); titikRenderUI()
+            titikStatusUI("Titik dihapus: " .. nama)
+        end
+    end
+    local function titikTeleport(nomor)
+        local p = TITIK.poin[nomor]
+        local char = getChar()
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not p or not hrp or (hum and hum.Health <= 0) then
+            titikStatusUI("Karakter belum siap")
+            return
+        end
+        hrp.CFrame = CFrame.new(p.pos + Vector3.new(0, 3, 0))
+        titikStatusUI("Pindah ke: " .. p.name)
+    end
+    local function titikRaycast(origin, direction)
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        local filter = {}
+        local char = getChar()
+        if char then filter[#filter + 1] = char end
+        if TITIK.folder then filter[#filter + 1] = TITIK.folder end
+        params.FilterDescendantsInstances = filter
+        return Workspace:Raycast(origin, direction, params)
+    end
+    local function titikKlikDunia()
+        local mouse = LocalPlayer:GetMouse()
+        if not mouse or not mouse.UnitRay then return end
+        local ray = mouse.UnitRay
+        local hit = titikRaycast(ray.Origin, ray.Direction * 2000)
+        if hit then titikTambah(nil, hit.Position, hit.Normal) end
+    end
+    local function titikPosisiKarakter()
+        local char = getChar()
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
+        local hit = titikRaycast(hrp.Position + Vector3.new(0, 3, 0), Vector3.new(0, -30, 0))
+        if hit then return hit.Position, hit.Normal end
+        return hrp.Position, Vector3.new(0, 1, 0)
+    end
+    titikMuat()
+    titikRefreshDot()
 
     -- [5] EFEK LED & UI HELPER ------------------------------------------
     local function ledSweep(inst, base, bandA, bandB, dur)
@@ -1412,13 +1548,13 @@ local EMOTE_CATALOG = {
     -- Bungkus dengan function untuk hemat local count (Luau limit 200)
     local function buildUI()
         tabBtns = {}
-        local tabLabels = {"MOVEMENT & VISUAL", "ANIMASI", "EMOTE", "SYSTEM"}
-        local tabColors = {Warna.Ungu2, Warna.Biru, Warna.Ungu2, Warna.AbuGelap}
+        local tabLabels = {"MOVEMENT & VISUAL", "ANIMASI", "EMOTE", "TITIK", "SYSTEM"}
+        local tabColors = {Warna.Ungu2, Warna.Biru, Warna.Ungu2, Warna.Hijau2, Warna.AbuGelap}
         kontenTabs = {}
         for i, lbl in ipairs(tabLabels) do
             local tab = buat("TextButton", {
-                Size = UDim2.new(1 / 4, -3.6, 0, 24),
-                Position = UDim2.new((i - 1) * (1 / 4), 3.2 + (i - 1) * 1.6, 0, 50),
+                Size = UDim2.new(1 / 5, -3.2, 0, 24),
+                Position = UDim2.new((i - 1) * (1 / 5), 2.8 + (i - 1) * 1.4, 0, 50),
                 BackgroundColor3 = (i == 1) and tabColors[i] or Warna.AbuMuda,
                 BorderSizePixel = 0,
                 FontFace = fnt("bold"),
@@ -2099,9 +2235,118 @@ local EMOTE_CATALOG = {
             chooser.Visible = false
         end)
 
-        -- urutan kontenTabs = urutan tab: 1 MOVEMENT & VISUAL • 2 ANIMASI • 3 EMOTE • 4 SYSTEM
+        -- ===== TAB TITIK ================================================
+        kontenTitik = buat("Frame", {
+            Position = UDim2.new(0, 0, 0, 80), Size = UDim2.new(1, 0, 1, -110),
+            BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
+        }, panel)
+        scrollTitik = buat("ScrollingFrame", {
+            Position = UDim2.new(0, 12, 0, 2), Size = UDim2.new(1, -24, 1, -6),
+            BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4,
+            ScrollBarImageColor3 = Warna.Hijau2, ScrollingDirection = Enum.ScrollingDirection.Y,
+            CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        }, kontenTitik)
+        buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTitik)
+        local titikOrder = 0
+        local function titikNext() titikOrder += 1; return titikOrder end
+        local titikStatus = buat("TextLabel", {
+            BackgroundColor3 = Warna.AbuItem, Size = UDim2.new(1, 0, 0, 30),
+            FontFace = fnt("med"), TextSize = 11, TextColor3 = Warna.TeksGelap,
+            TextWrapped = true, Text = "Titik tersimpan: " .. #TITIK.poin,
+            LayoutOrder = titikNext(),
+        }, scrollTitik)
+        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, titikStatus)
+        buat("UIPadding", {PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8)}, titikStatus)
+        titikStatusUI = function(teks)
+            if titikStatus and titikStatus.Parent then titikStatus.Text = teks .. " • Total: " .. #TITIK.poin end
+        end
+        local namaTitikBox = buat("TextBox", {
+            BackgroundColor3 = Warna.Hitam2, Size = UDim2.new(1, 0, 0, 30),
+            FontFace = fnt("reg"), TextSize = 12, TextColor3 = Warna.Putih,
+            PlaceholderText = "Nama titik baru (opsional)", PlaceholderColor3 = Warna.AbuGelap,
+            Text = "", ClearTextOnFocus = false, LayoutOrder = titikNext(),
+        }, scrollTitik)
+        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, namaTitikBox)
+        local modeTitikBtn = buatActionRow(scrollTitik, "📍 MODE CTRL + KLIK: OFF", Warna.Hijau2, function() end)
+        modeTitikBtn.LayoutOrder = titikNext()
+        local function refreshModeTitik()
+            modeTitikBtn.Text = TITIK.aktif and "📍 MODE CTRL + KLIK: ON" or "📍 MODE CTRL + KLIK: OFF"
+            modeTitikBtn.BackgroundColor3 = TITIK.aktif and Warna.Hijau2 or Warna.Card2
+        end
+        modeTitikBtn.MouseButton1Click:Connect(function()
+            TITIK.aktif = not TITIK.aktif; refreshModeTitik()
+            titikStatusUI(TITIK.aktif and "Aktif: tahan CTRL lalu klik kiri permukaan dunia" or "Mode penempatan dimatikan")
+        end)
+        buatActionRow(scrollTitik, "➕ TAMBAH DARI POSISI SAYA", Warna.Biru, function()
+            local pos, normal = titikPosisiKarakter()
+            if pos then titikTambah(namaTitikBox.Text, pos, normal) else titikStatusUI("Karakter belum siap") end
+            namaTitikBox.Text = ""
+        end).LayoutOrder = titikNext()
+        buatActionRow(scrollTitik, "● TITIK: TAMPILKAN / SEMBUNYIKAN", Warna.Ungu2, function()
+            TITIK.tampilTitik = not TITIK.tampilTitik; titikRefreshDot()
+            titikStatusUI(TITIK.tampilTitik and "Titik kecil ditampilkan" or "Titik kecil disembunyikan")
+        end).LayoutOrder = titikNext()
+        buatActionRow(scrollTitik, "🗑 HAPUS SEMUA TITIK", Warna.Merah, function()
+            table.clear(TITIK.poin)
+            titikSimpan()
+            titikRefreshDot()
+            titikRenderUI()
+            titikStatusUI("Semua titik dihapus")
+        end).LayoutOrder = titikNext()
+        local titikList = buat("Frame", {
+            BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
+            AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = titikNext(),
+        }, scrollTitik)
+        buat("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, titikList)
+        titikRenderUI = function()
+            for _, obj in ipairs(titikList:GetChildren()) do
+                if obj:IsA("Frame") then obj:Destroy() end
+            end
+            for i, point in ipairs(TITIK.poin) do
+                local row = buat("Frame", {
+                    BackgroundColor3 = Warna.AbuItem, Size = UDim2.new(1, 0, 0, 52), LayoutOrder = i,
+                }, titikList)
+                buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
+                local box = buat("TextBox", {
+                    BackgroundTransparency = 1, Position = UDim2.new(0, 8, 0, 2),
+                    Size = UDim2.new(1, -120, 0, 24), FontFace = fnt("med"), TextSize = 11,
+                    TextColor3 = Warna.TeksGelap, TextXAlignment = Enum.TextXAlignment.Left,
+                    Text = point.name, ClearTextOnFocus = false,
+                }, row)
+                box.FocusLost:Connect(function()
+                    local nama = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
+                    if nama ~= "" then point.name = nama; titikSimpan(); titikRefreshDot(); titikStatusUI("Nama titik diubah") else box.Text = point.name end
+                end)
+                local go = buat("TextButton", {
+                    BackgroundColor3 = Warna.Biru, Position = UDim2.new(1, -108, 0, 5),
+                    Size = UDim2.fromOffset(50, 28), FontFace = fnt("bold"), TextSize = 10,
+                    TextColor3 = Warna.Putih, Text = "KE SANA", AutoButtonColor = false,
+                }, row)
+                buat("UICorner", {CornerRadius = UDim.new(0, 6)}, go)
+                go.MouseButton1Click:Connect(function() titikTeleport(i) end)
+                local del = buat("TextButton", {
+                    BackgroundColor3 = Warna.Merah, Position = UDim2.new(1, -53, 0, 5),
+                    Size = UDim2.fromOffset(45, 28), FontFace = fnt("bold"), TextSize = 10,
+                    TextColor3 = Warna.Putih, Text = "HAPUS", AutoButtonColor = false,
+                }, row)
+                buat("UICorner", {CornerRadius = UDim.new(0, 6)}, del)
+                del.MouseButton1Click:Connect(function() titikHapus(i) end)
+            end
+            titikStatusUI("Titik tersimpan: " .. #TITIK.poin)
+        end
+        titikRenderUI()
+        buat("TextLabel", {
+            BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 42),
+            FontFace = fnt("reg"), TextSize = 10, TextColor3 = Warna.AbuTeks,
+            TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+            Text = "Aktifkan mode, lalu tahan CTRL + klik kiri pada tanah atau dinding untuk menempelkan titik kecil. Titik tidak melayang dan semua perpindahan hanya untuk karakter kamu.",
+            LayoutOrder = titikNext(),
+        }, scrollTitik)
+
+        -- urutan kontenTabs = 1 MOVEMENT • 2 ANIMASI • 3 EMOTE • 4 TITIK • 5 SYSTEM
         table.insert(kontenTabs, kontenAnim)
         table.insert(kontenTabs, kontenEmote)
+        table.insert(kontenTabs, kontenTitik)
         table.insert(kontenTabs, kontenSistem)
 
         buatHeader(scrollSistem, "Info")
@@ -2244,7 +2489,7 @@ local EMOTE_CATALOG = {
             Position = UDim2.fromOffset(360, 0),
             Size = UDim2.fromOffset(1600, 13),
             FontFace = fnt("med"),
-            Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (OFF 17.10, ON 17.25-35) • J Jump (51.25/65.25) • C Shift • LShift Tengah • F Moonwalk • V Panah   ✦   🎬 TAB ANIMASI: bundle/slot gerak • 💃 TAB EMOTE: favorit + loop   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ☁ SYSTEM: input teks • SIMPAN/LOAD manual • load otomatis cuma 1x saat start   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+            Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (OFF 17.10, ON 17.25-35) • J Jump (51.25/65.25) • C Shift • LShift Tengah • F Moonwalk • V Panah   ✦   🎬 TAB ANIMASI • 💃 TAB EMOTE • 📍 TAB TITIK: CTRL + klik   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ☁ SYSTEM: input teks • SIMPAN/LOAD manual • load otomatis cuma 1x saat start   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
             TextColor3 = Warna.AbuGelap,
             TextSize = 10,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -3299,7 +3544,7 @@ local EMOTE_CATALOG = {
         -- badan / LookVector HRP, BUKAN kamera), ↓ = MERAH kalau ada DI
         -- BELAKANG; hijau = kosong. Jarak 100 stud tiap arah (cakupan 200
         -- stud), depan & belakang 135 derajat (PANAH_SUDUT = cos 67.5°),
-        -- samping 45 derajat = zona tenang. Loop task.wait(0.1) hemat.
+        -- samping 45 derajat = zona tenang. Loop task.wait(0.1) hemat; arah dihitung horizontal agar stabil.
         local panahGui, panahAtas, panahBawah, panahConn
         local PANAH_MERAH = Color3.fromRGB(255, 64, 64)
         local PANAH_HIJAU = Color3.fromRGB(64, 255, 100)
@@ -3354,10 +3599,15 @@ local EMOTE_CATALOG = {
                     while State.PanahOn and not State.Removed do
                         task.wait(0.1)
                         local merahA, merahB = false, false
-                        local char, hrp = getKarakter()
+                        local char = getChar()
+                        local hrp = char and char:FindFirstChild("HumanoidRootPart")
                         if char and hrp then
                             local myPos = hrp.Position
-                            local look = hrp.CFrame.LookVector
+                            -- Deteksi depan/belakang memakai arah badan di bidang tanah.
+                            -- Ketinggian pemain tidak boleh membuat hasil salah.
+                            local look3 = hrp.CFrame.LookVector
+                            local lookFlat = Vector3.new(look3.X, 0, look3.Z)
+                            if lookFlat.Magnitude > 0.001 then lookFlat = lookFlat.Unit end
                             for _, pl in ipairs(Players:GetPlayers()) do
                                 if pl ~= LocalPlayer then
                                     local c2 = pl.Character
@@ -3365,9 +3615,10 @@ local EMOTE_CATALOG = {
                                     local r2 = c2 and c2:FindFirstChild("HumanoidRootPart")
                                     if h2 and r2 and h2.Health > 0 then
                                         local rel = r2.Position - myPos
-                                        local d = rel.Magnitude
-                                        if d > 0.5 and d <= CFG.PANAH_JARAK then
-                                            local dot = look:Dot(rel / d)
+                                        local relFlat = Vector3.new(rel.X, 0, rel.Z)
+                                        local d = relFlat.Magnitude
+                                        if d > 0.5 and d <= CFG.PANAH_JARAK and lookFlat.Magnitude > 0.001 then
+                                            local dot = lookFlat:Dot(relFlat.Unit)
                                             if dot >= CFG.PANAH_SUDUT then
                                                 merahA = true  -- depan 135°
                                             elseif dot <= -CFG.PANAH_SUDUT then
@@ -3447,6 +3698,7 @@ local EMOTE_CATALOG = {
                 pcall(function() UserInputService.MouseIconEnabled = true end)
             end
             pcall(emoteStopTrack)
+            pcall(function() if TITIK.folder then TITIK.folder:Destroy(); TITIK.folder = nil end end)
             -- 3) Cancel semua task/thread yang masih jalan
             if lightConn then pcall(function() task.cancel(lightConn) end) lightConn = nil end
             -- 3) Disconnect SEMUA event yang di-catat lewat catat()
@@ -3613,6 +3865,17 @@ local EMOTE_CATALOG = {
             minimizeGui()
         end)
         buatDraggable(header, root)
+
+        -- [21a] PENEMPATAN TITIK: CTRL + KLIK KIRI ------------------------
+        catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed or State.Removed or not TITIK.aktif then return end
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+                and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+                or UserInputService:IsKeyDown(Enum.KeyCode.RightControl))
+                and not UserInputService:GetFocusedTextBox() then
+                titikKlikDunia()
+            end
+        end))
 
         -- [21] KEYBIND -------------------------------------------------------
         local lastK = 0
