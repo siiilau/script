@@ -1,26 +1,17 @@
 --========================================================
---  BALAP v1.8 — TEMA: SILAU NEON (ungu/biru LED)
+--  SILAU SANTAI v1.0 — TEMA: SILAU NEON (ungu/biru LED)
 --
 --  Ringkasan fitur aktif:
---    • Daftar titik otomatis diurutkan dari yang terdekat ke karakter.
---    • Titik tersimpan lokal di penanda_titik.json atau fallback sesi.
---    • Tiang penanda, Mode Titik Ctrl+klik, tambah titik di posisi karakter,
---      teleport dengan klik item, dan hapus titik satu per satu.
---    • Tab: MOVEMENT & VISUAL, TITIK, ANIMASI, dan SYSTEM.
 --    • Tidak ada sinkronisasi cloud, kode lintas perangkat, atau pemuatan data
---      titik dari layanan eksternal.
---    • Tidak ada tombol atau fungsi hapus semua titik.
 --
 --  Keybind:
 --    G = buka/tutup GUI • Q = Speed • J = JumpPower • C = Shiftlock Mobile
 --    LShift/RShift = Shiftlock Tengah • F = Moonwalk • R = Hide
 --    T = Cahaya Auto • X = Dinding Batas • V = Panah Deteksi • K = Rejoin
---    Ctrl+klik map = titik baru saat Mode Titik ON.
 --
 --  Shiftlock Mobile, Moonwalk & Shiftlock Tengah otomatis OFF saat mati/respawn.
---  Data titik tersimpan permanen secara lokal di device.
 --========================================================
-print("[BALAP v1.8] load mulai...")
+print("[SILAU SANTAI v1.0] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -43,7 +34,7 @@ do
         __dLbl.TextSize = 14
         __dLbl.TextWrapped = true
         __dLbl.ClipsDescendants = true
-        __dLbl.Text = "BALAP: memulai..."
+        __dLbl.Text = "SILAU SANTAI: memulai..."
         __dLbl.Parent = __dGui
         local cr = Instance.new("UICorner")
         cr.CornerRadius = UDim.new(0, 8)
@@ -61,7 +52,7 @@ do
         end
     end)
     diagSet = function(teks, warna)
-        print("[BALAP-DIAG] " .. tostring(teks))
+        print("[SILAU SANTAI-DIAG] " .. tostring(teks))
         pcall(function()
             if __dGui and __dGui.Parent and __dLbl then
                 __dLbl.Text = tostring(teks)
@@ -71,7 +62,7 @@ do
     end
 end
 
-local VERSI = "1.8"
+local VERSI = "1.0"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -81,7 +72,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     -- [1] PENGAMAN DASAR -----------------------------------------------
     local RunService = game:GetService("RunService")
     if not RunService:IsClient() then
-        warn("[BALAP] GAGAL: harus jalan di CLIENT (executor / LocalScript), bukan server!")
+        warn("[SILAU SANTAI] GAGAL: harus jalan di CLIENT (executor / LocalScript), bukan server!")
         return
     end
     if not game:IsLoaded() then
@@ -98,14 +89,14 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     diagSet("menunggu LocalPlayer...")
     local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
     if not LocalPlayer then
-        warn("[BALAP] GAGAL: LocalPlayer belum ada.")
+        warn("[SILAU SANTAI] GAGAL: LocalPlayer belum ada.")
         diagSet("GAGAL: LocalPlayer tidak ada (dapat nil)", Color3.fromRGB(239, 68, 68))
         return
     end
     diagSet("cek Terrain...")
     local Terrain = Workspace:FindFirstChildOfClass("Terrain") or Workspace:WaitForChild("Terrain", 10)
     if not Terrain then
-        warn("[BALAP] Terrain tidak ketemu (10 dtk) — lanjut tanpa Terrain.")
+        warn("[SILAU SANTAI] Terrain tidak ketemu (10 dtk) — lanjut tanpa Terrain.")
         diagSet("Terrain tidak ketemu — lanjut tanpa Terrain")
     end
 
@@ -146,14 +137,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         SLT_DOT     = 7,     -- ukuran lingkaran kursor (px, mini biar ga ganggu)
         SLT_DOT_Y   = 0.60,  -- letak vertikal lingkaran: 0.5 = tengah layar,
         -- makin besar makin ke bawah (0.60 = bawah pinggang)
-        -- Penanda Titik (tab TITIK): tiang checkpoint + teleport
-        TITIK_WARNA    = Color3.fromRGB(255, 200, 40), -- kuning neon tiang
-        TITIK_TINGGI   = 1.5,   -- tinggi tiang (stud)
-        TITIK_DIAMETER = 0.3,   -- diameter tiang (stud)
-        TITIK_FILE     = "penanda_titik.json", -- sama dgn script standalone lama
-        -- v1.4 adaptasi map baru:
-        TITIK_RAYCAST  = 500,  -- kedalaman cari tanah dulu 100 stud — map baru
-                               -- punya ramp/jembatan tinggi, tiang jangan ngambang
         -- Animasi kustom (v1.5, tab ANIMASI): port ANIMASI BUNDLE V6
         -- v1.6: tanpa file config — tiap load selalu default (master OFF).
         EMOTE_TUNGGAK    = 0.25,  -- jeda dtk setelah spawn sebelum pasang gaya
@@ -164,7 +147,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         PANAH_SUDUT = 0.383, -- batas dot LookVector: 0.383 = cos(67.5°)
                             -- -> depan & belakang 135 derajat penuh,
                             -- samping kiri/kanan 45 derajat bebas (hijau)
-        TITIK_MAX          = 5000,  -- cap keras titik (praktis unlimited, anti crash)
         SWIM_BONUS         = 1.025, -- berenang + Shiftlock Tengah: speed aktif × 1.025
         -- UI RESPONSIF: panel menyesuaikan ukuran layar otomatis.
         -- Layar besar -> panel tampil lebih besar (sampai UI_SCALE_MAX),
@@ -286,11 +268,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         s = s:gsub("%.$", "")
         return s
     end
-    -- format jarak utk daftar TP & titik
-    local function fmtJarak(d)
-        if d >= 1000 then return string.format("%.2fkm", d / 1000) end
-        return string.format("%.1fm", d)
-    end
     diagSet("dasar OK — siapkan helper GUI...")
     -- [4b] REGISTRY KONEKSI & FORWARD DECLARE ---------------------------
     local semuaKoneksi = {}
@@ -319,8 +296,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     -- Forward declare untuk part2 (UI builder) — di-expose via buildUI()
     local tabBtns, kontenTabs, setTab
     local kontenMove, scrollMove
-    local kontenTitik, scrollTitik
     local kontenAnim, scrollAnim
+    local kontenBundle, scrollBundle
     local kontenSistem, scrollSistem
     setFeature = function(name, v, silent)
         local f = Setters[name]
@@ -467,7 +444,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end
     end
     if not terpasang then
-        warn("[BALAP] GAGAL: tidak bisa memasang GUI.")
+        warn("[SILAU SANTAI] GAGAL: tidak bisa memasang GUI.")
         return
     end
     local function bunyi(id, vol, pitch)
@@ -587,7 +564,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Position = UDim2.new(0, 12, 0, 0),
         Size = UDim2.new(1, -104, 1, 0),
         FontFace = fnt("judul"),
-        Text = "⚡ BALAP v" .. VERSI .. " ⚡",
+        Text = "⚡ SILAU SANTAI v" .. VERSI .. " ⚡",
         TextColor3 = Warna.Putih,
         TextSize = 22,
         TextXAlignment = Enum.TextXAlignment.Left,
@@ -622,230 +599,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         BorderSizePixel = 0,
     }, panel)
     ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
-    -- [7a2] MODUL PENANDA TITIK (tab TITIK) ----------------------------
-    -- Port standalone "PENANDA TITIK" ke dalam GUI BALAP:
-    --   • Tiang neon kuning polos TANPA nomor, nempel tanah (raycast ke bawah)
-    --   • Daftar titik: klik = teleport, X = hapus titik itu
-    --   • TERSIMPAN PERMANEN: writefile penanda_titik.json (nama file SAMA
-    --     dgn script lama -> titik lama otomatis kebaca). Executor tanpa
-    --     writefile -> cadangan getgenv (selamat saat re-execute).
-    --   • Tiang bisa hide/show via switch "Tampilkan Tiang"
-    local titikList       = {}
-    local titikFolder     = nil   -- Folder berisi tiang di Workspace
-    local titikHolder     = nil   -- frame daftar titik di tab TITIK (di-buildUI)
-    local titikLabelJumlah = nil
-    local titikRefreshDaftar -- forward declare (didefinisikan di bawah)
-    local titikBisaFile   = (type(writefile) == "function") and (type(readfile) == "function")
-    and (type(isfile) == "function")
-
-    local function titikSimpan()
-        getgenv().BALAP_TITIK_DATA = titikList        -- cadangan sesi (re-execute)
-        if not titikBisaFile then return false end
-        local data = {}
-        for i = 1, #titikList do
-            local p = titikList[i]
-            data[i] = { x = p.X, y = p.Y, z = p.Z }
-        end
-        local ok, err = pcall(function()
-            writefile(CFG.TITIK_FILE, HttpService:JSONEncode(data))
-        end)
-        if not ok then warn("[BALAP-TITIK] gagal simpan: " .. tostring(err)) return false end
-        return true
-    end
-
-    local function titikMuat()
-        local data, ada = nil, false
-        if titikBisaFile then
-            pcall(function() ada = isfile(CFG.TITIK_FILE) end)
-            if ada then
-                local ok, isi = pcall(readfile, CFG.TITIK_FILE)
-                if ok and type(isi) == "string" then
-                    pcall(function() data = HttpService:JSONDecode(isi) end)
-                end
-            end
-        end
-        if not data then
-            data = rawget(getgenv(), "BALAP_TITIK_DATA")  -- fallback: sesi yang sama
-        end
-        if type(data) == "table" then
-            for _, e in ipairs(data) do
-                if type(e) == "table" and e.x and e.y and e.z then
-                    titikList[#titikList + 1] = Vector3.new(e.x, e.y, e.z)
-                end
-            end
-        end
-        getgenv().BALAP_TITIK_DATA = titikList
-        print("[BALAP-TITIK] muat " .. #titikList .. " titik"
-        .. (titikBisaFile and " (file: " .. CFG.TITIK_FILE .. ")" or " (mode SESI — executor tanpa writefile)"))
-    end
-
-    local function titikBuatTiang(index, pos)
-        buat("Part", {
-            Name = "Titik_" .. index,
-            Shape = Enum.PartType.Cylinder,
-            Size = Vector3.new(CFG.TITIK_TINGGI, CFG.TITIK_DIAMETER, CFG.TITIK_DIAMETER),
-            CFrame = CFrame.new(pos.X, pos.Y + CFG.TITIK_TINGGI / 2, pos.Z)
-            * CFrame.Angles(0, 0, math.rad(90)),
-            Anchored = true,
-            CanCollide = false,
-            CanTouch = false,
-            CanQuery = false,
-            CastShadow = false,
-            Material = Enum.Material.Neon,
-            Color = CFG.TITIK_WARNA,
-        }, titikFolder)
-        -- TANPA nomor — muncul tiang polos saja
-    end
-
-    -- render ulang semua tiang (dipakai juga Setters.Tiang saat toggle)
-    -- v1.6: garis antar titik DIHAPUS — cuma tiang yang dirender.
-    local function titikRender()
-        if titikFolder then titikFolder:Destroy() titikFolder = nil end
-        if State.TiangOn and #titikList > 0 then
-            titikFolder = Instance.new("Folder")
-            titikFolder.Name = "BALAP_TitikPenanda"
-            titikFolder.Parent = Workspace
-            for i, pos in ipairs(titikList) do
-                titikBuatTiang(i, pos)
-            end
-        end
-    end
-
-    local function titikTeleport(pos)
-        local char = getChar()
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then toast("Karakter tidak ketemu!", Warna.Merah) return end
-        bunyi(CFG.SND_PING, 0.3, 1.1)
-        hrp.CFrame = CFrame.new(pos.X, pos.Y + 3.5, pos.Z)
-        -- v1.4: nol-kan kecepatan — dulu karakter bisa terpental/guling
-        -- setelah TP (kecepatan jatuh lama ikut terbawa)
-        hrp.AssemblyLinearVelocity = Vector3.zero
-    end
-
-    -- v1.8: urutkan titikList dari yang TERDEKAT ke karakter (tanpa
-    -- toast). Dipakai tombol URUTKAN + OTOMATIS tiap tambah titik &
-    -- (didefinisikan sebelum titikTambahDiPosisi supaya terlihat)
-    local function titikUrutTerdekat()
-        local _, hrp = getKarakter()
-        if not hrp or #titikList < 2 then return false end
-        local hx, hy, hz = hrp.Position.X, hrp.Position.Y, hrp.Position.Z
-        table.sort(titikList, function(a, b)
-            local da = (a.X - hx)^2 + (a.Y - hy)^2 + (a.Z - hz)^2
-            local db = (b.X - hx)^2 + (b.Y - hy)^2 + (b.Z - hz)^2
-            return da < db
-        end)
-        return true
-    end
-
-    -- v1.6: tambah titik di posisi SEMBARANG (hasil Ctrl+klik Mode Titik).
-    -- Semua cek di satu tempat:
-    -- batas max, anti titik kembar (< 1 stud), lalu simpan.
-    local function titikTambahDiPosisi(pos)
-        if #titikList >= CFG.TITIK_MAX then
-            toast("Penuh (max " .. CFG.TITIK_MAX .. " titik)", Warna.Kuning)
-            return
-        end
-        pos = Vector3.new(clamp2(pos.X), clamp2(pos.Y), clamp2(pos.Z))
-        -- anti titik kembar: ada titik < 1 stud -> tolak
-        for _, p in ipairs(titikList) do
-            local dx, dy, dz = p.X - pos.X, p.Y - pos.Y, p.Z - pos.Z
-            if dx*dx + dy*dy + dz*dz < 1 then
-                toast("titik sudah ada di sini", Warna.Kuning)
-                return
-            end
-        end
-        titikList[#titikList + 1] = pos
-        titikUrutTerdekat()       -- v1.8: daftar langsung urut terdekat otomatis
-        titikSimpan()
-        titikRender()
-        titikRefreshDaftar()
-        bunyi(CFG.SND_PING, 0.25, 1.3)
-        toast("+ Titik #" .. #titikList .. " ditambahkan"
-        .. (titikBisaFile and " (tersimpan)" or " (sesi saja)"), Warna.Hijau)
-    end
-
-    -- v1.7: tambah titik DI POSISI KARAKTER (tombol "📍 + TAMBAH TITIK
-    -- DI SINI"). Pengganti saat Ctrl+klik tidak bisa: ada objek yang
-    -- ngeblokir pandangan/klik di layar. Titik dipasang di kaki
-    -- karakter (raycast ke bawah cari tanah) biar tiang nempel lantai.
-    local function titikTambahDiSini()
-        local char, hrp = getKarakter()
-        if not hrp then toast("Karakter tidak ketemu!", Warna.Merah) return end
-        -- cari tanah di bawah kaki biar tiang nempel lantai
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        params.FilterDescendantsInstances = { char }
-        local hit = Workspace:Raycast(hrp.Position, Vector3.new(0, -CFG.TITIK_RAYCAST, 0), params)
-        local groundY = hit and hit.Position.Y or (hrp.Position.Y - 3)
-        titikTambahDiPosisi(Vector3.new(hrp.Position.X, groundY, hrp.Position.Z))
-    end
-
-    -- gambar ulang daftar titik di tab TITIK (+ jarak).
-    titikRefreshDaftar = function()
-        if not titikHolder then return end
-        for _, c in ipairs(titikHolder:GetChildren()) do
-            if c:IsA("TextButton") then c:Destroy() end
-        end
-        local char = getChar()
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        for i, pos in ipairs(titikList) do
-            local idx = i
-            local item = buat("TextButton", {
-                Name = "TitikItem_" .. idx,
-                Size = UDim2.new(1, -6, 0, 26),
-                BackgroundColor3 = Warna.AbuItem,
-                Text = "",
-                AutoButtonColor = false,
-                LayoutOrder = idx,
-            }, titikHolder)
-            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, item)
-            efekTombol(item, 1.02)
-            local teks
-            if hrp then
-                teks = ("%d.  (%s)  (%.1f, %.1f, %.1f)"):format(
-                idx, fmtJarak((pos - hrp.Position).Magnitude), pos.X, pos.Y, pos.Z)
-            else
-                teks = ("%d.  (%.1f, %.1f, %.1f)"):format(idx, pos.X, pos.Y, pos.Z)
-            end
-            local lbl = buat("TextLabel", {
-                BackgroundTransparency = 1,
-                Position = UDim2.new(0, 8, 0, 0),
-                Size = UDim2.new(1, -40, 1, 0),
-                FontFace = fnt("med"),
-                TextScaled = true,
-                TextColor3 = Warna.TeksGelap,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                Text = teks,
-            }, item)
-            buat("UITextSizeConstraint", {MaxTextSize = 13}, lbl)
-            local hx = buat("TextButton", {
-                Size = UDim2.new(0, 22, 0, 22),
-                Position = UDim2.new(1, -26, 0.5, -11),
-                BackgroundColor3 = Warna.Merah,
-                FontFace = fnt("bold"),
-                TextSize = 12,
-                TextColor3 = Warna.Putih,
-                Text = "X",
-                AutoButtonColor = false,
-            }, item)
-            buat("UICorner", {CornerRadius = UDim.new(0, 6)}, hx)
-            hx.MouseButton1Click:Connect(function()
-                table.remove(titikList, idx)
-                titikSimpan()
-                titikRender()
-                titikRefreshDaftar()
-                        toast("Titik " .. idx .. " dihapus", Warna.Merah)
-            end)
-            item.MouseButton1Click:Connect(function()
-                titikTeleport(pos)
-            end)
-        end
-        if titikLabelJumlah then
-            titikLabelJumlah.Text = ("Total: %d titik • klik item = teleport"):format(#titikList)
-        end
-    end
-
-    -- ======================================================================
     -- [7a2d] MODUL ANIMASI (v1.5, tab ANIMASI) — port ANIMASI BUNDLE V6
     --   • Slot state (IDLE/WALK/RUN/SWIM/CLIMB/JUMP/FALL) bekerja dengan
     --     MENGGANTI ID animasi di script "Animate" bawaan karakter, lalu
@@ -1328,8 +1081,23 @@ local EMOTE_PRESET = {
     for k, daftar in pairs(EXTRA_EMOTE_PRESET) do
         for _, p in ipairs(daftar) do table.insert(EMOTE_PRESET[k], p) end
     end
-
-    -- Emote satu kali tambahan dari library sumber (ID lokal, tanpa loadstring).
+    -- Bundle AvatarAnimations resmi dari grup adidas.
+    local ADIDAS_ANIMAL = {
+        idle = 88588592137033,
+        walk = 81281696577427,
+        run = 131412866275486,
+        jump = 103774864966499,
+        fall = 95106363390518,
+        climb = 78060506615772,
+        swim = 122672658502030,
+    }
+    for slot, id in pairs(ADIDAS_ANIMAL) do
+        table.insert(EMOTE_PRESET[slot], {
+            n = "adidas Animal Animation Pack",
+            i15 = id,
+            i15b = (slot == "swim") and id or nil,
+        })
+    end
     local SINGLE_EMOTES = {
         ["Fashion"] = 3333331310,
         ["Baby Dance"] = 4265725525,
@@ -1583,6 +1351,210 @@ local EMOTE_PRESET = {
         ["TWICE Takedown"] = 140182843839424,
         ["Stray Kids Walkin On Water"] = 125064469983655,
         ["TWICE TAKEDOWN DANCE 2"] = 127104635954695,
+    -- Emote katalog VeD_DeV's UGC (diambil dari halaman grup yang diberikan).
+        ["Work to the Beat"] = 110916565568239,
+        ["Queen Reaction"] = 125318390383124,
+        ["Jester Dance"] = 126623565701035,
+        ["I Got Like Hella Money"] = 87442380257737,
+        ["Baki Stance"] = 103475321456595,
+        ["Muscle Flex Pose"] = 114054085739682,
+        ["Silent Aura Sit"] = 126590120863723,
+        ["Faceless Aura"] = 103981563274328,
+        ["Floating Aura Pose"] = 88318250668110,
+        ["Aura Farming Idle"] = 101227355599411,
+        ["Sukuna Aura Farming"] = 92116889798388,
+        ["Wall Aura Farm Pose"] = 93581572441300,
+        ["Effortless Aura Flex"] = 85788129274230,
+        ["Unbothered Aura Float"] = 95867809775448,
+        ["Ice Skater Girl Pose"] = 131531945412990,
+        ["Shy Girl Idle Pose"] = 77917651634775,
+        ["Pretty Girl Pose"] = 132887307829946,
+        ["Cute Look Back Pose"] = 140302970466671,
+        ["Cute Kitty Profile Pose"] = 118845595931772,
+        ["Cute Heart Profile Pose"] = 113800874984638,
+        ["Cute Christmas Girl Pose"] = 136940300821501,
+        ["Model Pose"] = 70943834108410,
+        ["Cute Lay Pose"] = 132433066284463,
+        ["Cute Awkward Pose"] = 91814759881689,
+        ["Boxing Stance"] = 122385472327774,
+        ["Rage"] = 101184193349085,
+        ["Aura Float"] = 112320691444823,
+        ["Hand Trick"] = 101882564339351,
+        ["Effortless Chill Pose"] = 97611075942788,
+        ["Silence Aura"] = 91872156092808,
+        ["Stylish King Pose"] = 139518154452057,
+        ["Trendy Girl Pose"] = 137347006574582,
+        ["Princess Lift Pose (Her)"] = 134218794353681,
+        ["Princess Lift Pose (Him)"] = 99148343267254,
+        ["Cute Attitude Pose"] = 72288169534176,
+        ["Cute Shy Sit Pose"] = 99425439298305,
+        ["Cute Cheer Pose"] = 100388302207715,
+        ["Nonchalant Sit Pose"] = 87727495516744,
+        ["Shy Cute Pose"] = 115033828324156,
+        ["Cute Wink Pose"] = 77584528615852,
+        ["Cute Reading Pose"] = 98047692063407,
+        ["Commander Pose"] = 105430065366949,
+        ["Cute Charming Pose"] = 72233887202122,
+        ["Scene Profile Pose"] = 73739070097590,
+        ["Cute Cozy Sit Pose"] = 79241076686419,
+        ["Aura Farm Pose"] = 76675061535236,
+        ["Cute Diva Pose"] = 77226082404881,
+        ["Cute Stylish Girl Pose"] = 123672539410540,
+        ["Vibe Together"] = 134039908282524,
+        ["Fashion Icon"] = 87265350253553,
+        ["Charming Pose"] = 108345521565245,
+        ["Head Dribbler"] = 88570040903137,
+        ["Jumpstyle"] = 136233115143594,
+        ["Cute Shy Pose"] = 107553661249594,
+        ["Y2K Diva Pose"] = 72536537086237,
+        ["Lonely Diva"] = 121345143294764,
+        ["Sweet Float"] = 77189464822321,
+        ["Diva Aura"] = 118846519181951,
+        ["Broom Ride"] = 98996901011057,
+        ["Broken Doll"] = 106656091796877,
+        ["Headless Sit"] = 125738566021330,
+        ["Chill Float Aura"] = 125758135397088,
+        ["Zombie Bite"] = 95187763336586,
+        ["Birdbrain Teto Dance"] = 94772165174765,
+        ["Cute Wave Pose"] = 130172138277900,
+        ["Cute Standing Pose"] = 108406173041178,
+        ["Cute Sit Pose"] = 129439026995374,
+        ["Careless Pose"] = 80824749417885,
+        ["Float Aura Pose"] = 81430482677973,
+        ["Die Lit"] = 87720597592069,
+        ["Head Toss"] = 115824298590524,
+        ["Chill Sit Pose"] = 133202507266051,
+        ["Cutesy Profile Pose"] = 90818316906415,
+        ["Cute Floating Girl Pose"] = 90784014332944,
+        ["Diva Pose"] = 80314311457178,
+        ["Sniper Pose"] = 85939916737284,
+        ["Divine Reach (Right)"] = 134738715839868,
+        ["Divine Reach (Left)"] = 97678489670395,
+        ["Attitude Pose"] = 123241895006025,
+        ["Aura Gainer"] = 125717501705233,
+        ["Fusion Pose Right"] = 140072974566572,
+        ["Fusion Pose Left"] = 108617205666723,
+        ["Crying Pose"] = 97438764759898,
+        ["Chill Aura Pose"] = 86027369368143,
+        ["Chill Guy Pose"] = 101634813744727,
+    -- Emote tambahan dari katalog grup Reta's.
+        ["Reta's | Baddies Pic"] = 81773345255689,
+        ["Reta's | Heavy Sword Stance"] = 109863797124787,
+        ["Reta's | Cat Bath Taunt"] = 114429261687802,
+        ["Reta's | Jiggly Legs."] = 80274541429619,
+        ["Reta's | Sitting.."] = 129305096889843,
+        ["Reta's | LOL"] = 85963358462938,
+        ["Reta's | Laid Upp"] = 89554364494587,
+        ["Reta's | Head Pats"] = 93794354591321,
+        ["Reta's | JL"] = 77078698776251,
+        ["Reta's | adorable little wave"] = 92471100000155,
+        ["Reta's | Mad at U"] = 115155614205644,
+        ["Reta's | Bored Leg Tap Alt"] = 130586900210533,
+        ["Reta's | Just Shy Alt"] = 75433402279848,
+        ["Reta's | Ingrid Game Over"] = 125526859063735,
+        ["Reta's | Juri Stretch"] = 115147831847291,
+        ["Reta's | Wag your tail"] = 104126258946744,
+        ["Reta's | Laid Up"] = 99290955128393,
+        ["Reta's | Cute Cat"] = 125464132574625,
+        ["Reta's | Security Idle"] = 135830891114268,
+        ["Reta's | Jiggly Legs"] = 117316439301810,
+        ["Reta's | Laid Up V"] = 88675405644507,
+        ["Reta's | Modelling Crouch (Unlimited)"] = 126335458682361,
+        ["Reta's | Just Hug"] = 131102522311417,
+        ["Reta's | BP 3"] = 110659885831434,
+        ["Reta's | Pain of Pains"] = 132985306809464,
+        ["Reta's | Cute N Calm 5"] = 75386024870561,
+        ["Reta's | Ready Sword Stance"] = 114024982246546,
+        ["Reta's | Cute Jiggle Bounce"] = 82182731995970,
+        ["Reta's | Floating Diva 2"] = 96422023282360,
+        ["Reta's | Party Hips"] = 120838357550882,
+        ["Reta's | Laid Up #2"] = 128441796287480,
+        ["Reta's | Point Pose"] = 81199088812254,
+        ["Reta's | Sittin' Pose"] = 91189411027558,
+        ["Reta's | Girly Tantrum"] = 73396092699919,
+        ["Reta's | Arm Swing Idle"] = 117264576689408,
+        ["Reta's | Spooky Jumpscare"] = 137115650395648,
+        ["Reta's | Cool Boss Seat"] = 105450918840703,
+        ["Reta's | Carried Duo"] = 92152430524407,
+        ["Reta's | Thriller Gen Pose (Rewrite)"] = 73885313552593,
+        ["Reta's | Dual Blade Baddie"] = 135678618996304,
+        ["Reta's | Just Shy"] = 125274527479352,
+        ["Reta's | Just Bad"] = 97183249882959,
+        ["Reta's | Karate Master Stance (Ryu)"] = 79490342987819,
+        ["Reta's | Laid Up -"] = 91534885979069,
+        ["Reta's | Jiggly Legss"] = 123189636774231,
+        ["Reta's | Shoulder Buddy"] = 95582287917636,
+        ["Reta's | Bored Idle"] = 71560376738762,
+        ["Reta's | Baddies Pic #2"] = 119814993700218,
+        ["Reta's | Baddies Pic Alt"] = 92737824660542,
+        ["Reta's | Chill Sway"] = 114216478660561,
+        ["Reta's | Laid Up #3"] = 123002478872057,
+        ["Reta's | Dynamic Sword on Shoulders Idle"] = 88674191758382,
+        ["Reta's | Bored Leg Tap"] = 138290738729311,
+        ["Reta's | Baddies Pic #3"] = 92723545000845,
+        ["Reta's | Ingrid Floating Poses"] = 116182644647764,
+        ["Reta's | Ancient Splits"] = 78997259663901,
+        ["Reta's | Glamorous"] = 95390595396577,
+        ["Reta's | Cute Smirk Mouth (3D)"] = 123710434702083,
+        ["Reta's | Laid Up #4"] = 139202731871374,
+        ["Reta's | Sittin'"] = 113866563729465,
+        ["Reta's | Expert Yoga Stretch 1.0"] = 102197355815553,
+        ["Reta's | Crawl"] = 124691366629156,
+        ["Reta's | Bad Girl Pose (Juri)"] = 133172212051659,
+        ["Reta's | Cry"] = 123580782068836,
+        ["Reta's | Cute Frown Mouth w/ Single Fang (3D)"] = 81826865829437,
+        ["Reta's | Momoko's Happy Jig"] = 72365081998182,
+        ["Reta's | Juri Mock Celebration"] = 87947545440022,
+        ["Reta's | Frenni's Dance"] = 126336415456482,
+        ["Reta's | Sittin' #2"] = 130013386233535,
+        ["Reta's | Ken Stance (SF6)"] = 130646280266122,
+        ["Reta's | Magical Belly Dance (Shantae)"] = 93218598653314,
+        ["Reta's | Cute N Calm"] = 123209410385466,
+        ["Reta's | Arm on Sword Hilt Idle"] = 118358952881306,
+        ["Reta's | Sleepy Kitty (Unlimited)"] = 111129089570149,
+        ["Reta's | Cute Feral Stance v2"] = 117630565217697,
+        ["Reta's | Army Man Stance (Guile)"] = 88140102303573,
+        ["Reta's | Baddies Pic #4"] = 110464191972242,
+        ["Reta's | Ingrid Idle"] = 103902154805666,
+        ["Reta's | Versatile Ninja Pose"] = 79987061386640,
+        ["Reta's | Stop Motion Sitting"] = 107288712372579,
+        ["Reta's | Girly Clap ✨"] = 104913320289716,
+        ["Reta's | Yandere Sway"] = 129726324945594,
+        ["Reta's | Floaty Rest"] = 86313035242497,
+        ["Reta's | Missy Extra Idling"] = 75934234099196,
+        ["Reta's | Big Sweet Hug 2 (Primary)"] = 136351164174649,
+        ["Reta's | Watching You"] = 108671825043990,
+        ["Reta's | Sitting"] = 134692032255588,
+        ["Reta's | Big Hugger"] = 140141266157300,
+        ["Reta's | Aura Stance (Iori)"] = 128616676646610,
+        ["Reta's | Juri Stance (SF6)"] = 137433612403968,
+        ["Reta's | Peach Bomb"] = 125497563661249,
+        ["Reta's | Just Splits"] = 91173563184128,
+        ["Reta's | Big Cozy Hug"] = 138779667727500,
+        ["Reta's | Cute N Calm #2"] = 111110436616060,
+        ["Reta's | Laid Up 2 +"] = 75517713793873,
+        ["Reta's | Cute N Calm Alt"] = 127548006991999,
+        ["Reta's | Sittin' Zen"] = 100504880215365,
+        ["Reta's | Feminine Flex Pose"] = 75177382432855,
+        ["Reta's | Big Sweet Hug 1 (Primary) \\*Fixed\\*"] = 83543479047498,
+        ["Reta's | Ghostly Sway"] = 77742264546929,
+        ["Reta's | Glamorous #2"] = 122296714040216,
+        ["Reta's | Duo Rivalry 2"] = 77277691685073,
+        ["Reta's | Big Sweet Hug (Secondary)"] = 133841746182096,
+        ["Reta's | Cutely Kneeling"] = 137716711508834,
+        ["Reta's | Ancient Hips"] = 97695613364836,
+        ["Reta's | Happy Swing Dance"] = 124359710439604,
+        ["Reta's | Carried (Lower)"] = 127094748683643,
+        ["Reta's | Laid Up 5 +"] = 72297669105918,
+        ["Reta's | Cute N Calm #3"] = 125778150648962,
+        ["Reta's | Glamorous #3"] = 125716206794703,
+        ["Reta's | Silly Bomb Jig ✨"] = 113310868839731,
+        ["Reta's | Docile Duet Pose B"] = 121844683997429,
+        ["Reta's | Crouch Chill"] = 93859441122239,
+        ["Reta's | Cute N Calm #4"] = 117284642033644,
+        ["Reta's | Crazy Samurai Stance (Yoshimitsu)"] = 129099194997802,
+        ["Reta's | Glamorous #4"] = 95942172022610,
+        ["Reta's | lovely wave"] = 123506107931840,
     }
     local SINGLE_EMOTE_NAMES = {}
     for name in pairs(SINGLE_EMOTES) do table.insert(SINGLE_EMOTE_NAMES, name) end
@@ -1613,6 +1585,28 @@ local EMOTE_PRESET = {
             toast("Emote tidak bisa diputar", Warna.Merah)
         end
     end
+
+    -- Emote satu kali berhenti otomatis saat karakter mulai bergerak.
+    -- Setelah berhenti, emote tidak dimainkan ulang otomatis; pilih lagi secara manual.
+    local emoteMoveConn = catat(RunService.Heartbeat:Connect(function()
+        if not activeEmoteTrack then return end
+        local char = getChar()
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not hum then return end
+        local state = hum:GetState()
+        local bergerak = hum.MoveDirection.Magnitude > 0.05
+            or state == Enum.HumanoidStateType.Jumping
+            or state == Enum.HumanoidStateType.Freefall
+            or state == Enum.HumanoidStateType.FallingDown
+            or state == Enum.HumanoidStateType.Climbing
+            or state == Enum.HumanoidStateType.Swimming
+        if bergerak then
+            pcall(function() activeEmoteTrack:Stop(0.10) end)
+            activeEmoteTrack = nil
+        elseif not activeEmoteTrack.IsPlaying then
+            activeEmoteTrack = nil
+        end
+    end))
 
     -- folder target di script Animate per slot
     local SLOT_FOLDERS = {
@@ -1803,7 +1797,7 @@ local EMOTE_PRESET = {
         local char = getChar()
         if char then emoteInitCharacter(char) end
     end)
-    print("[BALAP-EMOTE] siap — 7 slot • master "
+    print("[SILAU SANTAI-EMOTE] siap — 7 slot • master "
     .. (EMOTE.master and "ON" or "OFF")
     .. " • aktif " .. emoteJumlahAktif() .. "/7")
 
@@ -1811,7 +1805,7 @@ local EMOTE_PRESET = {
     -- Bungkus dengan function untuk hemat local count (Luau limit 200)
     local function buildUI()
         tabBtns = {}
-        local tabLabels = {"MOVEMENT & VISUAL", "TITIK", "ANIMASI", "SYSTEM"}
+        local tabLabels = {"MOVEMENT & VISUAL", "ANIMASI", "BUNDLE", "SYSTEM"}
         local tabColors = {Warna.Ungu2, Warna.Kuning, Warna.Biru, Warna.AbuGelap}
         kontenTabs = {}
         for i, lbl in ipairs(tabLabels) do
@@ -2047,8 +2041,6 @@ local EMOTE_PRESET = {
         State.LightOn = false
         State.MoonOn  = false  -- Moonwalk (F)
         State.TengahOn = false -- Shiftlock Tengah (LShift/RShift)
-        State.TiangOn  = true  -- Tiang Penanda (tab TITIK, default TAMPIL)
-        State.ModeTitikOn = false  -- v1.5 Mode Titik (Ctrl+klik map) default OFF
         State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
         State.PanahOn = false    -- Panah Deteksi (V)
 
@@ -2133,132 +2125,20 @@ local EMOTE_PRESET = {
         }, kontenSistem)
         buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollSistem)
 
-        -- [7f] KONTEN TAB 2: TITIK (v1.6 — dirampingkan: Tiang + Daftar) ----
-        kontenTitik = buat("Frame", {
-            Position = UDim2.new(0, 0, 0, 80),
-            Size = UDim2.new(1, 0, 1, -110),
-            BackgroundTransparency = 1,
-            BorderSizePixel = 0,
-            Visible = false,
-        }, panel)
-        scrollTitik = buat("ScrollingFrame", {
-            Position = UDim2.new(0, 12, 0, 2),
-            Size = UDim2.new(1, -24, 1, -6),
-            BackgroundTransparency = 1,
-            BorderSizePixel = 0,
-            ScrollBarThickness = 4,
-            ScrollBarImageColor3 = Warna.Kuning,
-            ScrollingDirection = Enum.ScrollingDirection.Y,
-            CanvasSize = UDim2.new(0, 0, 0, 0),
-            AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        }, kontenTitik)
-        buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollTitik)
-
-        -- kartu berkelompok: frame berbingkai warna + judul + baris-baris.
-        -- Return: frame "isi" tempat baris (toggle/action/stepper) ditempel.
-        local function buatKartu(judul, aksen)
-            local kartu = buat("Frame", {
-                BackgroundColor3 = Warna.AbuItem,
-                Size = UDim2.new(1, 0, 0, 0),
-                AutomaticSize = Enum.AutomaticSize.Y,
-                LayoutOrder = nextOrder(),
-            }, scrollTitik)
-            buat("UICorner", {CornerRadius = UDim.new(0, 8)}, kartu)
-            buat("UIStroke", {Color = aksen, Thickness = 1, Transparency = 0.45}, kartu)
-            buat("TextLabel", {
-                BackgroundTransparency = 1,
-                Position = UDim2.new(0, 10, 0, 4),
-                Size = UDim2.new(1, -20, 0, 18),
-                FontFace = fnt("bold"),
-                TextSize = 12,
-                TextColor3 = aksen,
-                TextXAlignment = Enum.TextXAlignment.Left,
-                Text = "▎" .. judul,
-            }, kartu)
-            local isi = buat("Frame", {
-                BackgroundTransparency = 1,
-                Position = UDim2.new(0, 8, 0, 24),
-                Size = UDim2.new(1, -16, 0, 0),
-                AutomaticSize = Enum.AutomaticSize.Y,
-            }, kartu)
-            buat("UIListLayout", {Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder}, isi)
-            buat("UIPadding", {PaddingBottom = UDim.new(0, 6)}, isi)
-            return isi
-        end
-
-        -- ===== 🟡 TIANG PENANDA (v1.6: satu-satunya kartu kontrol titik) =====
-        local kartuTiang = buatKartu("📍 Tiang Penanda", Warna.Kuning)
-        buatToggleRow(kartuTiang, "Tampilkan Tiang", nil, "Tiang")
-        buatToggleRow(kartuTiang, "📍 Mode Titik (Ctrl+klik map)", nil, "ModeTitik")
-        -- Tombol untuk memasang titik tepat di posisi karakter
-        -- sekarang. Solusi kalau Ctrl+klik tidak bisa karena objek
-        -- ngeblokir pandangan/klik di layar.
-        buatActionRow(kartuTiang, "📍 + TAMBAH TITIK DI SINI", Warna.Hijau, function()
-            titikTambahDiSini()
-        end)
-        buatActionRow(kartuTiang, "⇅ URUTKAN TITIK TERDEKAT", Warna.Biru, function()
-            local _, hrp = getKarakter()
-            if not hrp then toast("Karakter belum ada", Warna.Merah) return end
-            if #titikList < 2 then toast("Butuh minimal 2 titik", Warna.Kuning) return end
-            titikUrutTerdekat()
-            titikSimpan()
-            titikRender()
-            titikRefreshDaftar()
-            toast("Titik diurutkan dari yang terdekat", Warna.Biru)
-        end)
-        buat("TextLabel", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 52),   -- v1.8: lebih tinggi (teks nambah)
-            FontFace = fnt("reg"),
-            TextSize = 10,
-            TextColor3 = Warna.AbuTeks,
-            TextWrapped = true,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            Text = "Mode Titik ON: tahan Ctrl lalu klik permukaan map — titik "
-            .. "kepasang persis di titik yang diklik (tembok/bangunan boleh). "
-            .. "Klik di GUI diabaikan, klik langit/kosong ditolak, klik pemain diabaikan. "
-            .. "Tiap tambah titik, daftar langsung urut dari yang terdekat (v1.8).",
-            LayoutOrder = nextOrder(),
-        }, kartuTiang)
-
-        -- ===== DAFTAR TITIK (klik item = teleport — satu-satunya TP di v1.5) =====
-        local kartuDaftar = buatKartu("Daftar Titik", Warna.AbuGelap)
-        titikHolder = buat("Frame", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 0),
-            AutomaticSize = Enum.AutomaticSize.Y,
-            LayoutOrder = nextOrder(),
-        }, kartuDaftar)
-        buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, titikHolder)
-        titikLabelJumlah = buat("TextLabel", {
-            BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 14),
-            FontFace = fnt("med"),
-            TextSize = 11,
-            TextColor3 = Warna.AbuTeks,
-            TextXAlignment = Enum.TextXAlignment.Left,
-            Text = "Total: 0 titik • klik item = teleport",
-            LayoutOrder = nextOrder(),
-        }, kartuDaftar)
-        -- muat data lama (file / getgenv) lalu render pertama
-        titikMuat()
-        titikRender()
-        titikRefreshDaftar()
-
-        -- [7e] KONTEN TAB 3: ANIMASI (v1.5 — pengganti tab TP) ----------------
+        -- [7e] KONTEN TAB 3: BUNDLE -----------------------------------------
         -- Port ANIMASI BUNDLE V6: 7 slot gaya gerak + 18 pack resmi Roblox.
         -- Ganti AnimationId di script "Animate" bawaan -> restart -> hasil
         -- DIREPLIKASI (pemain lain ikut melihat).
         -- v1.6: tanpa config — awal load selalu master OFF, semua slot ASLI.
         -- Logika slot ada di [7a2d]; di sini hanya UI + popup pilih gaya.
-        kontenAnim = buat("Frame", {
+        kontenBundle = buat("Frame", {
             Position = UDim2.new(0, 0, 0, 80),
             Size = UDim2.new(1, 0, 1, -110),
             BackgroundTransparency = 1,
             BorderSizePixel = 0,
             Visible = false,
         }, panel)
-        scrollAnim = buat("ScrollingFrame", {
+        scrollBundle = buat("ScrollingFrame", {
             Position = UDim2.new(0, 12, 0, 2),
             Size = UDim2.new(1, -24, 1, -6),
             BackgroundTransparency = 1,
@@ -2268,11 +2148,11 @@ local EMOTE_PRESET = {
             ScrollingDirection = Enum.ScrollingDirection.Y,
             CanvasSize = UDim2.new(0, 0, 0, 0),
             AutomaticCanvasSize = Enum.AutomaticSize.Y,
-        }, kontenAnim)
-        buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollAnim)
+        }, kontenBundle)
+        buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollBundle)
 
-        buatHeader(scrollAnim, "Gaya Gerak")
-        buatToggleRow(scrollAnim, "⚡ Animasi Kustom (master)", nil, "Emote")
+        buatHeader(scrollBundle, "BUNDLE ANIMASI")
+        buatToggleRow(scrollBundle, "⚡ Animasi Kustom (master)", nil, "Emote")
 
         -- status bar: rig + jumlah slot aktif
         local emoteStatus = buat("TextLabel", {
@@ -2284,7 +2164,7 @@ local EMOTE_PRESET = {
             TextXAlignment = Enum.TextXAlignment.Center,
             Text = "Rig: mendeteksi... • klik slot = pilih gaya",
             LayoutOrder = nextOrder(),
-        }, scrollAnim)
+        }, scrollBundle)
         buat("UICorner", {CornerRadius = UDim.new(0, 8)}, emoteStatus)
 
         -- grid 3x3 slot gaya (klik = buka popup pilih gaya)
@@ -2293,7 +2173,7 @@ local EMOTE_PRESET = {
             BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 0, 156),
             LayoutOrder = nextOrder(),
-        }, scrollAnim)
+        }, scrollBundle)
         buat("UIGridLayout", {
             CellSize = UDim2.new(1 / 3, -4, 0, 48),
             CellPadding = UDim2.new(0, 4, 0, 4),
@@ -2349,7 +2229,7 @@ local EMOTE_PRESET = {
 
         -- RESET SEMUA — konfirmasi 2 langkah
         local armResetEmote = 0
-        local btnResetEmote = buatActionRow(scrollAnim, "↺ RESET SEMUA → ANIMASI ASLI", Warna.Merah, function()
+        local btnResetEmote = buatActionRow(scrollBundle, "↺ RESET SEMUA → ANIMASI ASLI", Warna.Merah, function()
             local now = os.clock()
             if now - armResetEmote > 3 then
                 armResetEmote = now
@@ -2380,16 +2260,36 @@ local EMOTE_PRESET = {
             FontFace = fnt("reg"), TextSize = 10,
             TextColor3 = Warna.AbuTeks, TextWrapped = true,
             TextXAlignment = Enum.TextXAlignment.Left,
-            Text = "Gaya jalan/lari/dll terlihat juga oleh pemain lain (direplikasi server). "
-            .. "Bundle bawaan dan tambahan tersedia lewat chooser; emote tambahan dapat dicari. "
-            .. "membeli. Gaya otomatis dipasang lagi setelah mati/respawn. v1.6: awal load "
+            Text = "Pilih bundle untuk IDLE, JALAN, LARI, RENANG, MANJAT, LOMPAT, dan JATUH. "
+            .. "Gaya otomatis dipasang lagi setelah mati/respawn. v1.6: awal load "
             .. "selalu OFF + semua slot ASLI — nyalakan ⚡ master dulu, gaya pilihanmu "
             .. "aktif selama sesi saja (script dijalankan ulang = balik default).",
             LayoutOrder = nextOrder(),
-        }, scrollAnim)
+        }, scrollBundle)
+
+        -- [7h] KONTEN TAB 2: ANIMASI / EMOTE -------------------------------
+        kontenAnim = buat("Frame", {
+            Position = UDim2.new(0, 0, 0, 80),
+            Size = UDim2.new(1, 0, 1, -110),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            Visible = false,
+        }, panel)
+        scrollAnim = buat("ScrollingFrame", {
+            Position = UDim2.new(0, 12, 0, 2),
+            Size = UDim2.new(1, -24, 1, -6),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            ScrollBarThickness = 4,
+            ScrollBarImageColor3 = Warna.Ungu2,
+            ScrollingDirection = Enum.ScrollingDirection.Y,
+            CanvasSize = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+        }, kontenAnim)
+        buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollAnim)
 
         -- ===== BROWSER EMOTE TAMBAHAN =====
-        buatHeader(scrollAnim, "Emote Tambahan")
+        buatHeader(scrollAnim, "EMOTE")
         local emoteControls = buat("Frame", {
             BackgroundTransparency = 1,
             Size = UDim2.new(1, 0, 0, 32),
@@ -2405,6 +2305,7 @@ local EMOTE_PRESET = {
         }, emoteControls)
         buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnLoopEmote)
         local showFavoritesOnly = false
+        local refreshEmoteBrowser
         local btnFilterEmote = buat("TextButton", {
             BackgroundColor3 = Warna.Card2,
             Position = UDim2.new(0.5, 3, 0, 0),
@@ -2430,7 +2331,7 @@ local EMOTE_PRESET = {
         buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10)}, emoteSearchBox)
         local emoteBrowser = buat("ScrollingFrame", {
             BackgroundTransparency = 1,
-            Size = UDim2.new(1, 0, 0, 190),
+            Size = UDim2.new(1, 0, 0, 360),
             BorderSizePixel = 0,
             ScrollBarThickness = 4,
             ScrollBarImageColor3 = Warna.Ungu2,
@@ -2440,7 +2341,6 @@ local EMOTE_PRESET = {
             LayoutOrder = nextOrder(),
         }, scrollAnim)
         buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, emoteBrowser)
-        local refreshEmoteBrowser
         local function setLoop(on)
             emoteLoop = on and true or false
             btnLoopEmote.Text = emoteLoop and "↻ AUTO LOOP: ON" or "↻ AUTO LOOP: OFF"
@@ -2617,9 +2517,9 @@ local EMOTE_PRESET = {
             chooser.Visible = false
         end)
 
-        -- urutan kontenTabs = urutan tab: 1 MOVEMENT & VISUAL • 2 TITIK • 3 ANIMASI • 4 SYSTEM
-        table.insert(kontenTabs, kontenTitik)
+        -- urutan kontenTabs = urutan tab: 1 MOVEMENT & VISUAL • 2 ANIMASI • 3 BUNDLE • 4 SYSTEM
         table.insert(kontenTabs, kontenAnim)
+        table.insert(kontenTabs, kontenBundle)
         table.insert(kontenTabs, kontenSistem)
 
         buatHeader(scrollSistem, "Info")
@@ -2633,7 +2533,7 @@ local EMOTE_PRESET = {
             TextXAlignment = Enum.TextXAlignment.Left,
             TextYAlignment = Enum.TextYAlignment.Top,
             TextWrapped = true,
-            Text = "⚡ BALAP v" .. VERSI .. "\n"
+            Text = "⚡ SILAU SANTAI v" .. VERSI .. "\n"
             .. "👤 User: " .. tostring(LocalPlayer.Name) .. " (" .. tostring(LocalPlayer.DisplayName) .. ")\n"
             .. "💻 Device: " .. (UserInputService.TouchEnabled and not UserInputService.MouseEnabled
                 and "HP" or "PC"),
@@ -2762,7 +2662,7 @@ local EMOTE_PRESET = {
             Position = UDim2.fromOffset(360, 0),
             Size = UDim2.fromOffset(1600, 13),
             FontFace = fnt("med"),
-            Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (OFF 17.10, ON 17.25-35) • J Jump (51.25/65.25) • C Shift • LShift Tengah • F Moonwalk • V Panah   ✦   📍 TAB TITIK: Mode Titik Ctrl+klik map • tombol TAMBAH TITIK DI SINI • klik titik = TP   ✦   🎬 TAB ANIMASI: 7 slot gaya • 18 pack Roblox (awal OFF default)   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ☁ SYSTEM: input teks • SIMPAN/LOAD manual • load otomatis cuma 1x saat start   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+            Text = "⌨ G = GUI   ✦   🏃 Q Speed   • J Jump   • C Shift   • LShift Tengah   • F Moonwalk   • V Panah   ✦   🎬 TAB ANIMASI: Emote • TAB BUNDLE: Bundle   ✦   🎨 R Hide • T Cahaya • X Dinding   ✦   ⚙️ K×2 Rejoin • Notif kanan atas",
             TextColor3 = Warna.AbuGelap,
             TextSize = 10,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -2771,13 +2671,13 @@ local EMOTE_PRESET = {
         {Position = UDim2.fromOffset(-1600, 0)}))
 
         -- bracket pojok (dekorasi)
-        local posisiTitik = {
+        local posisiSudut = {
             UDim2.new(0.5, 0, 0, 1),
             UDim2.new(0.5, 0, 1, -1),
             UDim2.new(0, 1, 0.5, 0),
             UDim2.new(1, -1, 0.5, 0),
         }
-        for i, p in ipairs(posisiTitik) do
+        for i, p in ipairs(posisiSudut) do
             local d = buat("Frame", {
                 Name = "NoFade",
                 AnchorPoint = Vector2.new(0.5, 0.5),
@@ -3333,35 +3233,6 @@ local EMOTE_PRESET = {
             end
             applySpeed()   -- bonus berenang langsung menyesuaikan / pulih
             syncNotify("Tengah", v, silent, "Shiftlock Tengah")
-        end
-
-        -- TIANG PENANDA (tab TITIK) — tampilkan/sembunyikan tiang checkpoint.
-        -- Daftar titik & data file TIDAK ikut hilang, cuma tiangnya yang dihide.
-        Setters.Tiang = function(v, silent)
-            if State.TiangOn == v then return end
-            State.TiangOn = v
-            if v then
-                titikRender()
-            else
-                if titikFolder then titikFolder:Destroy() titikFolder = nil end
-            end
-            syncNotify("Tiang", v, silent, "Tampilkan Tiang")
-        end
-
-        -- MODE TITIK (v1.5) — gerbang Ctrl+klik: toggle ON dulu di kartu
-        -- Tiang, baru Ctrl+klik permukaan map menaruh titik (lihat [21c])
-        Setters.ModeTitik = function(v, silent)
-            if State.ModeTitikOn == v then return end
-            State.ModeTitikOn = v
-            local sw = Switches["ModeTitik"]
-            if sw then sw.set(v) end
-            if not silent then
-                if v then
-                    toast("📍 Mode Titik ON — tahan Ctrl lalu klik permukaan map", Warna.Hijau)
-                else
-                    toast("📍 Mode Titik OFF", Warna.Kuning)
-                end
-            end
         end
 
         -- ⚡ ANIMASI KUSTOM (v1.5, tab ANIMASI) — master semua slot gaya.
@@ -3968,7 +3839,6 @@ local EMOTE_PRESET = {
             pcall(setFeature, "Shift", false, true)
             pcall(setFeature, "Moon", false, true)
             pcall(setFeature, "Tengah", false, true)
-            pcall(setFeature, "Tiang", false, true)
             pcall(setFeature, "Hide", false, true)
             pcall(setFeature, "LW", false, true)
             pcall(setFeature, "Walls", false, true)
@@ -3976,7 +3846,6 @@ local EMOTE_PRESET = {
             pcall(setFeature, "HideAtas", false, true)
             pcall(setFeature, "Panah", false, true)
             pcall(setFeature, "Emote", false, true)      -- v1.5: balik ke animasi asli
-            pcall(setFeature, "ModeTitik", false, true)  -- v1.5
             -- 2) Unbind semua RenderStep binding (selalu)
             pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
             pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
@@ -4054,7 +3923,7 @@ local EMOTE_PRESET = {
                     script:Destroy()
                 end
             end)
-            print("[BALAP] Script dihapus total — semua dibersihkan ✔")
+            print("[SILAU SANTAI] Script dihapus total — semua dibersihkan ✔")
         end
 
         -- WATCHDOG TAKEOVER: instance lama bunuh diri otomatis begitu ada
@@ -4199,7 +4068,7 @@ local EMOTE_PRESET = {
             elseif input.KeyCode == Enum.KeyCode.X then
                 setFeature("Walls", not State.WallsOn)
             elseif input.KeyCode == Enum.KeyCode.V then
-                setFeature("Panah", not State.PanahOn)  -- Panah Deteksi (titik murni tombol GUI)
+                setFeature("Panah", not State.PanahOn)  -- Panah Deteksi
             elseif input.KeyCode == Enum.KeyCode.K then
                 local now = os.clock()
                 if now - lastK < 0.45 then
@@ -4212,53 +4081,6 @@ local EMOTE_PRESET = {
             end
         end))
 
-        -- [21c] MODE TITIK (v1.5) — Ctrl+klik permukaan map = titik di situ.
-        -- Gerbang: toggle "Mode Titik" di kartu Tiang harus ON dulu.
-        -- Klik di atas panel GUI diabaikan (dicek manual — klik di Frame
-        -- polos tidak men-set gameProcessed); klik langit/kosong ditolak;
-        -- klik ke karakter pemain (sendiri/orang lain) diabaikan.
-        catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if not State.ModeTitikOn or State.Removed then return end
-            if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
-            if UserInputService:GetFocusedTextBox() then return end
-            if not (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
-                or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)) then
-                return
-            end
-            local lok = UserInputService:GetMouseLocation()
-            if root.Visible then
-                local p, s = panel.AbsolutePosition, panel.AbsoluteSize
-                if lok.X >= p.X and lok.X <= p.X + s.X
-                    and lok.Y >= p.Y and lok.Y <= p.Y + s.Y then
-                    return
-                end
-            end
-            if gameProcessed then return end            -- klik di tombol/GUI
-            local cam = Workspace.CurrentCamera
-            if not cam then return end
-            local ray = cam:ViewportPointToRay(lok.X, lok.Y)
-            local params = RaycastParams.new()
-            params.FilterType = Enum.RaycastFilterType.Exclude
-            local exclude = {}
-            if titikFolder then exclude[#exclude + 1] = titikFolder end
-            local char = LocalPlayer.Character
-            if char then exclude[#exclude + 1] = char end
-            for _, pl in ipairs(Players:GetPlayers()) do
-                if pl ~= LocalPlayer and pl.Character then
-                    exclude[#exclude + 1] = pl.Character
-                end
-            end
-            params.FilterDescendantsInstances = exclude
-            local hit = Workspace:Raycast(ray.Origin, ray.Direction * 5000, params)
-            if not hit then
-                toast("Klik ke permukaan map — langit/kosong tidak dihitung", Warna.Kuning)
-                return
-            end
-            -- offset tipis ke arah keluar permukaan (normal) biar tiang
-            -- tidak nyangkut setengah ke dalam tembok/bangunan
-            titikTambahDiPosisi(hit.Position + hit.Normal * 0.3)
-        end))
-
         diagSet("keybind OK — finalisasi...")
         -- [22] MULAI ---------------------------------------------------------
         updateSpeedLabel()
@@ -4267,12 +4089,12 @@ local EMOTE_PRESET = {
             local okG, errG = pcall(bukaGui)
             if not okG then
                 diagSet("GUI gagal terbuka: " .. tostring(errG), Color3.fromRGB(239, 68, 68))
-                warn("[BALAP] bukaGui error: " .. tostring(errG))
+                warn("[SILAU SANTAI] bukaGui error: " .. tostring(errG))
             end
         end)
-        print("[BALAP v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | TITIK | ANIMASI | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • V panah • R hide • T cahaya • X dinding • K×2 rejoin • Ctrl+klik titik saat Mode Titik ON")
-        diagSet("BALAP v" .. VERSI .. " SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
+        print("[SILAU SANTAI v" .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
+        print("[SILAU SANTAI] MOVE&VISUAL | ANIMASI | BUNDLE | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • V panah • R hide • T cahaya • X dinding • K×2 rejoin")
+        diagSet("SILAU SANTAI v" .. VERSI .. " SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
                 pcall(function()
@@ -4296,7 +4118,7 @@ local EMOTE_PRESET = {
 end, function(e)
     local teks = tostring(e)
     print("==================================================")
-    print("[BALAP v" .. VERSI .. "] ERROR SAAT LOAD — kirim teks ini ke dev:")
+    print("[SILAU SANTAI v" .. VERSI .. "] ERROR SAAT LOAD — kirim teks ini ke dev:")
     print(teks)
     pcall(function() print(debug.traceback("", 2)) end)
     print("==================================================")
@@ -4305,5 +4127,5 @@ end, function(e)
     end)
 end)
 if not __BALAP_LOAD_OK__ then
-    warn("[BALAP v" .. VERSI .. "] Script GAGAL load — banner MERAH di layar berisi errornya.")
+    warn("[SILAU SANTAI v" .. VERSI .. "] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
