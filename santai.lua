@@ -20,7 +20,7 @@ do
     local __dGui, __dLbl
     pcall(function()
         __dGui = Instance.new("ScreenGui")
-        __dGui.Name = "BALAP_DIAG"
+        __dGui.Name = "SANTAI_DIAG"
         __dGui.ResetOnSpawn = false
         __dGui.DisplayOrder = 1000000
         __dLbl = Instance.new("TextLabel")
@@ -420,7 +420,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
 
     -- [6] SCREENGUI -----------------------------------------------------
     local screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "BalapMain"
+    screenGui.Name = "SantaiMain"
     screenGui.ResetOnSpawn = false
     screenGui.DisplayOrder = 9999
     screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -431,7 +431,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     pcall(function() table.insert(kandidatParent, LocalPlayer:WaitForChild("PlayerGui")) end)
     for _, t in ipairs(kandidatParent) do
         pcall(function()
-            local lama = t:FindFirstChild("BalapMain")
+            local lama = t:FindFirstChild("SantaiMain")
             if lama then lama:Destroy() end
         end)
     end
@@ -608,7 +608,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     --   • Baseline (animasi asli game) dicatat tiap spawn -> RESET/OFF
     --     mengembalikan persis seperti semula.
     --   • Preset bawaan + bundle tambahan dari library animasi.
-    --   • Config (preset/master) permanen: BALAP_EMOTE.json.
+    --   • Config (preset/master) permanen: SANTAI_EMOTE.json.
     --   • Keybind G milik script standalone DIHAPUS — ikut GUI utama (G).
     -- ======================================================================
 local EMOTE_PRESET = {
@@ -1562,6 +1562,22 @@ local EMOTE_PRESET = {
     local EMOTE_FAVORITES = rawget(getgenv(), "BALAP_EMOTE_FAVORITES") or {}
     local emoteLoop = false
     local activeEmoteTrack
+    local emoteMotionConnections = {}
+    local function stopSingleEmote(reason)
+        local track = activeEmoteTrack
+        activeEmoteTrack = nil
+        if track then pcall(function() track:Stop(0.10) end) end
+    end
+    local function humanoidSedangBergerak(hum)
+        if not hum then return false end
+        local state = hum:GetState()
+        return hum.MoveDirection.Magnitude > 0.05
+            or state == Enum.HumanoidStateType.Jumping
+            or state == Enum.HumanoidStateType.Freefall
+            or state == Enum.HumanoidStateType.FallingDown
+            or state == Enum.HumanoidStateType.Climbing
+            or state == Enum.HumanoidStateType.Swimming
+    end
     local function simpanEmoteFavorites()
         getgenv().BALAP_EMOTE_FAVORITES = EMOTE_FAVORITES
     end
@@ -1571,40 +1587,82 @@ local EMOTE_PRESET = {
         local char = getChar()
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hum then toast("Karakter tidak ketemu!", Warna.Merah) return end
-        pcall(function() if activeEmoteTrack then activeEmoteTrack:Stop(0.12) end end)
+        if humanoidSedangBergerak(hum) then
+            toast("Berhenti dulu untuk memainkan emote", Warna.Kuning)
+            return
+        end
+        stopSingleEmote("ganti emote")
         local anim = Instance.new("Animation")
         anim.AnimationId = "rbxassetid://" .. tostring(id)
-        local ok, track = pcall(function() return hum:LoadAnimation(anim) end)
+        local animator = hum:FindFirstChildOfClass("Animator")
+        if not animator then
+            animator = Instance.new("Animator")
+            animator.Parent = hum
+        end
+        local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
+        if not ok or not track then
+            ok, track = pcall(function() return hum:LoadAnimation(anim) end)
+        end
         if ok and track then
             activeEmoteTrack = track
             track.Priority = Enum.AnimationPriority.Action
             track.Looped = emoteLoop
-            track:Play(0.12, 1, 1)
-            toast("🎭 Emote: " .. name, Warna.Ungu2)
+            local played = pcall(function() track:Play(0.12, 1, 1) end)
+            if played then
+                toast("Emote: " .. name, Warna.Ungu2)
+                task.delay(2.5, function()
+                    if activeEmoteTrack ~= track then return end
+                    local okPlaying, playing = pcall(function() return track.IsPlaying end)
+                    local okLength, length = pcall(function() return track.Length end)
+                    if not okPlaying or not playing then
+                        activeEmoteTrack = nil
+                        if okLength and length <= 0 then
+                            toast("Emote ditolak Roblox atau tidak diizinkan game", Warna.Merah)
+                        end
+                    end
+                end)
+            else
+                stopSingleEmote("gagal play")
+                toast("Emote tidak bisa diputar oleh Roblox", Warna.Merah)
+            end
         else
-            toast("Emote tidak bisa diputar", Warna.Merah)
+            toast("Emote tidak bisa dimuat oleh Roblox", Warna.Merah)
         end
     end
-
-    -- Emote satu kali berhenti otomatis saat karakter mulai bergerak.
-    -- Setelah berhenti, emote tidak dimainkan ulang otomatis; pilih lagi secara manual.
-    local emoteMoveConn = catat(RunService.Heartbeat:Connect(function()
-        if not activeEmoteTrack then return end
-        local char = getChar()
+    local function hookEmoteMovement(char)
+        for _, conn in ipairs(emoteMotionConnections) do pcall(function() conn:Disconnect() end) end
+        table.clear(emoteMotionConnections)
         local hum = char and char:FindFirstChildOfClass("Humanoid")
         if not hum then return end
-        local state = hum:GetState()
-        local bergerak = hum.MoveDirection.Magnitude > 0.05
-            or state == Enum.HumanoidStateType.Jumping
-            or state == Enum.HumanoidStateType.Freefall
-            or state == Enum.HumanoidStateType.FallingDown
-            or state == Enum.HumanoidStateType.Climbing
-            or state == Enum.HumanoidStateType.Swimming
-        if bergerak then
-            pcall(function() activeEmoteTrack:Stop(0.10) end)
-            activeEmoteTrack = nil
-        elseif not activeEmoteTrack.IsPlaying then
-            activeEmoteTrack = nil
+        table.insert(emoteMotionConnections, catat(hum.Running:Connect(function(speed)
+            if speed > 0.5 then stopSingleEmote("berjalan") end
+        end)))
+        table.insert(emoteMotionConnections, catat(hum.StateChanged:Connect(function(_, state)
+            if state == Enum.HumanoidStateType.Jumping
+                or state == Enum.HumanoidStateType.Freefall
+                or state == Enum.HumanoidStateType.FallingDown
+                or state == Enum.HumanoidStateType.Climbing
+                or state == Enum.HumanoidStateType.Swimming then
+                stopSingleEmote("state gerak")
+            end
+        end)))
+    end
+    if getChar() then hookEmoteMovement(getChar()) end
+    catat(LocalPlayer.CharacterAdded:Connect(function(char)
+        stopSingleEmote("respawn")
+        task.defer(function() hookEmoteMovement(char) end)
+    end))
+    -- Pemeriksaan cadangan setiap frame menangkap gerakan yang tidak memicu Running.
+    catat(RunService.Heartbeat:Connect(function()
+        local track = activeEmoteTrack
+        if not track then return end
+        local hum = getHum()
+        if not hum then stopSingleEmote("humanoid hilang") return end
+        if humanoidSedangBergerak(hum) then
+            stopSingleEmote("gerak")
+        else
+            local ok, playing = pcall(function() return track.IsPlaying end)
+            if not ok or not playing then activeEmoteTrack = nil end
         end
     end))
 
@@ -1637,7 +1695,7 @@ local EMOTE_PRESET = {
     local EMOTE = {
         -- v1.6: awal load SELALU OFF + semua slot ASLI (default).
         -- Pilihan gaya cuma hidup selama sesi — tidak dibaca/ditulis
-        -- ke file lagi (BALAP_EMOTE.json lama diabaikan).
+        -- ke file lagi (SANTAI_EMOTE.json lama diabaikan).
         master     = false,
         preset     = {},
         baseline   = {},
@@ -2517,7 +2575,7 @@ local EMOTE_PRESET = {
             chooser.Visible = false
         end)
 
-        -- urutan kontenTabs = urutan tab: 1 MOVEMENT & VISUAL • 2 ANIMASI • 3 BUNDLE • 4 SYSTEM
+        -- urutan kontenTabs = 1 MOVEMENT • 2 ANIMASI • 3 BUNDLE • 4 SYSTEM
         table.insert(kontenTabs, kontenAnim)
         table.insert(kontenTabs, kontenBundle)
         table.insert(kontenTabs, kontenSistem)
@@ -3146,7 +3204,7 @@ local EMOTE_PRESET = {
         local function sltDotShow()
             if sltDot then sltDot.Visible = true return end
             sltDotGui = buat("ScreenGui", {
-                Name = "BALAP_TengahDot",
+                Name = "SANTAI_TengahDot",
                 ResetOnSpawn = false,
                 DisplayOrder = 99999,
                 IgnoreGuiInset = true, -- skala Y dihitung dari seluruh layar
@@ -3170,7 +3228,7 @@ local EMOTE_PRESET = {
             pcall(function() table.insert(kandidat, LocalPlayer:WaitForChild("PlayerGui")) end)
             for _, t in ipairs(kandidat) do
                 pcall(function()
-                    local lama = t:FindFirstChild("BALAP_TengahDot")
+                    local lama = t:FindFirstChild("SANTAI_TengahDot")
                     if lama and lama ~= sltDotGui then lama:Destroy() end
                 end)
             end
@@ -3727,7 +3785,7 @@ local EMOTE_PRESET = {
             if v then
                 if not panahGui or not panahGui.Parent then
                     panahGui = Instance.new("ScreenGui")
-                    panahGui.Name = "BALAP_PANAH"
+                    panahGui.Name = "SANTAI_PANAH"
                     panahGui.ResetOnSpawn = false
                     panahGui.IgnoreGuiInset = true
                     panahGui.DisplayOrder = 9000
@@ -3739,7 +3797,7 @@ local EMOTE_PRESET = {
                     pcall(function() table.insert(kandidatP, LocalPlayer:WaitForChild("PlayerGui")) end)
                     for _, t in ipairs(kandidatP) do
                         pcall(function()
-                            local lama = t:FindFirstChild("BALAP_PANAH")
+                            local lama = t:FindFirstChild("SANTAI_PANAH")
                             if lama and lama ~= panahGui then lama:Destroy() end
                         end)
                     end
@@ -3927,10 +3985,10 @@ local EMOTE_PRESET = {
         end
 
         -- WATCHDOG TAKEOVER: instance lama bunuh diri otomatis begitu ada
-        -- eksekusi BALAP yang lebih baru. Pemicu (cukup salah satu, cek tiap 0.5 dtk):
+        -- eksekusi SANTAI yang lebih baru. Pemicu (cukup salah satu, cek tiap 0.5 dtk):
         --   (1) _G.__BALAP_TOKEN__ bukan miliknya      -> executor share _G
         --   (2) screenGui sudah dihapus eksekusi baru  -> executor isolasi _G
-        --       (sweep "BalapMain" di awal eksekusi baru yang menghapusnya)
+        --       (sweep "SantaiMain" di awal eksekusi baru yang menghapusnya)
         -- Dulu ini penyebab siluman: Heartbeat Fall Assist instance lama tetap
         -- mem-pulse dengan potongan 30%, walau GUI baru sudah diset 0%.
         task.spawn(function()
@@ -4098,12 +4156,12 @@ local EMOTE_PRESET = {
         task.delay(7, function()
             local function hapusDiag()
                 pcall(function()
-                    local g = game:GetService("CoreGui"):FindFirstChild("BALAP_DIAG")
+                    local g = game:GetService("CoreGui"):FindFirstChild("SANTAI_DIAG")
                     if g then g:Destroy() end
                 end)
                 pcall(function()
                     if gethui then
-                        local g = gethui():FindFirstChild("BALAP_DIAG")
+                        local g = gethui():FindFirstChild("SANTAI_DIAG")
                         if g then g:Destroy() end
                     end
                 end)
