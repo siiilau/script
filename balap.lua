@@ -474,7 +474,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         table.clear(TITIK.poin)
         for _,v in ipairs(data.points) do local x,y,z=tonumber(v.x),tonumber(v.y),tonumber(v.z); if x and y and z then TITIK.poin[#TITIK.poin+1]={id=tostring(v.id),name=tostring(v.name or "Titik"),defaultName=namaDefaultTitik(v.name),pos=Vector3.new(x,y,z),normal=Vector3.new(tonumber(v.nx) or 0,tonumber(v.ny) or 1,tonumber(v.nz) or 0)} end end
         if type(data.lines)=="table" then benangPulihkan(data.lines); benangSimpan() end
-        table.clear(TITIK.hapus); rapikanNomorTitik(); titikSimpan(); titikRefreshDot(); titikRenderUI(); cloudSetStatus("☁ Download berhasil • "..#TITIK.poin.." titik"); return true,#TITIK.poin
+        table.clear(TITIK.hapus); titikSimpan(); titikRefreshDot(); titikRenderUI(); cloudSetStatus("☁ Download berhasil • "..#TITIK.poin.." titik"); return true,#TITIK.poin
     end
     local function cloudAutoUpload() if cloudKey then task.spawn(function() cloudUpload() end) end end
 
@@ -646,7 +646,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end
         local id = tostring(os.time()) .. "-" .. tostring(math.random(100000, 999999))
         TITIK.poin[#TITIK.poin + 1] = {id = id, name = name, defaultName = defaultName or namaDefaultTitik(name), pos = pos, normal = normal}
-        rapikanNomorTitik()
         titikSimpan()
         pcall(function() if type(toast) == "function" then toast("✓ Titik disimpan lokal: " .. name, Warna.Hijau) end end)
         cloudAutoUpload()
@@ -661,7 +660,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             local id = TITIK.poin[nomor].id or nama
             table.remove(TITIK.poin, nomor)
             TITIK.hapus[#TITIK.hapus + 1] = tostring(id)
-            rapikanNomorTitik()
             titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Titik dihapus dan disimpan lokal", Warna.Hijau) end end); cloudAutoUpload(); titikRefreshDot(); titikRenderUI()
             titikStatusUI("Titik dihapus: " .. nama)
         end
@@ -719,7 +717,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     end
     titikMuat()
     benangMuat()
-    rapikanNomorTitik()
     titikSimpan()
     titikRefreshDot()
 
@@ -2656,7 +2653,6 @@ local EMOTE_CATALOG = {
                     else
                         point.name = nama
                         point.defaultName = namaDefaultTitik(nama)
-                        rapikanNomorTitik()
                         titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Nama titik disimpan", Warna.Hijau) end end); cloudAutoUpload(); titikRefreshDot(); titikStatusUI("Nama titik diubah")
                     end
                 end)
