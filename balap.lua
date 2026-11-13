@@ -2629,10 +2629,8 @@ local EMOTE_CATALOG = {
                     daftar[#daftar + 1] = {point = point, index = i, distance = titikJarakDariKarakter(point) or math.huge}
                 end
             end
-            table.sort(daftar, function(a, b)
-                if a.distance == b.distance then return a.index < b.index end
-                return a.distance < b.distance
-            end)
+            -- Pertahankan urutan asli TITIK.poin. Daftar hanya berubah
+            -- ketika tombol URUTKAN TIANG TERDEKAT ditekan secara manual.
             for urutan, entry in ipairs(daftar) do
                 local point = entry.point
                 local row = buat("Frame", {
