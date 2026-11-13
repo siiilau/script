@@ -323,10 +323,12 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     -- CLOUD TITIK CLOUDFLARE
     local CLOUD_URL = "https://balap-point.siiilau-id.workers.dev"
     local CLOUD_KEY_FILE = "BALAP_TITIK_KEY.txt"
+    local BENANG_FILE = "BALAP_BENANG.json"
     local cloudKey, cloudKeyBox, cloudStatusLabel
     local cloudUpload, cloudDownload, cloudCreateKey, cloudLoadKey
     local benangOn, benangGroups, benangActiveGroup, benangFolder = false, {{points={}}}, 1, nil
     local benangToggleBtn
+    local benangRenderGroupUI = function() end
     local titikRenderUI = function() end
     local titikStatusUI = function() end
     local titikDistanceLabels = {}
@@ -445,7 +447,11 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         local points={}
         for _,p in ipairs(TITIK.poin) do local n=p.normal or Vector3.new(0,1,0); points[#points+1]={id=p.id,name=p.name,x=p.pos.X,y=p.pos.Y,z=p.pos.Z,nx=n.X,ny=n.Y,nz=n.Z} end
         local sender="unknown"; pcall(function() if type(identifyexecutor)=="function" then sender=tostring(identifyexecutor()) elseif type(getexecutorname)=="function" then sender=tostring(getexecutorname()) end end)
-        return {points=points,deleted=TITIK.hapus,sender=sender,placeId=tostring(game.PlaceId)}
+        local lines={}
+        for gi,g in ipairs(benangGroups) do
+            if #g.points>=2 then local ids={}; for _,p in ipairs(g.points) do ids[#ids+1]=tostring(p.id) end; lines[#lines+1]=ids end
+        end
+        return {points=points,lines=lines,deleted=TITIK.hapus,sender=sender,placeId=tostring(game.PlaceId)}
     end
     cloudUpload=function()
         if not cloudKey then return false,"key belum ada" end
@@ -467,9 +473,30 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         if type(data)~="table" or type(data.points)~="table" then return false,"format cloud tidak valid" end
         table.clear(TITIK.poin)
         for _,v in ipairs(data.points) do local x,y,z=tonumber(v.x),tonumber(v.y),tonumber(v.z); if x and y and z then TITIK.poin[#TITIK.poin+1]={id=tostring(v.id),name=tostring(v.name or "Titik"),defaultName=namaDefaultTitik(v.name),pos=Vector3.new(x,y,z),normal=Vector3.new(tonumber(v.nx) or 0,tonumber(v.ny) or 1,tonumber(v.nz) or 0)} end end
+        if type(data.lines)=="table" then benangPulihkan(data.lines); benangSimpan() end
         table.clear(TITIK.hapus); rapikanNomorTitik(); titikSimpan(); titikRefreshDot(); titikRenderUI(); cloudSetStatus("☁ Download berhasil • "..#TITIK.poin.." titik"); return true,#TITIK.poin
     end
     local function cloudAutoUpload() if cloudKey then task.spawn(function() cloudUpload() end) end end
+
+    local function benangSimpan()
+        local lines={}
+        for _,g in ipairs(benangGroups) do if #g.points>0 then local ids={}; for _,p in ipairs(g.points) do ids[#ids+1]=tostring(p.id) end; lines[#lines+1]=ids end end
+        if type(writefile)=="function" then pcall(function() writefile(BENANG_FILE,HttpService:JSONEncode(lines)) end) end
+    end
+    local function benangPulihkan(lines)
+        table.clear(benangGroups); benangActiveGroup=1
+        local byId={}; for _,p in ipairs(TITIK.poin) do byId[tostring(p.id)]=p end
+        if type(lines)=="table" then
+            for _,ids in ipairs(lines) do local g={points={}}; if type(ids)=="table" then for _,id in ipairs(ids) do if byId[tostring(id)] then g.points[#g.points+1]=byId[tostring(id)] end end end; if #g.points>0 then benangGroups[#benangGroups+1]=g end end
+        end
+        if #benangGroups==0 then benangGroups={{points={}}} end
+        benangActiveGroup=#benangGroups
+    end
+    local function benangMuat()
+        local lines
+        if type(readfile)=="function" and type(isfile)=="function" then pcall(function() if isfile(BENANG_FILE) then lines=HttpService:JSONDecode(readfile(BENANG_FILE)) end end) end
+        if type(lines)=="table" then benangPulihkan(lines) end
+    end
 
     local function benangBersihkan()
         benangOn=false
@@ -490,10 +517,27 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         for gi,g in ipairs(benangGroups) do
             for pasangan=1,#g.points-1 do
                 local a,b=g.points[pasangan].pos,g.points[pasangan+1].pos
-                local jumlah=math.clamp(math.ceil((b-a).Magnitude/0.65),8,320); local points={}; local rayStartY=math.max(a.Y,b.Y)+300
+                local jumlah=math.clamp(math.ceil((b-a).Magnitude/0.65),8,320); local points={}; local rayStartY=math.max(a.Y,b.Y)+80
                 for i=0,jumlah do
-                    local t=i/jumlah; local base=a:Lerp(b,t); local hit=Workspace:Raycast(Vector3.new(base.X,rayStartY,base.Z),Vector3.new(0,-700,0),params)
-                    points[#points+1]=hit and (hit.Position+hit.Normal*0.055) or base
+                    local t=i/jumlah; local base=a:Lerp(b,t)
+                    if i==0 or i==jumlah then
+                        points[#points+1]=base
+                    else
+                        local rayOrigin=Vector3.new(base.X,rayStartY,base.Z); local rayDirection=Vector3.new(0,-260,0); local hit
+                        for _=1,12 do
+                            hit=Workspace:Raycast(rayOrigin,rayDirection,params)
+                            if not hit then break end
+                            local inst=hit.Instance
+                            local transparan=(inst:IsA("BasePart") and inst.Transparency>0.15)
+                            local bukanTanah=(inst:IsA("BasePart") and not inst.CanCollide)
+                            if transparan or bukanTanah then
+                                filter[#filter+1]=inst; params.FilterDescendantsInstances=filter
+                                rayOrigin=hit.Position+Vector3.new(0,-0.05,0)
+                            else break end
+                        end
+                        local expectedY=base.Y
+                        if hit and hit.Position.Y <= expectedY+80 then points[#points+1]=hit.Position+hit.Normal*0.055 else points[#points+1]=base end
+                    end
                 end
                 for i=1,#points-1 do
                     local p0,p1=points[i],points[i+1]; local delta=p1-p0; local len=delta.Magnitude
@@ -519,13 +563,25 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end
         local wasOn=benangOn
         if wasOn then benangBersihkan(); benangTampilkan() end
+        benangSimpan(); cloudAutoUpload(); benangRenderGroupUI()
         return foundGroup and 0 or #benangGroups[benangActiveGroup].points
     end
+    local function benangHapusGrup(index)
+        if not benangGroups[index] then return end
+        table.remove(benangGroups,index)
+        if #benangGroups==0 then benangGroups={{points={}}} end
+        if benangActiveGroup> #benangGroups then benangActiveGroup=#benangGroups end
+        if benangOn then benangBersihkan(); benangTampilkan() end
+        benangSimpan(); cloudAutoUpload(); benangRenderGroupUI(); titikRenderUI()
+        if type(toast)=="function" then toast("✓ Group benang "..index.." dihapus",Warna.Hijau) end
+    end
+
     local function benangBaru()
         local g=benangGroups[benangActiveGroup]
         if not g or #g.points<2 then if type(toast)=="function" then toast("Benang aktif perlu minimal 2 titik",Warna.Kuning) end; return false end
         benangActiveGroup+=1; benangGroups[benangActiveGroup]={points={}}
         if benangOn then benangBersihkan(); benangTampilkan() end
+        benangSimpan(); cloudAutoUpload(); benangRenderGroupUI()
         return true
     end
 
@@ -641,6 +697,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         return hrp.Position, Vector3.new(0, 1, 0)
     end
     titikMuat()
+    benangMuat()
     rapikanNomorTitik()
     titikSimpan()
     titikRefreshDot()
@@ -2484,7 +2541,7 @@ local EMOTE_CATALOG = {
         buatActionRow(scrollTitik, "🗑 HAPUS SEMUA TITIK", Warna.Merah, function()
             for _, p in ipairs(TITIK.poin) do TITIK.hapus[#TITIK.hapus + 1] = tostring(p.id or p.name) end
             table.clear(TITIK.poin)
-            benangGroups={{points={}}}; benangActiveGroup=1; benangBersihkan()
+            benangGroups={{points={}}}; benangActiveGroup=1; benangBersihkan(); benangSimpan(); cloudAutoUpload()
             titikSimpan()
             pcall(function() if type(toast) == "function" then toast("✓ Semua titik dihapus dan disimpan lokal", Warna.Hijau) end end)
             cloudAutoUpload()
@@ -2492,6 +2549,23 @@ local EMOTE_CATALOG = {
             titikRenderUI()
             titikStatusUI("Semua titik dihapus")
         end).LayoutOrder = titikNext()
+        buatHeader(scrollTitik,"Daftar Group Benang")
+        local groupList=buat("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,LayoutOrder=titikNext()},scrollTitik)
+        buat("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},groupList)
+        benangRenderGroupUI=function()
+            for _,obj in ipairs(groupList:GetChildren()) do if obj:IsA("Frame") then obj:Destroy() end end
+            for gi,g in ipairs(benangGroups) do
+                local row=buat("Frame",{BackgroundColor3=gi==benangActiveGroup and Warna.BiruMuda or Warna.AbuItem,Size=UDim2.new(1,0,0,34)},groupList)
+                buat("UICorner",{CornerRadius=UDim.new(0,7)},row)
+                local pilih=buat("TextButton",{BackgroundTransparency=1,Position=UDim2.new(0,8,0,0),Size=UDim2.new(1,-72,1,0),FontFace=fnt("med"),TextSize=11,TextColor3=Warna.TeksGelap,TextXAlignment=Enum.TextXAlignment.Left,Text="GROUP "..gi.." • "..#g.points.." TITIK"},row)
+                pilih.MouseButton1Click:Connect(function() benangActiveGroup=gi; benangRenderGroupUI(); if type(toast)=="function" then toast("Group aktif: "..gi,Warna.Biru) end end)
+                local hapus=buat("TextButton",{BackgroundColor3=Warna.Merah,Position=UDim2.new(1,-62,0,4),Size=UDim2.fromOffset(56,26),FontFace=fnt("bold"),TextSize=9,TextColor3=Warna.Putih,Text="HAPUS",AutoButtonColor=false},row)
+                buat("UICorner",{CornerRadius=UDim.new(0,6)},hapus)
+                hapus.MouseButton1Click:Connect(function() benangHapusGrup(gi) end)
+            end
+        end
+        benangRenderGroupUI()
+
         benangToggleBtn=buatActionRow(scrollTitik,"🧵 BENANG OFF • GRUP 1",Warna.Ungu2,function()
             local aktif=benangToggle()
             if type(toast)=="function" then toast(aktif and ("✓ Semua benang ON • "..#benangGroups.." grup") or "✓ Semua benang OFF",aktif and Warna.Hijau or Warna.AbuGelap) end
