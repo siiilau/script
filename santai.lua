@@ -1,5 +1,5 @@
 --========================================================
---  SILAU SANTAI v1.0 — TEMA: SILAU NEON (ungu/biru LED)
+--  SILAU SANTAI v1.1 — TEMA: SILAU NEON (ungu/biru LED)
 --
 --  Ringkasan fitur aktif:
 --    • Tidak ada sinkronisasi cloud, kode lintas perangkat, atau pemuatan data
@@ -11,7 +11,7 @@
 --
 --  Shiftlock Mobile, Moonwalk & Shiftlock Tengah otomatis OFF saat mati/respawn.
 --========================================================
-print("[SILAU SANTAI v1.0] load mulai...")
+print("[SILAU SANTAI v1.1] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -62,7 +62,7 @@ do
     end
 end
 
-local VERSI = "1.0"
+local VERSI = "1.1"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -113,7 +113,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     -- (Luau limit 200 local per function)
     local CFG = {
         TOGGLE_KEY      = Enum.KeyCode.G,
-        LED_TEXT        = "⚡ B A L A P ⚡",
+        LED_TEXT        = "⚡ S A N T A I ⚡",
         SOUND_ON        = true,
         FX_LEVEL        = 1,
         -- Speed cycle 3 state (17.10 → 17.25 → 35 → balik OFF)
