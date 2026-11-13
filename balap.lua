@@ -2618,7 +2618,16 @@ local EMOTE_CATALOG = {
             table.clear(titikDistanceLabels)
             local daftar = {}
             for i, point in ipairs(TITIK.poin) do
-                daftar[#daftar + 1] = {point = point, index = i, distance = titikJarakDariKarakter(point) or math.huge}
+                local sudahDiGroup=false
+                for _,g in ipairs(benangGroups) do
+                    for _,gp in ipairs(g.points) do
+                        if gp==point then sudahDiGroup=true; break end
+                    end
+                    if sudahDiGroup then break end
+                end
+                if not sudahDiGroup then
+                    daftar[#daftar + 1] = {point = point, index = i, distance = titikJarakDariKarakter(point) or math.huge}
+                end
             end
             table.sort(daftar, function(a, b)
                 if a.distance == b.distance then return a.index < b.index end
