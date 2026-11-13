@@ -592,21 +592,42 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     end
     local function titikBuatDot(p, nomor)
         local folder = titikFolder()
-        local dot = Instance.new("Part")
-        dot.Name = "Titik_" .. tostring(nomor)
-        dot.Shape = Enum.PartType.Ball
-        dot.Anchored = true
-        dot.CanCollide = false
-        dot.CanTouch = false
-        dot.CanQuery = false
-        dot.CastShadow = false
-        dot.Material = Enum.Material.Neon
-        dot.Color = Warna.Ungu2
-        dot.Size = Vector3.new(0.44, 0.44, 0.44)
         local normal = p.normal or Vector3.new(0, 1, 0)
         if normal.Magnitude < 0.01 then normal = Vector3.new(0, 1, 0) end
-        dot.Position = p.pos + normal.Unit * 0.025
+        normal = normal.Unit
+        local base = p.pos + normal * 0.025
+        local tiangTinggi, tiangLebar = 1/3, 0.08
+        local orient = CFrame.lookAt(base, base + normal) * CFrame.Angles(math.pi/2, 0, 0)
+
+        local tiang = Instance.new("Part")
+        tiang.Name = "Tiang_" .. tostring(nomor); tiang.Shape = Enum.PartType.Cylinder; tiang.Anchored = true
+        tiang.CanCollide = false; tiang.CanTouch = false; tiang.CanQuery = false; tiang.CastShadow = false
+        tiang.Material = Enum.Material.Neon; tiang.Color = Warna.Ungu2; tiang.Size = Vector3.new(tiangLebar, tiangTinggi, tiangLebar)
+        tiang.CFrame = orient; tiang.Parent = folder
+
+        local dot = Instance.new("Part")
+        dot.Name = "Titik_" .. tostring(nomor); dot.Shape = Enum.PartType.Ball; dot.Anchored = true
+        dot.CanCollide = false; dot.CanTouch = false; dot.CanQuery = false; dot.CastShadow = false
+        dot.Material = Enum.Material.Neon; dot.Color = Warna.Ungu2; dot.Size = Vector3.new(0.44, 0.44, 0.44)
+        dot.Position = base + normal * tiangTinggi
         dot.Parent = folder
+    end
+    local function titikUrutkanTerdekat()
+        if #TITIK.poin < 2 then return end
+        local char=getChar(); local hrp=char and char:FindFirstChild("HumanoidRootPart")
+        local current=hrp and hrp.Position or TITIK.poin[1].pos
+        local belum={}; for _,p in ipairs(TITIK.poin) do belum[#belum+1]=p end
+        local urut={}
+        while #belum>0 do
+            local bestIndex,bestDist=1,math.huge
+            for i,p in ipairs(belum) do
+                local d=(p.pos-current).Magnitude
+                if d<bestDist then bestIndex,bestDist=i,d end
+            end
+            local nextPoint=table.remove(belum,bestIndex)
+            urut[#urut+1]=nextPoint; current=nextPoint.pos
+        end
+        table.clear(TITIK.poin); for _,p in ipairs(urut) do TITIK.poin[#TITIK.poin+1]=p end
     end
     local function titikRefreshDot()
         titikBersihkanDot()
@@ -2549,6 +2570,15 @@ local EMOTE_CATALOG = {
             titikRenderUI()
             titikStatusUI("Semua titik dihapus")
         end).LayoutOrder = titikNext()
+        buatActionRow(scrollTitik,"↻ URUTKAN TIANG TERDEKAT",Warna.Biru,function()
+            titikUrutkanTerdekat()
+            rapikanNomorTitik()
+            titikRefreshDot()
+            titikSimpan()
+            titikRenderUI()
+            if type(toast)=="function" then toast("✓ Tiang diurutkan berdasarkan jarak terdekat",Warna.Hijau) end
+        end).LayoutOrder=titikNext()
+
         buatHeader(scrollTitik,"Daftar Group Benang")
         local groupList=buat("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,LayoutOrder=titikNext()},scrollTitik)
         buat("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},groupList)
