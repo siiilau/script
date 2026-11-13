@@ -323,6 +323,40 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     local titikStatusUI = function() end
     local titikDistanceLabels = {}
 
+    local function namaDefaultTitik(nama)
+        return tostring(nama or ""):match("^Titik %d+$") ~= nil
+    end
+    local function namaTitikDipakai(nama, kecuali)
+        local target = tostring(nama or ""):lower()
+        for _, point in ipairs(TITIK.poin) do
+            if point ~= kecuali and tostring(point.name or ""):lower() == target then return true end
+        end
+        return false
+    end
+    local function rapikanNomorTitik()
+        local dipakai = {}
+        for _, point in ipairs(TITIK.poin) do
+            if not point.defaultName then dipakai[tostring(point.name or ""):lower()] = true end
+        end
+        local nomor = 1
+        for _, point in ipairs(TITIK.poin) do
+            if point.defaultName then
+                local nama
+                repeat
+                    nama = "Titik " .. nomor
+                    nomor += 1
+                until not dipakai[nama:lower()]
+                point.name = nama
+                dipakai[nama:lower()] = true
+            end
+        end
+    end
+    local function namaDefaultBerikutnya()
+        local nomor = 1
+        while namaTitikDipakai("Titik " .. nomor) do nomor += 1 end
+        return "Titik " .. nomor
+    end
+
     local function titikFolder()
         if TITIK.folder and TITIK.folder.Parent then return TITIK.folder end
         local f = Instance.new("Folder")
@@ -358,6 +392,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                     TITIK.poin[#TITIK.poin + 1] = {
                         id = tostring(v.id or ("legacy-" .. (#TITIK.poin + 1) .. "-" .. math.random(1000, 9999))),
                         name = tostring(v.name or ("Titik " .. (#TITIK.poin + 1))),
+                        defaultName = namaDefaultTitik(v.name or ("Titik " .. (#TITIK.poin + 1))),
                         pos = Vector3.new(x, y, z),
                         normal = Vector3.new(nx, ny, nz),
                     }
@@ -397,9 +432,15 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         if typeof(pos) ~= "Vector3" then return false end
         normal = (typeof(normal) == "Vector3" and normal.Magnitude > 0.01) and normal.Unit or Vector3.new(0, 1, 0)
         name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        if name == "" then name = "Titik " .. (#TITIK.poin + 1) end
+        local defaultName = name == ""
+        if defaultName then name = namaDefaultBerikutnya() end
+        if namaTitikDipakai(name) then
+            titikStatusUI("Nama titik sudah dipakai: " .. name)
+            return false
+        end
         local id = tostring(os.time()) .. "-" .. tostring(math.random(100000, 999999))
-        TITIK.poin[#TITIK.poin + 1] = {id = id, name = name, pos = pos, normal = normal}
+        TITIK.poin[#TITIK.poin + 1] = {id = id, name = name, defaultName = defaultName or namaDefaultTitik(name), pos = pos, normal = normal}
+        rapikanNomorTitik()
         titikSimpan()
         titikRefreshDot()
         titikRenderUI()
@@ -412,6 +453,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             local id = TITIK.poin[nomor].id or nama
             table.remove(TITIK.poin, nomor)
             TITIK.hapus[#TITIK.hapus + 1] = tostring(id)
+            rapikanNomorTitik()
             titikSimpan(); titikRefreshDot(); titikRenderUI()
             titikStatusUI("Titik dihapus: " .. nama)
         end
@@ -468,6 +510,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         return hrp.Position, Vector3.new(0, 1, 0)
     end
     titikMuat()
+    rapikanNomorTitik()
+    titikSimpan()
     titikRefreshDot()
 
     -- [5] EFEK LED & UI HELPER ------------------------------------------
@@ -2353,7 +2397,17 @@ local EMOTE_CATALOG = {
                 titikDistanceLabels[point] = jarakLabel
                 box.FocusLost:Connect(function()
                     local nama = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
-                    if nama ~= "" then point.name = nama; titikSimpan(); titikRefreshDot(); titikStatusUI("Nama titik diubah") else box.Text = point.name end
+                    if nama == "" then
+                        box.Text = point.name
+                    elseif namaTitikDipakai(nama, point) then
+                        box.Text = point.name
+                        titikStatusUI("Nama titik sudah dipakai: " .. nama)
+                    else
+                        point.name = nama
+                        point.defaultName = namaDefaultTitik(nama)
+                        rapikanNomorTitik()
+                        titikSimpan(); titikRefreshDot(); titikStatusUI("Nama titik diubah")
+                    end
                 end)
                 local go = buat("TextButton", {
                     BackgroundColor3 = Warna.Biru, Position = UDim2.new(1, -108, 0, 15),
