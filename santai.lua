@@ -1,5 +1,5 @@
 --========================================================
---  SILAU SANTAI v1.1 — TEMA: SILAU NEON (ungu/biru LED)
+--  SILAU SANTAI v1.2 — TEMA: SILAU NEON (ungu/biru LED)
 --
 --  Ringkasan fitur aktif:
 --    • Tidak ada sinkronisasi cloud, kode lintas perangkat, atau pemuatan data
@@ -11,7 +11,7 @@
 --
 --  Shiftlock Mobile, Moonwalk & Shiftlock Tengah otomatis OFF saat mati/respawn.
 --========================================================
-print("[SILAU SANTAI v1.1] load mulai...")
+print("[SILAU SANTAI v1.2] load mulai...")
 -- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
 -- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
 -- banner berubah MERAH dan menampilkan teks errornya di layar.
@@ -62,7 +62,7 @@ do
     end
 end
 
-local VERSI = "1.1"
+local VERSI = "1.2"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -524,6 +524,100 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     buat("UICorner", {CornerRadius = UDim.new(0, 11)}, panel)
     buat("UIStroke", {Color = Warna.UnguMuda, Thickness = 1, Transparency = 0.35}, panel)
     ledSweep(panel, Warna.PutihLap, Warna.Putih, Warna.BiruMuda, 5)
+
+    -- TEMA SILAU: api neon ungu/biru + percikan + rantai dekoratif.
+    -- Semua elemen berada di layer kosmetik dan tidak menangkap input.
+    do
+        local fxLayer = buat("Frame", {
+            Name = "NoFade",
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            ClipsDescendants = false,
+            Active = false,
+            ZIndex = 0,
+        }, panel)
+        local fxRandom = Random.new(1207)
+        local fireLeft = buat("Frame", {
+            Name = "NoFade", Position = UDim2.new(0, -2, 0, 10),
+            Size = UDim2.new(0, 4, 1, -20), BorderSizePixel = 0,
+            BackgroundColor3 = Warna.Ungu2, BackgroundTransparency = 0.12,
+            ZIndex = 0,
+        }, fxLayer)
+        local fireRight = buat("Frame", {
+            Name = "NoFade", Position = UDim2.new(1, -2, 0, 10),
+            Size = UDim2.new(0, 4, 1, -20), BorderSizePixel = 0,
+            BackgroundColor3 = Warna.Biru2, BackgroundTransparency = 0.12,
+            ZIndex = 0,
+        }, fxLayer)
+        for _, edge in ipairs({fireLeft, fireRight}) do
+            buat("UICorner", {CornerRadius = UDim.new(0, 4)}, edge)
+            local glow = buat("UIGradient", {
+                Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Warna.Ungu),
+                    ColorSequenceKeypoint.new(0.45, Warna.Biru2),
+                    ColorSequenceKeypoint.new(0.7, Warna.Ungu2),
+                    ColorSequenceKeypoint.new(1, Warna.Biru),
+                }),
+                Rotation = 90,
+            }, edge)
+            table.insert(effGradients, glow)
+            table.insert(effTweens, tween(edge, TweenInfo.new(1.25, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+                BackgroundTransparency = 0.62,
+            }))
+        end
+        -- Rantai sisi: link kecil berayun perlahan mengikuti aura panel.
+        for side, x in ipairs({0, 1}) do
+            for i = 1, 7 do
+                local link = buat("TextLabel", {
+                    Name = "NoFade",
+                    BackgroundTransparency = 1,
+                    AnchorPoint = Vector2.new(x, 0.5),
+                    Position = UDim2.new(x, x == 0 and -1 or 1, 0.15 + (i - 1) * 0.115, 0),
+                    Size = UDim2.fromOffset(24, 22),
+                    Font = Enum.Font.GothamBold,
+                    Text = "⛓",
+                    TextSize = 17,
+                    TextColor3 = side == 1 and Warna.Ungu2 or Warna.Biru2,
+                    TextTransparency = 0.18,
+                    Rotation = (i % 2 == 0) and 8 or -8,
+                    ZIndex = 0,
+                }, fxLayer)
+                table.insert(effTweens, tween(link, TweenInfo.new(1.1 + i * 0.08, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+                    Rotation = (i % 2 == 0) and -8 or 8,
+                    TextTransparency = 0.48,
+                }))
+            end
+        end
+        -- Percikan api neon: simbol kecil berpindah dari bawah ke atas lalu muncul lagi.
+        for i = 1, 12 do
+            local spark = buat("TextLabel", {
+                Name = "NoFade",
+                BackgroundTransparency = 1,
+                Size = UDim2.fromOffset(16, 16),
+                Font = Enum.Font.GothamBold,
+                Text = (i % 3 == 0) and "✦" or "·",
+                TextSize = (i % 3 == 0) and 15 or 18,
+                TextColor3 = (i % 2 == 0) and Warna.Ungu2 or Warna.Biru2,
+                TextTransparency = 1,
+                ZIndex = 0,
+            }, fxLayer)
+            task.spawn(function()
+                while spark.Parent and panel.Parent do
+                    local x = fxRandom:NextNumber(0.04, 0.96)
+                    local y = fxRandom:NextNumber(0.72, 0.94)
+                    spark.Position = UDim2.new(x, 0, y, 0)
+                    spark.TextTransparency = 0.12
+                    local up = tween(spark, TweenInfo.new(fxRandom:NextNumber(0.9, 1.7), Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                        Position = UDim2.new(x + fxRandom:NextNumber(-0.035, 0.035), 0, y - fxRandom:NextNumber(0.10, 0.22), 0),
+                        TextTransparency = 1,
+                    })
+                    up.Completed:Wait()
+                    task.wait(fxRandom:NextNumber(0.05, 0.35))
+                end
+            end)
+        end
+    end
     local partBox = buat("Frame", {
         Name = "NoFade",
         Position = UDim2.new(0, 4, 0, 50),
