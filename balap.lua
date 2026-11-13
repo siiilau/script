@@ -3455,9 +3455,16 @@ local EMOTE_CATALOG = {
         end
 
         -- HIDE PLAYER + KENDARAAN
-        local hiddenParts, hiddenBB, hiddenHumans, hiddenCharConns = {}, {}, {}, {}
+        local hiddenParts, hiddenBB, hiddenEffects, hiddenHumans, hiddenCharConns = {}, {}, {}, {}, {}
         local function hideApplyTo(obj)
-            if (obj:IsA("BasePart") or obj:IsA("Decal")) and hiddenParts[obj] == nil then
+            local effect = obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
+                or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") or obj:IsA("Highlight")
+                or obj:IsA("PointLight") or obj:IsA("SpotLight") or obj:IsA("SurfaceLight")
+                or obj:IsA("SurfaceGui")
+            if effect and hiddenEffects[obj] == nil then
+                hiddenEffects[obj] = obj.Enabled
+                obj.Enabled = false
+            elseif (obj:IsA("BasePart") or obj:IsA("Decal")) and hiddenParts[obj] == nil then
                 hiddenParts[obj] = obj.Transparency
                 obj.Transparency = 1
             elseif obj:IsA("BillboardGui") and hiddenBB[obj] == nil then
@@ -3488,6 +3495,10 @@ local EMOTE_CATALOG = {
                 pcall(function() if obj.Parent then obj.Enabled = e end end)
             end
             table.clear(hiddenBB)
+            for obj, e in pairs(hiddenEffects) do
+                pcall(function() if obj.Parent then obj.Enabled = e end end)
+            end
+            table.clear(hiddenEffects)
             for hum, d in pairs(hiddenHumans) do
                 pcall(function() if hum.Parent then hum.DisplayDistanceType = d end end)
             end
