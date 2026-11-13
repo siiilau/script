@@ -326,7 +326,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     local BENANG_FILE = "BALAP_BENANG.json"
     local cloudKey, cloudKeyBox, cloudStatusLabel
     local cloudUpload, cloudDownload, cloudCreateKey, cloudLoadKey
-    local benangOn, benangGroups, benangActiveGroup, benangFolder = false, {{points={}}}, 1, nil
+    local benangOn, benangGroups, benangActiveGroup, benangFolder, benangPaths = false, {{points={}}}, 1, nil, {}
     local benangToggleBtn
     local benangRenderGroupUI = function() end
     local titikRenderUI = function() end
@@ -451,7 +451,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         for gi,g in ipairs(benangGroups) do
             if #g.points>=2 then local ids={}; for _,p in ipairs(g.points) do ids[#ids+1]=tostring(p.id) end; lines[#lines+1]=ids end
         end
-        return {points=points,lines=lines,deleted=TITIK.hapus,sender=sender,placeId=tostring(game.PlaceId)}
+        local paths={}
+        for gi,path in ipairs(benangPaths) do if path and #path>1 then local saved={}; for _,v in ipairs(path) do saved[#saved+1]={x=v.X,y=v.Y,z=v.Z} end; paths[gi]=saved end end
+        return {points=points,lines=lines,paths=paths,deleted=TITIK.hapus,sender=sender,placeId=tostring(game.PlaceId)}
     end
     cloudUpload=function()
         if not cloudKey then return false,"key belum ada" end
@@ -473,29 +475,42 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         if type(data)~="table" or type(data.points)~="table" then return false,"format cloud tidak valid" end
         table.clear(TITIK.poin)
         for _,v in ipairs(data.points) do local x,y,z=tonumber(v.x),tonumber(v.y),tonumber(v.z); if x and y and z then TITIK.poin[#TITIK.poin+1]={id=tostring(v.id),name=tostring(v.name or "Titik"),defaultName=namaDefaultTitik(v.name),pos=Vector3.new(x,y,z),normal=Vector3.new(tonumber(v.nx) or 0,tonumber(v.ny) or 1,tonumber(v.nz) or 0)} end end
-        if type(data.lines)=="table" then benangPulihkan(data.lines); benangSimpan() end
+        if type(data.lines)=="table" then benangPulihkan({groups=data.lines,paths=data.paths}); benangSimpan() end
         table.clear(TITIK.hapus); titikSimpan(); titikRefreshDot(); titikRenderUI(); cloudSetStatus("☁ Download berhasil • "..#TITIK.poin.." titik"); return true,#TITIK.poin
     end
     local function cloudAutoUpload() if cloudKey then task.spawn(function() cloudUpload() end) end end
 
     local function benangSimpan()
-        local lines={}
-        for _,g in ipairs(benangGroups) do if #g.points>0 then local ids={}; for _,p in ipairs(g.points) do ids[#ids+1]=tostring(p.id) end; lines[#lines+1]=ids end end
-        if type(writefile)=="function" then pcall(function() writefile(BENANG_FILE,HttpService:JSONEncode(lines)) end) end
+        local groups={}; local paths={}
+        for gi,g in ipairs(benangGroups) do
+            if #g.points>0 then
+                local ids={}; for _,p in ipairs(g.points) do ids[#ids+1]=tostring(p.id) end; groups[#groups+1]=ids
+                if benangPaths[gi] then local path={}; for _,v in ipairs(benangPaths[gi]) do path[#path+1]={x=v.X,y=v.Y,z=v.Z} end; paths[#paths+1]=path end
+            end
+        end
+        if type(writefile)=="function" then pcall(function() writefile(BENANG_FILE,HttpService:JSONEncode({groups=groups,paths=paths})) end) end
     end
-    local function benangPulihkan(lines)
-        table.clear(benangGroups); benangActiveGroup=1
+    local function benangPulihkan(data)
+        local lines=data; local savedPaths=nil
+        if type(data)=="table" and (data.groups or data.lines) then lines=data.groups or data.lines; savedPaths=data.paths end
+        table.clear(benangGroups); table.clear(benangPaths); benangActiveGroup=1
         local byId={}; for _,p in ipairs(TITIK.poin) do byId[tostring(p.id)]=p end
         if type(lines)=="table" then
-            for _,ids in ipairs(lines) do local g={points={}}; if type(ids)=="table" then for _,id in ipairs(ids) do if byId[tostring(id)] then g.points[#g.points+1]=byId[tostring(id)] end end end; if #g.points>0 then benangGroups[#benangGroups+1]=g end end
+            for gi,ids in ipairs(lines) do
+                local g={points={}}; if type(ids)=="table" then for _,id in ipairs(ids) do if byId[tostring(id)] then g.points[#g.points+1]=byId[tostring(id)] end end end
+                if #g.points>0 then
+                    benangGroups[#benangGroups+1]=g
+                    local raw=savedPaths and savedPaths[gi]; if type(raw)=="table" and #raw>1 then local path={}; for _,v in ipairs(raw) do if tonumber(v.x) and tonumber(v.y) and tonumber(v.z) then path[#path+1]=Vector3.new(v.x,v.y,v.z) end end; if #path>1 then benangPaths[#benangGroups]=path end end
+                end
+            end
         end
         if #benangGroups==0 then benangGroups={{points={}}} end
         benangActiveGroup=#benangGroups
     end
     local function benangMuat()
-        local lines
-        if type(readfile)=="function" and type(isfile)=="function" then pcall(function() if isfile(BENANG_FILE) then lines=HttpService:JSONDecode(readfile(BENANG_FILE)) end end) end
-        if type(lines)=="table" then benangPulihkan(lines) end
+        local data
+        if type(readfile)=="function" and type(isfile)=="function" then pcall(function() if isfile(BENANG_FILE) then data=HttpService:JSONDecode(readfile(BENANG_FILE)) end end) end
+        if type(data)=="table" then benangPulihkan(data) end
     end
 
     local function benangBersihkan()
@@ -504,50 +519,35 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         if benangToggleBtn and benangToggleBtn.Parent then benangToggleBtn.Text="🧵 BENANG OFF"; benangToggleBtn.BackgroundColor3=Warna.Card2 end
     end
     local function benangTampilkan()
-        local ada=false
-        for _,g in ipairs(benangGroups) do if #g.points>=2 then ada=true; break end end
+        local ada=false; for _,g in ipairs(benangGroups) do if #g.points>=2 then ada=true; break end end
         if not ada then return false end
-        benangBersihkan(); benangOn=true
-        benangFolder=Instance.new("Folder"); benangFolder.Name="BALAP_BENANG_MULTI"; benangFolder.Parent=Workspace
-        local params=RaycastParams.new(); params.FilterType=Enum.RaycastFilterType.Exclude
-        local filter={}; local char=getChar(); if char then filter[#filter+1]=char end
-        if TITIK.folder then filter[#filter+1]=TITIK.folder end
-        filter[#filter+1]=benangFolder; params.FilterDescendantsInstances=filter
-        local segmen=0
+        benangBersihkan(); benangOn=true; benangFolder=Instance.new("Folder"); benangFolder.Name="BALAP_BENANG_MULTI"; benangFolder.Parent=Workspace
+        local params=RaycastParams.new(); params.FilterType=Enum.RaycastFilterType.Exclude; local filter={}; local char=getChar(); if char then filter[#filter+1]=char end; if TITIK.folder then filter[#filter+1]=TITIK.folder end; filter[#filter+1]=benangFolder; params.FilterDescendantsInstances=filter
+        local segmen=0; local pathChanged=false
         for gi,g in ipairs(benangGroups) do
-            for pasangan=1,#g.points-1 do
-                local a,b=g.points[pasangan].pos,g.points[pasangan+1].pos
-                local jumlah=math.clamp(math.ceil((b-a).Magnitude/0.65),8,320); local points={}; local rayStartY=math.max(a.Y,b.Y)+80
-                for i=0,jumlah do
-                    local t=i/jumlah; local base=a:Lerp(b,t)
-                    if i==0 or i==jumlah then
-                        points[#points+1]=base
-                    else
-                        local rayOrigin=Vector3.new(base.X,rayStartY,base.Z); local rayDirection=Vector3.new(0,-260,0); local hit
+            local path=benangPaths[gi]
+            if not path or #path<2 then
+                path={g.points[1].pos};
+                for pasangan=1,#g.points-1 do
+                    local a,b=g.points[pasangan].pos,g.points[pasangan+1].pos; local jumlah=math.clamp(math.ceil((b-a).Magnitude/0.65),8,320); local rayStartY=math.max(a.Y,b.Y)+80
+                    for i=1,jumlah do
+                        local t=i/jumlah; local base=a:Lerp(b,t); local origin=Vector3.new(base.X,rayStartY,base.Z); local dir=Vector3.new(0,-260,0); local hit
                         for _=1,12 do
-                            hit=Workspace:Raycast(rayOrigin,rayDirection,params)
-                            if not hit then break end
-                            local inst=hit.Instance
-                            local transparan=(inst:IsA("BasePart") and inst.Transparency>0.15)
-                            local bukanTanah=(inst:IsA("BasePart") and not inst.CanCollide)
-                            if transparan or bukanTanah then
-                                filter[#filter+1]=inst; params.FilterDescendantsInstances=filter
-                                rayOrigin=hit.Position+Vector3.new(0,-0.05,0)
-                            else break end
+                            hit=Workspace:Raycast(origin,dir,params); if not hit then break end
+                            local inst=hit.Instance; local skip=inst:IsA("BasePart") and (inst.Transparency>0.15 or not inst.CanCollide)
+                            if skip then filter[#filter+1]=inst; params.FilterDescendantsInstances=filter; origin=hit.Position-Vector3.new(0,0.05,0) else break end
                         end
-                        local expectedY=base.Y
-                        if hit and hit.Position.Y <= expectedY+80 then points[#points+1]=hit.Position+hit.Normal*0.055 else points[#points+1]=base end
+                        path[#path+1]=(hit and hit.Position.Y<=base.Y+80) and (hit.Position+hit.Normal*0.055) or base
                     end
                 end
-                for i=1,#points-1 do
-                    local p0,p1=points[i],points[i+1]; local delta=p1-p0; local len=delta.Magnitude
-                    if len>0.01 then
-                        segmen+=1
-                        local line=Instance.new("Part"); line.Name="Benang"..gi.."_Segmen"..segmen; line.Anchored=true; line.CanCollide=false; line.CanTouch=false; line.CanQuery=false; line.CastShadow=false; line.Material=Enum.Material.Neon; line.Color=Color3.fromRGB(167,139,250); line.Transparency=0.08; line.Size=Vector3.new(0.075,0.075,len+0.08); line.CFrame=CFrame.lookAt((p0+p1)/2,p1); line.Parent=benangFolder
-                    end
-                end
+                benangPaths[gi]=path; pathChanged=true
+            end
+            for i=1,#path-1 do
+                local p0,p1=path[i],path[i+1]; local d=p1-p0; local len=d.Magnitude
+                if len>0.01 then segmen+=1; local line=Instance.new("Part"); line.Name="Benang"..gi.."_Segmen"..segmen; line.Anchored=true; line.CanCollide=false; line.CanTouch=false; line.CanQuery=false; line.CastShadow=false; line.Material=Enum.Material.Neon; line.Color=Color3.fromRGB(167,139,250); line.Transparency=0.08; line.Size=Vector3.new(0.075,0.075,len+0.08); line.CFrame=CFrame.lookAt((p0+p1)/2,p1); line.Parent=benangFolder end
             end
         end
+        if pathChanged then benangSimpan() end
         if benangToggleBtn and benangToggleBtn.Parent then benangToggleBtn.Text="🧵 BENANG ON • "..#benangGroups.." GRUP"; benangToggleBtn.BackgroundColor3=Warna.Hijau2 end
         return true
     end
@@ -561,6 +561,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         else
             local g=benangGroups[benangActiveGroup] or {points={}}; benangGroups[benangActiveGroup]=g; g.points[#g.points+1]=point
         end
+        table.clear(benangPaths)
         local wasOn=benangOn
         if wasOn then benangBersihkan(); benangTampilkan() end
         benangSimpan(); cloudAutoUpload(); benangRenderGroupUI()
@@ -568,7 +569,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     end
     local function benangHapusGrup(index)
         if not benangGroups[index] then return end
-        table.remove(benangGroups,index)
+        table.remove(benangGroups,index); table.clear(benangPaths)
         if #benangGroups==0 then benangGroups={{points={}}} end
         if benangActiveGroup> #benangGroups then benangActiveGroup=#benangGroups end
         if benangOn then benangBersihkan(); benangTampilkan() end
@@ -579,7 +580,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     local function benangBaru()
         local g=benangGroups[benangActiveGroup]
         if not g or #g.points<2 then if type(toast)=="function" then toast("Benang aktif perlu minimal 2 titik",Warna.Kuning) end; return false end
-        benangActiveGroup+=1; benangGroups[benangActiveGroup]={points={}}
+        benangActiveGroup+=1; benangGroups[benangActiveGroup]={points={}}; table.clear(benangPaths)
         if benangOn then benangBersihkan(); benangTampilkan() end
         benangSimpan(); cloudAutoUpload(); benangRenderGroupUI()
         return true
@@ -4305,6 +4306,9 @@ local EMOTE_CATALOG = {
                 setFeature("Moon", not State.MoonOn)
             elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
                 setFeature("Tengah", not State.TengahOn)
+            elseif input.KeyCode == Enum.KeyCode.P then
+                local aktif=benangToggle()
+                if type(toast)=="function" then toast(aktif and "✓ Benang ON" or "✓ Benang OFF", aktif and Warna.Hijau or Warna.AbuGelap) end
             elseif input.KeyCode == Enum.KeyCode.R then
                 setFeature("Hide", not State.HideOn)
             elseif input.KeyCode == Enum.KeyCode.T then
