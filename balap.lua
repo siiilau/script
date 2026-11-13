@@ -318,9 +318,10 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     -- [5a] TITIK LOKAL --------------------------------------------------
     -- Semua titik kecil hanya terlihat di sisi pengguna sendiri.
     local TITIK_FILE = "BALAP_TITIK.json"
-    local TITIK = { poin = {}, aktif = false, tampilTitik = true, folder = nil }
+    local TITIK = { poin = {}, hapus = {}, aktif = false, tampilTitik = true, folder = nil }
     local titikRenderUI = function() end
     local titikStatusUI = function() end
+    local titikDistanceLabels = {}
 
     local function titikFolder()
         if TITIK.folder and TITIK.folder.Parent then return TITIK.folder end
@@ -333,7 +334,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     local function titikSimpan()
         local data = {}
         for _, p in ipairs(TITIK.poin) do
-            data[#data + 1] = {name = p.name, x = p.pos.X, y = p.pos.Y, z = p.pos.Z, nx = p.normal.X, ny = p.normal.Y, nz = p.normal.Z}
+            local normal = p.normal or Vector3.new(0, 1, 0)
+            data[#data + 1] = {id = p.id, name = p.name, x = p.pos.X, y = p.pos.Y, z = p.pos.Z, nx = normal.X, ny = normal.Y, nz = normal.Z}
         end
         getgenv().BALAP_TITIK_DATA = data
         if type(writefile) == "function" then
@@ -354,6 +356,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
                 local nx, ny, nz = tonumber(v.nx) or 0, tonumber(v.ny) or 1, tonumber(v.nz) or 0
                 if x and y and z then
                     TITIK.poin[#TITIK.poin + 1] = {
+                        id = tostring(v.id or ("legacy-" .. (#TITIK.poin + 1) .. "-" .. math.random(1000, 9999))),
                         name = tostring(v.name or ("Titik " .. (#TITIK.poin + 1))),
                         pos = Vector3.new(x, y, z),
                         normal = Vector3.new(nx, ny, nz),
@@ -395,7 +398,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         normal = (typeof(normal) == "Vector3" and normal.Magnitude > 0.01) and normal.Unit or Vector3.new(0, 1, 0)
         name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
         if name == "" then name = "Titik " .. (#TITIK.poin + 1) end
-        TITIK.poin[#TITIK.poin + 1] = {name = name, pos = pos, normal = normal}
+        local id = tostring(os.time()) .. "-" .. tostring(math.random(100000, 999999))
+        TITIK.poin[#TITIK.poin + 1] = {id = id, name = name, pos = pos, normal = normal}
         titikSimpan()
         titikRefreshDot()
         titikRenderUI()
@@ -405,11 +409,20 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     local function titikHapus(nomor)
         if TITIK.poin[nomor] then
             local nama = TITIK.poin[nomor].name
+            local id = TITIK.poin[nomor].id or nama
             table.remove(TITIK.poin, nomor)
+            TITIK.hapus[#TITIK.hapus + 1] = tostring(id)
             titikSimpan(); titikRefreshDot(); titikRenderUI()
             titikStatusUI("Titik dihapus: " .. nama)
         end
     end
+    local function titikCariIndex(point)
+        for i, p in ipairs(TITIK.poin) do
+            if p == point or (point.id and p.id == point.id) then return i end
+        end
+        return nil
+    end
+
     local function titikTeleport(nomor)
         local p = TITIK.poin[nomor]
         local char = getChar()
@@ -422,6 +435,13 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         hrp.CFrame = CFrame.new(p.pos + Vector3.new(0, 3, 0))
         titikStatusUI("Pindah ke: " .. p.name)
     end
+    local function titikJarakDariKarakter(point)
+        local char = getChar()
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp or not point or not point.pos then return nil end
+        return (hrp.Position - point.pos).Magnitude
+    end
+
     local function titikRaycast(origin, direction)
         local params = RaycastParams.new()
         params.FilterType = Enum.RaycastFilterType.Exclude
@@ -2287,6 +2307,7 @@ local EMOTE_CATALOG = {
             titikStatusUI(TITIK.tampilTitik and "Titik kecil ditampilkan" or "Titik kecil disembunyikan")
         end).LayoutOrder = titikNext()
         buatActionRow(scrollTitik, "🗑 HAPUS SEMUA TITIK", Warna.Merah, function()
+            for _, p in ipairs(TITIK.poin) do TITIK.hapus[#TITIK.hapus + 1] = tostring(p.id or p.name) end
             table.clear(TITIK.poin)
             titikSimpan()
             titikRefreshDot()
@@ -2302,9 +2323,19 @@ local EMOTE_CATALOG = {
             for _, obj in ipairs(titikList:GetChildren()) do
                 if obj:IsA("Frame") then obj:Destroy() end
             end
+            table.clear(titikDistanceLabels)
+            local daftar = {}
             for i, point in ipairs(TITIK.poin) do
+                daftar[#daftar + 1] = {point = point, index = i, distance = titikJarakDariKarakter(point) or math.huge}
+            end
+            table.sort(daftar, function(a, b)
+                if a.distance == b.distance then return a.index < b.index end
+                return a.distance < b.distance
+            end)
+            for urutan, entry in ipairs(daftar) do
+                local point = entry.point
                 local row = buat("Frame", {
-                    BackgroundColor3 = Warna.AbuItem, Size = UDim2.new(1, 0, 0, 52), LayoutOrder = i,
+                    BackgroundColor3 = Warna.AbuItem, Size = UDim2.new(1, 0, 0, 58), LayoutOrder = urutan,
                 }, titikList)
                 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
                 local box = buat("TextBox", {
@@ -2313,24 +2344,37 @@ local EMOTE_CATALOG = {
                     TextColor3 = Warna.TeksGelap, TextXAlignment = Enum.TextXAlignment.Left,
                     Text = point.name, ClearTextOnFocus = false,
                 }, row)
+                local jarakLabel = buat("TextLabel", {
+                    BackgroundTransparency = 1, Position = UDim2.new(0, 8, 0, 27),
+                    Size = UDim2.new(1, -120, 0, 20), FontFace = fnt("reg"), TextSize = 10,
+                    TextColor3 = Warna.AbuTeks, TextXAlignment = Enum.TextXAlignment.Left,
+                    Text = entry.distance == math.huge and "Jarak: --" or ("Jarak: " .. math.floor(entry.distance + 0.5) .. " stud"),
+                }, row)
+                titikDistanceLabels[point] = jarakLabel
                 box.FocusLost:Connect(function()
                     local nama = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
                     if nama ~= "" then point.name = nama; titikSimpan(); titikRefreshDot(); titikStatusUI("Nama titik diubah") else box.Text = point.name end
                 end)
                 local go = buat("TextButton", {
-                    BackgroundColor3 = Warna.Biru, Position = UDim2.new(1, -108, 0, 5),
+                    BackgroundColor3 = Warna.Biru, Position = UDim2.new(1, -108, 0, 15),
                     Size = UDim2.fromOffset(50, 28), FontFace = fnt("bold"), TextSize = 10,
                     TextColor3 = Warna.Putih, Text = "KE SANA", AutoButtonColor = false,
                 }, row)
                 buat("UICorner", {CornerRadius = UDim.new(0, 6)}, go)
-                go.MouseButton1Click:Connect(function() titikTeleport(i) end)
+                go.MouseButton1Click:Connect(function()
+                    local index = titikCariIndex(point)
+                    if index then titikTeleport(index) end
+                end)
                 local del = buat("TextButton", {
-                    BackgroundColor3 = Warna.Merah, Position = UDim2.new(1, -53, 0, 5),
+                    BackgroundColor3 = Warna.Merah, Position = UDim2.new(1, -53, 0, 15),
                     Size = UDim2.fromOffset(45, 28), FontFace = fnt("bold"), TextSize = 10,
                     TextColor3 = Warna.Putih, Text = "HAPUS", AutoButtonColor = false,
                 }, row)
                 buat("UICorner", {CornerRadius = UDim.new(0, 6)}, del)
-                del.MouseButton1Click:Connect(function() titikHapus(i) end)
+                del.MouseButton1Click:Connect(function()
+                    local index = titikCariIndex(point)
+                    if index then titikHapus(index) end
+                end)
             end
             titikStatusUI("Titik tersimpan: " .. #TITIK.poin)
         end
@@ -2438,6 +2482,17 @@ local EMOTE_CATALOG = {
 
     -- Eksekusi buildUI() sekarang (panel, root, outer, Warna, buat sudah ada dari part1)
     buildUI()
+    task.spawn(function()
+        while not State.Removed do
+            task.wait(0.35)
+            for point, label in pairs(titikDistanceLabels) do
+                if label and label.Parent then
+                    local d = titikJarakDariKarakter(point)
+                    label.Text = d and ("Jarak: " .. math.floor(d + 0.5) .. " stud") or "Jarak: --"
+                end
+            end
+        end
+    end)
     diagSet("GUI utama OK — bikin efek & notif...")
 
     -- [8] FOOTER + LED + MARQUEE ---------------------------------------
