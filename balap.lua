@@ -319,6 +319,12 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     -- Semua titik kecil hanya terlihat di sisi pengguna sendiri.
     local TITIK_FILE = "BALAP_TITIK.json"
     local TITIK = { poin = {}, hapus = {}, aktif = false, tampilTitik = true, folder = nil }
+
+    -- CLOUD TITIK CLOUDFLARE
+    local CLOUD_URL = "https://balap-point.siiilau-id.workers.dev"
+    local CLOUD_KEY_FILE = "BALAP_TITIK_KEY.txt"
+    local cloudKey, cloudKeyBox, cloudStatusLabel
+    local cloudUpload, cloudDownload, cloudCreateKey, cloudLoadKey
     local titikRenderUI = function() end
     local titikStatusUI = function() end
     local titikDistanceLabels = {}
@@ -400,6 +406,69 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end
     end
+    local function cloudSetStatus(teks)
+        if cloudStatusLabel and cloudStatusLabel.Parent then cloudStatusLabel.Text = tostring(teks) end
+        pcall(function()
+            if type(toast) == "function" then
+                local gagal = tostring(teks):lower():find("gagal") ~= nil
+                toast(tostring(teks), gagal and Warna.Merah or Warna.Hijau)
+            end
+        end)
+    end
+    local function cloudRequest(method, url, body)
+        local req = (syn and syn.request) or (http and http.request) or request or http_request
+        if type(req) ~= "function" then return false, "executor tidak mendukung HTTP" end
+        local ok, res = pcall(req, {Url=url, Method=method, Headers={["Content-Type"]="application/json"}, Body=body and HttpService:JSONEncode(body) or nil})
+        if not ok or type(res) ~= "table" then return false, "request gagal" end
+        local code=tonumber(res.StatusCode or res.Status or 0) or 0; local parsed
+        pcall(function() parsed=HttpService:JSONDecode(res.Body or res.body or "") end)
+        if code < 200 or code >= 300 then return false, (parsed and parsed.error) or ("HTTP "..code) end
+        return true, parsed or {}
+    end
+    local function cloudSaveKey(key)
+        key=tostring(key or ""):match("%x+")
+        if not key or #key ~= 36 then return false end
+        cloudKey=key
+        if type(writefile)=="function" then pcall(function() writefile(CLOUD_KEY_FILE,key) end) end
+        if cloudKeyBox and cloudKeyBox.Parent then cloudKeyBox.Text=key end
+        return true
+    end
+    cloudLoadKey=function()
+        local key
+        if type(readfile)=="function" and type(isfile)=="function" then pcall(function() if isfile(CLOUD_KEY_FILE) then key=readfile(CLOUD_KEY_FILE) end end) end
+        if key then cloudSaveKey(key) end
+        return cloudKey
+    end
+    local function cloudPayload()
+        local points={}
+        for _,p in ipairs(TITIK.poin) do local n=p.normal or Vector3.new(0,1,0); points[#points+1]={id=p.id,name=p.name,x=p.pos.X,y=p.pos.Y,z=p.pos.Z,nx=n.X,ny=n.Y,nz=n.Z} end
+        local sender="unknown"; pcall(function() if type(identifyexecutor)=="function" then sender=tostring(identifyexecutor()) elseif type(getexecutorname)=="function" then sender=tostring(getexecutorname()) end end)
+        return {points=points,deleted=TITIK.hapus,sender=sender,placeId=tostring(game.PlaceId)}
+    end
+    cloudUpload=function()
+        if not cloudKey then return false,"key belum ada" end
+        local ok,result=cloudRequest("PUT",CLOUD_URL.."/db/"..cloudKey,cloudPayload())
+        cloudSetStatus(ok and ("☁ Upload berhasil • "..#TITIK.poin.." titik") or ("☁ Upload gagal: "..tostring(result)))
+        return ok,result
+    end
+    cloudCreateKey=function()
+        local ok,result=cloudRequest("POST",CLOUD_URL.."/db/create",{})
+        if not ok then cloudSetStatus("☁ Gagal membuat key: "..tostring(result)); return false,result end
+        if not cloudSaveKey(result.key) then return false,"key tidak valid" end
+        cloudSetStatus("☁ Key dibuat dan disimpan"); return true,result.key
+    end
+    cloudDownload=function()
+        if not cloudKey then return false,"key belum ada" end
+        local ok,result=cloudRequest("GET",CLOUD_URL.."/db/"..cloudKey)
+        if not ok then cloudSetStatus("☁ Download gagal: "..tostring(result)); return false,result end
+        local data=result.data
+        if type(data)~="table" or type(data.points)~="table" then return false,"format cloud tidak valid" end
+        table.clear(TITIK.poin)
+        for _,v in ipairs(data.points) do local x,y,z=tonumber(v.x),tonumber(v.y),tonumber(v.z); if x and y and z then TITIK.poin[#TITIK.poin+1]={id=tostring(v.id),name=tostring(v.name or "Titik"),defaultName=namaDefaultTitik(v.name),pos=Vector3.new(x,y,z),normal=Vector3.new(tonumber(v.nx) or 0,tonumber(v.ny) or 1,tonumber(v.nz) or 0)} end end
+        table.clear(TITIK.hapus); rapikanNomorTitik(); titikSimpan(); titikRefreshDot(); titikRenderUI(); cloudSetStatus("☁ Download berhasil • "..#TITIK.poin.." titik"); return true,#TITIK.poin
+    end
+    local function cloudAutoUpload() if cloudKey then task.spawn(function() cloudUpload() end) end end
+
     local function titikBersihkanDot()
         if TITIK.folder then
             for _, obj in ipairs(TITIK.folder:GetChildren()) do obj:Destroy() end
@@ -442,6 +511,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         TITIK.poin[#TITIK.poin + 1] = {id = id, name = name, defaultName = defaultName or namaDefaultTitik(name), pos = pos, normal = normal}
         rapikanNomorTitik()
         titikSimpan()
+        pcall(function() if type(toast) == "function" then toast("✓ Titik disimpan lokal: " .. name, Warna.Hijau) end end)
+        cloudAutoUpload()
         titikRefreshDot()
         titikRenderUI()
         titikStatusUI("Titik ditambahkan: " .. name)
@@ -454,7 +525,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             table.remove(TITIK.poin, nomor)
             TITIK.hapus[#TITIK.hapus + 1] = tostring(id)
             rapikanNomorTitik()
-            titikSimpan(); titikRefreshDot(); titikRenderUI()
+            titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Titik dihapus dan disimpan lokal", Warna.Hijau) end end); cloudAutoUpload(); titikRefreshDot(); titikRenderUI()
             titikStatusUI("Titik dihapus: " .. nama)
         end
     end
@@ -2354,6 +2425,8 @@ local EMOTE_CATALOG = {
             for _, p in ipairs(TITIK.poin) do TITIK.hapus[#TITIK.hapus + 1] = tostring(p.id or p.name) end
             table.clear(TITIK.poin)
             titikSimpan()
+            pcall(function() if type(toast) == "function" then toast("✓ Semua titik dihapus dan disimpan lokal", Warna.Hijau) end end)
+            cloudAutoUpload()
             titikRefreshDot()
             titikRenderUI()
             titikStatusUI("Semua titik dihapus")
@@ -2406,7 +2479,7 @@ local EMOTE_CATALOG = {
                         point.name = nama
                         point.defaultName = namaDefaultTitik(nama)
                         rapikanNomorTitik()
-                        titikSimpan(); titikRefreshDot(); titikStatusUI("Nama titik diubah")
+                        titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Nama titik disimpan", Warna.Hijau) end end); cloudAutoUpload(); titikRefreshDot(); titikStatusUI("Nama titik diubah")
                     end
                 end)
                 local go = buat("TextButton", {
@@ -2518,6 +2591,16 @@ local EMOTE_CATALOG = {
                 end
             end))
         end
+        buatHeader(scrollSistem, "Cloud Titik")
+        cloudKeyBox=buat("TextBox",{BackgroundColor3=Warna.AbuItem,Size=UDim2.new(1,0,0,34),FontFace=fnt("med"),TextSize=11,TextColor3=Warna.TeksGelap,PlaceholderText="Tempel key atau URL TextDB",ClearTextOnFocus=false,Text=cloudKey or "",LayoutOrder=nextOrder()},scrollSistem)
+        buat("UICorner",{CornerRadius=UDim.new(0,8)},cloudKeyBox)
+        cloudStatusLabel=buat("TextLabel",{BackgroundColor3=Warna.AbuItem,Size=UDim2.new(1,0,0,30),FontFace=fnt("med"),TextSize=11,TextColor3=Warna.TeksGelap,TextWrapped=true,Text=cloudKey and "☁ Key tersimpan lokal" or "☁ Belum ada key",LayoutOrder=nextOrder()},scrollSistem)
+        buat("UICorner",{CornerRadius=UDim.new(0,8)},cloudStatusLabel)
+        buatActionRow(scrollSistem,"🔑 LOAD KEY + DOWNLOAD TITIK",Warna.Biru,function() local raw=tostring(cloudKeyBox.Text or ""); local key=raw:match("/db/([a-f0-9]+)") or raw:match("([a-f0-9]+)"); if key and cloudSaveKey(key) then task.spawn(function() cloudDownload() end) else cloudSetStatus("☁ Key tidak valid") end end).LayoutOrder=nextOrder()
+        buatActionRow(scrollSistem,"☁ UPLOAD TITIK KE CLOUD",Warna.Hijau2,function() task.spawn(function() cloudUpload() end) end).LayoutOrder=nextOrder()
+        buatActionRow(scrollSistem,"✨ BUAT KEY BARU",Warna.Ungu2,function() task.spawn(function() cloudCreateKey() end) end).LayoutOrder=nextOrder()
+        buatActionRow(scrollSistem,"📋 SALIN KEY",Warna.Gray,function() if cloudKey and type(setclipboard)=="function" then setclipboard(cloudKey); cloudSetStatus("☁ Key disalin") else cloudSetStatus("☁ Key belum tersedia") end end).LayoutOrder=nextOrder()
+
         buatHeader(scrollSistem, "Aksi")
         buatActionRow(scrollSistem, "🔁 REJOIN SERVER  [K×2]", Warna.Biru, function() rejoin() end)
         buatActionRow(scrollSistem, "🗑️ HAPUS SCRIPT", Warna.Merah, function()
@@ -2536,6 +2619,8 @@ local EMOTE_CATALOG = {
 
     -- Eksekusi buildUI() sekarang (panel, root, outer, Warna, buat sudah ada dari part1)
     buildUI()
+    cloudLoadKey()
+    if cloudKey then task.spawn(function() task.wait(0.2); cloudDownload() end) end
     task.spawn(function()
         while not State.Removed do
             task.wait(0.35)
