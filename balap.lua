@@ -325,6 +325,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     local CLOUD_KEY_FILE = "BALAP_TITIK_KEY.txt"
     local cloudKey, cloudKeyBox, cloudStatusLabel
     local cloudUpload, cloudDownload, cloudCreateKey, cloudLoadKey
+    local benangOn, benangGroups, benangActiveGroup, benangFolder = false, {{points={}}}, 1, nil
+    local benangToggleBtn
     local titikRenderUI = function() end
     local titikStatusUI = function() end
     local titikDistanceLabels = {}
@@ -468,6 +470,64 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         table.clear(TITIK.hapus); rapikanNomorTitik(); titikSimpan(); titikRefreshDot(); titikRenderUI(); cloudSetStatus("☁ Download berhasil • "..#TITIK.poin.." titik"); return true,#TITIK.poin
     end
     local function cloudAutoUpload() if cloudKey then task.spawn(function() cloudUpload() end) end end
+
+    local function benangBersihkan()
+        benangOn=false
+        if benangFolder then pcall(function() benangFolder:Destroy() end); benangFolder=nil end
+        if benangToggleBtn and benangToggleBtn.Parent then benangToggleBtn.Text="🧵 BENANG OFF"; benangToggleBtn.BackgroundColor3=Warna.Card2 end
+    end
+    local function benangTampilkan()
+        local ada=false
+        for _,g in ipairs(benangGroups) do if #g.points>=2 then ada=true; break end end
+        if not ada then return false end
+        benangBersihkan(); benangOn=true
+        benangFolder=Instance.new("Folder"); benangFolder.Name="BALAP_BENANG_MULTI"; benangFolder.Parent=Workspace
+        local params=RaycastParams.new(); params.FilterType=Enum.RaycastFilterType.Exclude
+        local filter={}; local char=getChar(); if char then filter[#filter+1]=char end
+        if TITIK.folder then filter[#filter+1]=TITIK.folder end
+        filter[#filter+1]=benangFolder; params.FilterDescendantsInstances=filter
+        local segmen=0
+        for gi,g in ipairs(benangGroups) do
+            for pasangan=1,#g.points-1 do
+                local a,b=g.points[pasangan].pos,g.points[pasangan+1].pos
+                local jumlah=math.clamp(math.ceil((b-a).Magnitude/0.65),8,320); local points={}; local rayStartY=math.max(a.Y,b.Y)+300
+                for i=0,jumlah do
+                    local t=i/jumlah; local base=a:Lerp(b,t); local hit=Workspace:Raycast(Vector3.new(base.X,rayStartY,base.Z),Vector3.new(0,-700,0),params)
+                    points[#points+1]=hit and (hit.Position+hit.Normal*0.055) or base
+                end
+                for i=1,#points-1 do
+                    local p0,p1=points[i],points[i+1]; local delta=p1-p0; local len=delta.Magnitude
+                    if len>0.01 then
+                        segmen+=1
+                        local line=Instance.new("Part"); line.Name="Benang"..gi.."_Segmen"..segmen; line.Anchored=true; line.CanCollide=false; line.CanTouch=false; line.CanQuery=false; line.CastShadow=false; line.Material=Enum.Material.Neon; line.Color=Color3.fromRGB(167,139,250); line.Transparency=0.08; line.Size=Vector3.new(0.075,0.075,len+0.08); line.CFrame=CFrame.lookAt((p0+p1)/2,p1); line.Parent=benangFolder
+                    end
+                end
+            end
+        end
+        if benangToggleBtn and benangToggleBtn.Parent then benangToggleBtn.Text="🧵 BENANG ON • "..#benangGroups.." GRUP"; benangToggleBtn.BackgroundColor3=Warna.Hijau2 end
+        return true
+    end
+    local function benangToggle() if benangOn then benangBersihkan(); return false end return benangTampilkan() end
+    local function benangPilih(point)
+        local foundGroup,foundIndex
+        for gi,g in ipairs(benangGroups) do for i,p in ipairs(g.points) do if p==point then foundGroup,foundIndex=gi,i; break end end; if foundGroup then break end end
+        if foundGroup then
+            table.remove(benangGroups[foundGroup].points,foundIndex)
+            if #benangGroups[foundGroup].points==0 and #benangGroups>1 then table.remove(benangGroups,foundGroup); if benangActiveGroup>#benangGroups then benangActiveGroup=#benangGroups end end
+        else
+            local g=benangGroups[benangActiveGroup] or {points={}}; benangGroups[benangActiveGroup]=g; g.points[#g.points+1]=point
+        end
+        local wasOn=benangOn
+        if wasOn then benangBersihkan(); benangTampilkan() end
+        return foundGroup and 0 or #benangGroups[benangActiveGroup].points
+    end
+    local function benangBaru()
+        local g=benangGroups[benangActiveGroup]
+        if not g or #g.points<2 then if type(toast)=="function" then toast("Benang aktif perlu minimal 2 titik",Warna.Kuning) end; return false end
+        benangActiveGroup+=1; benangGroups[benangActiveGroup]={points={}}
+        if benangOn then benangBersihkan(); benangTampilkan() end
+        return true
+    end
 
     local function titikBersihkanDot()
         if TITIK.folder then
@@ -2424,6 +2484,7 @@ local EMOTE_CATALOG = {
         buatActionRow(scrollTitik, "🗑 HAPUS SEMUA TITIK", Warna.Merah, function()
             for _, p in ipairs(TITIK.poin) do TITIK.hapus[#TITIK.hapus + 1] = tostring(p.id or p.name) end
             table.clear(TITIK.poin)
+            benangGroups={{points={}}}; benangActiveGroup=1; benangBersihkan()
             titikSimpan()
             pcall(function() if type(toast) == "function" then toast("✓ Semua titik dihapus dan disimpan lokal", Warna.Hijau) end end)
             cloudAutoUpload()
@@ -2431,6 +2492,19 @@ local EMOTE_CATALOG = {
             titikRenderUI()
             titikStatusUI("Semua titik dihapus")
         end).LayoutOrder = titikNext()
+        benangToggleBtn=buatActionRow(scrollTitik,"🧵 BENANG OFF • GRUP 1",Warna.Ungu2,function()
+            local aktif=benangToggle()
+            if type(toast)=="function" then toast(aktif and ("✓ Semua benang ON • "..#benangGroups.." grup") or "✓ Semua benang OFF",aktif and Warna.Hijau or Warna.AbuGelap) end
+        end)
+        benangToggleBtn.LayoutOrder=titikNext()
+        buatActionRow(scrollTitik,"➕ SELESAI BENANG / BENANG BARU",Warna.Biru,function()
+            if benangBaru() then
+                benangToggleBtn.Text="🧵 BENANG OFF • GRUP "..benangActiveGroup
+                titikRenderUI()
+                if type(toast)=="function" then toast("✓ Benang baru "..benangActiveGroup.." siap dipilih",Warna.Biru) end
+            end
+        end).LayoutOrder=titikNext()
+
         local titikList = buat("Frame", {
             BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
             AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = titikNext(),
@@ -2457,13 +2531,13 @@ local EMOTE_CATALOG = {
                 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
                 local box = buat("TextBox", {
                     BackgroundTransparency = 1, Position = UDim2.new(0, 8, 0, 2),
-                    Size = UDim2.new(1, -120, 0, 24), FontFace = fnt("med"), TextSize = 11,
+                    Size = UDim2.new(1, -175, 0, 24), FontFace = fnt("med"), TextSize = 11,
                     TextColor3 = Warna.TeksGelap, TextXAlignment = Enum.TextXAlignment.Left,
                     Text = point.name, ClearTextOnFocus = false,
                 }, row)
                 local jarakLabel = buat("TextLabel", {
                     BackgroundTransparency = 1, Position = UDim2.new(0, 8, 0, 27),
-                    Size = UDim2.new(1, -120, 0, 20), FontFace = fnt("reg"), TextSize = 10,
+                    Size = UDim2.new(1, -175, 0, 20), FontFace = fnt("reg"), TextSize = 10,
                     TextColor3 = Warna.AbuTeks, TextXAlignment = Enum.TextXAlignment.Left,
                     Text = entry.distance == math.huge and "Jarak: --" or ("Jarak: " .. math.floor(entry.distance + 0.5) .. " stud"),
                 }, row)
@@ -2481,6 +2555,17 @@ local EMOTE_CATALOG = {
                         rapikanNomorTitik()
                         titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Nama titik disimpan", Warna.Hijau) end end); cloudAutoUpload(); titikRefreshDot(); titikStatusUI("Nama titik diubah")
                     end
+                end)
+                local nomorBenang=nil; local grupBenang=nil
+                for gi,g in ipairs(benangGroups) do for n,p in ipairs(g.points) do if p==point then grupBenang,nomorBenang=gi,n; break end end; if grupBenang then break end end
+                local threadBtn = buat("TextButton", {
+                    BackgroundColor3 = nomorBenang and Warna.Hijau2 or Warna.Ungu2, Position = UDim2.new(1, -163, 0, 15), Size = UDim2.fromOffset(50, 28),
+                    FontFace = fnt("bold"), TextSize = 9, TextColor3 = Warna.Putih, Text = nomorBenang and ("B"..grupBenang.."#"..nomorBenang) or "PILIH", AutoButtonColor = false,
+                }, row)
+                buat("UICorner", {CornerRadius = UDim.new(0, 6)}, threadBtn)
+                threadBtn.MouseButton1Click:Connect(function()
+                    local nomor=benangPilih(point); titikRenderUI()
+                    if type(toast)=="function" then toast(nomor>0 and ("✓ Titik masuk benang "..benangActiveGroup.." urutan #"..nomor) or "✓ Titik dilepas dari benang",Warna.Ungu2) end
                 end)
                 local go = buat("TextButton", {
                     BackgroundColor3 = Warna.Biru, Position = UDim2.new(1, -108, 0, 15),
@@ -3892,6 +3977,7 @@ local EMOTE_CATALOG = {
                 pcall(function() UserInputService.MouseIconEnabled = true end)
             end
             pcall(emoteStopTrack)
+            pcall(benangBersihkan)
             pcall(function() if TITIK.folder then TITIK.folder:Destroy(); TITIK.folder = nil end end)
             -- 3) Cancel semua task/thread yang masih jalan
             if lightConn then pcall(function() task.cancel(lightConn) end) lightConn = nil end
