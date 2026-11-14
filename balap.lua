@@ -16,6 +16,7 @@
     S = matikan Moonwalk
     LeftShift/RightShift = Shiftlock Tengah
     R = Hide Player + FX
+    C = Hide Setengah Badan
     T = Cahaya Auto
     X = Dinding Batas
     K dua kali = Rejoin
@@ -45,6 +46,7 @@ local Config = {
     SpeedMin = 17.25,
     SpeedMax = 40,
     SpeedStep = 0.05,
+    SwimSpeedBonus = 0.05,
     JumpMin = 51.25,
     JumpMax = 70,
     JumpStep = 0.05,
@@ -136,9 +138,22 @@ local function captureJumpDefaults()
     Original.JumpHeight = Humanoid.JumpHeight
 end
 
+local function isSwimming()
+    return Humanoid ~= nil and Humanoid:GetState() == Enum.HumanoidStateType.Swimming
+end
+
+local function getActiveSpeed()
+    local baseSpeed = State.SpeedOn and State.SpeedValue or Config.SpeedOff
+    -- Bonus hanya aktif saat Shiftlock Tengah ON dan karakter sedang berenang.
+    if State.CenterOn and isSwimming() then
+        baseSpeed = baseSpeed * (1 + Config.SwimSpeedBonus)
+    end
+    return round2(baseSpeed)
+end
+
 local function applySpeed()
     if not Humanoid or Humanoid.Health <= 0 then return end
-    Humanoid.WalkSpeed = State.SpeedOn and State.SpeedValue or Config.SpeedOff
+    Humanoid.WalkSpeed = getActiveSpeed()
 end
 
 local function restoreJump()
@@ -186,13 +201,13 @@ end
 local function toggleSpeed(v)
     State.SpeedOn = v == nil and not State.SpeedOn or v
     applySpeed()
-    notify("Speed " .. (State.SpeedOn and ("ON • " .. fmt(State.SpeedValue)) or "OFF • 17.15"), Color3.fromRGB(120,210,255))
+    notify("S", State.SpeedOn and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
 local function toggleJump(v)
     State.JumpOn = v == nil and not State.JumpOn or v
     applyJump()
-    notify("Jump " .. (State.JumpOn and ("ON • " .. fmt(State.JumpValue)) or "OFF • default map"), Color3.fromRGB(120,210,255))
+    notify("J", State.JumpOn and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
 local function stopCharacterFeatures()
@@ -222,7 +237,7 @@ local function setCenter(v)
         pcall(function() UIS.MouseIconEnabled = true end)
         pcall(function() UserSettings():GetService("UserGameSettings").RotationType = Enum.RotationType.MovementRelative end)
     end
-    notify("Shiftlock Tengah " .. (v and "ON" or "OFF"))
+    notify("ST", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
 local function sedangDuduk(h)
@@ -266,16 +281,48 @@ local function setMoon(v)
         pcall(function() RunService:UnbindFromRenderStep("SILAU_MOON") end)
         if Humanoid then Humanoid.AutoRotate = true end
     end
-    notify("Moonwalk " .. (v and "ON" or "OFF"))
+    notify("M", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
-local upperNames = {
-    Head=true, UpperTorso=true, Torso=true,
-    LeftUpperArm=true, LeftLowerArm=true, LeftHand=true,
-    RightUpperArm=true, RightLowerArm=true, RightHand=true,
+local lowerNames = {
+    -- R15
+    LeftUpperLeg=true, LeftLowerLeg=true, LeftFoot=true,
+    RightUpperLeg=true, RightLowerLeg=true, RightFoot=true,
+    -- R6
+    ["Left Leg"]=true, ["Right Leg"]=true,
 }
 local upperOriginal = {}
 local upperDecalOriginal = {}
+local upperClothingOriginal = {}
+local upperConnection
+
+local function hideUpperObject(obj)
+    if not obj or not obj.Parent then return end
+    if obj:IsA("BasePart") then
+        if not lowerNames[obj.Name] then
+            if upperOriginal[obj] == nil then upperOriginal[obj] = obj.LocalTransparencyModifier end
+            obj.LocalTransparencyModifier = 1
+            for _, child in ipairs(obj:GetDescendants()) do
+                if child:IsA("Decal") or child:IsA("Texture") then
+                    if upperDecalOriginal[child] == nil then upperDecalOriginal[child] = child.Transparency end
+                    child.Transparency = 1
+                end
+            end
+        end
+    elseif obj:IsA("Shirt") or obj:IsA("ShirtGraphic") then
+        if upperClothingOriginal[obj] == nil then
+            upperClothingOriginal[obj] = obj:IsA("Shirt") and obj.ShirtTemplate or obj.Graphic
+        end
+        pcall(function()
+            if obj:IsA("Shirt") then obj.ShirtTemplate = "" else obj.Graphic = "" end
+        end)
+    end
+end
+
+local function applyHideUpperToCharacter()
+    if not Character then return end
+    for _, obj in ipairs(Character:GetDescendants()) do hideUpperObject(obj) end
+end
 
 local function onCharacter(character)
     task.wait(Config.RespawnWait)
@@ -286,19 +333,8 @@ local function onCharacter(character)
     applyJump()
     -- Shiftlock Tengah dan Moonwalk sengaja selalu OFF saat mati/respawn.
     stopCharacterFeatures()
-    if State.HideUpperOn and Character then
-        for _, obj in ipairs(Character:GetDescendants()) do
-            if obj:IsA("BasePart") and upperNames[obj.Name] then
-                upperOriginal[obj] = obj.LocalTransparencyModifier
-                obj.LocalTransparencyModifier = 1
-                for _, child in ipairs(obj:GetDescendants()) do
-                    if child:IsA("Decal") or child:IsA("Texture") then
-                        upperDecalOriginal[child] = child.Transparency
-                        child.Transparency = 1
-                    end
-                end
-            end
-        end
+    if State.HideUpperOn then
+        applyHideUpperToCharacter()
     end
 end
 
@@ -396,7 +432,7 @@ local function setHide(v)
         restoreHiddenVisuals()
         for model in pairs(vehicleOriginal) do setVehicleTransparency(model, false) end
     end
-    notify("Hide Player + FX " .. (v and "ON" or "OFF"))
+    notify("HDxFX", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
 connect(Players.PlayerAdded, function(plr)
@@ -411,27 +447,27 @@ end
 --==============================================================
 local function setHideUpper(v)
     State.HideUpperOn = v
-    if not Character then return end
     if v then
-        for _, obj in ipairs(Character:GetDescendants()) do
-            if obj:IsA("BasePart") and upperNames[obj.Name] then
-                if upperOriginal[obj] == nil then upperOriginal[obj] = obj.LocalTransparencyModifier end
-                obj.LocalTransparencyModifier = 1
-                for _, child in ipairs(obj:GetDescendants()) do
-                    if child:IsA("Decal") or child:IsA("Texture") then
-                        if upperDecalOriginal[child] == nil then upperDecalOriginal[child] = child.Transparency end
-                        child.Transparency = 1
-                    end
-                end
-            end
+        applyHideUpperToCharacter()
+        if not upperConnection and Character then
+            upperConnection = Character.DescendantAdded:Connect(function(obj)
+                if State.HideUpperOn then hideUpperObject(obj) end
+            end)
         end
     else
+        if upperConnection then pcall(function() upperConnection:Disconnect() end); upperConnection = nil end
         for obj, value in pairs(upperOriginal) do pcall(function() if obj.Parent then obj.LocalTransparencyModifier = value end end) end
         table.clear(upperOriginal)
         for obj, value in pairs(upperDecalOriginal) do pcall(function() if obj.Parent then obj.Transparency = value end end) end
         table.clear(upperDecalOriginal)
+        for obj, value in pairs(upperClothingOriginal) do pcall(function()
+            if obj.Parent then
+                if obj:IsA("Shirt") then obj.ShirtTemplate = value else obj.Graphic = value end
+            end
+        end) end
+        table.clear(upperClothingOriginal)
     end
-    notify("Hide Badan Atas " .. (v and "ON" or "OFF"))
+    notify("Hset", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
 --==============================================================
@@ -467,7 +503,7 @@ local function setLight(v)
     if v then captureLighting(); applyLight() else
         if Original.Lighting then for prop, value in pairs(Original.Lighting) do pcall(function() Lighting[prop] = value end) end end
     end
-    notify("Cahaya Auto " .. (v and "ON" or "OFF"))
+    notify("C", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
 --==============================================================
@@ -535,7 +571,7 @@ local function setWalls(v)
         for _, box in pairs(wallBoxes) do pcall(function() box:Destroy() end) end
         table.clear(wallOriginal); table.clear(wallBoxes)
     end
-    notify("Dinding Batas " .. (v and "ON" or "OFF"))
+    notify("D", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
 --==============================================================
@@ -546,6 +582,8 @@ local old = guiParent:FindFirstChild("SILAU_V1")
 if old then old:Destroy() end
 local Gui = Instance.new("ScreenGui")
 Gui.Name = "SILAU_V1"; Gui.ResetOnSpawn = false; Gui.DisplayOrder = 10000; Gui.Parent = guiParent
+local ToastGui = Instance.new("ScreenGui")
+ToastGui.Name = "SILAU_V1_Notifications"; ToastGui.ResetOnSpawn = false; ToastGui.DisplayOrder = 11000; ToastGui.Parent = guiParent
 local Scale = Instance.new("UIScale"); Scale.Parent = Gui
 local Panel = Instance.new("Frame"); Panel.Name="Panel"; Panel.Size=UDim2.fromOffset(330,440); Panel.Position=UDim2.new(0,20,0.5,-220); Panel.BackgroundColor3=Color3.fromRGB(250,250,255); Panel.BorderSizePixel=0; Panel.Parent=Gui
 Instance.new("UICorner", Panel).CornerRadius=UDim.new(0,12)
@@ -556,9 +594,8 @@ Instance.new("UICorner", Header).CornerRadius=UDim.new(0,12)
 local headerGradient=Instance.new("UIGradient"); headerGradient.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(124,58,237)),ColorSequenceKeypoint.new(0.5,Color3.fromRGB(37,99,235)),ColorSequenceKeypoint.new(1,Color3.fromRGB(124,58,237))}); headerGradient.Rotation=15; headerGradient.Parent=Header
 local TabBar=Instance.new("Frame"); TabBar.BackgroundTransparency=1; TabBar.Position=UDim2.fromOffset(8,52); TabBar.Size=UDim2.new(1,-16,0,30); TabBar.Parent=Panel
 local Pages=Instance.new("Frame"); Pages.BackgroundTransparency=1; Pages.Position=UDim2.fromOffset(10,88); Pages.Size=UDim2.new(1,-20,1,-98); Pages.Parent=Panel
-ToastLabel=Instance.new("TextLabel"); ToastLabel.Name="SILAU_Toast"; ToastLabel.AnchorPoint=Vector2.new(1,0); ToastLabel.Position=UDim2.new(1,-18,0,18); ToastLabel.Size=UDim2.fromOffset(300,34); ToastLabel.BackgroundColor3=Color3.fromRGB(22,18,38); ToastLabel.BackgroundTransparency=0.08; ToastLabel.Font=Enum.Font.GothamBold; ToastLabel.TextSize=13; ToastLabel.TextColor3=Color3.new(1,1,1); ToastLabel.Visible=false; ToastLabel.ZIndex=100; ToastLabel.Parent=Gui
-Instance.new("UICorner",ToastLabel).CornerRadius=UDim.new(0,8)
-local toastStroke=Instance.new("UIStroke"); toastStroke.Color=Color3.fromRGB(124,58,237); toastStroke.Thickness=1; toastStroke.Parent=ToastLabel
+ToastLabel=Instance.new("TextLabel"); ToastLabel.Name="SILAU_Toast"; ToastLabel.AnchorPoint=Vector2.new(0.5,0); ToastLabel.Position=UDim2.new(0.5,0,0,8); ToastLabel.Size=UDim2.fromOffset(34,30); ToastLabel.BackgroundTransparency=1; ToastLabel.Font=Enum.Font.GothamBold; ToastLabel.TextSize=21; ToastLabel.TextColor3=Color3.new(1,1,1); ToastLabel.TextStrokeTransparency=0.35; ToastLabel.Visible=false; ToastLabel.ZIndex=100; ToastLabel.Parent=ToastGui
+-- Notifikasi sengaja tanpa background/kotak: hanya simbol berwarna.
 
 local function addButton(parent, text, callback, color)
     local b=Instance.new("TextButton"); b.Size=UDim2.new(1,0,0,32); b.BackgroundColor3=color or Color3.fromRGB(42,38,62); b.Text=text; b.Font=Enum.Font.GothamMedium; b.TextSize=13; b.TextColor3=Color3.new(1,1,1); b.AutoButtonColor=true; b.Parent=parent; Instance.new("UICorner",b).CornerRadius=UDim.new(0,7); b.MouseButton1Click:Connect(callback); return b
@@ -642,6 +679,7 @@ connect(UIS.InputBegan,function(input,processed)
     elseif input.KeyCode==Enum.KeyCode.S then if State.MoonOn then setMoon(false) end
     elseif input.KeyCode==Enum.KeyCode.LeftShift or input.KeyCode==Enum.KeyCode.RightShift then setCenter(not State.CenterOn)
     elseif input.KeyCode==Config.HideKey then setHide(not State.HideOn)
+    elseif input.KeyCode==Enum.KeyCode.C then setHideUpper(not State.HideUpperOn)
     elseif input.KeyCode==Config.LightKey then setLight(not State.LightOn)
     elseif input.KeyCode==Config.WallsKey then setWalls(not State.WallsOn)
     elseif input.KeyCode==Enum.KeyCode.K then
@@ -652,21 +690,23 @@ end)
 
 connect(LocalPlayer.CharacterAdded,function(char) onCharacter(char) end)
 getCharacterParts(); if Humanoid then captureJumpDefaults(); applySpeed(); applyJump() end
+Tasks.Speed = task.spawn(function() while not State.Removed do task.wait(0.1); applySpeed() end end)
 Tasks.Light = task.spawn(function() while not State.Removed do task.wait(2); if State.LightOn then applyLight() end end end)
 Tasks.Hide = task.spawn(function() while not State.Removed do task.wait(0.35); if State.HideOn then updateHiddenVehicles() end end end)
 
 cleanup=function()
     if State.Removed then return end
     State.Removed=true
-    cancelTask("Light"); cancelTask("Hide")
+    cancelTask("Speed"); cancelTask("Light"); cancelTask("Hide")
     setCenter(false); setMoon(false); setHide(false); setHideUpper(false); setLight(false); setLightweight(false); setWalls(false); restoreJump(); applySpeed()
     for _,c in ipairs(Connections) do pcall(function() c:Disconnect() end) end
     table.clear(Connections)
     pcall(function() Gui:Destroy() end)
+    pcall(function() ToastGui:Destroy() end)
     print("[SILAU V1] unload selesai")
 end
 
 -- Dibuat dapat dipanggil oleh integrasi executor bila diperlukan.
 _G.__SILAU_V1_CLEANUP__ = cleanup
 
-print("[SILAU V1] siap — G GUI | Q speed | J jump | F moon | Shift tengah | R hide | T cahaya | X dinding | K×2 rejoin")
+print("[SILAU V1] siap — G GUI | Q speed | J jump | F moon | Shift tengah | R hide | C hide setengah badan | T cahaya | X dinding | K×2 rejoin")
