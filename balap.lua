@@ -1,23 +1,5 @@
 --[[
-    SILAU V1.2
-    Fokus: movement dan visual untuk balapan.
-
-    Perubahan V1.2:
-    - Hide Setengah Badan diganti port implementasi dari SILAU SANTAI
-      v1.2: klasifikasi 4 lapis (nama part -> rantai weld -> peta
-      attachment -> garis pinggang) + self-heal Heartbeat tiap 0,3 dtk.
-      Rambut/topi/aksesoris atas tidak lolos; celana, kaki, dan sepatu
-      tetap tampil.
-
-    Perubahan V1.1:
-    - Fix celana hilang, auto-cleanup saat dijalankan ulang, cache
-      respawn dibersihkan, race condition Hide Player diperbaiki.
-
-    Dihapus dari versi ini:
-    - Animasi dan emote
-    - Titik, benang/route, dan cloud
-    - Panah deteksi pemain
-    - Shiftlock Mobile
+    SILAU V1.3
 
     Keybind:
     G = GUI
@@ -33,7 +15,7 @@
     K dua kali = Rejoin
 ]]--
 
-print("[SILAU V1.2] load mulai...")
+print("[SILAU V1.3] load mulai...")
 
 -- Jika script masih aktif dari sesi sebelumnya, bersihkan dulu supaya
 -- tidak ada dua set keybind dan loop yang berjalan bersamaan.
@@ -51,7 +33,7 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
 if not RunService:IsClient() or not LocalPlayer then
-    warn("[SILAU V1.2] harus dijalankan di client")
+    warn("[SILAU V1.3] harus dijalankan di client")
     return
 end
 
@@ -315,26 +297,6 @@ local function setMoon(v)
     notify("M", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
---==============================================================
--- VISUAL: HIDE SETENGAH BADAN
--- (port implementasi dari SILAU SANTAI v1.2)
---==============================================================
--- Sembunyikan KEPALA s/d BADAN & TANGAN milik DIRI SENDIRI, hanya di
--- layar sendiri (LocalTransparencyModifier). Tetap tampil: pinggang ke
--- bawah (celana) + kaki + sepatu. Klasifikasi 4 LAPIS (rambut/aksesoris
--- atas sering lolos):
---   1) nama part tubuh standar (R15/R6) -> langsung diketahui
---   2) rantai weld/joint (Weld, WeldConstraint, Motor6D, AccessoryWeld)
---      sampai 6 hop -> part tubuh tempat menempel
---      (banyak rambut/topi modern pakai WeldConstraint)
---   3) peta attachment: attachment milik aksesoris dicocokkan ke
---      attachment part tubuh (cara resmi Roblox menentukan posisi
---      aksesoris)
---   4) posisi dunia: di atas garis pinggang (HRP - 1 stud) = sembunyi,
---      di bawah = tampil (jaring pengaman rambut/topi tanpa weld)
---   Kalau semua gagal -> SEMBUNYI (ragu = sembunyi; yang tampil hanya
---   kaki/celana/sepatu).
--- Decal (muka, lensa, tekstur) di dalam part sembunyi ikut dihilangkan.
 local atasConn, atasT = nil, 0
 local atasDecalOrig = {}
 local ATAS_R15 = {
@@ -446,6 +408,10 @@ local function atasSapu(on)
     end
 end
 
+-- Kendaraan milik sendiri: model terakhir yang aku duduki seat-nya.
+-- Di-reset saat respawn; fitur hide kendaraan tidak menyembunyikannya.
+local Kendaraanku = nil
+
 local function onCharacter(character)
     if not character:FindFirstChild("HumanoidRootPart") then
         character:WaitForChild("HumanoidRootPart", 5)
@@ -458,6 +424,8 @@ local function onCharacter(character)
     applyJump()
     -- Shiftlock Tengah dan Moonwalk sengaja selalu OFF saat mati/respawn.
     stopCharacterFeatures()
+    -- Reset penanda kendaraan sendiri saat respawn (karakter baru).
+    Kendaraanku = nil
     if State.HideUpperOn then
         -- Sembunyikan ulang langsung saat respawn; loop self-heal
         -- (Heartbeat 0,3 dtk) merawat part yang muncul belakangan.
@@ -465,12 +433,11 @@ local function onCharacter(character)
     end
 end
 
---==============================================================
--- VISUAL: HIDE PLAYER + FX
---==============================================================
 local hiddenVisual = {}
 local hiddenConnections = {}
 local vehicleOriginal = {}
+-- Kendaraanku (dideklarasikan di bagian CHARACTER): kendaraan terakhir
+-- yang aku kendarai — TIDAK ikut disembunyikan fitur hide kendaraan.
 
 local function isVisualObject(obj)
     return obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
@@ -545,12 +512,14 @@ local function updateHiddenVehicles()
     local found = {}
     for _, part in ipairs(Workspace:GetPartBoundsInRadius(RootPart.Position, 30)) do
         local model = vehicleFromPart(part)
-        if model then found[model] = true; setVehicleTransparency(model, true) end
+        -- Kendaraan sendiri tidak ikut disembunyikan.
+        if model and model ~= Kendaraanku then found[model] = true; setVehicleTransparency(model, true) end
     end
     for model in pairs(vehicleOriginal) do if not found[model] then setVehicleTransparency(model, false) end end
 end
 
 local function setHide(v)
+    if State.HideOn == v then return end
     State.HideOn = v
     if v then
         for _, plr in ipairs(Players:GetPlayers()) do if plr ~= LocalPlayer and plr.Character then hideOtherCharacter(plr.Character) end end
@@ -571,9 +540,19 @@ for _, plr in ipairs(Players:GetPlayers()) do
     if plr ~= LocalPlayer then connect(plr.CharacterAdded, function(char) task.wait(0.2); if State.HideOn then hideOtherCharacter(char) end end) end
 end
 
---==============================================================
--- VISUAL: HIDE UPPER BODY
---==============================================================
+-- Saat mati (Died) dan saat respawn: Hide Player + FX kembali OFF
+-- otomatis — semua sembunyian dan kendaraan dipulihkan, tidak ada
+-- yang nyangkut ke sesi berikutnya.
+connect(LocalPlayer.CharacterAdded, function(char)
+    if State.HideOn then setHide(false) end
+    local h = char:WaitForChild("Humanoid", 5)
+    if h then
+        connect(h.Died, function()
+            if State.HideOn then setHide(false) end
+        end)
+    end
+end)
+
 local function setHideUpper(v)
     if State.HideUpperOn == v then return end
     State.HideUpperOn = v
@@ -597,15 +576,32 @@ local function setHideUpper(v)
     notify("Hset", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
---==============================================================
--- VISUAL: LIGHTING
---==============================================================
+local LIGHT_PROPS = { "Brightness", "Ambient", "OutdoorAmbient", "ExposureCompensation", "FogEnd" }
+local LightApplied = {} -- nilai terakhir yang kita terapkan sendiri
+
 local function captureLighting()
     Original.Lighting = {
         ClockTime=Lighting.ClockTime, Brightness=Lighting.Brightness,
         Ambient=Lighting.Ambient, OutdoorAmbient=Lighting.OutdoorAmbient,
         ExposureCompensation=Lighting.ExposureCompensation, FogEnd=Lighting.FogEnd,
     }
+    table.clear(LightApplied)
+end
+
+-- Selama ON, game bisa mengubah lighting-nya sendiri (siang->malam, kabut,
+-- dsb.). Properti yang nilainya berbeda dari yang kita terapkan berarti
+-- diubah game -> catat sebagai nilai REAL terbaru, supaya saat OFF cahaya
+-- kembali ke kondisi real game saat itu, bukan snapshot waktu tombol ON.
+local function syncRealLighting()
+    if not Original.Lighting then return end
+    for _, prop in ipairs(LIGHT_PROPS) do
+        pcall(function()
+            local cur = Lighting[prop]
+            if cur ~= LightApplied[prop] then
+                Original.Lighting[prop] = cur
+            end
+        end)
+    end
 end
 
 local function applyLight()
@@ -623,18 +619,23 @@ local function applyLight()
         Lighting.OutdoorAmbient = Color3.fromRGB(100,100,110)
         Lighting.ExposureCompensation = -0.15
     end
+    for _, prop in ipairs(LIGHT_PROPS) do
+        LightApplied[prop] = Lighting[prop]
+    end
 end
 
 local function setLight(v)
+    if State.LightOn == v then return end
     State.LightOn = v
     if v then
         -- Simpan kondisi pencahayaan/cuaca asli sebelum efek Auto aktif.
         captureLighting()
         applyLight()
     else
-        -- Kembalikan pencahayaan asli, tetapi pertahankan ClockTime terkini
-        -- agar waktu/cuaca game tidak kembali ke waktu saat tombol ON ditekan.
-        local currentClockTime = Lighting.ClockTime
+        -- Ambil dulu perubahan terakhir dari game, lalu pulihkan semuanya
+        -- ke kondisi real game saat ini. ClockTime tidak pernah diubah
+        -- fitur ini, jadi waktu/cuaca game tetap berjalan normal.
+        syncRealLighting()
         if Original.Lighting then
             for prop, value in pairs(Original.Lighting) do
                 if prop ~= "ClockTime" then
@@ -642,14 +643,11 @@ local function setLight(v)
                 end
             end
         end
-        pcall(function() Lighting.ClockTime = currentClockTime end)
+        table.clear(LightApplied)
     end
     notify("C", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
---==============================================================
--- VISUAL: LIGHTWEIGHT
---==============================================================
 local lightweightOriginal = {}
 local lightweightConns = {}
 local lightweightGlobalShadows
@@ -732,7 +730,7 @@ local Panel = Instance.new("Frame"); Panel.Name="Panel"; Panel.Size=UDim2.fromOf
 Instance.new("UICorner", Panel).CornerRadius=UDim.new(0,12)
 local panelStroke=Instance.new("UIStroke"); panelStroke.Color=Color3.fromRGB(124,58,237); panelStroke.Thickness=3; panelStroke.Parent=Panel
 local panelGradient=Instance.new("UIGradient"); panelGradient.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(250,250,255)),ColorSequenceKeypoint.new(0.5,Color3.fromRGB(237,233,254)),ColorSequenceKeypoint.new(1,Color3.fromRGB(219,234,254))}); panelGradient.Rotation=35; panelGradient.Parent=Panel
-local Header = Instance.new("TextButton"); Header.Text="⚡ S I L A U  V1.2 ⚡"; Header.Font=Enum.Font.GothamBold; Header.TextSize=18; Header.TextColor3=Color3.new(1,1,1); Header.BackgroundColor3=Color3.fromRGB(22,18,38); Header.Size=UDim2.new(1,0,0,44); Header.AutoButtonColor=false; Header.Parent=Panel
+local Header = Instance.new("TextButton"); Header.Text="⚡ S I L A U  V1.3 ⚡"; Header.Font=Enum.Font.GothamBold; Header.TextSize=18; Header.TextColor3=Color3.new(1,1,1); Header.BackgroundColor3=Color3.fromRGB(22,18,38); Header.Size=UDim2.new(1,0,0,44); Header.AutoButtonColor=false; Header.Parent=Panel
 Instance.new("UICorner", Header).CornerRadius=UDim.new(0,12)
 local headerGradient=Instance.new("UIGradient"); headerGradient.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(124,58,237)),ColorSequenceKeypoint.new(0.5,Color3.fromRGB(37,99,235)),ColorSequenceKeypoint.new(1,Color3.fromRGB(124,58,237))}); headerGradient.Rotation=15; headerGradient.Parent=Header
 local TabBar=Instance.new("Frame"); TabBar.BackgroundTransparency=1; TabBar.Position=UDim2.fromOffset(8,52); TabBar.Size=UDim2.new(1,-16,0,30); TabBar.Parent=Panel
@@ -840,13 +838,24 @@ if not Humanoid and Character then
 end
 if Humanoid then captureJumpDefaults(); applySpeed(); applyJump() end
 Tasks.Speed = task.spawn(function() while not State.Removed do task.wait(0.1); applySpeed() end end)
-Tasks.Light = task.spawn(function() while not State.Removed do task.wait(2); if State.LightOn then applyLight() end end end)
+-- Catat kendaraan yang sedang/terakhir aku kendarai (pengecualian hide).
+Tasks.Seat = task.spawn(function()
+    while not State.Removed do
+        task.wait(0.5)
+        local h = Humanoid
+        if h and h.SeatPart then
+            local m = h.SeatPart:FindFirstAncestorOfClass("Model")
+            if m and m ~= Character then Kendaraanku = m end
+        end
+    end
+end)
+Tasks.Light = task.spawn(function() while not State.Removed do task.wait(2); if State.LightOn then syncRealLighting(); applyLight() end end end)
 Tasks.Hide = task.spawn(function() while not State.Removed do task.wait(0.35); if State.HideOn then updateHiddenVehicles() end end end)
 
 cleanup=function()
     if State.Removed then return end
     State.Removed=true
-    cancelTask("Speed"); cancelTask("Light"); cancelTask("Hide")
+    cancelTask("Speed"); cancelTask("Light"); cancelTask("Hide"); cancelTask("Seat")
     setCenter(false); setMoon(false); setHide(false); setHideUpper(false); setLight(false); setLightweight(false); setWalls(false)
     restoreJump()
     State.SpeedOn = false
@@ -859,10 +868,10 @@ cleanup=function()
     if _G.__SILAU_V1_CLEANUP__ == cleanup then
         _G.__SILAU_V1_CLEANUP__ = nil
     end
-    print("[SILAU V1.2] unload selesai")
+    print("[SILAU V1.3] unload selesai")
 end
 
 -- Dibuat dapat dipanggil oleh integrasi executor bila diperlukan.
 _G.__SILAU_V1_CLEANUP__ = cleanup
 
-print("[SILAU V1.2] siap — G GUI | Q speed | J jump | F moon | Shift tengah | R hide | C hide setengah badan | T cahaya | X dinding | K×2 rejoin")
+print("[SILAU V1.3] siap — G GUI | Q speed | J jump | F moon | Shift tengah | R hide | C hide setengah badan | T cahaya | X dinding | K×2 rejoin")
