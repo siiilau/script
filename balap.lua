@@ -1,5 +1,31 @@
 --[[
     SILAU V1.3
+    Fokus: movement dan visual untuk balapan.
+
+    Perubahan V1.3:
+    - Cahaya Auto: saat OFF, lighting kembali ke kondisi real game
+      TERKINI. Perubahan lighting dari game sendiri (siang->malam, kabut,
+      dsb.) terus dicatat selama ON; nilai real terakhir itulah yang
+      dipulihkan, bukan snapshot saat tombol ON ditekan.
+    - Hide Player + FX otomatis OFF saat mati/respawn — semua sembunyian
+      karakter dan efek visual dipulihkan, tidak ada yang nyangkut.
+    - Fitur hide kendaraan dihapus.
+
+    Perubahan V1.2:
+      v1.2: klasifikasi 4 lapis (nama part -> rantai weld -> peta
+      attachment -> garis pinggang) + self-heal Heartbeat tiap 0,3 dtk.
+      Rambut/topi/aksesoris atas tidak lolos; celana, kaki, dan sepatu
+      tetap tampil.
+
+    Perubahan V1.1:
+    - Fix celana hilang, auto-cleanup saat dijalankan ulang, cache
+      respawn dibersihkan, race condition Hide Player diperbaiki.
+
+    Dihapus dari versi ini:
+    - Animasi dan emote
+    - Titik, benang/route, dan cloud
+    - Panah deteksi pemain
+    - Shiftlock Mobile
 
     Keybind:
     G = GUI
@@ -8,10 +34,8 @@
     F = Moonwalk
     S = matikan Moonwalk
     LeftShift/RightShift = Shiftlock Tengah
-    R = Hide Player + FX
-    C = Hide Setengah Badan
+    R = Hide Other Player + Effects
     T = Cahaya Auto
-    X = Dinding Batas
     K dua kali = Rejoin
 ]]--
 
@@ -45,7 +69,6 @@ local Config = {
     SpeedMin = 17.25,
     SpeedMax = 40,
     SpeedStep = 0.05,
-    SwimSpeedBonus = 0.05,
     JumpMin = 51.25,
     JumpMax = 70,
     JumpStep = 0.05,
@@ -55,7 +78,6 @@ local Config = {
     MoonKey = Enum.KeyCode.F,
     HideKey = Enum.KeyCode.R,
     LightKey = Enum.KeyCode.T,
-    WallsKey = Enum.KeyCode.X,
     RespawnWait = 0.15,
 }
 
@@ -68,10 +90,8 @@ local State = {
     MoonOn = false,
     CenterOn = false,
     HideOn = false,
-    HideUpperOn = false,
     LightOn = false,
     LightweightOn = false,
-    WallsOn = false,
 }
 
 local Connections = {}
@@ -151,22 +171,10 @@ local function restoreCharacterDefaults()
     if Original.AutoRotate ~= nil then Humanoid.AutoRotate = Original.AutoRotate end
 end
 
-local function isSwimming()
-    return Humanoid ~= nil and Humanoid:GetState() == Enum.HumanoidStateType.Swimming
-end
-
-local function getActiveSpeed()
-    local baseSpeed = State.SpeedOn and State.SpeedValue or Config.SpeedOff
-    -- Bonus hanya aktif saat Shiftlock Tengah ON dan karakter sedang berenang.
-    if State.CenterOn and isSwimming() then
-        baseSpeed = baseSpeed * (1 + Config.SwimSpeedBonus)
-    end
-    return round2(baseSpeed)
-end
-
 local function applySpeed()
     if not Humanoid or Humanoid.Health <= 0 then return end
-    Humanoid.WalkSpeed = getActiveSpeed()
+    -- Tidak ada bonus persentase dan tidak ada pengecekan/loop berenang.
+    Humanoid.WalkSpeed = State.SpeedOn and State.SpeedValue or Config.SpeedOff
 end
 
 local function restoreJump()
@@ -297,121 +305,6 @@ local function setMoon(v)
     notify("M", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
-local atasConn, atasT = nil, 0
-local atasDecalOrig = {}
-local ATAS_R15 = {
-    Head = true, UpperTorso = true,
-    LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
-    RightUpperArm = true, RightLowerArm = true, RightHand = true,
-}
-local ATAS_R6 = { Head = true, Torso = true, ["Left Arm"] = true, ["Right Arm"] = true }
-local BADAN_KENAL = {
-    Head = true, UpperTorso = true, LowerTorso = true,
-    LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
-    RightUpperArm = true, RightLowerArm = true, RightHand = true,
-    LeftUpperLeg = true, LeftLowerLeg = true, LeftFoot = true,
-    RightUpperLeg = true, RightLowerLeg = true, RightFoot = true,
-    Torso = true, ["Left Arm"] = true, ["Right Arm"] = true,
-    ["Left Leg"] = true, ["Right Leg"] = true, HumanoidRootPart = true,
-}
-local function atasIkat(part, hop)   -- telusuri rantai weld/joint -> nama part tubuh
-    if hop > 6 then return nil end
-    for _, w in ipairs(part:GetChildren()) do
-        if w:IsA("Motor6D") or w:IsA("Weld") or w:IsA("AccessoryWeld") or w:IsA("WeldConstraint") then
-            local lain = (w.Part0 == part) and w.Part1 or w.Part0
-            if lain then
-                if BADAN_KENAL[lain.Name] then return lain.Name end
-                local r = atasIkat(lain, hop + 1)
-                if r then return r end
-            end
-        end
-    end
-    return nil
-end
-local function atasCariAcc(part)     -- naik lewat Parent, cari Accessory induk
-    local p = part.Parent
-    local hop = 0
-    while p and hop < 4 do
-        if p:IsA("Accessory") then return p end
-        p = p.Parent
-        hop = hop + 1
-    end
-    return nil
-end
-local function atasSapu(on)
-    local char = LocalPlayer.Character
-    if not char then return end
-    -- garis pinggang: HRP turun 1 stud (kaki/celana/sepatu di bawahnya tetap tampil)
-    local batasY = nil
-    pcall(function()
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then batasY = hrp.Position.Y - 1.0 end
-    end)
-    -- peta attachment part tubuh: nama attachment -> part pemiliknya
-    local petaIkat = {}
-    for _, bp in ipairs(char:GetDescendants()) do
-        pcall(function()
-            if bp:IsA("BasePart") and BADAN_KENAL[bp.Name] then
-                for _, c in ipairs(bp:GetChildren()) do
-                    if c:IsA("Attachment") then petaIkat[c.Name] = bp.Name end
-                end
-            end
-        end)
-    end
-    for _, d in ipairs(char:GetDescendants()) do
-        pcall(function()
-            if d:IsA("BasePart") and d.Name ~= "HumanoidRootPart" then
-                local sembunyi = false
-                if BADAN_KENAL[d.Name] then
-                    sembunyi = (ATAS_R15[d.Name] or ATAS_R6[d.Name]) and true or false
-                else
-                    local tubuh = atasIkat(d, 0)          -- lapis 2: rantai weld
-                    if tubuh then
-                        sembunyi = (ATAS_R15[tubuh] or ATAS_R6[tubuh]) and true or false
-                    else
-                        local acc = atasCariAcc(d)         -- lapis 3: peta attachment
-                        local att = acc and acc:FindFirstChildWhichIsA("Attachment", true) or nil
-                        local owner = att and petaIkat[att.Name] or nil
-                        if owner then
-                            sembunyi = (ATAS_R15[owner] or ATAS_R6[owner]) and true or false
-                        else
-                            local okP, pos = pcall(function() return d.Position end)
-                            if okP and pos and batasY then  -- lapis 4: posisi vs garis pinggang
-                                sembunyi = pos.Y > batasY
-                            else
-                                sembunyi = true             -- ragu = sembunyi
-                            end
-                        end
-                    end
-                end
-                if on then
-                    if sembunyi then
-                        d.LocalTransparencyModifier = 1
-                        for _, c in ipairs(d:GetDescendants()) do
-                            if c:IsA("Decal") then
-                                if atasDecalOrig[c] == nil then atasDecalOrig[c] = c.Transparency end
-                                c.Transparency = 1
-                            end
-                        end
-                    end
-                else
-                    d.LocalTransparencyModifier = 0
-                end
-            end
-        end)
-    end
-    if not on then
-        for c, tr in pairs(atasDecalOrig) do
-            pcall(function() if c.Parent then c.Transparency = tr end end)
-        end
-        table.clear(atasDecalOrig)
-    end
-end
-
--- Kendaraan milik sendiri: model terakhir yang aku duduki seat-nya.
--- Di-reset saat respawn; fitur hide kendaraan tidak menyembunyikannya.
-local Kendaraanku = nil
-
 local function onCharacter(character)
     if not character:FindFirstChild("HumanoidRootPart") then
         character:WaitForChild("HumanoidRootPart", 5)
@@ -424,20 +317,14 @@ local function onCharacter(character)
     applyJump()
     -- Shiftlock Tengah dan Moonwalk sengaja selalu OFF saat mati/respawn.
     stopCharacterFeatures()
-    -- Reset penanda kendaraan sendiri saat respawn (karakter baru).
-    Kendaraanku = nil
-    if State.HideUpperOn then
-        -- Sembunyikan ulang langsung saat respawn; loop self-heal
-        -- (Heartbeat 0,3 dtk) merawat part yang muncul belakangan.
-        atasSapu(true)
-    end
 end
 
+--==============================================================
+-- VISUAL: HIDE OTHER PLAYER + ATTRIBUTES + EFFECTS
+--==============================================================
 local hiddenVisual = {}
 local hiddenConnections = {}
-local vehicleOriginal = {}
--- Kendaraanku (dideklarasikan di bagian CHARACTER): kendaraan terakhir
--- yang aku kendarai — TIDAK ikut disembunyikan fitur hide kendaraan.
+local playerCharacterConnections = {}
 
 local function isVisualObject(obj)
     return obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
@@ -484,65 +371,48 @@ local function restoreHiddenVisuals()
     for char, c in pairs(hiddenConnections) do pcall(function() c:Disconnect() end); hiddenConnections[char] = nil end
 end
 
-local function vehicleFromPart(part)
-    local model = part:FindFirstAncestorOfClass("Model")
-    if not model or model == Character then return nil end
-    if model:FindFirstChildWhichIsA("VehicleSeat", true) or model:FindFirstChildWhichIsA("Seat", true) then return model end
-    return nil
-end
-
-local function setVehicleTransparency(model, on)
-    if not model then return end
-    if on then
-        vehicleOriginal[model] = vehicleOriginal[model] or {}
-        for _, obj in ipairs(model:GetDescendants()) do
-            if obj:IsA("BasePart") and vehicleOriginal[model][obj] == nil then
-                vehicleOriginal[model][obj] = obj.LocalTransparencyModifier
-                obj.LocalTransparencyModifier = 1
-            end
-        end
-    elseif vehicleOriginal[model] then
-        for obj, value in pairs(vehicleOriginal[model]) do pcall(function() if obj.Parent then obj.LocalTransparencyModifier = value end end) end
-        vehicleOriginal[model] = nil
-    end
-end
-
-local function updateHiddenVehicles()
-    if not State.HideOn or not RootPart then return end
-    local found = {}
-    for _, part in ipairs(Workspace:GetPartBoundsInRadius(RootPart.Position, 30)) do
-        local model = vehicleFromPart(part)
-        -- Kendaraan sendiri tidak ikut disembunyikan.
-        if model and model ~= Kendaraanku then found[model] = true; setVehicleTransparency(model, true) end
-    end
-    for model in pairs(vehicleOriginal) do if not found[model] then setVehicleTransparency(model, false) end end
-end
-
 local function setHide(v)
     if State.HideOn == v then return end
     State.HideOn = v
     if v then
         for _, plr in ipairs(Players:GetPlayers()) do if plr ~= LocalPlayer and plr.Character then hideOtherCharacter(plr.Character) end end
-        updateHiddenVehicles()
     else
         restoreHiddenVisuals()
-        for model in pairs(vehicleOriginal) do setVehicleTransparency(model, false) end
     end
     notify("HDxFX", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
-connect(Players.PlayerAdded, function(plr)
-    -- Pemain yang karakternya sudah spawn saat script di-load langsung disembunyikan.
+local function bindOtherPlayer(plr)
+    if plr == LocalPlayer then return end
+    local oldConn = playerCharacterConnections[plr]
+    if oldConn then pcall(function() oldConn:Disconnect() end) end
+    playerCharacterConnections[plr] = plr.CharacterAdded:Connect(function(char)
+        task.wait(0.2)
+        if State.HideOn then hideOtherCharacter(char) end
+    end)
     if State.HideOn and plr.Character then hideOtherCharacter(plr.Character) end
-    connect(plr.CharacterAdded, function(char) task.wait(0.2); if State.HideOn then hideOtherCharacter(char) end end)
-end)
-for _, plr in ipairs(Players:GetPlayers()) do
-    if plr ~= LocalPlayer then connect(plr.CharacterAdded, function(char) task.wait(0.2); if State.HideOn then hideOtherCharacter(char) end end) end
 end
 
--- Saat mati (Died) dan saat respawn: Hide Player + FX kembali OFF
--- otomatis — semua sembunyian dan kendaraan dipulihkan, tidak ada
--- yang nyangkut ke sesi berikutnya.
+connect(Players.PlayerAdded, bindOtherPlayer)
+for _, plr in ipairs(Players:GetPlayers()) do
+    bindOtherPlayer(plr)
+end
+connect(Players.PlayerRemoving, function(plr)
+    local conn = playerCharacterConnections[plr]
+    if conn then pcall(function() conn:Disconnect() end); playerCharacterConnections[plr] = nil end
+    local char = plr.Character
+    if char then
+        local charConn = hiddenConnections[char]
+        if charConn then pcall(function() charConn:Disconnect() end); hiddenConnections[char] = nil end
+    end
+    -- Buang referensi objek yang sudah keluar agar cache tidak menumpuk.
+    for obj in pairs(hiddenVisual) do
+        if not obj.Parent then hiddenVisual[obj] = nil end
+    end
+end)
+
+-- Saat mati (Died) dan saat respawn: Hide Other Player kembali OFF
+-- otomatis — semua sembunyian karakter dan efek visual dipulihkan.
 connect(LocalPlayer.CharacterAdded, function(char)
     if State.HideOn then setHide(false) end
     local h = char:WaitForChild("Humanoid", 5)
@@ -553,29 +423,9 @@ connect(LocalPlayer.CharacterAdded, function(char)
     end
 end)
 
-local function setHideUpper(v)
-    if State.HideUpperOn == v then return end
-    State.HideUpperOn = v
-    if v then
-        atasSapu(true)
-        atasT = 0
-        -- Self-heal tiap 0,3 dtk: part baru, respawn, dan aksesoris yang
-        -- muncul belakangan ditangani otomatis (tanpa DescendantAdded).
-        atasConn = connect(RunService.Heartbeat, function(dt)
-            if not State.HideUpperOn or State.Removed then return end
-            atasT = atasT + dt
-            if atasT >= 0.3 then
-                atasT = 0
-                atasSapu(true)
-            end
-        end)
-    else
-        if atasConn then pcall(function() atasConn:Disconnect() end) atasConn = nil end
-        atasSapu(false)
-    end
-    notify("Hset", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
-end
-
+--==============================================================
+-- VISUAL: LIGHTING
+--==============================================================
 local LIGHT_PROPS = { "Brightness", "Ambient", "OutdoorAmbient", "ExposureCompensation", "FogEnd" }
 local LightApplied = {} -- nilai terakhir yang kita terapkan sendiri
 
@@ -648,6 +498,9 @@ local function setLight(v)
     notify("C", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
+--==============================================================
+-- VISUAL: LIGHTWEIGHT
+--==============================================================
 local lightweightOriginal = {}
 local lightweightConns = {}
 local lightweightGlobalShadows
@@ -680,37 +533,6 @@ local function setLightweight(v)
         lightweightGlobalShadows = nil
     end
     notify("Lightweight " .. (v and "ON" or "OFF"))
-end
-
---==============================================================
--- VISUAL: BOUNDARY WALLS
---==============================================================
-local wallOriginal, wallBoxes = {}, {}
-local wallConn
-local function wallCandidate(obj)
-    return obj:IsA("BasePart") and obj.Transparency >= 0.95 and obj.CanCollide and obj ~= Workspace.Terrain
-end
-local function markWall(obj)
-    if not State.WallsOn or not wallCandidate(obj) or wallOriginal[obj] then return end
-    wallOriginal[obj] = {Transparency=obj.Transparency, Color=obj.Color}
-    obj.Transparency = 0.6
-    obj.Color = Color3.fromRGB(70,70,70)
-    local box = Instance.new("SelectionBox")
-    box.Adornee = obj; box.LineThickness = 0.05; box.Color3 = Color3.fromRGB(150,150,150); box.SurfaceTransparency = 1; box.Parent = obj
-    wallBoxes[obj] = box
-end
-local function setWalls(v)
-    State.WallsOn = v
-    if v then
-        for _, obj in ipairs(Workspace:GetDescendants()) do markWall(obj) end
-        wallConn = connect(Workspace.DescendantAdded, function(obj) task.defer(markWall, obj) end)
-    else
-        if wallConn then pcall(function() wallConn:Disconnect() end); wallConn = nil end
-        for obj, data in pairs(wallOriginal) do pcall(function() if obj.Parent then obj.Transparency=data.Transparency; obj.Color=data.Color end end) end
-        for _, box in pairs(wallBoxes) do pcall(function() box:Destroy() end) end
-        table.clear(wallOriginal); table.clear(wallBoxes)
-    end
-    notify("D", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
 --==============================================================
@@ -774,11 +596,9 @@ addInputRow(Movement,"Jump",State.JumpValue,Config.JumpMin,Config.JumpMax,setJum
 toggleRow(Movement,"Jump",function() return State.JumpOn end,toggleJump)
 toggleRow(Movement,"Shiftlock Tengah",function() return State.CenterOn end,setCenter)
 toggleRow(Movement,"Moonwalk",function() return State.MoonOn end,setMoon)
-toggleRow(Visual,"Hide Player + FX",function() return State.HideOn end,setHide)
-toggleRow(Visual,"Hide Badan Atas",function() return State.HideUpperOn end,setHideUpper)
+toggleRow(Visual,"Hide Other Player + Effects",function() return State.HideOn end,setHide)
 toggleRow(Visual,"Cahaya Auto",function() return State.LightOn end,setLight)
 toggleRow(Visual,"Lightweight",function() return State.LightweightOn end,setLightweight)
-toggleRow(Visual,"Dinding Batas",function() return State.WallsOn end,setWalls)
 addButton(System,"REJOIN SERVER [K×2]",function() TeleportService:Teleport(game.PlaceId,LocalPlayer) end,Color3.fromRGB(40,90,170))
 local cleanup
 local deleteArmed=false
@@ -820,9 +640,7 @@ connect(UIS.InputBegan,function(input,processed)
     elseif input.KeyCode==Enum.KeyCode.S then if State.MoonOn then setMoon(false) end
     elseif input.KeyCode==Enum.KeyCode.LeftShift or input.KeyCode==Enum.KeyCode.RightShift then setCenter(not State.CenterOn)
     elseif input.KeyCode==Config.HideKey then setHide(not State.HideOn)
-    elseif input.KeyCode==Enum.KeyCode.C then setHideUpper(not State.HideUpperOn)
     elseif input.KeyCode==Config.LightKey then setLight(not State.LightOn)
-    elseif input.KeyCode==Config.WallsKey then setWalls(not State.WallsOn)
     elseif input.KeyCode==Enum.KeyCode.K then
         local now=os.clock(); if State.LastK and now-State.LastK<0.45 then State.LastK=nil; TeleportService:Teleport(game.PlaceId,LocalPlayer) else State.LastK=now; notify("Tekan K lagi untuk Rejoin",Color3.fromRGB(120,210,255)) end
     end
@@ -836,31 +654,24 @@ if not Humanoid and Character then
     Character:WaitForChild("Humanoid", 5)
     getCharacterParts()
 end
-if Humanoid then captureJumpDefaults(); applySpeed(); applyJump() end
-Tasks.Speed = task.spawn(function() while not State.Removed do task.wait(0.1); applySpeed() end end)
--- Catat kendaraan yang sedang/terakhir aku kendarai (pengecualian hide).
-Tasks.Seat = task.spawn(function()
-    while not State.Removed do
-        task.wait(0.5)
-        local h = Humanoid
-        if h and h.SeatPart then
-            local m = h.SeatPart:FindFirstAncestorOfClass("Model")
-            if m and m ~= Character then Kendaraanku = m end
-        end
-    end
-end)
+if Humanoid then
+    captureJumpDefaults(); applySpeed(); applyJump()
+end
 Tasks.Light = task.spawn(function() while not State.Removed do task.wait(2); if State.LightOn then syncRealLighting(); applyLight() end end end)
-Tasks.Hide = task.spawn(function() while not State.Removed do task.wait(0.35); if State.HideOn then updateHiddenVehicles() end end end)
 
 cleanup=function()
     if State.Removed then return end
     State.Removed=true
-    cancelTask("Speed"); cancelTask("Light"); cancelTask("Hide"); cancelTask("Seat")
-    setCenter(false); setMoon(false); setHide(false); setHideUpper(false); setLight(false); setLightweight(false); setWalls(false)
+    cancelTask("Light")
+    setCenter(false); setMoon(false); setHide(false); setLight(false); setLightweight(false)
     restoreJump()
     State.SpeedOn = false
     State.JumpOn = false
     restoreCharacterDefaults()
+    for plr, conn in pairs(playerCharacterConnections) do
+        pcall(function() conn:Disconnect() end)
+        playerCharacterConnections[plr] = nil
+    end
     for _,c in ipairs(Connections) do pcall(function() c:Disconnect() end) end
     table.clear(Connections)
     pcall(function() Gui:Destroy() end)
@@ -874,4 +685,4 @@ end
 -- Dibuat dapat dipanggil oleh integrasi executor bila diperlukan.
 _G.__SILAU_V1_CLEANUP__ = cleanup
 
-print("[SILAU V1.3] siap — G GUI | Q speed | J jump | F moon | Shift tengah | R hide | C hide setengah badan | T cahaya | X dinding | K×2 rejoin")
+print("[SILAU V1.3] siap — G GUI | Q speed | J jump | F moon | Shift tengah | R hide other player + effects | T cahaya | K×2 rejoin")
