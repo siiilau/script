@@ -500,8 +500,22 @@ end
 
 local function setLight(v)
     State.LightOn = v
-    if v then captureLighting(); applyLight() else
-        if Original.Lighting then for prop, value in pairs(Original.Lighting) do pcall(function() Lighting[prop] = value end) end end
+    if v then
+        -- Simpan kondisi pencahayaan/cuaca asli sebelum efek Auto aktif.
+        captureLighting()
+        applyLight()
+    else
+        -- Kembalikan pencahayaan asli, tetapi pertahankan ClockTime terkini
+        -- agar waktu/cuaca game tidak kembali ke waktu saat tombol ON ditekan.
+        local currentClockTime = Lighting.ClockTime
+        if Original.Lighting then
+            for prop, value in pairs(Original.Lighting) do
+                if prop ~= "ClockTime" then
+                    pcall(function() Lighting[prop] = value end)
+                end
+            end
+        end
+        pcall(function() Lighting.ClockTime = currentClockTime end)
     end
     notify("C", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
