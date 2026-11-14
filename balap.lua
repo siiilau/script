@@ -1,6 +1,17 @@
 --[[
-    SILAU V1
+    SILAU V1.2
     Fokus: movement dan visual untuk balapan.
+
+    Perubahan V1.2:
+    - Hide Setengah Badan diganti port implementasi dari SILAU SANTAI
+      v1.2: klasifikasi 4 lapis (nama part -> rantai weld -> peta
+      attachment -> garis pinggang) + self-heal Heartbeat tiap 0,3 dtk.
+      Rambut/topi/aksesoris atas tidak lolos; celana, kaki, dan sepatu
+      tetap tampil.
+
+    Perubahan V1.1:
+    - Fix celana hilang, auto-cleanup saat dijalankan ulang, cache
+      respawn dibersihkan, race condition Hide Player diperbaiki.
 
     Dihapus dari versi ini:
     - Animasi dan emote
@@ -22,7 +33,13 @@
     K dua kali = Rejoin
 ]]--
 
-print("[SILAU V1] load mulai...")
+print("[SILAU V1.2] load mulai...")
+
+-- Jika script masih aktif dari sesi sebelumnya, bersihkan dulu supaya
+-- tidak ada dua set keybind dan loop yang berjalan bersamaan.
+pcall(function()
+    if _G.__SILAU_V1_CLEANUP__ then _G.__SILAU_V1_CLEANUP__() end
+end)
 
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -34,7 +51,7 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
 if not RunService:IsClient() or not LocalPlayer then
-    warn("[SILAU V1] harus dijalankan di client")
+    warn("[SILAU V1.2] harus dijalankan di client")
     return
 end
 
@@ -80,6 +97,8 @@ local Tasks = {}
 local Original = {
     JumpPower = nil,
     JumpHeight = nil,
+    WalkSpeed = nil,
+    AutoRotate = nil,
     UseJumpPower = nil,
     Lighting = nil,
     Terrain = nil,
@@ -95,6 +114,8 @@ end
 local function cancelTask(key)
     if Tasks[key] then pcall(task.cancel, Tasks[key]); Tasks[key] = nil end
 end
+
+local ToastLabel -- dideklarasikan di sini agar notify() tidak bergantung pada variabel global.
 
 local function notify(text, color)
     print("[SILAU] " .. tostring(text))
@@ -133,9 +154,19 @@ end
 --==============================================================
 local function captureJumpDefaults()
     if not Humanoid then return end
+    -- Simpan nilai asli karakter agar cleanup mengembalikannya,
+    -- bukan memakai nilai default dari Config.
+    Original.WalkSpeed = Humanoid.WalkSpeed
+    Original.AutoRotate = Humanoid.AutoRotate
     Original.UseJumpPower = Humanoid.UseJumpPower
     Original.JumpPower = Humanoid.JumpPower
     Original.JumpHeight = Humanoid.JumpHeight
+end
+
+local function restoreCharacterDefaults()
+    if not Humanoid then return end
+    if Original.WalkSpeed ~= nil then Humanoid.WalkSpeed = Original.WalkSpeed end
+    if Original.AutoRotate ~= nil then Humanoid.AutoRotate = Original.AutoRotate end
 end
 
 local function isSwimming()
@@ -284,47 +315,141 @@ local function setMoon(v)
     notify("M", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
 
-local lowerNames = {
-    -- R15
-    LeftUpperLeg=true, LeftLowerLeg=true, LeftFoot=true,
-    RightUpperLeg=true, RightLowerLeg=true, RightFoot=true,
-    -- R6
-    ["Left Leg"]=true, ["Right Leg"]=true,
+--==============================================================
+-- VISUAL: HIDE SETENGAH BADAN
+-- (port implementasi dari SILAU SANTAI v1.2)
+--==============================================================
+-- Sembunyikan KEPALA s/d BADAN & TANGAN milik DIRI SENDIRI, hanya di
+-- layar sendiri (LocalTransparencyModifier). Tetap tampil: pinggang ke
+-- bawah (celana) + kaki + sepatu. Klasifikasi 4 LAPIS (rambut/aksesoris
+-- atas sering lolos):
+--   1) nama part tubuh standar (R15/R6) -> langsung diketahui
+--   2) rantai weld/joint (Weld, WeldConstraint, Motor6D, AccessoryWeld)
+--      sampai 6 hop -> part tubuh tempat menempel
+--      (banyak rambut/topi modern pakai WeldConstraint)
+--   3) peta attachment: attachment milik aksesoris dicocokkan ke
+--      attachment part tubuh (cara resmi Roblox menentukan posisi
+--      aksesoris)
+--   4) posisi dunia: di atas garis pinggang (HRP - 1 stud) = sembunyi,
+--      di bawah = tampil (jaring pengaman rambut/topi tanpa weld)
+--   Kalau semua gagal -> SEMBUNYI (ragu = sembunyi; yang tampil hanya
+--   kaki/celana/sepatu).
+-- Decal (muka, lensa, tekstur) di dalam part sembunyi ikut dihilangkan.
+local atasConn, atasT = nil, 0
+local atasDecalOrig = {}
+local ATAS_R15 = {
+    Head = true, UpperTorso = true,
+    LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+    RightUpperArm = true, RightLowerArm = true, RightHand = true,
 }
-local upperOriginal = {}
-local upperDecalOriginal = {}
-local upperClothingOriginal = {}
-local upperConnection
-
-local function hideUpperObject(obj)
-    if not obj or not obj.Parent then return end
-    if obj:IsA("BasePart") then
-        if not lowerNames[obj.Name] then
-            if upperOriginal[obj] == nil then upperOriginal[obj] = obj.LocalTransparencyModifier end
-            obj.LocalTransparencyModifier = 1
-            for _, child in ipairs(obj:GetDescendants()) do
-                if child:IsA("Decal") or child:IsA("Texture") then
-                    if upperDecalOriginal[child] == nil then upperDecalOriginal[child] = child.Transparency end
-                    child.Transparency = 1
-                end
+local ATAS_R6 = { Head = true, Torso = true, ["Left Arm"] = true, ["Right Arm"] = true }
+local BADAN_KENAL = {
+    Head = true, UpperTorso = true, LowerTorso = true,
+    LeftUpperArm = true, LeftLowerArm = true, LeftHand = true,
+    RightUpperArm = true, RightLowerArm = true, RightHand = true,
+    LeftUpperLeg = true, LeftLowerLeg = true, LeftFoot = true,
+    RightUpperLeg = true, RightLowerLeg = true, RightFoot = true,
+    Torso = true, ["Left Arm"] = true, ["Right Arm"] = true,
+    ["Left Leg"] = true, ["Right Leg"] = true, HumanoidRootPart = true,
+}
+local function atasIkat(part, hop)   -- telusuri rantai weld/joint -> nama part tubuh
+    if hop > 6 then return nil end
+    for _, w in ipairs(part:GetChildren()) do
+        if w:IsA("Motor6D") or w:IsA("Weld") or w:IsA("AccessoryWeld") or w:IsA("WeldConstraint") then
+            local lain = (w.Part0 == part) and w.Part1 or w.Part0
+            if lain then
+                if BADAN_KENAL[lain.Name] then return lain.Name end
+                local r = atasIkat(lain, hop + 1)
+                if r then return r end
             end
         end
-    elseif obj:IsA("Shirt") or obj:IsA("ShirtGraphic") then
-        if upperClothingOriginal[obj] == nil then
-            upperClothingOriginal[obj] = obj:IsA("Shirt") and obj.ShirtTemplate or obj.Graphic
-        end
+    end
+    return nil
+end
+local function atasCariAcc(part)     -- naik lewat Parent, cari Accessory induk
+    local p = part.Parent
+    local hop = 0
+    while p and hop < 4 do
+        if p:IsA("Accessory") then return p end
+        p = p.Parent
+        hop = hop + 1
+    end
+    return nil
+end
+local function atasSapu(on)
+    local char = LocalPlayer.Character
+    if not char then return end
+    -- garis pinggang: HRP turun 1 stud (kaki/celana/sepatu di bawahnya tetap tampil)
+    local batasY = nil
+    pcall(function()
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then batasY = hrp.Position.Y - 1.0 end
+    end)
+    -- peta attachment part tubuh: nama attachment -> part pemiliknya
+    local petaIkat = {}
+    for _, bp in ipairs(char:GetDescendants()) do
         pcall(function()
-            if obj:IsA("Shirt") then obj.ShirtTemplate = "" else obj.Graphic = "" end
+            if bp:IsA("BasePart") and BADAN_KENAL[bp.Name] then
+                for _, c in ipairs(bp:GetChildren()) do
+                    if c:IsA("Attachment") then petaIkat[c.Name] = bp.Name end
+                end
+            end
         end)
+    end
+    for _, d in ipairs(char:GetDescendants()) do
+        pcall(function()
+            if d:IsA("BasePart") and d.Name ~= "HumanoidRootPart" then
+                local sembunyi = false
+                if BADAN_KENAL[d.Name] then
+                    sembunyi = (ATAS_R15[d.Name] or ATAS_R6[d.Name]) and true or false
+                else
+                    local tubuh = atasIkat(d, 0)          -- lapis 2: rantai weld
+                    if tubuh then
+                        sembunyi = (ATAS_R15[tubuh] or ATAS_R6[tubuh]) and true or false
+                    else
+                        local acc = atasCariAcc(d)         -- lapis 3: peta attachment
+                        local att = acc and acc:FindFirstChildWhichIsA("Attachment", true) or nil
+                        local owner = att and petaIkat[att.Name] or nil
+                        if owner then
+                            sembunyi = (ATAS_R15[owner] or ATAS_R6[owner]) and true or false
+                        else
+                            local okP, pos = pcall(function() return d.Position end)
+                            if okP and pos and batasY then  -- lapis 4: posisi vs garis pinggang
+                                sembunyi = pos.Y > batasY
+                            else
+                                sembunyi = true             -- ragu = sembunyi
+                            end
+                        end
+                    end
+                end
+                if on then
+                    if sembunyi then
+                        d.LocalTransparencyModifier = 1
+                        for _, c in ipairs(d:GetDescendants()) do
+                            if c:IsA("Decal") then
+                                if atasDecalOrig[c] == nil then atasDecalOrig[c] = c.Transparency end
+                                c.Transparency = 1
+                            end
+                        end
+                    end
+                else
+                    d.LocalTransparencyModifier = 0
+                end
+            end
+        end)
+    end
+    if not on then
+        for c, tr in pairs(atasDecalOrig) do
+            pcall(function() if c.Parent then c.Transparency = tr end end)
+        end
+        table.clear(atasDecalOrig)
     end
 end
 
-local function applyHideUpperToCharacter()
-    if not Character then return end
-    for _, obj in ipairs(Character:GetDescendants()) do hideUpperObject(obj) end
-end
-
 local function onCharacter(character)
+    if not character:FindFirstChild("HumanoidRootPart") then
+        character:WaitForChild("HumanoidRootPart", 5)
+    end
     task.wait(Config.RespawnWait)
     if State.Removed then return end
     getCharacterParts()
@@ -334,7 +459,9 @@ local function onCharacter(character)
     -- Shiftlock Tengah dan Moonwalk sengaja selalu OFF saat mati/respawn.
     stopCharacterFeatures()
     if State.HideUpperOn then
-        applyHideUpperToCharacter()
+        -- Sembunyikan ulang langsung saat respawn; loop self-heal
+        -- (Heartbeat 0,3 dtk) merawat part yang muncul belakangan.
+        atasSapu(true)
     end
 end
 
@@ -436,6 +563,8 @@ local function setHide(v)
 end
 
 connect(Players.PlayerAdded, function(plr)
+    -- Pemain yang karakternya sudah spawn saat script di-load langsung disembunyikan.
+    if State.HideOn and plr.Character then hideOtherCharacter(plr.Character) end
     connect(plr.CharacterAdded, function(char) task.wait(0.2); if State.HideOn then hideOtherCharacter(char) end end)
 end)
 for _, plr in ipairs(Players:GetPlayers()) do
@@ -446,26 +575,24 @@ end
 -- VISUAL: HIDE UPPER BODY
 --==============================================================
 local function setHideUpper(v)
+    if State.HideUpperOn == v then return end
     State.HideUpperOn = v
     if v then
-        applyHideUpperToCharacter()
-        if not upperConnection and Character then
-            upperConnection = Character.DescendantAdded:Connect(function(obj)
-                if State.HideUpperOn then hideUpperObject(obj) end
-            end)
-        end
-    else
-        if upperConnection then pcall(function() upperConnection:Disconnect() end); upperConnection = nil end
-        for obj, value in pairs(upperOriginal) do pcall(function() if obj.Parent then obj.LocalTransparencyModifier = value end end) end
-        table.clear(upperOriginal)
-        for obj, value in pairs(upperDecalOriginal) do pcall(function() if obj.Parent then obj.Transparency = value end end) end
-        table.clear(upperDecalOriginal)
-        for obj, value in pairs(upperClothingOriginal) do pcall(function()
-            if obj.Parent then
-                if obj:IsA("Shirt") then obj.ShirtTemplate = value else obj.Graphic = value end
+        atasSapu(true)
+        atasT = 0
+        -- Self-heal tiap 0,3 dtk: part baru, respawn, dan aksesoris yang
+        -- muncul belakangan ditangani otomatis (tanpa DescendantAdded).
+        atasConn = connect(RunService.Heartbeat, function(dt)
+            if not State.HideUpperOn or State.Removed then return end
+            atasT = atasT + dt
+            if atasT >= 0.3 then
+                atasT = 0
+                atasSapu(true)
             end
-        end) end
-        table.clear(upperClothingOriginal)
+        end)
+    else
+        if atasConn then pcall(function() atasConn:Disconnect() end) atasConn = nil end
+        atasSapu(false)
     end
     notify("Hset", v and Color3.fromRGB(70,220,110) or Color3.fromRGB(235,70,70))
 end
@@ -594,6 +721,8 @@ end
 local guiParent = (gethui and gethui()) or game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
 local old = guiParent:FindFirstChild("SILAU_V1")
 if old then old:Destroy() end
+local oldToast = guiParent:FindFirstChild("SILAU_V1_Notifications")
+if oldToast then oldToast:Destroy() end
 local Gui = Instance.new("ScreenGui")
 Gui.Name = "SILAU_V1"; Gui.ResetOnSpawn = false; Gui.DisplayOrder = 10000; Gui.Parent = guiParent
 local ToastGui = Instance.new("ScreenGui")
@@ -603,7 +732,7 @@ local Panel = Instance.new("Frame"); Panel.Name="Panel"; Panel.Size=UDim2.fromOf
 Instance.new("UICorner", Panel).CornerRadius=UDim.new(0,12)
 local panelStroke=Instance.new("UIStroke"); panelStroke.Color=Color3.fromRGB(124,58,237); panelStroke.Thickness=3; panelStroke.Parent=Panel
 local panelGradient=Instance.new("UIGradient"); panelGradient.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(250,250,255)),ColorSequenceKeypoint.new(0.5,Color3.fromRGB(237,233,254)),ColorSequenceKeypoint.new(1,Color3.fromRGB(219,234,254))}); panelGradient.Rotation=35; panelGradient.Parent=Panel
-local Header = Instance.new("TextButton"); Header.Text="⚡ S I L A U  V1 ⚡"; Header.Font=Enum.Font.GothamBold; Header.TextSize=18; Header.TextColor3=Color3.new(1,1,1); Header.BackgroundColor3=Color3.fromRGB(22,18,38); Header.Size=UDim2.new(1,0,0,44); Header.AutoButtonColor=false; Header.Parent=Panel
+local Header = Instance.new("TextButton"); Header.Text="⚡ S I L A U  V1.2 ⚡"; Header.Font=Enum.Font.GothamBold; Header.TextSize=18; Header.TextColor3=Color3.new(1,1,1); Header.BackgroundColor3=Color3.fromRGB(22,18,38); Header.Size=UDim2.new(1,0,0,44); Header.AutoButtonColor=false; Header.Parent=Panel
 Instance.new("UICorner", Header).CornerRadius=UDim.new(0,12)
 local headerGradient=Instance.new("UIGradient"); headerGradient.Color=ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.fromRGB(124,58,237)),ColorSequenceKeypoint.new(0.5,Color3.fromRGB(37,99,235)),ColorSequenceKeypoint.new(1,Color3.fromRGB(124,58,237))}); headerGradient.Rotation=15; headerGradient.Parent=Header
 local TabBar=Instance.new("Frame"); TabBar.BackgroundTransparency=1; TabBar.Position=UDim2.fromOffset(8,52); TabBar.Size=UDim2.new(1,-16,0,30); TabBar.Parent=Panel
@@ -678,7 +807,7 @@ tabs[1].BackgroundColor3=Color3.fromRGB(115,70,220); Movement.Visible=true
 local dragging, dragStart, panelStart
 Header.InputBegan:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=true; dragStart=input.Position; panelStart=Panel.Position end end)
 Header.InputEnded:Connect(function(input) if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then dragging=false end end)
-UIS.InputChanged:Connect(function(input) if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then local d=input.Position-dragStart; Panel.Position=UDim2.new(panelStart.X.Scale,panelStart.X.Offset+d.X,panelStart.Y.Scale,panelStart.Y.Offset+d.Y) end end)
+connect(UIS.InputChanged, function(input) if dragging and (input.UserInputType==Enum.UserInputType.MouseMovement or input.UserInputType==Enum.UserInputType.Touch) then local d=input.Position-dragStart; Panel.Position=UDim2.new(panelStart.X.Scale,panelStart.X.Offset+d.X,panelStart.Y.Scale,panelStart.Y.Offset+d.Y) end end)
 
 --==============================================================
 -- KEYBINDS / LOOPS / CLEANUP
@@ -703,7 +832,13 @@ connect(UIS.InputBegan,function(input,processed)
 end)
 
 connect(LocalPlayer.CharacterAdded,function(char) onCharacter(char) end)
-getCharacterParts(); if Humanoid then captureJumpDefaults(); applySpeed(); applyJump() end
+getCharacterParts()
+if not Humanoid and Character then
+    -- Karakter belum selesai dimuat saat script dijalankan.
+    Character:WaitForChild("Humanoid", 5)
+    getCharacterParts()
+end
+if Humanoid then captureJumpDefaults(); applySpeed(); applyJump() end
 Tasks.Speed = task.spawn(function() while not State.Removed do task.wait(0.1); applySpeed() end end)
 Tasks.Light = task.spawn(function() while not State.Removed do task.wait(2); if State.LightOn then applyLight() end end end)
 Tasks.Hide = task.spawn(function() while not State.Removed do task.wait(0.35); if State.HideOn then updateHiddenVehicles() end end end)
@@ -712,15 +847,22 @@ cleanup=function()
     if State.Removed then return end
     State.Removed=true
     cancelTask("Speed"); cancelTask("Light"); cancelTask("Hide")
-    setCenter(false); setMoon(false); setHide(false); setHideUpper(false); setLight(false); setLightweight(false); setWalls(false); restoreJump(); applySpeed()
+    setCenter(false); setMoon(false); setHide(false); setHideUpper(false); setLight(false); setLightweight(false); setWalls(false)
+    restoreJump()
+    State.SpeedOn = false
+    State.JumpOn = false
+    restoreCharacterDefaults()
     for _,c in ipairs(Connections) do pcall(function() c:Disconnect() end) end
     table.clear(Connections)
     pcall(function() Gui:Destroy() end)
     pcall(function() ToastGui:Destroy() end)
-    print("[SILAU V1] unload selesai")
+    if _G.__SILAU_V1_CLEANUP__ == cleanup then
+        _G.__SILAU_V1_CLEANUP__ = nil
+    end
+    print("[SILAU V1.2] unload selesai")
 end
 
 -- Dibuat dapat dipanggil oleh integrasi executor bila diperlukan.
 _G.__SILAU_V1_CLEANUP__ = cleanup
 
-print("[SILAU V1] siap — G GUI | Q speed | J jump | F moon | Shift tengah | R hide | C hide setengah badan | T cahaya | X dinding | K×2 rejoin")
+print("[SILAU V1.2] siap — G GUI | Q speed | J jump | F moon | Shift tengah | R hide | C hide setengah badan | T cahaya | X dinding | K×2 rejoin")
