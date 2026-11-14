@@ -307,6 +307,15 @@ local lowerAttachmentNames = {
     LeftAnkleAttachment=true, RightAnkleAttachment=true,
     LeftLegAttachment=true, RightLegAttachment=true,
 }
+
+local function isLowerBodyName(name)
+    local n = string.lower(tostring(name or ""))
+    if lowerNames[name] then return true end
+    return n:find("left.*leg") ~= nil or n:find("right.*leg") ~= nil
+        or n:find("left.*foot") ~= nil or n:find("right.*foot") ~= nil
+        or n:find("left.*ankle") ~= nil or n:find("right.*ankle") ~= nil
+end
+
 local upperOriginal = {}
 local upperDecalOriginal = {}
 local upperClothingOriginal = {}
@@ -321,16 +330,33 @@ local function isLowerAccessory(obj)
             if child:IsA("Attachment") and lowerAttachmentNames[child.Name] then
                 return true
             end
+            if child:IsA("Weld") or child:IsA("WeldConstraint") then
+                local p0 = child.Part0
+                local p1 = child.Part1
+                if (p0 and isLowerBodyName(p0.Name)) or (p1 and isLowerBodyName(p1.Name)) then
+                    return true
+                end
+            end
+        end
+        -- Beberapa game menggunakan aksesori custom tanpa attachment standar.
+        if Character then
+            for _, part in ipairs(Character:GetDescendants()) do
+                if part:IsA("BasePart") and isLowerBodyName(part.Name) then
+                    if (handle.Position - part.Position).Magnitude <= 3.5 then
+                        return true
+                    end
+                end
+            end
         end
     end
-    -- Fallback untuk aksesori sepatu/boot yang tidak memiliki attachment standar.
     local n = string.lower(accessory.Name or "")
     return n:find("shoe") ~= nil or n:find("boot") ~= nil or n:find("sepatu") ~= nil
-        or n:find("foot") ~= nil or n:find("ankle") ~= nil
+        or n:find("foot") ~= nil or n:find("ankle") ~= nil or n:find("sandal") ~= nil
+        or n:find("sneaker") ~= nil or n:find("sock") ~= nil or n:find("slipper") ~= nil
 end
-
 local function isVisibleLowerObject(obj)
-    return lowerNames[obj.Name] or isLowerAccessory(obj)
+    -- Kaki dan seluruh isi aksesori kaki tetap terlihat.
+    return isLowerBodyName(obj.Name) or isLowerAccessory(obj)
 end
 
 local function hideUpperObject(obj)
@@ -352,6 +378,9 @@ local function hideUpperObject(obj)
             if upperDecalOriginal[obj] == nil then upperDecalOriginal[obj] = obj.Transparency end
             obj.Transparency = 1
         end
+    elseif obj:IsA("Pants") then
+        -- Celana selalu dibiarkan terlihat.
+        return
     elseif obj:IsA("Shirt") or obj:IsA("ShirtGraphic") then
         -- Kaos/baju atas disembunyikan; celana sengaja tidak disentuh.
         if upperClothingOriginal[obj] == nil then
