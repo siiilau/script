@@ -4122,33 +4122,6 @@ local EMOTE_CATALOG = {
             end
         end))
 
-        diagSet("keybind OK — finalisasi...")
-        -- [22] MULAI ---------------------------------------------------------
-        updateSpeedLabel()
-        setTab(1)  -- 🏃 GERAK jadi tab pertama
-        task.delay(0.15, function()
-            local okG, errG = pcall(bukaGui)
-            if not okG then
-                diagSet("GUI gagal terbuka: " .. tostring(errG), Color3.fromRGB(239, 68, 68))
-                warn("[BALAP] bukaGui error: " .. tostring(errG))
-            end
-        end)
-        print("[BALAP " .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | ANIMASI | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • R hide • Z hide atas • T cahaya • X dinding • K×2 rejoin • LOCAL ONLY")
-        diagSet("BALAP " .. VERSI .. " SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
-        task.delay(7, function()
-            local function hapusDiag()
-                pcall(function()
-                    local g = game:GetService("CoreGui"):FindFirstChild("BALAP_DIAG")
-                    if g then g:Destroy() end
-                end)
-                pcall(function()
-                    if gethui then
-                        local g = gethui():FindFirstChild("BALAP_DIAG")
-                        if g then g:Destroy() end
-                    end
-                end)
-            end
             hapusDiag()
         end)
     end -- akhir initLogic()
