@@ -8,10 +8,11 @@
 --    F = Moonwalk            R = Hide           Z = Hide Atas
 --    T = Cahaya Auto         X = Dinding Batas  K = Rejoin (tekan 2x)
 --
---  Riwayat: v1.1 benang/garis dihapus • v1.2 emote/paket bisa dihapus
---    permanen (tersimpan, bisa dipulihkan) • v1.3 Cloud Titik, Label Jarak
---    & Panah Deteksi dihapus demi performa • v1.4 item terhapus dibuang
---    dari memori (makin ringan) + notif "SIAP" dihapus.
+--  Riwayat: v1.1 benang/garis dihapus • v1.2 emote/paket bisa dihapus •
+--    v1.3 Cloud Titik, Label Jarak & Panah Deteksi dihapus demi performa •
+--    v1.4 item terhapus dibuang dari memori (makin ringan) • notif "SIAP"
+--    dihapus • emote yang di★-kan pindah ke grup FAVORIT • hapus emote
+--    PERMANEN tanpa pemulihan (balik lagi lewat TAMBAH EMOTE: Nama + ID).
 --  Shiftlock Mobile, Moonwalk & Shiftlock Tengah otomatis OFF saat mati/respawn.
 --========================================================
 print("[BALAP V1.4] load mulai...")
@@ -144,7 +145,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         SLT_DOT_Y   = 0.60,  -- letak vertikal lingkaran: 0.5 = tengah layar,
         -- makin besar makin ke bawah (0.60 = bawah pinggang)
         -- Animasi kustom (tab ANIMASI): port ANIMASI BUNDLE
-        -- v1.6: tanpa file config — tiap load selalu default (master OFF).
+        -- tanpa file config — tiap load selalu default (master OFF).
         EMOTE_TUNGGAK    = 0.25,  -- jeda dtk setelah spawn sebelum pasang gaya
         SWIM_BONUS         = 1.025, -- berenang + Shiftlock Tengah: speed aktif × 1.025
         -- UI RESPONSIF: panel menyesuaikan ukuran layar otomatis.
@@ -814,7 +815,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     --   • Baseline (animasi asli game) dicatat tiap spawn -> RESET/OFF
     --     mengembalikan persis seperti semula.
     --   • Preset = 18 pack resmi Roblox (semua Creator.Id = 1).
-    --   • Config (preset/master) permanen: BALAP_EMOTE.json.
+    --   • Favorit & emote tambahan (ID manual) tersimpan lokal; hapus emote
+    --     = PERMANEN (balik hanya lewat kolom TAMBAH EMOTE).
     --   • Keybind G milik script standalone DIHAPUS — ikut GUI utama (G).
     -- ======================================================================
 local EMOTE_PRESET = {
@@ -1308,15 +1310,16 @@ local EMOTE_CATALOG = {
     end
     emoteFavLoad()
 
-    -- [11] DAFTAR DIHAPUS (SEMBUNYI PERMANEN) -----------------
+    -- [11] EMOTE DIHAPUS = PERMANEN + EMOTE TAMBAHAN (ID) ------
     -- Emote / paket gaya yang dihapus DIBUANG dari data aktif (tidak
-    -- dirender lagi = ringan) dan tersimpan di file supaya tidak muncul
-    -- selamanya, kecuali dipulihkan lewat tombol.
+    -- dirender lagi = ringan) dan dicatat di file supaya tidak pernah
+    -- muncul lagi. TIDAK ADA pemulihan: ID emote dibuang total, balik
+    -- lagi hanya lewat kolom TAMBAH EMOTE (Nama + ID). Emote tambahan
+    -- user juga tersimpan ke file agar tetap ada saat script jalan lagi.
     local EMOTE_SEMBUNYI_FILE = "balap_emote_sembunyi.json"
     local EMOTE_SEMBUNYI = { emote = {}, paket = {} }
-    -- ID emote yang sudah dibuang dari katalog + salinan array paket
-    -- asli. Hanya dipakai fitur pulihkan; tidak pernah dirender.
-    local EMOTE_TERHAPUS_EMOTE = {}
+    local EMOTE_KUSTOM_FILE = "balap_emote_kustom.json"
+    local EMOTE_KUSTOM = {}
     local EMOTE_PRESET_MASTER = {}
     local terapkanPaketAktif   -- didefinisikan setelah EMOTE ada
     local function emoteSembunyiSave()
@@ -1349,6 +1352,34 @@ local EMOTE_CATALOG = {
         end
     end
     emoteSembunyiLoad()
+    local function emoteKustomSave()
+        getgenv().BALAP_EMOTE_KUSTOM = EMOTE_KUSTOM
+        if type(writefile) == "function" then
+            pcall(function() writefile(EMOTE_KUSTOM_FILE, HttpService:JSONEncode(EMOTE_KUSTOM)) end)
+        end
+    end
+    local function emoteKustomLoad()
+        local data
+        if type(readfile) == "function" and type(isfile) == "function" then
+            pcall(function()
+                if isfile(EMOTE_KUSTOM_FILE) then
+                    data = HttpService:JSONDecode(readfile(EMOTE_KUSTOM_FILE))
+                end
+            end)
+        end
+        if type(data) ~= "table" then data = rawget(getgenv(), "BALAP_EMOTE_KUSTOM") end
+        if type(data) == "table" then
+            for k, v in pairs(data) do
+                local id = tonumber(v)
+                if k ~= "" and id then EMOTE_KUSTOM[k] = id end
+            end
+        end
+    end
+    emoteKustomLoad()
+    -- emote tambahan user masuk katalog; yang dihapus tidak dimuat ulang
+    for nama, id in pairs(EMOTE_KUSTOM) do
+        if not EMOTE_SEMBUNYI.emote[nama] then EMOTE_CATALOG[nama] = id end
+    end
 
     local function emoteStopTrack(disableLoop)
         if disableLoop then
@@ -1481,7 +1512,7 @@ local EMOTE_CATALOG = {
     end
 
     local EMOTE = {
-        -- v1.6: awal load SELALU OFF + semua slot ASLI (default).
+        -- awal load SELALU OFF + semua slot ASLI (default).
         -- Pilihan gaya cuma hidup selama sesi — tidak dibaca/ditulis
         -- ke file lagi (BALAP_EMOTE.json lama diabaikan).
         master     = false,
@@ -1493,8 +1524,8 @@ local EMOTE_CATALOG = {
     -- [12] ITEM TERHAPUS DIBUANG DARI DAFTAR AKTIF (RINGAN) ----
     -- Yang dihapus user dikeluarkan dari EMOTE_CATALOG dan array
     -- EMOTE_PRESET di memori: daftar yang dirender/dicari makin
-    -- sedikit. ID disimpan kecil di EMOTE_TERHAPUS_EMOTE /
-    -- EMOTE_PRESET_MASTER supaya tombol pulihkan tetap jalan.
+    -- sedikit. Hapus = PERMANEN (ID tidak disimpan lagi); emote
+    -- balik hanya lewat kolom TAMBAH EMOTE (Nama + ID).
     for k, arr in pairs(EMOTE_PRESET) do EMOTE_PRESET_MASTER[k] = arr end
     terapkanPaketAktif = function()
         for sk, arrLama in pairs(EMOTE_PRESET) do
@@ -1514,10 +1545,7 @@ local EMOTE_CATALOG = {
         end
     end
     for nama, v in pairs(EMOTE_SEMBUNYI.emote) do
-        if v and EMOTE_CATALOG[nama] then
-            EMOTE_TERHAPUS_EMOTE[nama] = EMOTE_CATALOG[nama]
-            EMOTE_CATALOG[nama] = nil
-        end
+        if v then EMOTE_CATALOG[nama] = nil end
     end
     terapkanPaketAktif()
     local function emoteResolveSlot(k)
@@ -1536,7 +1564,7 @@ local EMOTE_CATALOG = {
         return n
     end
     local function emoteSimpan()
-        -- v1.6: cadangan sesi saja (getgenv) — tanpa file.
+        -- cadangan sesi saja (getgenv) — tanpa file.
         getgenv().BALAP_EMOTE_DATA = { master = EMOTE.master, preset = EMOTE.preset }
     end
     local function emoteDeteksiRig(char)
@@ -1665,7 +1693,7 @@ local EMOTE_CATALOG = {
             if emoteRefreshGrid then emoteRefreshGrid() end
         end)
     end
-    -- v1.6: TANPA emoteMuat — tidak ada config yang dimuat, awal selalu
+    -- TANPA emoteMuat — tidak ada config yang dimuat, awal selalu
     -- master OFF + semua slot ASLI (default pabrik).
     State.EmoteOn = EMOTE.master
     catat(LocalPlayer.CharacterAdded:Connect(function(char)
@@ -2013,7 +2041,7 @@ local EMOTE_CATALOG = {
         -- Port ANIMASI BUNDLE V6: 7 slot gaya gerak + 18 pack resmi Roblox.
         -- Ganti AnimationId di script "Animate" bawaan -> restart -> hasil
         -- DIREPLIKASI (pemain lain ikut melihat).
-        -- v1.6: tanpa config — awal load selalu master OFF, semua slot ASLI.
+        -- tanpa config — awal load selalu master OFF, semua slot ASLI.
         -- Logika slot ada di [10]; di sini hanya UI + popup pilih gaya.
         kontenAnim = buat("Frame", {
             Position = UDim2.new(0, 0, 0, 80),
@@ -2157,49 +2185,43 @@ local EMOTE_CATALOG = {
             TextColor3 = Warna.Putih, Text = "↻ LOOP: OFF", AutoButtonColor = false,
         }, emoteTools)
         buat("UICorner", {CornerRadius = UDim.new(0, 7)}, loopBtn)
-        -- ===== HAPUS DARI DAFTAR (SEMBUNYI PERMANEN) =====
-        local sembunyiOnly = false
-        local sembunyiBtn
+        -- ===== TAMBAH EMOTE (pengganti pemulihan: hapus = permanen) =====
         local renderEmoteList   -- forward: dipanggil lewat tombol di bawah
-        local function jumlahSembunyi()
-            local n = 0
-            for _ in pairs(EMOTE_SEMBUNYI.emote) do n += 1 end
-            for _ in pairs(EMOTE_SEMBUNYI.paket) do n += 1 end
-            return n
-        end
-        local function refreshSembunyiUI()
-            if sembunyiBtn and sembunyiBtn.Parent then
-                sembunyiBtn.Text = "👁 LIHAT TERSEMBUNYI: " .. (sembunyiOnly and "ON" or "OFF")
-                    .. " • " .. jumlahSembunyi() .. " item"
-                sembunyiBtn.BackgroundColor3 = sembunyiOnly and Warna.Biru or Warna.Card2
-            end
-        end
-        sembunyiBtn = buatActionRow(scrollEmote, "👁 LIHAT TERSEMBUNYI: OFF • 0 item", Warna.Card2, function()
-            sembunyiOnly = not sembunyiOnly
-            if sembunyiOnly then
-                favOnly = false
-                favBtn.Text = "☆ FAVORIT SAJA"
-            end
-            refreshSembunyiUI()
-            renderEmoteList()
-        end)
-        buatActionRow(scrollEmote, "↺ PULIHKAN SEMUA YANG DIHAPUS", Warna.Hijau2, function()
-            local total = jumlahSembunyi()
-            if total == 0 then
-                toast("Tidak ada item yang dihapus", Warna.Kuning)
+        local tambahBaris = buat("Frame", {
+            BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = nextOrder(),
+        }, scrollEmote)
+        local tambahNama = buat("TextBox", {
+            BackgroundColor3 = Warna.Hitam2, Size = UDim2.new(0.5, -2, 1, 0),
+            FontFace = fnt("reg"), TextSize = 12, TextColor3 = Warna.Putih,
+            PlaceholderText = "Nama emote...", PlaceholderColor3 = Warna.AbuGelap,
+            Text = "", ClearTextOnFocus = false,
+        }, tambahBaris)
+        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, tambahNama)
+        local tambahId = buat("TextBox", {
+            BackgroundColor3 = Warna.Hitam2, Position = UDim2.new(0.5, 2, 0, 0),
+            Size = UDim2.new(0.5, -2, 1, 0), FontFace = fnt("reg"), TextSize = 12,
+            TextColor3 = Warna.Putih, PlaceholderText = "ID animasi (angka)...",
+            PlaceholderColor3 = Warna.AbuGelap, Text = "", ClearTextOnFocus = false,
+        }, tambahBaris)
+        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, tambahId)
+        buatActionRow(scrollEmote, "➕ TAMBAH EMOTE KE DAFTAR", Warna.Hijau2, function()
+            local nama = (tambahNama.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            local idStr = tostring(tambahId.Text or ""):match("%d+")
+            if nama == "" or not idStr then
+                toast("Isi Nama + ID angka dulu", Warna.Kuning)
                 return
             end
-            for nama, id in pairs(EMOTE_TERHAPUS_EMOTE) do
-                EMOTE_CATALOG[nama] = id
-                EMOTE_SEMBUNYI.emote[nama] = nil
+            if EMOTE_CATALOG[nama] then
+                toast("Nama \"" .. nama .. "\" sudah ada di daftar", Warna.Kuning)
+                return
             end
-            table.clear(EMOTE_TERHAPUS_EMOTE)
-            table.clear(EMOTE_SEMBUNYI.paket)
-            terapkanPaketAktif()
-            emoteSembunyiSave()
-            refreshSembunyiUI()
+            EMOTE_CATALOG[nama] = tonumber(idStr)
+            EMOTE_KUSTOM[nama] = EMOTE_CATALOG[nama]
+            EMOTE_SEMBUNYI.emote[nama] = nil
+            emoteKustomSave(); emoteSembunyiSave()
+            tambahNama.Text = ""; tambahId.Text = ""
             renderEmoteList()
-            toast("✓ " .. total .. " item balik muncul di daftar", Warna.Hijau)
+            toast("✓ Emote \"" .. nama .. "\" masuk daftar", Warna.Hijau)
         end)
         local emoteListFrame = buat("ScrollingFrame", {
             BackgroundColor3 = Warna.AbuItem,
@@ -2214,29 +2236,36 @@ local EMOTE_CATALOG = {
         local emoteOrder = 0
         renderEmoteList = function()
             for _, c in ipairs(emoteListFrame:GetChildren()) do
-                if c:IsA("TextButton") then c:Destroy() end
+                if c:IsA("TextButton") or c:IsA("TextLabel") then c:Destroy() end
             end
             emoteOrder = 0
             local q = string.lower(emoteSearch.Text or "")
-            local names = {}
-            if sembunyiOnly then
-                -- tampilkan HANYA item terhapus (daftar kecil, murah)
-                for nama in pairs(EMOTE_TERHAPUS_EMOTE) do
-                    if q == "" or string.find(string.lower(nama), q, 1, true) then
-                        names[#names + 1] = nama
-                    end
-                end
-            else
-                -- katalog aktif sudah bersih dari yang dihapus
-                for name in pairs(EMOTE_CATALOG) do
-                    if (not favOnly or EMOTE_SESSION.favorites[name])
-                        and (q == "" or string.find(string.lower(name), q, 1, true)) then
+            local favNames, names = {}, {}
+            -- katalog aktif sudah bersih dari yang dihapus (hapus = permanen)
+            -- favorit pindah ke grup FAVORIT — tidak ada di daftar biasa
+            for name in pairs(EMOTE_CATALOG) do
+                if q == "" or string.find(string.lower(name), q, 1, true) then
+                    if EMOTE_SESSION.favorites[name] then
+                        favNames[#favNames + 1] = name
+                    else
                         names[#names + 1] = name
                     end
                 end
             end
-            table.sort(names, function(a, b) return a:lower() < b:lower() end)
-            for _, name in ipairs(names) do
+            local function urut(t)
+                table.sort(t, function(a, b) return a:lower() < b:lower() end)
+            end
+            urut(favNames); urut(names)
+            local function kepala(teks, warna)
+                emoteOrder += 1
+                buat("TextLabel", {
+                    BackgroundTransparency = 1, Size = UDim2.new(1, -6, 0, 20),
+                    FontFace = fnt("bold"), TextSize = 11, TextColor3 = warna,
+                    TextXAlignment = Enum.TextXAlignment.Left, Text = teks,
+                    LayoutOrder = emoteOrder,
+                }, emoteListFrame)
+            end
+            local function barisEmote(name)
                 emoteOrder += 1
                 local row = buat("TextButton", {
                     BackgroundColor3 = Warna.Card2, Size = UDim2.new(1, -6, 0, 27),
@@ -2255,37 +2284,49 @@ local EMOTE_CATALOG = {
                     AutoButtonColor = false,
                 }, row)
                 star.MouseButton1Click:Connect(function()
-                    EMOTE_SESSION.favorites[name] = not EMOTE_SESSION.favorites[name]
+                    -- favorit = pindah grup: hilang dari daftar biasa
+                    EMOTE_SESSION.favorites[name] = not EMOTE_SESSION.favorites[name] or nil
                     emoteFavSave(); renderEmoteList()
                 end)
                 local hapusBtn = buat("TextButton", {
                     BackgroundTransparency = 1, Position = UDim2.new(1, -70, 0, 0),
                     Size = UDim2.fromOffset(32, 27), FontFace = fnt("bold"), TextSize = 15,
-                    TextColor3 = sembunyiOnly and Warna.Hijau or Warna.Merah,
-                    Text = sembunyiOnly and "↩" or "🗑",
+                    TextColor3 = Warna.Merah, Text = "🗑",
                     AutoButtonColor = false,
                 }, row)
                 hapusBtn.MouseButton1Click:Connect(function()
-                    if sembunyiOnly then
-                        -- pulihkan: balikkan id ke katalog aktif
-                        EMOTE_CATALOG[name] = EMOTE_TERHAPUS_EMOTE[name]
-                        EMOTE_TERHAPUS_EMOTE[name] = nil
-                        EMOTE_SEMBUNYI.emote[name] = nil
-                    else
-                        -- hapus: buang dari katalog aktif (memori makin kecil)
-                        EMOTE_TERHAPUS_EMOTE[name] = EMOTE_CATALOG[name]
-                        EMOTE_CATALOG[name] = nil
-                        EMOTE_SEMBUNYI.emote[name] = true
+                    -- hapus PERMANEN: ID dibuang total, tidak bisa dipulihkan;
+                    -- emote balik hanya lewat kolom TAMBAH EMOTE (Nama + ID)
+                    EMOTE_CATALOG[name] = nil
+                    EMOTE_KUSTOM[name] = nil
+                    EMOTE_SEMBUNYI.emote[name] = true
+                    if EMOTE_SESSION.favorites[name] then
+                        EMOTE_SESSION.favorites[name] = nil
+                        emoteFavSave()
                     end
-                    emoteSembunyiSave(); refreshSembunyiUI(); renderEmoteList()
+                    emoteKustomSave(); emoteSembunyiSave()
+                    renderEmoteList()
+                    toast("🗑 " .. name .. " dihapus permanen", Warna.Merah)
                 end)
                 row.MouseButton1Click:Connect(function()
-                    if sembunyiOnly then
-                        toast("Tekan ↩ untuk memulihkan emote ini", Warna.Kuning)
-                    elseif emotePlay(name) then
+                    if emotePlay(name) then
                         toast("Emote: " .. name, Warna.Ungu2)
                     end
                 end)
+            end
+            if #favNames > 0 then
+                kepala("★ FAVORIT (" .. #favNames .. ")", Warna.Kuning)
+                for _, name in ipairs(favNames) do barisEmote(name) end
+            elseif q == "" then
+                kepala("Belum ada favorit — tekan ☆ pada emote", Warna.AbuTeks)
+            end
+            if not favOnly then
+                if #names > 0 then
+                    kepala("EMOTE (" .. #names .. ")", Warna.AbuTeks)
+                    for _, name in ipairs(names) do barisEmote(name) end
+                elseif #favNames > 0 then
+                    kepala("Semua emote ada di grup FAVORIT", Warna.AbuTeks)
+                end
             end
         end
         favBtn.MouseButton1Click:Connect(function()
@@ -2341,10 +2382,13 @@ local EMOTE_CATALOG = {
             TextXAlignment = Enum.TextXAlignment.Left,
             Text = "Bundle dan emote ini dipakai lokal untuk karakter kamu. "
             .. "Bundle gaya gerak dan katalog emote dari script kedua. "
-            .. "Favorit tersimpan lokal; loop dapat dinyalakan dari tombol di atas. "
-            .. "Bundle otomatis dipasang lagi setelah mati/respawn. v1.6: awal load "
-            .. "selalu OFF + semua slot ASLI — nyalakan ⚡ master dulu, gaya pilihanmu "
-            .. "aktif selama sesi saja (script dijalankan ulang = balik default).",
+            .. "Emote yang di★-kan pindah ke grup ★ FAVORIT dan hilang dari daftar "
+            .. "biasa; favorit tersimpan lokal. 🗑 = hapus PERMANEN (tidak bisa "
+            .. "dipulihkan — balik lagi hanya dengan memasukkan Nama + ID di kolom "
+            .. "TAMBAH EMOTE). Bundle otomatis dipasang lagi setelah mati/respawn; "
+            .. "awal load selalu OFF + semua slot ASLI — nyalakan ⚡ master dulu, "
+            .. "gaya pilihanmu aktif selama sesi saja (script dijalankan ulang = "
+            .. "balik default).",
             LayoutOrder = nextOrder(),
         }, scrollAnim)
 
@@ -2446,7 +2490,7 @@ local EMOTE_CATALOG = {
                 tambahBar("↺ PULIHKAN " .. nSembunyi .. " PAKET YANG DIHAPUS", Warna.Kuning, true, function()
                     table.clear(EMOTE_SEMBUNYI.paket)
                     terapkanPaketAktif()
-                    emoteSembunyiSave()                    if refreshSembunyiUI then refreshSembunyiUI() end
+                    emoteSembunyiSave()
                     toast("✓ " .. nSembunyi .. " paket dipulihkan", Warna.Hijau)
                     emoteBukaChooser(skey)
                 end)
@@ -2465,7 +2509,6 @@ local EMOTE_CATALOG = {
                         EMOTE_SEMBUNYI.paket[p.n] = true
                         terapkanPaketAktif()
                         emoteSembunyiSave()
-                        if refreshSembunyiUI then refreshSembunyiUI() end
                         emoteBukaChooser(skey)
                     end)
                 else
