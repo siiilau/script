@@ -1,7 +1,24 @@
 --========================================================
---  BALAP V1.0 — SILAU NEON
-
-local diagSet   -- v1.3: local file (dulu global function — bocor _G)
+--  BALAP V1.4 — TEMA: SILAU NEON (ungu/biru LED) — LOCAL ONLY
+--  Tab: MOVEMENT & VISUAL • ANIMASI • EMOTE • TITIK • SYSTEM
+--
+--  Keybind:
+--    G = buka/tutup GUI      Q = Speed          J = JumpPower
+--    C = Shiftlock Mobile    LShift/RShift = Shiftlock Tengah
+--    F = Moonwalk            R = Hide           Z = Hide Atas
+--    T = Cahaya Auto         X = Dinding Batas  K = Rejoin (tekan 2x)
+--
+--  Riwayat: v1.1 benang/garis dihapus • v1.2 emote/paket bisa dihapus
+--    permanen (tersimpan, bisa dipulihkan) • v1.3 Cloud Titik, Label Jarak
+--    & Panah Deteksi dihapus demi performa • v1.4 item terhapus dibuang
+--    dari memori (makin ringan) + notif "SIAP" dihapus.
+--  Shiftlock Mobile, Moonwalk & Shiftlock Tengah otomatis OFF saat mati/respawn.
+--========================================================
+print("[BALAP V1.4] load mulai...")
+-- [0] DIAGNOSTIK ON-SCREEN ------------------------------------
+-- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
+-- banner berubah MERAH dan menampilkan teks errornya di layar.
+local diagSet, diagHapus   -- v1.3: local file (dulu global — bocor _G)
 do
     local __dGui, __dLbl
     pcall(function()
@@ -46,16 +63,16 @@ do
             end
         end)
     end
+    diagHapus = function()
+        pcall(function() if __dGui then __dGui:Destroy() end end)
+    end
 end
 
 local VERSI = "V1.4"
 local __BALAP_LOAD_OK__ = xpcall(function()
-    -- ================================================================
-    -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
-    -- error + nomor baris LANGSUNG tampil di layar (tidak hilang diam).
-    -- ================================================================
+    -- BODY dibungkus xpcall: error saat load langsung tampil di layar.
 
-    -- [1] PENGAMAN DASAR -----------------------------------------------
+    -- [1] PENGAMAN DASAR --------------------------------------
     local RunService = game:GetService("RunService")
     if not RunService:IsClient() then
         warn("[BALAP] GAGAL: harus jalan di CLIENT (executor / LocalScript), bukan server!")
@@ -94,7 +111,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     _G.__BALAP_TOKEN__ = MY_TOKEN
     _G.__BALAP_MAIN__ = true  -- penanda lama, tetap dibersihkan unloadScript
 
-    -- [2] KONFIGURASI ---------------------------------------------------
+    -- [2] KONFIGURASI -----------------------------------------
     -- Semua konstanta digabung ke dalam 1 table CFG untuk hemat local count
     -- (Luau limit 200 local per function)
     local CFG = {
@@ -126,7 +143,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         SLT_DOT     = 7,     -- ukuran lingkaran kursor (px, mini biar ga ganggu)
         SLT_DOT_Y   = 0.60,  -- letak vertikal lingkaran: 0.5 = tengah layar,
         -- makin besar makin ke bawah (0.60 = bawah pinggang)
-        -- Animasi kustom (v1.5, tab ANIMASI): port ANIMASI BUNDLE V6
+        -- Animasi kustom (tab ANIMASI): port ANIMASI BUNDLE
         -- v1.6: tanpa file config — tiap load selalu default (master OFF).
         EMOTE_TUNGGAK    = 0.25,  -- jeda dtk setelah spawn sebelum pasang gaya
         SWIM_BONUS         = 1.025, -- berenang + Shiftlock Tengah: speed aktif × 1.025
@@ -169,7 +186,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         Card2     = Color3.fromRGB(40, 40, 62),
     }
 
-    -- [3] FONT KOMPATIBEL -----------------------------------------------
+    -- [3] FONT KOMPATIBEL -------------------------------------
     local FONT_OK = pcall(function()
         return Font.new("rbxasset://fonts/families/Bangers.json", Enum.FontWeight.Regular)
     end)
@@ -212,7 +229,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         end
     end
 
-    -- [4] HELPER --------------------------------------------------------
+    -- [4] HELPER ----------------------------------------------
     local rnd = math.random
     -- v1.4: seed acak — kode loker tidak kembar antar device/eksekusi
     -- (executor biasanya sudah seed sendiri, tapi tidak semua)
@@ -251,7 +268,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         return s
     end
     diagSet("dasar OK — siapkan helper GUI...")
-    -- [4b] REGISTRY KONEKSI & FORWARD DECLARE ---------------------------
+    -- [5] REGISTRY KONEKSI & FORWARD DECLARE ------------------
     local semuaKoneksi = {}
     local function catat(conn)
         table.insert(semuaKoneksi, conn)
@@ -292,7 +309,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         return c and c:FindFirstChildOfClass("Humanoid")
     end
 
-    -- [5a] TITIK LOKAL --------------------------------------------------
+    -- [6] TITIK LOKAL -----------------------------------------
     -- Semua titik kecil hanya terlihat di sisi pengguna sendiri.
     local TITIK_FILE = "BALAP_TITIK.json"
     local TITIK = { poin = {}, hapus = {}, aktif = false, tampilTitik = true, folder = nil }
@@ -503,7 +520,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     titikSimpan()
     titikRefreshDot()
 
-    -- [5] EFEK LED & UI HELPER ------------------------------------------
+    -- [7] EFEK LED & UI HELPER --------------------------------
     local function ledSweep(inst, base, bandA, bandB, dur)
         local g = buat("UIGradient", {
             Color = ColorSequence.new({
@@ -607,7 +624,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         btn.TextColor3 = on and Warna.HijauMuda or Warna.MerahMuda
     end
 
-    -- [6] SCREENGUI -----------------------------------------------------
+    -- [8] SCREENGUI -------------------------------------------
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "BalapMain"
     screenGui.ResetOnSpawn = false
@@ -647,7 +664,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         task.delay(3, function() s:Destroy() end)
     end
 
-    -- [7] BANGUN UI: ROOT + OUTER + PANEL -------------------------------
+    -- [9] BANGUN UI: ROOT + OUTER + PANEL ---------------------
     local root = buat("Frame", {
         Size = UDim2.fromOffset(CFG.UI_LEBAR, CFG.UI_TINGGI),
         Position = UDim2.new(0.5, 0, 0.10, 0),
@@ -788,7 +805,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         BorderSizePixel = 0,
     }, panel)
     ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
-    -- [7a2d] MODUL ANIMASI (v1.5, tab ANIMASI) — port ANIMASI BUNDLE V6
+    -- [10] MODUL ANIMASI (tab ANIMASI) — port ANIMASI BUNDLE ----
     --   • Slot state (IDLE/WALK/RUN/SWIM/CLIMB/JUMP/FALL) bekerja dengan
     --     MENGGANTI ID animasi di script "Animate" bawaan karakter, lalu
     --     Animate di-restart. Hasilnya DIREPLIKASI: pemain lain juga
@@ -943,7 +960,6 @@ local EMOTE_PRESET = {
     },
 }
 
-
     -- BUNDLE + EMOTE CATALOG dari script kedua (data saja; tanpa loadstring,
     -- teleport, server-hop, trolling, atau sinkronisasi pemain lain).
 local BUNDLE_ANIMATIONS = {
@@ -995,19 +1011,17 @@ local BUNDLE_ANIMATIONS = {
  Unboxed = {Idle=98281136301627,Idle2=138183121662404,Idle3=133117300343405,Walk=90478085024465,Run=134824450619865,Jump=121454505477205,Climb=121145883950231,Fall=94788218468396,Swim=105962919001086,SwimIdle=129126268464847,Weight=9,Weight2=1}
 }
 
-
-
 local EMOTE_CATALOG = {
-	['Fashion'] = 3333331310; 
-	["Baby Dance"] = 4265725525; 
-	["Cha-Cha"] = 6862001787; 
-	['Monkey'] = 3333499508; 
-	['Shuffle'] = 4349242221; 
-	["Top Rock"] = 3361276673; 
-	["Around Town"] = 3303391864; 
-	["Fancy Feet"] = 3333432454; 
-	["Hype Dance"] = 3695333486; 
-	['Bodybuilder'] = 3333387824; 
+	['Fashion'] = 3333331310;
+	["Baby Dance"] = 4265725525;
+	["Cha-Cha"] = 6862001787;
+	['Monkey'] = 3333499508;
+	['Shuffle'] = 4349242221;
+	["Top Rock"] = 3361276673;
+	["Around Town"] = 3303391864;
+	["Fancy Feet"] = 3333432454;
+	["Hype Dance"] = 3695333486;
+	['Bodybuilder'] = 3333387824;
 	['Idol'] = 4101966434;
 	['Curtsy'] = 4555816777;
 	['Happy'] = 4841405708;
@@ -1120,7 +1134,7 @@ local EMOTE_CATALOG = {
 	["Floor Rock Freeze - Tommy Hilfiger"] = 10214314957;
 	['Boom Boom Clap - George Ezra'] = 10370346995;
 	['Cartwheel - George Ezra'] = 10370351535;
-	['Chill Vibes - George Ezra'] = 10370353969; 
+	['Chill Vibes - George Ezra'] = 10370353969;
 	['Sidekicks - George Ezra'] = 10370362157;
 	['The Conductor - George Ezra'] = 10370359115;
 	['Super Charge'] = 10478338114;
@@ -1128,7 +1142,7 @@ local EMOTE_CATALOG = {
 	['Mean Mug - Tommy Hilfiger'] = 10214317325;
 	['V Pose - Tommy Hilfiger'] = 10214319518;
 	['Uprise - Tommy Hilfiger'] = 10275008655;
-	['2 Baddies Dance Move - NCT 127'] = 12259828678; 
+	['2 Baddies Dance Move - NCT 127'] = 12259828678;
 	['Kick It Dance Move - NCT 127'] = 12259826609;
 	['Sticker Dance Move - NCT 127'] = 12259825026;
 	['Elton John - Rock Out'] = 11753474067;
@@ -1252,7 +1266,7 @@ local EMOTE_CATALOG = {
 	['DearALICE - Ariana'] = 134318425949290;
 	['The Weeknd Starboy Strut'] = 71105746210464;
 	['The Weeknd Opening Night'] = 133110725387025;
-	['Robot M3GAN'] = 125803725853577;  
+	['Robot M3GAN'] = 125803725853577;
 	["M3GAN's Dance"] = 99649534578309;
 	['Rasputin – Boney M.'] = 114872820353992;
 	['Thanos Happy Jump - Squid Game'] = 97611664803614;
@@ -1261,9 +1275,6 @@ local EMOTE_CATALOG = {
 	['Stray Kids Walkin On Water'] = 125064469983655;
 	['TWICE TAKEDOWN DANCE 2'] = 127104635954695;
 }
-
-
-
 
     local EMOTE_FAV_FILE = "balap_emote_favorit.json"
     local EMOTE_SESSION = { favorites = {}, loop = false, track = nil, name = nil }
@@ -1297,7 +1308,7 @@ local EMOTE_CATALOG = {
     end
     emoteFavLoad()
 
-    -- [7a2c] DAFTAR DIHAPUS (SEMBUNYI PERMANEN) -----------------------
+    -- [11] DAFTAR DIHAPUS (SEMBUNYI PERMANEN) -----------------
     -- Emote / paket gaya yang dihapus DIBUANG dari data aktif (tidak
     -- dirender lagi = ringan) dan tersimpan di file supaya tidak muncul
     -- selamanya, kecuali dipulihkan lewat tombol.
@@ -1479,7 +1490,7 @@ local EMOTE_CATALOG = {
         rig        = "?",
     }
 
-    -- [7a2c2] ITEM TERHAPUS DIBUANG DARI DAFTAR AKTIF (RINGAN) ------
+    -- [12] ITEM TERHAPUS DIBUANG DARI DAFTAR AKTIF (RINGAN) ----
     -- Yang dihapus user dikeluarkan dari EMOTE_CATALOG dan array
     -- EMOTE_PRESET di memori: daftar yang dirender/dicari makin
     -- sedikit. ID disimpan kecil di EMOTE_TERHAPUS_EMOTE /
@@ -1670,7 +1681,7 @@ local EMOTE_CATALOG = {
     .. (EMOTE.master and "ON" or "OFF")
     .. " • aktif " .. emoteJumlahAktif() .. "/7")
 
-    -- [7b] TAB BAR (4 TAB) ----------------------------------------------
+    -- [13] TAB BAR (4 TAB) ------------------------------------
     -- Bungkus dengan function untuk hemat local count (Luau limit 200)
     local function buildUI()
         tabBtns = {}
@@ -1714,7 +1725,7 @@ local EMOTE_CATALOG = {
             end)
         end
 
-        -- [7c] KONTEN TAB 1: MOVEMENT & VISUAL ------------------------------------------
+        -- [14] KONTEN TAB 1: MOVEMENT & VISUAL ----------------
         kontenMove = buat("Frame", {
             Position = UDim2.new(0, 0, 0, 80),
             Size = UDim2.new(1, 0, 1, -110),
@@ -1977,7 +1988,7 @@ local EMOTE_CATALOG = {
         buatHeader(scrollMove, "Map")
         buatToggleRow(scrollMove, "Dinding Batas", "X", "Walls")
 
-        -- [7g] KONTEN TAB 3: SYSTEM -----------------------------------------
+        -- [15] KONTEN TAB 3: SYSTEM ---------------------------
         kontenSistem = buat("Frame", {
             Position = UDim2.new(0, 0, 0, 80),
             Size = UDim2.new(1, 0, 1, -110),
@@ -1998,12 +2009,12 @@ local EMOTE_CATALOG = {
         }, kontenSistem)
         buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollSistem)
 
-        -- [7e] KONTEN TAB 2: ANIMASI (v1.5 — pengganti tab TP) ----------------
+        -- [16] KONTEN TAB 2: ANIMASI (pengganti tab TP lama) ----
         -- Port ANIMASI BUNDLE V6: 7 slot gaya gerak + 18 pack resmi Roblox.
         -- Ganti AnimationId di script "Animate" bawaan -> restart -> hasil
         -- DIREPLIKASI (pemain lain ikut melihat).
         -- v1.6: tanpa config — awal load selalu master OFF, semua slot ASLI.
-        -- Logika slot ada di [7a2d]; di sini hanya UI + popup pilih gaya.
+        -- Logika slot ada di [10]; di sini hanya UI + popup pilih gaya.
         kontenAnim = buat("Frame", {
             Position = UDim2.new(0, 0, 0, 80),
             Size = UDim2.new(1, 0, 1, -110),
@@ -2099,7 +2110,6 @@ local EMOTE_CATALOG = {
             emoteStatus.Text = "Rig: " .. tostring(EMOTE.rig) .. " • " .. n .. "/7 slot gaya baru • "
             .. (EMOTE.master and "master ON" or "master OFF")
         end
-
 
         -- Konten EMOTE dipisahkan dari tab ANIMASI.
         kontenEmote = buat("Frame", {
@@ -2712,7 +2722,7 @@ local EMOTE_CATALOG = {
     buildUI()
     diagSet("GUI utama OK — bikin efek & notif...")
 
-    -- [8] FOOTER + LED + MARQUEE ---------------------------------------
+    -- [17] FOOTER + LED + MARQUEE -----------------------------
     -- Bungkus dengan function untuk hemat local count (Luau limit 200)
     local function buildFX()
         local footer = buat("Frame", {
@@ -2824,7 +2834,7 @@ local EMOTE_CATALOG = {
             end
         end)
 
-        -- [9] PARTIKEL AMBIENT ----------------------------------------------
+        -- [18] PARTIKEL AMBIENT -------------------------------
         local emojiAmbient = {"✨", "⚡", "💜", "💙", "⭐", "💫", "🔹", "🌟"}
         task.spawn(function()
             while partBox.Parent do
@@ -2884,7 +2894,7 @@ local EMOTE_CATALOG = {
             end
         end)
 
-        -- [10] BURST FX -----------------------------------------------------
+        -- [19] BURST FX ---------------------------------------
         local paletKonfeti = {Warna.Ungu, Warna.Ungu2, Warna.Biru, Warna.Biru2, Warna.Putih, Warna.Hijau2}
         konfeti = function(parent, pos, n)
             for _ = 1, n do
@@ -2942,7 +2952,7 @@ local EMOTE_CATALOG = {
             0, gui.AbsolutePosition.Y - root.AbsolutePosition.Y + sz.Y / 2)
         end
 
-        -- [12] TOAST — KANAN ATAS LAYAR (stack vertikal) -------------------
+        -- [20] TOAST — KANAN ATAS LAYAR (stack vertikal) ------
         local notifHolder = buat("Frame", {
             Name = "NotifHolder",
             AnchorPoint = Vector2.new(1, 0),
@@ -3020,9 +3030,6 @@ local EMOTE_CATALOG = {
             end
         end
 
-        -- [13] (v1.3) sistem FADE PER-ELEMEN dihapus — sudah mati sejak
-        -- buka/tutup GUI jadi instan (kumpulkanFade tidak pernah dipanggil),
-        -- cuma numpuk kode & koneksi.
 
     end -- akhir buildFX()
 
@@ -3030,11 +3037,11 @@ local EMOTE_CATALOG = {
     buildFX()
     diagSet("efek OK — pasang logika fitur...")
 
-    -- [14] LOGIKA UTAMA -------------------------------------------------
+    -- [21] LOGIKA UTAMA ---------------------------------------
     -- Bungkus part logika dengan function untuk hemat local count (Luau limit 200)
     local function initLogic()
 
-        -- [18] LOGIKA KING ---------------------------------------------------
+        -- [22] LOGIKA KING ------------------------------------
         -- SPEED & JUMP
         applySpeed = function()
             local hum = getHum()
@@ -3347,7 +3354,7 @@ local EMOTE_CATALOG = {
             syncNotify("Tengah", v, silent, "Shiftlock Tengah")
         end
 
-        -- ⚡ ANIMASI KUSTOM (v1.5, tab ANIMASI) — master semua slot gaya.
+        -- ⚡ ANIMASI KUSTOM (tab ANIMASI) — master semua slot gaya.
         -- emoteSetMaster mengurus state, apply, switch & toast sendiri.
         Setters.Emote = function(v, silent)
             emoteSetMaster(v, silent)
@@ -3867,7 +3874,7 @@ local EMOTE_CATALOG = {
             pcall(setFeature, "Walls", false, true)
             pcall(setFeature, "Light", false, true)
             pcall(setFeature, "HideAtas", false, true)
-            pcall(setFeature, "Emote", false, true)      -- v1.5: balik ke animasi asli
+            pcall(setFeature, "Emote", false, true)      -- balik ke animasi asli
             -- 2) Unbind semua RenderStep binding (selalu)
             pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
             pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
@@ -4034,7 +4041,7 @@ local EMOTE_CATALOG = {
             end
         end)
 
-        -- [19] BUKA / TUTUP GUI ---------------------------------------------
+        -- [23] BUKA / TUTUP GUI -------------------------------
         -- GUI tampil & hilang INSTAN (tanpa animasi buka/tutup) — lebih ringan.
         local function minimizeGui()
             if not root.Visible then return end
@@ -4054,14 +4061,14 @@ local EMOTE_CATALOG = {
             if root.Visible then minimizeGui() else bukaGui() end
         end
 
-        -- [20] KONEKSI UI ----------------------------------------------------
+        -- [24] KONEKSI UI -------------------------------------
         minBtn.MouseButton1Click:Connect(function()
             ripple(minBtn, Warna.Ungu2)
             minimizeGui()
         end)
         buatDraggable(header, root)
 
-        -- [21a] PENEMPATAN TITIK: CTRL + KLIK KIRI ------------------------
+        -- [25] PENEMPATAN TITIK: CTRL + KLIK KIRI -------------
         catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if gameProcessed or State.Removed or not TITIK.aktif then return end
             if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -4072,7 +4079,7 @@ local EMOTE_CATALOG = {
             end
         end))
 
-        -- [21] KEYBIND -------------------------------------------------------
+        -- [26] KEYBIND ----------------------------------------
         local lastK = 0
         catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
             -- MOONWALK: tekan S = moonwalk langsung OFF. Tombol S adalah tombol
@@ -4122,8 +4129,20 @@ local EMOTE_CATALOG = {
             end
         end))
 
-            hapusDiag()
+        diagSet("keybind OK — finalisasi...")
+        -- [27] MULAI ------------------------------------------
+        updateSpeedLabel()
+        setTab(1)  -- 🏃 GERAK jadi tab pertama
+        task.delay(0.15, function()
+            local okG, errG = pcall(bukaGui)
+            if not okG then
+                diagSet("GUI gagal terbuka: " .. tostring(errG), Color3.fromRGB(239, 68, 68))
+                warn("[BALAP] bukaGui error: " .. tostring(errG))
+            end
         end)
+        print("[BALAP " .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
+        print("[BALAP] MOVE&VISUAL | ANIMASI | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • R hide • Z hide atas • T cahaya • X dinding • K×2 rejoin • LOCAL ONLY")
+        diagHapus()  -- v1.4: notif "SIAP" dihapus — banner diag ditutup begitu script siap
     end -- akhir initLogic()
 
     -- Eksekusi initLogic() sekarang (UI + helpers sudah siap dari part1-4)
