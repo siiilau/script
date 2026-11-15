@@ -1,21 +1,6 @@
 --========================================================
---  BALAP V1.0 — TEMA: SILAU NEON (ungu/biru LED) — LOCAL ONLY
---
---  Ringkasan fitur aktif:
---    • Tab TITIK lokal: simpan titik, titik kecil, Ctrl + klik kiri, teleport lokal.
---    • Tab: MOVEMENT & VISUAL, ANIMASI, EMOTE, TITIK, dan SYSTEM.
---
---  Keybind:
---    G = buka/tutup GUI • Q = Speed • J = JumpPower • C = Shiftlock Mobile
---    LShift/RShift = Shiftlock Tengah • F = Moonwalk • R = Hide
---    T = Cahaya Auto • X = Dinding Batas • V = Panah Deteksi • K = Rejoin
---
---  Shiftlock Mobile, Moonwalk & Shiftlock Tengah otomatis OFF saat mati/respawn.
---========================================================
-print("[BALAP V1.0] load mulai...")
--- [0] DIAGNOSTIK ON-SCREEN -----------------------------------------
--- Banner kecil pojok kiri: menunjukkan progres load. Kalau load GAGAL,
--- banner berubah MERAH dan menampilkan teks errornya di layar.
+--  BALAP V1.0 — SILAU NEON
+
 local diagSet   -- v1.3: local file (dulu global function — bocor _G)
 do
     local __dGui, __dLbl
@@ -63,7 +48,7 @@ do
     end
 end
 
-local VERSI = "V1.0"
+local VERSI = "V1.4"
 local __BALAP_LOAD_OK__ = xpcall(function()
     -- ================================================================
     -- BODY DIBUNGKUS xpcall: kalau ada error apapun saat load, teks
@@ -117,15 +102,18 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         LED_TEXT        = "⚡ B A L A P ⚡",
         SOUND_ON        = true,
         FX_LEVEL        = 1,
-        -- Speed cycle 3 state (17.10 → 17.25 → 35 → balik OFF)
-        SPEED_OFF   = 17.10,
+        -- Speed: OFF 17.15 (dipaksa tetap), ON = stepper 17.25 - 40
+        SPEED_OFF   = 17.15,
         SPEED_ON_1  = 17.25,
-        SPEED_ON_2  = 35,
-        -- Jump: OFF 51.25 ⇄ ON 65.25 (kondisional UseJumpPower / JumpHeight)
-        OFF_JUMP    = 51.25,
+        SPEED_ON_2  = 40,
+        -- Jump: OFF = default map (nilai asli dicatat otomatis saat load/respawn),
+        -- ON = stepper 51.25 - 70 (UseJumpPower) / 6.69 - 12.49 (JumpHeight)
+        ON_JUMP_MIN = 51.25,
+        ON_JUMP_MAX = 70,
         ON_JUMP     = 65.25,
-        OFF_JUMP_H  = 6.69,
+        ON_JUMP_H_MIN = 6.69,
         ON_JUMP_H   = 8.50,
+        ON_JUMP_H_MAX = 12.49,
         -- Moonwalk (F): putaran cepat + hentakan ke arah tujuan.
         --   MOON_TURN_MAX = kecepatan putar maks (rad/dtk; 12 ≈ ±688°/dtk)
         --   MOON_SMOOTH   = kekerasan kunci/pendaratan
@@ -141,13 +129,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         -- Animasi kustom (v1.5, tab ANIMASI): port ANIMASI BUNDLE V6
         -- v1.6: tanpa file config — tiap load selalu default (master OFF).
         EMOTE_TUNGGAK    = 0.25,  -- jeda dtk setelah spawn sebelum pasang gaya
-        -- Panah Deteksi (keybind V): deteksi pemain lain di
-        -- depan/belakang badan (ikut arah badan, bukan kamera).
-        PANAH_JARAK = 100,  -- jarak deteksi TIAP arah (stud): 100 depan +
-                            -- 100 belakang = cakupan penuh 200 stud
-        PANAH_SUDUT = 0.383, -- batas dot LookVector: 0.383 = cos(67.5°)
-                            -- -> depan & belakang 135 derajat penuh,
-                            -- samping kiri/kanan 45 derajat bebas (hijau)
         SWIM_BONUS         = 1.025, -- berenang + Shiftlock Tengah: speed aktif × 1.025
         -- UI RESPONSIF: panel menyesuaikan ukuran layar otomatis.
         -- Layar besar -> panel tampil lebih besar (sampai UI_SCALE_MAX),
@@ -269,10 +250,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         s = s:gsub("%.$", "")
         return s
     end
-    local function fmtJarak(d)
-        if d >= 1000 then return string.format("%.2fkm", d / 1000) end
-        return string.format("%.1fm", d)
-    end
     diagSet("dasar OK — siapkan helper GUI...")
     -- [4b] REGISTRY KONEKSI & FORWARD DECLARE ---------------------------
     local semuaKoneksi = {}
@@ -320,18 +297,8 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     local TITIK_FILE = "BALAP_TITIK.json"
     local TITIK = { poin = {}, hapus = {}, aktif = false, tampilTitik = true, folder = nil }
 
-    -- CLOUD TITIK CLOUDFLARE
-    local CLOUD_URL = "https://balap-point.siiilau-id.workers.dev"
-    local CLOUD_KEY_FILE = "BALAP_TITIK_KEY.txt"
-    local BENANG_FILE = "BALAP_BENANG.json"
-    local cloudKey, cloudKeyBox, cloudStatusLabel
-    local cloudUpload, cloudDownload, cloudCreateKey, cloudLoadKey
-    local benangOn, benangGroups, benangActiveGroup, benangFolder, benangPaths = false, {{points={}}}, 1, nil, {}
-    local benangToggleBtn
-    local benangRenderGroupUI = function() end
     local titikRenderUI = function() end
     local titikStatusUI = function() end
-    local titikDistanceLabels = {}
 
     local function namaDefaultTitik(nama)
         return tostring(nama or ""):match("^Titik %d+$") ~= nil
@@ -410,182 +377,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             end
         end
     end
-    local function cloudSetStatus(teks)
-        if cloudStatusLabel and cloudStatusLabel.Parent then cloudStatusLabel.Text = tostring(teks) end
-        pcall(function()
-            if type(toast) == "function" then
-                local gagal = tostring(teks):lower():find("gagal") ~= nil
-                toast(tostring(teks), gagal and Warna.Merah or Warna.Hijau)
-            end
-        end)
-    end
-    local function cloudRequest(method, url, body)
-        local req = (syn and syn.request) or (http and http.request) or request or http_request
-        if type(req) ~= "function" then return false, "executor tidak mendukung HTTP" end
-        local ok, res = pcall(req, {Url=url, Method=method, Headers={["Content-Type"]="application/json"}, Body=body and HttpService:JSONEncode(body) or nil})
-        if not ok or type(res) ~= "table" then return false, "request gagal" end
-        local code=tonumber(res.StatusCode or res.Status or 0) or 0; local parsed
-        pcall(function() parsed=HttpService:JSONDecode(res.Body or res.body or "") end)
-        if code < 200 or code >= 300 then return false, (parsed and parsed.error) or ("HTTP "..code) end
-        return true, parsed or {}
-    end
-    local function cloudSaveKey(key)
-        key=tostring(key or ""):match("%x+")
-        if not key or #key ~= 36 then return false end
-        cloudKey=key
-        if type(writefile)=="function" then pcall(function() writefile(CLOUD_KEY_FILE,key) end) end
-        if cloudKeyBox and cloudKeyBox.Parent then cloudKeyBox.Text=key end
-        return true
-    end
-    cloudLoadKey=function()
-        local key
-        if type(readfile)=="function" and type(isfile)=="function" then pcall(function() if isfile(CLOUD_KEY_FILE) then key=readfile(CLOUD_KEY_FILE) end end) end
-        if key then cloudSaveKey(key) end
-        return cloudKey
-    end
-    local function cloudPayload()
-        local points={}
-        for _,p in ipairs(TITIK.poin) do local n=p.normal or Vector3.new(0,1,0); points[#points+1]={id=p.id,name=p.name,x=p.pos.X,y=p.pos.Y,z=p.pos.Z,nx=n.X,ny=n.Y,nz=n.Z} end
-        local sender="unknown"; pcall(function() if type(identifyexecutor)=="function" then sender=tostring(identifyexecutor()) elseif type(getexecutorname)=="function" then sender=tostring(getexecutorname()) end end)
-        local lines={}
-        for gi,g in ipairs(benangGroups) do
-            if #g.points>=2 then local ids={}; for _,p in ipairs(g.points) do ids[#ids+1]=tostring(p.id) end; lines[#lines+1]=ids end
-        end
-        local paths={}
-        for gi,path in ipairs(benangPaths) do if path and #path>1 then local saved={}; for _,v in ipairs(path) do saved[#saved+1]={x=v.X,y=v.Y,z=v.Z} end; paths[gi]=saved end end
-        return {points=points,lines=lines,paths=paths,deleted=TITIK.hapus,sender=sender,placeId=tostring(game.PlaceId)}
-    end
-    cloudUpload=function()
-        if not cloudKey then return false,"key belum ada" end
-        local ok,result=cloudRequest("PUT",CLOUD_URL.."/db/"..cloudKey,cloudPayload())
-        cloudSetStatus(ok and ("☁ Upload berhasil • "..#TITIK.poin.." titik") or ("☁ Upload gagal: "..tostring(result)))
-        return ok,result
-    end
-    cloudCreateKey=function()
-        local ok,result=cloudRequest("POST",CLOUD_URL.."/db/create",{})
-        if not ok then cloudSetStatus("☁ Gagal membuat key: "..tostring(result)); return false,result end
-        if not cloudSaveKey(result.key) then return false,"key tidak valid" end
-        cloudSetStatus("☁ Key dibuat dan disimpan"); return true,result.key
-    end
-    cloudDownload=function()
-        if not cloudKey then return false,"key belum ada" end
-        local ok,result=cloudRequest("GET",CLOUD_URL.."/db/"..cloudKey)
-        if not ok then cloudSetStatus("☁ Download gagal: "..tostring(result)); return false,result end
-        local data=result.data
-        if type(data)~="table" or type(data.points)~="table" then return false,"format cloud tidak valid" end
-        table.clear(TITIK.poin)
-        for _,v in ipairs(data.points) do local x,y,z=tonumber(v.x),tonumber(v.y),tonumber(v.z); if x and y and z then TITIK.poin[#TITIK.poin+1]={id=tostring(v.id),name=tostring(v.name or "Titik"),defaultName=namaDefaultTitik(v.name),pos=Vector3.new(x,y,z),normal=Vector3.new(tonumber(v.nx) or 0,tonumber(v.ny) or 1,tonumber(v.nz) or 0)} end end
-        if type(data.lines)=="table" then benangPulihkan({groups=data.lines,paths=data.paths}); benangSimpan() end
-        table.clear(TITIK.hapus); titikSimpan(); titikRefreshDot(); titikRenderUI(); cloudSetStatus("☁ Download berhasil • "..#TITIK.poin.." titik"); return true,#TITIK.poin
-    end
-    local function cloudAutoUpload() if cloudKey then task.spawn(function() cloudUpload() end) end end
-
-    local function benangSimpan()
-        local groups={}; local paths={}
-        for gi,g in ipairs(benangGroups) do
-            if #g.points>0 then
-                local ids={}; for _,p in ipairs(g.points) do ids[#ids+1]=tostring(p.id) end; groups[#groups+1]=ids
-                if benangPaths[gi] then local path={}; for _,v in ipairs(benangPaths[gi]) do path[#path+1]={x=v.X,y=v.Y,z=v.Z} end; paths[#paths+1]=path end
-            end
-        end
-        if type(writefile)=="function" then pcall(function() writefile(BENANG_FILE,HttpService:JSONEncode({groups=groups,paths=paths})) end) end
-    end
-    local function benangPulihkan(data)
-        local lines=data; local savedPaths=nil
-        if type(data)=="table" and (data.groups or data.lines) then lines=data.groups or data.lines; savedPaths=data.paths end
-        table.clear(benangGroups); table.clear(benangPaths); benangActiveGroup=1
-        local byId={}; for _,p in ipairs(TITIK.poin) do byId[tostring(p.id)]=p end
-        if type(lines)=="table" then
-            for gi,ids in ipairs(lines) do
-                local g={points={}}; if type(ids)=="table" then for _,id in ipairs(ids) do if byId[tostring(id)] then g.points[#g.points+1]=byId[tostring(id)] end end end
-                if #g.points>0 then
-                    benangGroups[#benangGroups+1]=g
-                    local raw=savedPaths and savedPaths[gi]; if type(raw)=="table" and #raw>1 then local path={}; for _,v in ipairs(raw) do if tonumber(v.x) and tonumber(v.y) and tonumber(v.z) then path[#path+1]=Vector3.new(v.x,v.y,v.z) end end; if #path>1 then benangPaths[#benangGroups]=path end end
-                end
-            end
-        end
-        if #benangGroups==0 then benangGroups={{points={}}} end
-        benangActiveGroup=#benangGroups
-    end
-    local function benangMuat()
-        local data
-        if type(readfile)=="function" and type(isfile)=="function" then pcall(function() if isfile(BENANG_FILE) then data=HttpService:JSONDecode(readfile(BENANG_FILE)) end end) end
-        if type(data)=="table" then benangPulihkan(data) end
-    end
-
-    local function benangBersihkan()
-        benangOn=false
-        if benangFolder then pcall(function() benangFolder:Destroy() end); benangFolder=nil end
-        if benangToggleBtn and benangToggleBtn.Parent then benangToggleBtn.Text="🧵 BENANG OFF"; benangToggleBtn.BackgroundColor3=Warna.Card2 end
-    end
-    local function benangTampilkan()
-        local ada=false; for _,g in ipairs(benangGroups) do if #g.points>=2 then ada=true; break end end
-        if not ada then return false end
-        benangBersihkan(); benangOn=true; benangFolder=Instance.new("Folder"); benangFolder.Name="BALAP_BENANG_MULTI"; benangFolder.Parent=Workspace
-        local params=RaycastParams.new(); params.FilterType=Enum.RaycastFilterType.Exclude; local filter={}; local char=getChar(); if char then filter[#filter+1]=char end; if TITIK.folder then filter[#filter+1]=TITIK.folder end; filter[#filter+1]=benangFolder; params.FilterDescendantsInstances=filter
-        local segmen=0; local pathChanged=false
-        for gi,g in ipairs(benangGroups) do
-            local path=benangPaths[gi]
-            if not path or #path<2 then
-                path={g.points[1].pos};
-                for pasangan=1,#g.points-1 do
-                    local a,b=g.points[pasangan].pos,g.points[pasangan+1].pos; local jumlah=math.clamp(math.ceil((b-a).Magnitude/0.65),8,320); local rayStartY=math.max(a.Y,b.Y)+80
-                    for i=1,jumlah do
-                        local t=i/jumlah; local base=a:Lerp(b,t); local origin=Vector3.new(base.X,rayStartY,base.Z); local dir=Vector3.new(0,-260,0); local hit
-                        for _=1,12 do
-                            hit=Workspace:Raycast(origin,dir,params); if not hit then break end
-                            local inst=hit.Instance; local skip=inst:IsA("BasePart") and (inst.Transparency>0.15 or not inst.CanCollide)
-                            if skip then filter[#filter+1]=inst; params.FilterDescendantsInstances=filter; origin=hit.Position-Vector3.new(0,0.05,0) else break end
-                        end
-                        path[#path+1]=(hit and hit.Position.Y<=base.Y+80) and (hit.Position+hit.Normal*0.055) or base
-                    end
-                end
-                benangPaths[gi]=path; pathChanged=true
-            end
-            for i=1,#path-1 do
-                local p0,p1=path[i],path[i+1]; local d=p1-p0; local len=d.Magnitude
-                if len>0.01 then segmen+=1; local line=Instance.new("Part"); line.Name="Benang"..gi.."_Segmen"..segmen; line.Anchored=true; line.CanCollide=false; line.CanTouch=false; line.CanQuery=false; line.CastShadow=false; line.Material=Enum.Material.Neon; line.Color=Color3.fromRGB(167,139,250); line.Transparency=0.08; line.Size=Vector3.new(0.075,0.075,len+0.08); line.CFrame=CFrame.lookAt((p0+p1)/2,p1); line.Parent=benangFolder end
-            end
-        end
-        if pathChanged then benangSimpan() end
-        if benangToggleBtn and benangToggleBtn.Parent then benangToggleBtn.Text="🧵 BENANG ON • "..#benangGroups.." GRUP"; benangToggleBtn.BackgroundColor3=Warna.Hijau2 end
-        return true
-    end
-    local function benangToggle() if benangOn then benangBersihkan(); return false end return benangTampilkan() end
-    local function benangPilih(point)
-        local foundGroup,foundIndex
-        for gi,g in ipairs(benangGroups) do for i,p in ipairs(g.points) do if p==point then foundGroup,foundIndex=gi,i; break end end; if foundGroup then break end end
-        if foundGroup then
-            table.remove(benangGroups[foundGroup].points,foundIndex)
-            if #benangGroups[foundGroup].points==0 and #benangGroups>1 then table.remove(benangGroups,foundGroup); if benangActiveGroup>#benangGroups then benangActiveGroup=#benangGroups end end
-        else
-            local g=benangGroups[benangActiveGroup] or {points={}}; benangGroups[benangActiveGroup]=g; g.points[#g.points+1]=point
-        end
-        table.clear(benangPaths)
-        local wasOn=benangOn
-        if wasOn then benangBersihkan(); benangTampilkan() end
-        benangSimpan(); cloudAutoUpload(); benangRenderGroupUI()
-        return foundGroup and 0 or #benangGroups[benangActiveGroup].points
-    end
-    local function benangHapusGrup(index)
-        if not benangGroups[index] then return end
-        table.remove(benangGroups,index); table.clear(benangPaths)
-        if #benangGroups==0 then benangGroups={{points={}}} end
-        if benangActiveGroup> #benangGroups then benangActiveGroup=#benangGroups end
-        if benangOn then benangBersihkan(); benangTampilkan() end
-        benangSimpan(); cloudAutoUpload(); benangRenderGroupUI(); titikRenderUI()
-        if type(toast)=="function" then toast("✓ Group benang "..index.." dihapus",Warna.Hijau) end
-    end
-
-    local function benangBaru()
-        local g=benangGroups[benangActiveGroup]
-        if not g or #g.points<2 then if type(toast)=="function" then toast("Benang aktif perlu minimal 2 titik",Warna.Kuning) end; return false end
-        benangActiveGroup+=1; benangGroups[benangActiveGroup]={points={}}; table.clear(benangPaths)
-        if benangOn then benangBersihkan(); benangTampilkan() end
-        benangSimpan(); cloudAutoUpload(); benangRenderGroupUI()
-        return true
-    end
-
     local function titikBersihkanDot()
         if TITIK.folder then
             for _, obj in ipairs(TITIK.folder:GetChildren()) do obj:Destroy() end
@@ -649,7 +440,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         TITIK.poin[#TITIK.poin + 1] = {id = id, name = name, defaultName = defaultName or namaDefaultTitik(name), pos = pos, normal = normal}
         titikSimpan()
         pcall(function() if type(toast) == "function" then toast("✓ Titik disimpan lokal: " .. name, Warna.Hijau) end end)
-        cloudAutoUpload()
         titikRefreshDot()
         titikRenderUI()
         titikStatusUI("Titik ditambahkan: " .. name)
@@ -661,7 +451,7 @@ local __BALAP_LOAD_OK__ = xpcall(function()
             local id = TITIK.poin[nomor].id or nama
             table.remove(TITIK.poin, nomor)
             TITIK.hapus[#TITIK.hapus + 1] = tostring(id)
-            titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Titik dihapus dan disimpan lokal", Warna.Hijau) end end); cloudAutoUpload(); titikRefreshDot(); titikRenderUI()
+            titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Titik dihapus dan disimpan lokal", Warna.Hijau) end end); titikRefreshDot(); titikRenderUI()
             titikStatusUI("Titik dihapus: " .. nama)
         end
     end
@@ -684,13 +474,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         hrp.CFrame = CFrame.new(p.pos + Vector3.new(0, 3, 0))
         titikStatusUI("Pindah ke: " .. p.name)
     end
-    local function titikJarakDariKarakter(point)
-        local char = getChar()
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp or not point or not point.pos then return nil end
-        return (hrp.Position - point.pos).Magnitude
-    end
-
     local function titikRaycast(origin, direction)
         local params = RaycastParams.new()
         params.FilterType = Enum.RaycastFilterType.Exclude
@@ -717,7 +500,6 @@ local __BALAP_LOAD_OK__ = xpcall(function()
         return hrp.Position, Vector3.new(0, 1, 0)
     end
     titikMuat()
-    benangMuat()
     titikSimpan()
     titikRefreshDot()
 
@@ -1515,6 +1297,48 @@ local EMOTE_CATALOG = {
     end
     emoteFavLoad()
 
+    -- [7a2c] DAFTAR DIHAPUS (SEMBUNYI PERMANEN) -----------------------
+    -- Emote / paket gaya yang dihapus DIBUANG dari data aktif (tidak
+    -- dirender lagi = ringan) dan tersimpan di file supaya tidak muncul
+    -- selamanya, kecuali dipulihkan lewat tombol.
+    local EMOTE_SEMBUNYI_FILE = "balap_emote_sembunyi.json"
+    local EMOTE_SEMBUNYI = { emote = {}, paket = {} }
+    -- ID emote yang sudah dibuang dari katalog + salinan array paket
+    -- asli. Hanya dipakai fitur pulihkan; tidak pernah dirender.
+    local EMOTE_TERHAPUS_EMOTE = {}
+    local EMOTE_PRESET_MASTER = {}
+    local terapkanPaketAktif   -- didefinisikan setelah EMOTE ada
+    local function emoteSembunyiSave()
+        getgenv().BALAP_EMOTE_SEMBUNYI = { emote = EMOTE_SEMBUNYI.emote, paket = EMOTE_SEMBUNYI.paket }
+        if type(writefile) == "function" then
+            pcall(function() writefile(EMOTE_SEMBUNYI_FILE, HttpService:JSONEncode(EMOTE_SEMBUNYI)) end)
+        end
+    end
+    local function emoteSembunyiLoad()
+        local data
+        if type(readfile) == "function" and type(isfile) == "function" then
+            pcall(function()
+                if isfile(EMOTE_SEMBUNYI_FILE) then
+                    data = HttpService:JSONDecode(readfile(EMOTE_SEMBUNYI_FILE))
+                end
+            end)
+        end
+        if type(data) ~= "table" then data = rawget(getgenv(), "BALAP_EMOTE_SEMBUNYI") end
+        if type(data) == "table" then
+            if type(data.emote) == "table" then
+                for k, v in pairs(data.emote) do
+                    if v == true and EMOTE_CATALOG[k] then EMOTE_SEMBUNYI.emote[k] = true end
+                end
+            end
+            if type(data.paket) == "table" then
+                for k, v in pairs(data.paket) do
+                    if v == true then EMOTE_SEMBUNYI.paket[k] = true end
+                end
+            end
+        end
+    end
+    emoteSembunyiLoad()
+
     local function emoteStopTrack(disableLoop)
         if disableLoop then
             EMOTE_SESSION.loop = false
@@ -1654,6 +1478,37 @@ local EMOTE_CATALOG = {
         baseline   = {},
         rig        = "?",
     }
+
+    -- [7a2c2] ITEM TERHAPUS DIBUANG DARI DAFTAR AKTIF (RINGAN) ------
+    -- Yang dihapus user dikeluarkan dari EMOTE_CATALOG dan array
+    -- EMOTE_PRESET di memori: daftar yang dirender/dicari makin
+    -- sedikit. ID disimpan kecil di EMOTE_TERHAPUS_EMOTE /
+    -- EMOTE_PRESET_MASTER supaya tombol pulihkan tetap jalan.
+    for k, arr in pairs(EMOTE_PRESET) do EMOTE_PRESET_MASTER[k] = arr end
+    terapkanPaketAktif = function()
+        for sk, arrLama in pairs(EMOTE_PRESET) do
+            local baru, posisi = {}, {}
+            for _, pk in ipairs(EMOTE_PRESET_MASTER[sk] or {}) do
+                if EMOTE_SEMBUNYI.paket[pk.n] ~= true then
+                    baru[#baru + 1] = pk
+                    posisi[pk] = #baru
+                end
+            end
+            local cur = EMOTE.preset[sk] or 0
+            if cur > 0 then
+                EMOTE.preset[sk] = (arrLama[cur] and posisi[arrLama[cur]]) or 0
+                if EMOTE.preset[sk] == 0 and emotePilihPreset then emotePilihPreset(sk, 0) end
+            end
+            EMOTE_PRESET[sk] = baru
+        end
+    end
+    for nama, v in pairs(EMOTE_SEMBUNYI.emote) do
+        if v and EMOTE_CATALOG[nama] then
+            EMOTE_TERHAPUS_EMOTE[nama] = EMOTE_CATALOG[nama]
+            EMOTE_CATALOG[nama] = nil
+        end
+    end
+    terapkanPaketAktif()
     local function emoteResolveSlot(k)
         local pi = EMOTE.preset[k] or 0
         local p = (EMOTE_PRESET[k] or {})[pi]
@@ -2047,6 +1902,8 @@ local EMOTE_CATALOG = {
         State.JumpOn  = false
         State.JumpValue = CFG.ON_JUMP
         State.JumpHeightValue = CFG.ON_JUMP_H
+        State.JumpAwal = nil    -- nilai jump bawaan map (dicatat saat load/respawn)
+        State.JumpAwalH = nil
         State.ShiftOn = false
         State.IsSwimming = false
         State.HideOn  = false
@@ -2056,7 +1913,6 @@ local EMOTE_CATALOG = {
         State.MoonOn  = false  -- Moonwalk (F)
         State.TengahOn = false -- Shiftlock Tengah (LShift/RShift)
         State.HideAtasOn = false  -- Hide Badan Atas (VISUAL, layar sendiri)
-        State.PanahOn = false    -- Panah Deteksi (V)
 
         -- Original Lighting (untuk restore saat cahaya dimatikan)
         oLight = {
@@ -2074,7 +1930,7 @@ local EMOTE_CATALOG = {
         buatHeader(scrollMove, "Player")
         local _, speedLbl = buatToggleRow(scrollMove, "Speed (Q): OFF (" .. fmtNum(CFG.SPEED_OFF) .. ")", "Q", "Speed")
         SpeedLabel = speedLbl
-        -- Nilai ON dipilih via stepper: rentang 17.25 - 21.25 (Q = ON/OFF saja)
+        -- Nilai ON dipilih via stepper: rentang 17.25 - 40 (Q = ON/OFF saja)
         RefreshSpeed = buatStepperRow(
         scrollMove,
         "Speed",
@@ -2099,7 +1955,11 @@ local EMOTE_CATALOG = {
         end,
         function(v)
             local hum = getHum()
-            if hum and hum.UseJumpPower == false then State.JumpHeightValue = v else State.JumpValue = v end
+            if hum and hum.UseJumpPower == false then
+                State.JumpHeightValue = math.clamp(v, CFG.ON_JUMP_H_MIN, CFG.ON_JUMP_H_MAX)
+            else
+                State.JumpValue = math.clamp(v, CFG.ON_JUMP_MIN, CFG.ON_JUMP_MAX)
+            end
             if State.JumpOn then applyJump() end
         end
         )
@@ -2110,9 +1970,8 @@ local EMOTE_CATALOG = {
         -- ===== VISUAL (dilebur dari tab VISUAL lama ke tab 1) =====
         buatHeader(scrollMove, "Visual")
         buatToggleRow(scrollMove, "Hide Player + Kendaraan", "R", "Hide")
-        buatToggleRow(scrollMove, "Hide Badan Atas (kaki tetap)", nil, "HideAtas")
+        buatToggleRow(scrollMove, "Hide Badan Atas (kaki tetap)", "Z", "HideAtas")
         buatToggleRow(scrollMove, "Cahaya Auto (2 arah)", "T", "Light")
-        buatToggleRow(scrollMove, "Panah Deteksi (depan/belakang)", "V", "Panah")
         buatHeader(scrollMove, "Lightweight")
         buatToggleRow(scrollMove, "Partikel / Bayangan / Efek", nil, "LW")
         buatHeader(scrollMove, "Map")
@@ -2288,6 +2147,50 @@ local EMOTE_CATALOG = {
             TextColor3 = Warna.Putih, Text = "↻ LOOP: OFF", AutoButtonColor = false,
         }, emoteTools)
         buat("UICorner", {CornerRadius = UDim.new(0, 7)}, loopBtn)
+        -- ===== HAPUS DARI DAFTAR (SEMBUNYI PERMANEN) =====
+        local sembunyiOnly = false
+        local sembunyiBtn
+        local renderEmoteList   -- forward: dipanggil lewat tombol di bawah
+        local function jumlahSembunyi()
+            local n = 0
+            for _ in pairs(EMOTE_SEMBUNYI.emote) do n += 1 end
+            for _ in pairs(EMOTE_SEMBUNYI.paket) do n += 1 end
+            return n
+        end
+        local function refreshSembunyiUI()
+            if sembunyiBtn and sembunyiBtn.Parent then
+                sembunyiBtn.Text = "👁 LIHAT TERSEMBUNYI: " .. (sembunyiOnly and "ON" or "OFF")
+                    .. " • " .. jumlahSembunyi() .. " item"
+                sembunyiBtn.BackgroundColor3 = sembunyiOnly and Warna.Biru or Warna.Card2
+            end
+        end
+        sembunyiBtn = buatActionRow(scrollEmote, "👁 LIHAT TERSEMBUNYI: OFF • 0 item", Warna.Card2, function()
+            sembunyiOnly = not sembunyiOnly
+            if sembunyiOnly then
+                favOnly = false
+                favBtn.Text = "☆ FAVORIT SAJA"
+            end
+            refreshSembunyiUI()
+            renderEmoteList()
+        end)
+        buatActionRow(scrollEmote, "↺ PULIHKAN SEMUA YANG DIHAPUS", Warna.Hijau2, function()
+            local total = jumlahSembunyi()
+            if total == 0 then
+                toast("Tidak ada item yang dihapus", Warna.Kuning)
+                return
+            end
+            for nama, id in pairs(EMOTE_TERHAPUS_EMOTE) do
+                EMOTE_CATALOG[nama] = id
+                EMOTE_SEMBUNYI.emote[nama] = nil
+            end
+            table.clear(EMOTE_TERHAPUS_EMOTE)
+            table.clear(EMOTE_SEMBUNYI.paket)
+            terapkanPaketAktif()
+            emoteSembunyiSave()
+            refreshSembunyiUI()
+            renderEmoteList()
+            toast("✓ " .. total .. " item balik muncul di daftar", Warna.Hijau)
+        end)
         local emoteListFrame = buat("ScrollingFrame", {
             BackgroundColor3 = Warna.AbuItem,
             -- Isi hampir seluruh area tab; daftar tetap bisa discroll.
@@ -2299,16 +2202,27 @@ local EMOTE_CATALOG = {
         buat("UICorner", {CornerRadius = UDim.new(0, 8)}, emoteListFrame)
         buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, emoteListFrame)
         local emoteOrder = 0
-        local function renderEmoteList()
+        renderEmoteList = function()
             for _, c in ipairs(emoteListFrame:GetChildren()) do
                 if c:IsA("TextButton") then c:Destroy() end
             end
             emoteOrder = 0
             local q = string.lower(emoteSearch.Text or "")
             local names = {}
-            for name in pairs(EMOTE_CATALOG) do
-                if (not favOnly or EMOTE_SESSION.favorites[name]) and (q == "" or string.find(string.lower(name), q, 1, true)) then
-                    names[#names + 1] = name
+            if sembunyiOnly then
+                -- tampilkan HANYA item terhapus (daftar kecil, murah)
+                for nama in pairs(EMOTE_TERHAPUS_EMOTE) do
+                    if q == "" or string.find(string.lower(nama), q, 1, true) then
+                        names[#names + 1] = nama
+                    end
+                end
+            else
+                -- katalog aktif sudah bersih dari yang dihapus
+                for name in pairs(EMOTE_CATALOG) do
+                    if (not favOnly or EMOTE_SESSION.favorites[name])
+                        and (q == "" or string.find(string.lower(name), q, 1, true)) then
+                        names[#names + 1] = name
+                    end
                 end
             end
             table.sort(names, function(a, b) return a:lower() < b:lower() end)
@@ -2321,7 +2235,7 @@ local EMOTE_CATALOG = {
                 buat("UICorner", {CornerRadius = UDim.new(0, 6)}, row)
                 local label = buat("TextLabel", {
                     BackgroundTransparency = 1, Position = UDim2.new(0, 8, 0, 0),
-                    Size = UDim2.new(1, -55, 1, 0), FontFace = fnt("med"), TextSize = 11,
+                    Size = UDim2.new(1, -100, 1, 0), FontFace = fnt("med"), TextSize = 11,
                     TextColor3 = Warna.Putih, TextXAlignment = Enum.TextXAlignment.Left, Text = name,
                 }, row)
                 local star = buat("TextButton", {
@@ -2334,8 +2248,33 @@ local EMOTE_CATALOG = {
                     EMOTE_SESSION.favorites[name] = not EMOTE_SESSION.favorites[name]
                     emoteFavSave(); renderEmoteList()
                 end)
+                local hapusBtn = buat("TextButton", {
+                    BackgroundTransparency = 1, Position = UDim2.new(1, -70, 0, 0),
+                    Size = UDim2.fromOffset(32, 27), FontFace = fnt("bold"), TextSize = 15,
+                    TextColor3 = sembunyiOnly and Warna.Hijau or Warna.Merah,
+                    Text = sembunyiOnly and "↩" or "🗑",
+                    AutoButtonColor = false,
+                }, row)
+                hapusBtn.MouseButton1Click:Connect(function()
+                    if sembunyiOnly then
+                        -- pulihkan: balikkan id ke katalog aktif
+                        EMOTE_CATALOG[name] = EMOTE_TERHAPUS_EMOTE[name]
+                        EMOTE_TERHAPUS_EMOTE[name] = nil
+                        EMOTE_SEMBUNYI.emote[name] = nil
+                    else
+                        -- hapus: buang dari katalog aktif (memori makin kecil)
+                        EMOTE_TERHAPUS_EMOTE[name] = EMOTE_CATALOG[name]
+                        EMOTE_CATALOG[name] = nil
+                        EMOTE_SEMBUNYI.emote[name] = true
+                    end
+                    emoteSembunyiSave(); refreshSembunyiUI(); renderEmoteList()
+                end)
                 row.MouseButton1Click:Connect(function()
-                    if emotePlay(name) then toast("Emote: " .. name, Warna.Ungu2) end
+                    if sembunyiOnly then
+                        toast("Tekan ↩ untuk memulihkan emote ini", Warna.Kuning)
+                    elseif emotePlay(name) then
+                        toast("Emote: " .. name, Warna.Ungu2)
+                    end
                 end)
             end
         end
@@ -2453,7 +2392,7 @@ local EMOTE_CATALOG = {
             for _, c in ipairs(chooserList:GetChildren()) do
                 if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end
             end
-            local function tambahBar(teks, warna, bisa, cb)
+            local function tambahBar(teks, warna, bisa, cb, hapusCb)
                 local br = buat("TextButton", {
                     Size = UDim2.new(1, -6, 0, 30),
                     BackgroundColor3 = bisa and Warna.Card2 or Warna.Hitam,
@@ -2464,7 +2403,7 @@ local EMOTE_CATALOG = {
                 buat("TextLabel", {
                     BackgroundTransparency = 1,
                     Position = UDim2.new(0, 10, 0, 0),
-                    Size = UDim2.new(1, -20, 1, 0),
+                    Size = UDim2.new(1, hapusCb and -64 or -20, 1, 0),
                     FontFace = fnt("med"), TextSize = 12,
                     TextColor3 = warna,
                     TextXAlignment = Enum.TextXAlignment.Left,
@@ -2474,12 +2413,35 @@ local EMOTE_CATALOG = {
                 br.MouseButton1Click:Connect(function()
                     if bisa then cb() else toast("Preset ini tidak untuk rig " .. rig, Warna.Kuning) end
                 end)
+                if hapusCb then
+                    local del = buat("TextButton", {
+                        BackgroundColor3 = Warna.Merah,
+                        Position = UDim2.new(1, -32, 0.5, -11),
+                        Size = UDim2.fromOffset(26, 22),
+                        FontFace = fnt("bold"), TextSize = 12,
+                        TextColor3 = Warna.Putih, Text = "✕", AutoButtonColor = false,
+                    }, br)
+                    buat("UICorner", {CornerRadius = UDim.new(0, 6)}, del)
+                    del.MouseButton1Click:Connect(hapusCb)
+                end
             end
             tambahBar("ASLI — animasi default game" .. (aktifPi == 0 and "   ✓" or ""),
                 Warna.Putih, true, function()
                 emotePilihPreset(skey, 0)
                 chooserBackdrop.Visible = false; chooser.Visible = false
             end)
+            local nSembunyi = 0
+            for _ in pairs(EMOTE_SEMBUNYI.paket) do nSembunyi += 1 end
+            if nSembunyi > 0 then
+                tambahBar("↺ PULIHKAN " .. nSembunyi .. " PAKET YANG DIHAPUS", Warna.Kuning, true, function()
+                    table.clear(EMOTE_SEMBUNYI.paket)
+                    terapkanPaketAktif()
+                    emoteSembunyiSave()                    if refreshSembunyiUI then refreshSembunyiUI() end
+                    toast("✓ " .. nSembunyi .. " paket dipulihkan", Warna.Hijau)
+                    emoteBukaChooser(skey)
+                end)
+            end
+            -- array EMOTE_PRESET sudah bersih dari paket yang dihapus
             for pi, p in ipairs(EMOTE_PRESET[skey] or {}) do
                 local id = (rig == "R6") and p.i6 or p.i15
                 local tagRig = (p.i15 and p.i6 and "(R15+R6)") or (p.i15 and "(R15)") or "(R6)"
@@ -2489,6 +2451,12 @@ local EMOTE_CATALOG = {
                     tambahBar(teks, Warna.Ungu2, true, function()
                         emotePilihPreset(skey, pi)
                         chooserBackdrop.Visible = false; chooser.Visible = false
+                    end, function()
+                        EMOTE_SEMBUNYI.paket[p.n] = true
+                        terapkanPaketAktif()
+                        emoteSembunyiSave()
+                        if refreshSembunyiUI then refreshSembunyiUI() end
+                        emoteBukaChooser(skey)
                     end)
                 else
                     tambahBar(teks, Warna.AbuGelap, false, nil)
@@ -2560,10 +2528,8 @@ local EMOTE_CATALOG = {
         buatActionRow(scrollTitik, "🗑 HAPUS SEMUA TITIK", Warna.Merah, function()
             for _, p in ipairs(TITIK.poin) do TITIK.hapus[#TITIK.hapus + 1] = tostring(p.id or p.name) end
             table.clear(TITIK.poin)
-            benangGroups={{points={}}}; benangActiveGroup=1; benangBersihkan(); benangSimpan(); cloudAutoUpload()
             titikSimpan()
             pcall(function() if type(toast) == "function" then toast("✓ Semua titik dihapus dan disimpan lokal", Warna.Hijau) end end)
-            cloudAutoUpload()
             titikRefreshDot()
             titikRenderUI()
             titikStatusUI("Semua titik dihapus")
@@ -2577,36 +2543,6 @@ local EMOTE_CATALOG = {
             if type(toast)=="function" then toast("✓ Tiang diurutkan berdasarkan jarak terdekat",Warna.Hijau) end
         end).LayoutOrder=titikNext()
 
-        buatHeader(scrollTitik,"Daftar Group Benang")
-        local groupList=buat("Frame",{BackgroundTransparency=1,Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,LayoutOrder=titikNext()},scrollTitik)
-        buat("UIListLayout",{Padding=UDim.new(0,4),SortOrder=Enum.SortOrder.LayoutOrder},groupList)
-        benangRenderGroupUI=function()
-            for _,obj in ipairs(groupList:GetChildren()) do if obj:IsA("Frame") then obj:Destroy() end end
-            for gi,g in ipairs(benangGroups) do
-                local row=buat("Frame",{BackgroundColor3=gi==benangActiveGroup and Warna.BiruMuda or Warna.AbuItem,Size=UDim2.new(1,0,0,34)},groupList)
-                buat("UICorner",{CornerRadius=UDim.new(0,7)},row)
-                local pilih=buat("TextButton",{BackgroundTransparency=1,Position=UDim2.new(0,8,0,0),Size=UDim2.new(1,-72,1,0),FontFace=fnt("med"),TextSize=11,TextColor3=Warna.TeksGelap,TextXAlignment=Enum.TextXAlignment.Left,Text="GROUP "..gi.." • "..#g.points.." TITIK"},row)
-                pilih.MouseButton1Click:Connect(function() benangActiveGroup=gi; benangRenderGroupUI(); if type(toast)=="function" then toast("Group aktif: "..gi,Warna.Biru) end end)
-                local hapus=buat("TextButton",{BackgroundColor3=Warna.Merah,Position=UDim2.new(1,-62,0,4),Size=UDim2.fromOffset(56,26),FontFace=fnt("bold"),TextSize=9,TextColor3=Warna.Putih,Text="HAPUS",AutoButtonColor=false},row)
-                buat("UICorner",{CornerRadius=UDim.new(0,6)},hapus)
-                hapus.MouseButton1Click:Connect(function() benangHapusGrup(gi) end)
-            end
-        end
-        benangRenderGroupUI()
-
-        benangToggleBtn=buatActionRow(scrollTitik,"🧵 BENANG OFF • GRUP 1",Warna.Ungu2,function()
-            local aktif=benangToggle()
-            if type(toast)=="function" then toast(aktif and ("✓ Semua benang ON • "..#benangGroups.." grup") or "✓ Semua benang OFF",aktif and Warna.Hijau or Warna.AbuGelap) end
-        end)
-        benangToggleBtn.LayoutOrder=titikNext()
-        buatActionRow(scrollTitik,"➕ SELESAI BENANG / BENANG BARU",Warna.Biru,function()
-            if benangBaru() then
-                benangToggleBtn.Text="🧵 BENANG OFF • GRUP "..benangActiveGroup
-                titikRenderUI()
-                if type(toast)=="function" then toast("✓ Benang baru "..benangActiveGroup.." siap dipilih",Warna.Biru) end
-            end
-        end).LayoutOrder=titikNext()
-
         local titikList = buat("Frame", {
             BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
             AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = titikNext(),
@@ -2616,41 +2552,24 @@ local EMOTE_CATALOG = {
             for _, obj in ipairs(titikList:GetChildren()) do
                 if obj:IsA("Frame") then obj:Destroy() end
             end
-            table.clear(titikDistanceLabels)
             local daftar = {}
             for i, point in ipairs(TITIK.poin) do
-                local sudahDiGroup=false
-                for _,g in ipairs(benangGroups) do
-                    for _,gp in ipairs(g.points) do
-                        if gp==point then sudahDiGroup=true; break end
-                    end
-                    if sudahDiGroup then break end
-                end
-                if not sudahDiGroup then
-                    daftar[#daftar + 1] = {point = point, index = i, distance = titikJarakDariKarakter(point) or math.huge}
-                end
+                daftar[#daftar + 1] = {point = point, index = i}
             end
             -- Pertahankan urutan asli TITIK.poin. Daftar hanya berubah
             -- ketika tombol URUTKAN TIANG TERDEKAT ditekan secara manual.
             for urutan, entry in ipairs(daftar) do
                 local point = entry.point
                 local row = buat("Frame", {
-                    BackgroundColor3 = Warna.AbuItem, Size = UDim2.new(1, 0, 0, 58), LayoutOrder = urutan,
+                    BackgroundColor3 = Warna.AbuItem, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = urutan,
                 }, titikList)
                 buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
                 local box = buat("TextBox", {
                     BackgroundTransparency = 1, Position = UDim2.new(0, 8, 0, 2),
-                    Size = UDim2.new(1, -175, 0, 24), FontFace = fnt("med"), TextSize = 11,
+                    Size = UDim2.new(1, -120, 0, 24), FontFace = fnt("med"), TextSize = 11,
                     TextColor3 = Warna.TeksGelap, TextXAlignment = Enum.TextXAlignment.Left,
                     Text = point.name, ClearTextOnFocus = false,
                 }, row)
-                local jarakLabel = buat("TextLabel", {
-                    BackgroundTransparency = 1, Position = UDim2.new(0, 8, 0, 27),
-                    Size = UDim2.new(1, -175, 0, 20), FontFace = fnt("reg"), TextSize = 10,
-                    TextColor3 = Warna.AbuTeks, TextXAlignment = Enum.TextXAlignment.Left,
-                    Text = entry.distance == math.huge and "Jarak: --" or ("Jarak: " .. math.floor(entry.distance + 0.5) .. " stud"),
-                }, row)
-                titikDistanceLabels[point] = jarakLabel
                 box.FocusLost:Connect(function()
                     local nama = box.Text:gsub("^%s+", ""):gsub("%s+$", "")
                     if nama == "" then
@@ -2661,22 +2580,11 @@ local EMOTE_CATALOG = {
                     else
                         point.name = nama
                         point.defaultName = namaDefaultTitik(nama)
-                        titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Nama titik disimpan", Warna.Hijau) end end); cloudAutoUpload(); titikRefreshDot(); titikStatusUI("Nama titik diubah")
+                        titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Nama titik disimpan", Warna.Hijau) end end); titikRefreshDot(); titikStatusUI("Nama titik diubah")
                     end
                 end)
-                local nomorBenang=nil; local grupBenang=nil
-                for gi,g in ipairs(benangGroups) do for n,p in ipairs(g.points) do if p==point then grupBenang,nomorBenang=gi,n; break end end; if grupBenang then break end end
-                local threadBtn = buat("TextButton", {
-                    BackgroundColor3 = nomorBenang and Warna.Hijau2 or Warna.Ungu2, Position = UDim2.new(1, -163, 0, 15), Size = UDim2.fromOffset(50, 28),
-                    FontFace = fnt("bold"), TextSize = 9, TextColor3 = Warna.Putih, Text = nomorBenang and ("B"..grupBenang.."#"..nomorBenang) or "PILIH", AutoButtonColor = false,
-                }, row)
-                buat("UICorner", {CornerRadius = UDim.new(0, 6)}, threadBtn)
-                threadBtn.MouseButton1Click:Connect(function()
-                    local nomor=benangPilih(point); titikRenderUI()
-                    if type(toast)=="function" then toast(nomor>0 and ("✓ Titik masuk benang "..benangActiveGroup.." urutan #"..nomor) or "✓ Titik dilepas dari benang",Warna.Ungu2) end
-                end)
                 local go = buat("TextButton", {
-                    BackgroundColor3 = Warna.Biru, Position = UDim2.new(1, -108, 0, 15),
+                    BackgroundColor3 = Warna.Biru, Position = UDim2.new(1, -108, 0, 6),
                     Size = UDim2.fromOffset(50, 28), FontFace = fnt("bold"), TextSize = 10,
                     TextColor3 = Warna.Putih, Text = "KE SANA", AutoButtonColor = false,
                 }, row)
@@ -2686,7 +2594,7 @@ local EMOTE_CATALOG = {
                     if index then titikTeleport(index) end
                 end)
                 local del = buat("TextButton", {
-                    BackgroundColor3 = Warna.Merah, Position = UDim2.new(1, -53, 0, 15),
+                    BackgroundColor3 = Warna.Merah, Position = UDim2.new(1, -53, 0, 6),
                     Size = UDim2.fromOffset(45, 28), FontFace = fnt("bold"), TextSize = 10,
                     TextColor3 = Warna.Putih, Text = "HAPUS", AutoButtonColor = false,
                 }, row)
@@ -2784,16 +2692,6 @@ local EMOTE_CATALOG = {
                 end
             end))
         end
-        buatHeader(scrollSistem, "Cloud Titik")
-        cloudKeyBox=buat("TextBox",{BackgroundColor3=Warna.AbuItem,Size=UDim2.new(1,0,0,34),FontFace=fnt("med"),TextSize=11,TextColor3=Warna.TeksGelap,PlaceholderText="Tempel key atau URL TextDB",ClearTextOnFocus=false,Text=cloudKey or "",LayoutOrder=nextOrder()},scrollSistem)
-        buat("UICorner",{CornerRadius=UDim.new(0,8)},cloudKeyBox)
-        cloudStatusLabel=buat("TextLabel",{BackgroundColor3=Warna.AbuItem,Size=UDim2.new(1,0,0,30),FontFace=fnt("med"),TextSize=11,TextColor3=Warna.TeksGelap,TextWrapped=true,Text=cloudKey and "☁ Key tersimpan lokal" or "☁ Belum ada key",LayoutOrder=nextOrder()},scrollSistem)
-        buat("UICorner",{CornerRadius=UDim.new(0,8)},cloudStatusLabel)
-        buatActionRow(scrollSistem,"🔑 LOAD KEY + DOWNLOAD TITIK",Warna.Biru,function() local raw=tostring(cloudKeyBox.Text or ""); local key=raw:match("/db/([a-f0-9]+)") or raw:match("([a-f0-9]+)"); if key and cloudSaveKey(key) then task.spawn(function() cloudDownload() end) else cloudSetStatus("☁ Key tidak valid") end end).LayoutOrder=nextOrder()
-        buatActionRow(scrollSistem,"☁ UPLOAD TITIK KE CLOUD",Warna.Hijau2,function() task.spawn(function() cloudUpload() end) end).LayoutOrder=nextOrder()
-        buatActionRow(scrollSistem,"✨ BUAT KEY BARU",Warna.Ungu2,function() task.spawn(function() cloudCreateKey() end) end).LayoutOrder=nextOrder()
-        buatActionRow(scrollSistem,"📋 SALIN KEY",Warna.Gray,function() if cloudKey and type(setclipboard)=="function" then setclipboard(cloudKey); cloudSetStatus("☁ Key disalin") else cloudSetStatus("☁ Key belum tersedia") end end).LayoutOrder=nextOrder()
-
         buatHeader(scrollSistem, "Aksi")
         buatActionRow(scrollSistem, "🔁 REJOIN SERVER  [K×2]", Warna.Biru, function() rejoin() end)
         buatActionRow(scrollSistem, "🗑️ HAPUS SCRIPT", Warna.Merah, function()
@@ -2812,19 +2710,6 @@ local EMOTE_CATALOG = {
 
     -- Eksekusi buildUI() sekarang (panel, root, outer, Warna, buat sudah ada dari part1)
     buildUI()
-    cloudLoadKey()
-    if cloudKey then task.spawn(function() task.wait(0.2); cloudDownload() end) end
-    task.spawn(function()
-        while not State.Removed do
-            task.wait(0.35)
-            for point, label in pairs(titikDistanceLabels) do
-                if label and label.Parent then
-                    local d = titikJarakDariKarakter(point)
-                    label.Text = d and ("Jarak: " .. math.floor(d + 0.5) .. " stud") or "Jarak: --"
-                end
-            end
-        end
-    end)
     diagSet("GUI utama OK — bikin efek & notif...")
 
     -- [8] FOOTER + LED + MARQUEE ---------------------------------------
@@ -2876,7 +2761,7 @@ local EMOTE_CATALOG = {
             Position = UDim2.fromOffset(360, 0),
             Size = UDim2.fromOffset(1600, 13),
             FontFace = fnt("med"),
-            Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (OFF 17.10, ON 17.25-35) • J Jump (51.25/65.25) • C Shift • LShift Tengah • F Moonwalk • V Panah   ✦   🎬 TAB ANIMASI • 💃 TAB EMOTE • 📍 TAB TITIK: CTRL + klik   ✦   🎨 R Hide • Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   ☁ SYSTEM: input teks • SIMPAN/LOAD manual • load otomatis cuma 1x saat start   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
+            Text = "⌨ G = GUI   ✦   🏃 Q Speed ON/OFF (OFF 17.15, ON 17.25-40) • J Jump (OFF default, ON 51.25-70) • C Shift • LShift Tengah • F Moonwalk   ✦   🎬 TAB ANIMASI • 💃 TAB EMOTE • 📍 TAB TITIK: CTRL + klik   ✦   🎨 R Hide • Z Hide Atas • T Cahaya 2-arah • X Dinding • LW   ✦   SYSTEM: simpan/LOAD titik lokal • load otomatis cuma 1x saat start   ✦   ⚙️ K×2 rejoin • Notif kanan atas",
             TextColor3 = Warna.AbuGelap,
             TextSize = 10,
             TextXAlignment = Enum.TextXAlignment.Left,
@@ -3165,10 +3050,23 @@ local EMOTE_CATALOG = {
         applyJump = function()
             local hum = getHum()
             if not hum then return end
-            if hum.UseJumpPower then
-                hum.JumpPower = State.JumpOn and State.JumpValue or CFG.OFF_JUMP
+            -- catat sekali nilai jump BAWAAN MAP (OFF = balik ke default map)
+            if State.JumpAwal == nil then
+                State.JumpAwal = hum.JumpPower
+                State.JumpAwalH = hum.JumpHeight
+            end
+            if State.JumpOn then
+                if hum.UseJumpPower then
+                    hum.JumpPower = State.JumpValue
+                else
+                    hum.JumpHeight = State.JumpHeightValue
+                end
             else
-                hum.JumpHeight = State.JumpOn and State.JumpHeightValue or CFG.OFF_JUMP_H
+                if hum.UseJumpPower then
+                    hum.JumpPower = State.JumpAwal
+                else
+                    hum.JumpHeight = State.JumpAwalH
+                end
             end
         end
         updateJumpLabel = function()
@@ -3223,10 +3121,10 @@ local EMOTE_CATALOG = {
                         if State.JumpOn or State.Removed then return end
                         local h = getHum()
                         if h then
-                            if h.UseJumpPower and h.JumpPower ~= CFG.OFF_JUMP then
-                                h.JumpPower = CFG.OFF_JUMP
-                            elseif not h.UseJumpPower and h.JumpHeight ~= CFG.OFF_JUMP_H then
-                                h.JumpHeight = CFG.OFF_JUMP_H
+                            if h.UseJumpPower then
+                                if State.JumpAwal and h.JumpPower ~= State.JumpAwal then h.JumpPower = State.JumpAwal end
+                            elseif State.JumpAwalH and h.JumpHeight ~= State.JumpAwalH then
+                                h.JumpHeight = State.JumpAwalH
                             end
                         end
                     end
@@ -3937,112 +3835,6 @@ local EMOTE_CATALOG = {
             syncNotify("Light", v, silent, "Cahaya Auto")
         end
 
-        -- PANAH DETEKSI (keybind V) — dua panah kecil di sisi KANAN layar:
-        -- ↑ = MERAH kalau ada karakter lain DI DEPAN badan (ikut arah
-        -- badan / LookVector HRP, BUKAN kamera), ↓ = MERAH kalau ada DI
-        -- BELAKANG; hijau = kosong. Jarak 100 stud tiap arah (cakupan 200
-        -- stud), depan & belakang 135 derajat (PANAH_SUDUT = cos 67.5°),
-        -- samping 45 derajat = zona tenang. Loop task.wait(0.1) hemat; arah dihitung horizontal agar stabil.
-        local panahGui, panahAtas, panahBawah, panahConn
-        local PANAH_MERAH = Color3.fromRGB(255, 64, 64)
-        local PANAH_HIJAU = Color3.fromRGB(64, 255, 100)
-        Setters.Panah = function(v, silent)
-            if State.PanahOn == v then return end
-            State.PanahOn = v
-            if v then
-                if not panahGui or not panahGui.Parent then
-                    panahGui = Instance.new("ScreenGui")
-                    panahGui.Name = "BALAP_PANAH"
-                    panahGui.ResetOnSpawn = false
-                    panahGui.IgnoreGuiInset = true
-                    panahGui.DisplayOrder = 9000
-                    -- pasang ke tempat aman (gethui/CoreGui/PlayerGui),
-                    -- buang sisa panah lama dulu
-                    local kandidatP = {}
-                    pcall(function() if gethui then table.insert(kandidatP, gethui()) end end)
-                    pcall(function() table.insert(kandidatP, game:GetService("CoreGui")) end)
-                    pcall(function() table.insert(kandidatP, LocalPlayer:WaitForChild("PlayerGui")) end)
-                    for _, t in ipairs(kandidatP) do
-                        pcall(function()
-                            local lama = t:FindFirstChild("BALAP_PANAH")
-                            if lama and lama ~= panahGui then lama:Destroy() end
-                        end)
-                    end
-                    for _, t in ipairs(kandidatP) do
-                        local ok = pcall(function() panahGui.Parent = t end)
-                        if ok and panahGui.Parent == t then break end
-                    end
-                    local function buatPanah(txt, posY)
-                        local t = Instance.new("TextLabel")
-                        t.Name = (txt == "↑") and "PanahDepan" or "PanahBelakang"
-                        t.BackgroundTransparency = 1
-                        t.AnchorPoint = Vector2.new(1, 0)
-                        t.Position = UDim2.new(1, -12, 0.5, posY)
-                        t.Size = UDim2.new(0, 44, 0, 44)
-                        t.Font = Enum.Font.GothamBlack
-                        t.Text = txt
-                        t.TextSize = 34
-                        t.TextColor3 = PANAH_HIJAU
-                        t.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-                        t.TextStrokeTransparency = 0.15
-                        t.Parent = panahGui
-                        return t
-                    end
-                    panahAtas = buatPanah("↑", -58)   -- ATAS = DEPAN badan
-                    panahBawah = buatPanah("↓", 14)   -- di bawahnya = BELAKANG
-                end
-                panahGui.Enabled = true
-                if panahConn then task.cancel(panahConn) end
-                panahConn = task.spawn(function()
-                    while State.PanahOn and not State.Removed do
-                        task.wait(0.1)
-                        local merahA, merahB = false, false
-                        local char = getChar()
-                        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                        if char and hrp then
-                            local myPos = hrp.Position
-                            -- Deteksi depan/belakang memakai arah badan di bidang tanah.
-                            -- Ketinggian pemain tidak boleh membuat hasil salah.
-                            local look3 = hrp.CFrame.LookVector
-                            local lookFlat = Vector3.new(look3.X, 0, look3.Z)
-                            if lookFlat.Magnitude > 0.001 then lookFlat = lookFlat.Unit end
-                            for _, pl in ipairs(Players:GetPlayers()) do
-                                if pl ~= LocalPlayer then
-                                    local c2 = pl.Character
-                                    local h2 = c2 and c2:FindFirstChildOfClass("Humanoid")
-                                    local r2 = c2 and c2:FindFirstChild("HumanoidRootPart")
-                                    if h2 and r2 and h2.Health > 0 then
-                                        local rel = r2.Position - myPos
-                                        local relFlat = Vector3.new(rel.X, 0, rel.Z)
-                                        local d = relFlat.Magnitude
-                                        if d > 0.5 and d <= CFG.PANAH_JARAK and lookFlat.Magnitude > 0.001 then
-                                            local dot = lookFlat:Dot(relFlat.Unit)
-                                            if dot >= CFG.PANAH_SUDUT then
-                                                merahA = true  -- depan 135°
-                                            elseif dot <= -CFG.PANAH_SUDUT then
-                                                merahB = true  -- belakang 135°
-                                            end -- sisanya samping 45° → tetap hijau
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                        if panahAtas and panahAtas.Parent then
-                            panahAtas.TextColor3 = merahA and PANAH_MERAH or PANAH_HIJAU
-                        end
-                        if panahBawah and panahBawah.Parent then
-                            panahBawah.TextColor3 = merahB and PANAH_MERAH or PANAH_HIJAU
-                        end
-                    end
-                end)
-            else
-                if panahConn then task.cancel(panahConn) panahConn = nil end
-                if panahGui then pcall(function() panahGui:Destroy() end) panahGui = nil end
-                panahAtas, panahBawah = nil, nil
-            end
-            syncNotify("Panah", v, silent, "Panah Deteksi")
-        end
-
         -- Q — Speed ON/OFF murni
         -- Nilai ON (17.25 / 21.25, atau di antaranya) dipilih via stepper di Tab GERAK.
         -- Keybind Q langsung panggil setFeature("Speed", ...) dari handler [21].
@@ -4075,7 +3867,6 @@ local EMOTE_CATALOG = {
             pcall(setFeature, "Walls", false, true)
             pcall(setFeature, "Light", false, true)
             pcall(setFeature, "HideAtas", false, true)
-            pcall(setFeature, "Panah", false, true)
             pcall(setFeature, "Emote", false, true)      -- v1.5: balik ke animasi asli
             -- 2) Unbind semua RenderStep binding (selalu)
             pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
@@ -4096,7 +3887,6 @@ local EMOTE_CATALOG = {
                 pcall(function() UserInputService.MouseIconEnabled = true end)
             end
             pcall(emoteStopTrack)
-            pcall(benangBersihkan)
             pcall(function() if TITIK.folder then TITIK.folder:Destroy(); TITIK.folder = nil end end)
             -- 3) Cancel semua task/thread yang masih jalan
             if lightConn then pcall(function() task.cancel(lightConn) end) lightConn = nil end
@@ -4135,10 +3925,11 @@ local EMOTE_CATALOG = {
                         local h = char:FindFirstChildOfClass("Humanoid")
                         if h then
                             h.WalkSpeed = CFG.SPEED_OFF
+                            -- Jump balik ke default map (nilai asli yang dicatat)
                             if h.UseJumpPower then
-                                h.JumpPower = CFG.OFF_JUMP
-                            else
-                                h.JumpHeight = CFG.OFF_JUMP_H
+                                if State.JumpAwal then h.JumpPower = State.JumpAwal end
+                            elseif State.JumpAwalH then
+                                h.JumpHeight = State.JumpAwalH
                             end
                             h.AutoRotate = true
                         end
@@ -4218,6 +4009,11 @@ local EMOTE_CATALOG = {
             end))
             task.wait(0.25)
             if State.Removed then return end
+            -- catat nilai jump BAWAAN MAP (OFF = balik ke default map)
+            if State.JumpAwal == nil and hum then
+                State.JumpAwal = hum.JumpPower
+                State.JumpAwalH = hum.JumpHeight
+            end
             if State.SpeedOn then applySpeed() end
             if State.JumpOn then applyJump() end
         end
@@ -4306,17 +4102,14 @@ local EMOTE_CATALOG = {
                 setFeature("Moon", not State.MoonOn)
             elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
                 setFeature("Tengah", not State.TengahOn)
-            elseif input.KeyCode == Enum.KeyCode.P then
-                local aktif=benangToggle()
-                if type(toast)=="function" then toast(aktif and "✓ Benang ON" or "✓ Benang OFF", aktif and Warna.Hijau or Warna.AbuGelap) end
+            elseif input.KeyCode == Enum.KeyCode.Z then
+                setFeature("HideAtas", not State.HideAtasOn)   -- Hide Badan Atas (keybind Z)
             elseif input.KeyCode == Enum.KeyCode.R then
                 setFeature("Hide", not State.HideOn)
             elseif input.KeyCode == Enum.KeyCode.T then
                 setFeature("Light", not State.LightOn)
             elseif input.KeyCode == Enum.KeyCode.X then
                 setFeature("Walls", not State.WallsOn)
-            elseif input.KeyCode == Enum.KeyCode.V then
-                setFeature("Panah", not State.PanahOn)  -- Panah Deteksi
             elseif input.KeyCode == Enum.KeyCode.K then
                 local now = os.clock()
                 if now - lastK < 0.45 then
@@ -4341,7 +4134,7 @@ local EMOTE_CATALOG = {
             end
         end)
         print("[BALAP " .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-        print("[BALAP] MOVE&VISUAL | ANIMASI | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • V panah • R hide • T cahaya • X dinding • K×2 rejoin • LOCAL ONLY")
+        print("[BALAP] MOVE&VISUAL | ANIMASI | SYSTEM • Q speed • J jump • C shift • LShift tengah • F moon (S=off) • R hide • Z hide atas • T cahaya • X dinding • K×2 rejoin • LOCAL ONLY")
         diagSet("BALAP " .. VERSI .. " SIAP - GUI akan terbuka sendiri", Color3.fromRGB(16, 185, 129))
         task.delay(7, function()
             local function hapusDiag()
