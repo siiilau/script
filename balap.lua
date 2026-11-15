@@ -13,7 +13,9 @@
 --    v1.4 emote yang di★-kan pindah ke grup ★ FAVORIT (beda lokasi daftar,
 --    gampang dicari) • fitur hapus emote/paket/bundle DIBUANG total —
 --    daftar selalu utuh, tinggal ★ favoritkan • bundle gaya gerak jadi
---    opsi PER KATEGORI di chooser tiap slot, bukan 1 set.
+--    opsi PER KATEGORI di chooser tiap slot, bukan 1 set • RESET/ASLI
+--    benar-benar balik ke animasi asli (baseline asli game disimpan ke
+--    file, kebal eksekusi ulang) • kolom TAMBAH EMOTE (Nama + ID) dibuang.
 --  Shiftlock Mobile, Moonwalk & Shiftlock Tengah otomatis OFF saat mati/respawn.
 --========================================================
 print("[BALAP V1.4] load mulai...")
@@ -817,8 +819,9 @@ local __BALAP_LOAD_OK__ = xpcall(function()
     --     mengembalikan persis seperti semula.
     --   • Preset = 18 pack resmi Roblox (semua Creator.Id = 1).
     --   • Favorit (★) pindah emote ke grup terpisah biar gampang dicari;
-    --     emote tambahan (Nama + ID) tersimpan lokal. Tanpa fitur hapus —
-    --     daftar emote/paket/bundle selalu utuh.
+    --     tanpa fitur hapus — daftar emote/paket/bundle selalu utuh.
+    --   • RESET SEMUA / pilihan ASLI memulihkan animasi asli game; baseline
+    --     asli disimpan ke file (per game + rig) supaya kebal eksekusi ulang.
     --   • Bundle gaya gerak = opsi per kategori di chooser tiap slot (bukan
     --     1 set) — tiap slot bebas memakai bundle berbeda.
     --   • Keybind G milik script standalone DIHAPUS — ikut GUI utama (G).
@@ -1314,41 +1317,6 @@ local EMOTE_CATALOG = {
     end
     emoteFavLoad()
 
-    -- [11] EMOTE TAMBAHAN (ID) ----------------------------------
-    -- Tanpa fitur hapus: emote, paket gaya, dan bundle selalu utuh di
-    -- daftar. Emote tambahan user (dari kolom TAMBAH EMOTE: Nama + ID)
-    -- tersimpan ke file agar tetap ada saat script jalan lagi.
-    local EMOTE_KUSTOM_FILE = "balap_emote_kustom.json"
-    local EMOTE_KUSTOM = {}
-    local function emoteKustomSave()
-        getgenv().BALAP_EMOTE_KUSTOM = EMOTE_KUSTOM
-        if type(writefile) == "function" then
-            pcall(function() writefile(EMOTE_KUSTOM_FILE, HttpService:JSONEncode(EMOTE_KUSTOM)) end)
-        end
-    end
-    local function emoteKustomLoad()
-        local data
-        if type(readfile) == "function" and type(isfile) == "function" then
-            pcall(function()
-                if isfile(EMOTE_KUSTOM_FILE) then
-                    data = HttpService:JSONDecode(readfile(EMOTE_KUSTOM_FILE))
-                end
-            end)
-        end
-        if type(data) ~= "table" then data = rawget(getgenv(), "BALAP_EMOTE_KUSTOM") end
-        if type(data) == "table" then
-            for k, v in pairs(data) do
-                local id = tonumber(v)
-                if k ~= "" and id then EMOTE_KUSTOM[k] = id end
-            end
-        end
-    end
-    emoteKustomLoad()
-    -- emote tambahan user masuk katalog
-    for nama, id in pairs(EMOTE_KUSTOM) do
-        EMOTE_CATALOG[nama] = id
-    end
-
     local function emoteStopTrack(disableLoop)
         if disableLoop then
             EMOTE_SESSION.loop = false
@@ -1476,23 +1444,110 @@ local EMOTE_CATALOG = {
         end
         return EMOTE.rig
     end
+    -- Semua id yang dikelola script ini (preset + bundle): penanda baseline
+    -- ternoda (script dijalankan ulang di karakter yang animasinya masih
+    -- hasil script sebelumnya).
+    local ID_KITA = {}
+    for _, arr in pairs(EMOTE_PRESET) do
+        for _, p in ipairs(arr) do
+            for _, v in ipairs({ p.i15, p.i6, p.i15b }) do
+                if v then ID_KITA["rbxassetid://" .. tostring(v)] = true end
+            end
+        end
+    end
+    for _, b in pairs(BUNDLE_ANIMATIONS) do
+        for _, fn in ipairs({ "Idle", "Idle2", "Idle3", "Walk", "Run", "Jump",
+            "Climb", "Fall", "Swim", "SwimIdle" }) do
+            local v = b[fn]
+            if type(v) == "number" and v > 0 then
+                ID_KITA["rbxassetid://" .. tostring(v)] = true
+            end
+        end
+    end
+
+    -- Baseline animasi ASLI game disimpan sekali ke file (per game + rig).
+    -- Kalau script dijalankan ulang di karakter yang animasinya masih id
+    -- kustom (belum respawn), RESET/ASLI tetap memulihkan animasi ASLI
+    -- game dari file — bukan id kustom yang tertangkap sebagai "asli".
+    local BASELINE_FILE = "balap_animasi_asli.json"
+    local GAME_KEY = tostring(game.PlaceId)
+    local BASELINE_SIMPAN = {}
+    local function emoteBaselineMuat()
+        local data
+        if type(readfile) == "function" and type(isfile) == "function" then
+            pcall(function()
+                if isfile(BASELINE_FILE) then
+                    data = HttpService:JSONDecode(readfile(BASELINE_FILE))
+                end
+            end)
+        end
+        if type(data) ~= "table" then data = rawget(getgenv(), "BALAP_ANIMASI_ASLI") end
+        if type(data) == "table" and type(data[GAME_KEY]) == "table" then
+            for rig, slotData in pairs(data[GAME_KEY]) do
+                if type(slotData) == "table" then BASELINE_SIMPAN[rig] = slotData end
+            end
+        end
+    end
+    local function emoteBaselineSimpan(urut)
+        local data = rawget(getgenv(), "BALAP_ANIMASI_ASLI")
+        if type(data) ~= "table" then data = {} end
+        local rigData = data[GAME_KEY]
+        if type(rigData) ~= "table" then rigData = {} end
+        for k, arr in pairs(urut) do
+            local ids = {}
+            for _, an in ipairs(arr) do ids[#ids + 1] = an.AnimationId end
+            rigData[k] = ids
+        end
+        data[GAME_KEY] = rigData
+        BASELINE_SIMPAN[EMOTE.rig] = rigData
+        getgenv().BALAP_ANIMASI_ASLI = data
+        if type(writefile) == "function" then
+            pcall(function() writefile(BASELINE_FILE, HttpService:JSONEncode(data)) end)
+        end
+    end
+    emoteBaselineMuat()
     local function emoteCaptureBaseline(char)
         local a = char and char:FindFirstChild("Animate")
         if not a then return end
+        if EMOTE.rig == "?" then emoteDeteksiRig(char) end
+        if EMOTE.rig == "?" then return end
+        -- daftar Animation per slot (urutan GetDescendants stabil per rig)
+        local urut = {}
         for k, folders in pairs(SLOT_FOLDERS) do
             if #folders > 0 then
-                local simpan = {}
+                local arr = {}
                 for _, fname in ipairs(folders) do
                     local f = a:FindFirstChild(fname)
                     if f then
                         for _, an in ipairs(f:GetDescendants()) do
-                            if an:IsA("Animation") then simpan[an] = an.AnimationId end
+                            if an:IsA("Animation") then arr[#arr + 1] = an end
                         end
                     end
                 end
-                EMOTE.baseline[k] = simpan
+                urut[k] = arr
             end
         end
+        -- ternoda = ada id khusus script di folder (bukan animasi asli game)
+        local bersih = true
+        for _, arr in pairs(urut) do
+            for _, an in ipairs(arr) do
+                if ID_KITA[an.AnimationId] then bersih = false break end
+            end
+            if not bersih then break end
+        end
+        local sumber = not bersih and BASELINE_SIMPAN[EMOTE.rig] or nil
+        for k, arr in pairs(urut) do
+            local simpan = {}
+            local sumberSlot = sumber and sumber[k] or nil
+            for i, an in ipairs(arr) do
+                local id = sumberSlot and sumberSlot[i]
+                if type(id) ~= "string" then id = an.AnimationId end
+                simpan[an] = id
+            end
+            EMOTE.baseline[k] = simpan
+        end
+        -- simpan hanya baseline yang benar-benar asli (bebas id script)
+        if bersih then emoteBaselineSimpan(urut) end
     end
     local function emoteSetSlotId(k, char, id)
         local a = char and char:FindFirstChild("Animate")
@@ -1572,6 +1627,7 @@ local EMOTE_CATALOG = {
     emotePilihPreset = function(k, pi)
         if not SLOT_FOLDERS[k] then return end
         EMOTE.preset[k] = pi
+        EMOTE.bundle[k] = nil -- preset/ASLI menggantikan bundle per kategori
         emoteSimpan()
         local char = getChar()
         if char then
@@ -2119,43 +2175,7 @@ local EMOTE_CATALOG = {
             TextColor3 = Warna.Putih, Text = "↻ LOOP: OFF", AutoButtonColor = false,
         }, emoteTools)
         buat("UICorner", {CornerRadius = UDim.new(0, 7)}, loopBtn)
-        -- ===== TAMBAH EMOTE (pengganti pemulihan: hapus = permanen) =====
         local renderEmoteList   -- forward: dipanggil lewat tombol di bawah
-        local tambahBaris = buat("Frame", {
-            BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = nextOrder(),
-        }, scrollEmote)
-        local tambahNama = buat("TextBox", {
-            BackgroundColor3 = Warna.Hitam2, Size = UDim2.new(0.5, -2, 1, 0),
-            FontFace = fnt("reg"), TextSize = 12, TextColor3 = Warna.Putih,
-            PlaceholderText = "Nama emote...", PlaceholderColor3 = Warna.AbuGelap,
-            Text = "", ClearTextOnFocus = false,
-        }, tambahBaris)
-        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, tambahNama)
-        local tambahId = buat("TextBox", {
-            BackgroundColor3 = Warna.Hitam2, Position = UDim2.new(0.5, 2, 0, 0),
-            Size = UDim2.new(0.5, -2, 1, 0), FontFace = fnt("reg"), TextSize = 12,
-            TextColor3 = Warna.Putih, PlaceholderText = "ID animasi (angka)...",
-            PlaceholderColor3 = Warna.AbuGelap, Text = "", ClearTextOnFocus = false,
-        }, tambahBaris)
-        buat("UICorner", {CornerRadius = UDim.new(0, 8)}, tambahId)
-        buatActionRow(scrollEmote, "➕ TAMBAH EMOTE KE DAFTAR", Warna.Hijau2, function()
-            local nama = (tambahNama.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
-            local idStr = tostring(tambahId.Text or ""):match("%d+")
-            if nama == "" or not idStr then
-                toast("Isi Nama + ID angka dulu", Warna.Kuning)
-                return
-            end
-            if EMOTE_CATALOG[nama] then
-                toast("Nama \"" .. nama .. "\" sudah ada di daftar", Warna.Kuning)
-                return
-            end
-            EMOTE_CATALOG[nama] = tonumber(idStr)
-            EMOTE_KUSTOM[nama] = EMOTE_CATALOG[nama]
-            emoteKustomSave()
-            tambahNama.Text = ""; tambahId.Text = ""
-            renderEmoteList()
-            toast("✓ Emote \"" .. nama .. "\" masuk daftar", Warna.Hijau)
-        end)
         local emoteListFrame = buat("ScrollingFrame", {
             BackgroundColor3 = Warna.AbuItem,
             -- Isi hampir seluruh area tab; daftar tetap bisa discroll.
@@ -2298,12 +2318,13 @@ local EMOTE_CATALOG = {
             .. "JALAN, LARI, dst — bisa dicampur, bukan 1 set). Emote yang "
             .. "di★-kan pindah ke grup ★ FAVORIT (beda lokasi daftar) supaya "
             .. "gampang dicari; favorit tersimpan lokal. Daftar emote, paket, "
-            .. "dan bundle selalu utuh — tidak ada fitur hapus. Emote baru "
-            .. "bisa dimasukkan lewat kolom TAMBAH EMOTE (Nama + ID). Animasi "
-            .. "dipasang lagi setelah mati/respawn; awal load selalu OFF + "
-            .. "semua slot ASLI — nyalakan ⚡ master dulu, gaya pilihanmu "
-            .. "aktif selama sesi saja (script dijalankan ulang = balik "
-            .. "default).",
+            .. "dan bundle selalu utuh — tidak ada fitur hapus. RESET SEMUA / "
+            .. "pilihan ASLI memulihkan animasi asli game (animasi asli "
+            .. "tersimpan sekali ke file, aman walau script dijalankan ulang). "
+            .. "Animasi dipasang lagi setelah mati/respawn; awal load selalu "
+            .. "OFF + semua slot ASLI — nyalakan ⚡ master dulu, gaya "
+            .. "pilihanmu aktif selama sesi saja (script dijalankan ulang = "
+            .. "balik default).",
             LayoutOrder = nextOrder(),
         }, scrollAnim)
 
