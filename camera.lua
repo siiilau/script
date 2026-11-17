@@ -1,22 +1,21 @@
 --[[
 ═══════════════════════════════════════════════
-CAMERA · v1.0.15.1  —  ALL-IN-ONE CINEMATIC CAMERA
+CAMERA · v1.0.15.3  —  ALL-IN-ONE CINEMATIC CAMERA
 CINEMATIC DANCE · FREE/PRO + TARGET LOCK
 ═══════════════════════════════════════════════
 1/2/3    = FREE · PRO · CINEMATIC (tekan lagi = mati)
 CapsLock = MASTER keybind kamera ON/OFF (G·T·K·P tetap hidup)
 G = panel · F = lock target · C = teleport layar
-T = cahaya auto · P = gerak/beku patung · H = sembunyikan UI
+T = cahaya auto · P = lepas kendali/gerak · H = sembunyikan UI
 K 2x = hapus script · RMB = lihat sekeliling · Scroll = FOV/zoom
 Space tahan = turbo (FREE) · Ctrl = slow cinematic (FREE)
-v1.0.15.1 — MULTI-SELECT SHOT: pilih beberapa shot sekaligus,
-CINE random dari pilihanmu. KLIK SHOT = LANGSUNG MAIN (tanpa
-nunda). AUTO = semua 40 shot. HAPUS RACE CAM total.
-v1.0.15 — 8 shot baru (OTS · POV · Vertical Tilt · Dive Bomb ·
-Stedicam · Parallax · Dolly Rack · Silhouette) · total 40 shot
-v1.0.14 — 8 shot dansa baru · keybind digeser
-v1.0.13 — FIX MODE KAMERA · slider track · RESET default
-v1.0.12 — FIX LOCK KARAKTER SENDIRI
+v1.0.15.3 — FIX BEKU: karakter tidak bisa kontrol WASD/Space,
+tapi kamera FREE CAM tetap bisa pakai WASD/Space. Pakai
+WalkSpeed=0 + JumpPower=0 (bukan BindActionAtPriority).
+Karakter tetap animasi & bisa naik kendaraan. Chat/emot tetap bisa.
+v1.0.15.2 — BEKU BARU: karakter tetap animasi & bisa naik kendaraan
+v1.0.15.1 — MULTI-SELECT SHOT · KLIK SHOT = LANGSUNG MAIN
+v1.0.15 — 8 shot baru · HAPUS RACE CAM · total 40 shot CINE
 ═══════════════════════════════════════════════
 ]]
 -- ═══════════════ ANTI DUPLIKAT ═══════════════
@@ -30,7 +29,7 @@ task.wait(0.05)
 local DBGWARN = true
 local function dbg(tag)
 if DBGWARN then
-warn("[CAM v1.0.15.1] " .. tag)
+warn("[CAM v1.0.15.3] " .. tag)
 end
 end
 dbg("1: script mulai dijalankan")
@@ -153,7 +152,7 @@ dofK = 0,
 focusDist = 10,
 smCf = nil,
 distK = nil,
-manualShots = {}, -- v1.0.15.1: array nama shot pilihan (kosong = AUTO semua)
+manualShots = {},
 },
 foto = {
 dof = false,
@@ -182,7 +181,7 @@ local setMode, toggleLock, doTeleport, toggleCahaya, matikanCahaya, goToSelf, re
 local getSubjectChar, refreshTargetList, refreshModeUI, updateLockBtn
 local findNearestPlayer, lockPick, lockAutoToggle, setMaster, toggleGerak
 local toggleManualShot, clearManualShots, isAutoMode, refreshShotList
-local startShot -- v1.0.15.1: deklarasi maju agar bisa dipanggil dari toggleManualShot
+local startShot
 -- ═══════════════ UTIL ═══════════════
 local function flat(v)
 return Vector3.new(v.X, 0, v.Z)
@@ -416,7 +415,7 @@ BackgroundTransparency = 1,
 Position = UDim2.new(0, 16, 0, 8),
 Size = UDim2.new(1, -60, 0, 22),
 Font = Enum.Font.GothamBlack,
-Text = "CAMERA<font color=\"#FF2DAA\"> v1.0.15.1</font>",
+Text = "CAMERA<font color=\"#FF2DAA\"> v1.0.15.3</font>",
 RichText = true,
 TextColor3 = CFG.TXT,
 TextSize = 16,
@@ -428,7 +427,7 @@ BackgroundTransparency = 1,
 Position = UDim2.new(0, 16, 0, 31),
 Size = UDim2.new(1, -60, 0, 14),
 Font = Enum.Font.GothamMedium,
-Text = "v1.0.15.1 · CAPSLOCK OFF — keybind kamera terkunci",
+Text = "v1.0.15.3 · CAPSLOCK OFF — keybind kamera terkunci",
 TextColor3 = CFG.TXT_DIM,
 TextSize = 10,
 TextXAlignment = Enum.TextXAlignment.Left,
@@ -843,7 +842,7 @@ secLabel(UI.tabSISTEM, "Utilitas", 4)
 UI.waktuBtn = makePill(UI.tabSISTEM, "T · CAHAYA AUTO (2 ARAH) · OFF", 32, 5, function()
 toggleCahaya()
 end)
-UI.gerakBtn = makePill(UI.tabSISTEM, "P · GERAK ⇄ BEKU KARAKTER", 32, 6, function()
+UI.gerakBtn = makePill(UI.tabSISTEM, "P · GERAK ⇄ LEPAS KENDALI", 32, 6, function()
 toggleGerak()
 end)
 UI.tg.Letterbox = makeToggle(UI.tabSISTEM, "LETTERBOX SINEMATIK (SEMUA MODE)", CFG.Letterbox, function(state)
@@ -889,7 +888,7 @@ new("TextLabel", {
 BackgroundTransparency = 1,
 Size = UDim2.new(1, 0, 0, 86),
 Font = Enum.Font.GothamMedium,
-Text = "CapsLock · MASTER kamera (OFF = keybind kamera mati)\n1/2/3 mode · F lock · C teleport · H hide UI\nG panel · T cahaya · K 2x hapus · P gerak⇄beku\nRMB lihat · Scroll zoom/FOV · Space (tahan) turbo\nCtrl slow cinematic (FREE)",
+Text = "CapsLock · MASTER kamera (OFF = keybind kamera mati)\n1/2/3 mode · F lock · C teleport · H hide UI\nG panel · T cahaya · K 2x hapus · P gerak⇄lepas kendali\nRMB lihat · Scroll zoom/FOV · Space (tahan) turbo\nCtrl slow cinematic (FREE)",
 TextColor3 = CFG.TXT_DIM,
 TextSize = 10,
 TextXAlignment = Enum.TextXAlignment.Left,
@@ -1001,7 +1000,6 @@ end))
 end
 -- ═══════════════ NOTIFIKASI ═══════════════
 function notify(text, dur)
--- dimatikan
 end
 -- ═══════════════ VISIBILITAS UI ═══════════════
 function applyUIVisibility()
@@ -1034,91 +1032,31 @@ end
 function updateChip()
 return
 end
--- ═══════════════ KARAKTER BEKU PATUNG ═══════════════
+-- ═══════════════ KARAKTER LEPAS KENDALI v1.0.15.3 (FIX) ═══════════════
+-- v1.0.15.3: karakter tidak bisa kontrol WASD/Space, tapi kamera FREE CAM tetap bisa
+-- Solusi: set WalkSpeed=0 + JumpPower=0 (bukan BindActionAtPriority)
 local BEKU = {
 on = false,
 char = nil,
 saved = nil,
-animOff = false,
-tracks = {},
-conns = {},
 }
-local function dapatAnimator(c, hum)
-if hum then
-local a = hum:FindFirstChildOfClass("Animator")
-if a then
-return a
-end
-end
-if c then
-return c:FindFirstChildOfClass("Animator")
-end
-return nil
-end
-local function bekukanSemuaTrack()
-local c = myChar()
-if not (c and c.Parent) then
-return
-end
-local anim = dapatAnimator(c, getHum(c))
-if not anim then
-return
-end
-for _, tr in ipairs(anim:GetPlayingAnimationTracks()) do
-if not BEKU.tracks[tr] then
-BEKU.tracks[tr] = { Speed = tr.Speed, Pos = tr.TimePosition }
-table.insert(BEKU.conns, tr.Stopped:Connect(function()
-if not BEKU.on or not BEKU.tracks[tr] then
-return
-end
-pcall(function()
-tr:Play(0)
-tr.TimePosition = BEKU.tracks[tr].Pos
-tr:AdjustSpeed(0)
-end)
-end))
-end
-tr:AdjustSpeed(0)
-end
-end
-local function nolkanKecepatan(c)
-for _, p in ipairs(c:GetDescendants()) do
-if p:IsA("BasePart") then
-p.AssemblyLinearVelocity = Vector3.zero
-p.AssemblyAngularVelocity = Vector3.zero
-end
-end
-end
-local function putuskanBeku()
-for _, cn in ipairs(BEKU.conns) do
-pcall(function()
-cn:Disconnect()
-end)
-end
-table.clear(BEKU.conns)
-end
+
 local function bekukanKarakter()
 local c = myChar()
-if not (c and c.Parent) then
-return
-end
-if BEKU.on and BEKU.char == c then
-return
-end
+if not (c and c.Parent) then return end
+if BEKU.on and BEKU.char == c then return end
 if BEKU.on then
-putuskanBeku()
-table.clear(BEKU.tracks)
-BEKU.saved = nil
 BEKU.on = false
 end
+
 local hrp = getRoot(c)
-if not hrp then
-return
-end
+if not hrp then return end
 local hum = getHum(c)
+
 BEKU.on = true
 BEKU.char = c
-hrp.Anchored = true
+
+-- Simpan nilai asli
 if hum then
 BEKU.saved = {
 Walk = hum.WalkSpeed,
@@ -1126,6 +1064,7 @@ Jump = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight,
 UseJP = hum.UseJumpPower,
 Rot = hum.AutoRotate,
 }
+-- Set ke 0: karakter tidak bisa jalan/lompat
 hum.WalkSpeed = 0
 hum.AutoRotate = false
 if hum.UseJumpPower then
@@ -1134,65 +1073,22 @@ else
 hum.JumpHeight = 0
 end
 end
-local animScript = c:FindFirstChild("Animate")
-if animScript and animScript:IsA("LocalScript") then
-BEKU.animOff = animScript.Disabled
-animScript.Disabled = true
-else
-BEKU.animOff = nil
+
+-- TIDAK anchor karakter (bisa naik kendaraan)
+-- TIDAK disable animasi (animasi tetap jalan)
+-- TIDAK freeze tracks (animasi tetap normal)
+-- TIDAK pakai BindActionAtPriority (kamera FREE CAM tetap bisa WASD/Space)
 end
-nolkanKecepatan(c)
-bekukanSemuaTrack()
-local anim = dapatAnimator(c, hum)
-if anim then
-table.insert(BEKU.conns, anim.AnimationPlayed:Connect(function(tr)
-if not BEKU.tracks[tr] then
-BEKU.tracks[tr] = { Speed = tr.Speed, Pos = 0 }
-end
-tr:AdjustSpeed(0)
-end))
-end
-table.insert(BEKU.conns, RunService.Heartbeat:Connect(function()
-if not BEKU.on then
-return
-end
-local ch = myChar()
-if not (ch and ch.Parent and getRoot(ch)) then
-return
-end
-nolkanKecepatan(ch)
-local anim2 = dapatAnimator(ch, getHum(ch))
-if anim2 then
-for _, tr in ipairs(anim2:GetPlayingAnimationTracks()) do
-if tr.Speed ~= 0 then
-tr:AdjustSpeed(0)
-end
-end
-end
-end))
-end
+
 local function lebaskanKarakter()
-if not BEKU.on then
-return
-end
+if not BEKU.on then return end
 BEKU.on = false
-putuskanBeku()
+
 local c = myChar()
 local hrp = getRoot(c)
 local hum = getHum(c)
-if BEKU.char == c then
-for tr in pairs(BEKU.tracks) do
-pcall(function()
-if tr then
-tr:Stop(0)
-end
-end)
-end
-local animScript = c:FindFirstChild("Animate")
-if animScript and BEKU.animOff ~= nil then
-animScript.Disabled = BEKU.animOff
-end
-if hum and BEKU.saved then
+
+if BEKU.char == c and hum and BEKU.saved then
 pcall(function()
 hum.WalkSpeed = BEKU.saved.Walk
 hum.AutoRotate = BEKU.saved.Rot
@@ -1203,17 +1099,11 @@ hum.JumpHeight = BEKU.saved.Jump
 end
 end)
 end
-end
-table.clear(BEKU.tracks)
+
 BEKU.saved = nil
 BEKU.char = nil
-BEKU.animOff = false
-if hrp then
-hrp.AssemblyLinearVelocity = Vector3.zero
-hrp.AssemblyAngularVelocity = Vector3.zero
-hrp.Anchored = false
 end
-end
+
 local function hitungBeku()
 if S.gerakMode == "GERAK" then
 return false
@@ -1223,26 +1113,21 @@ return true
 end
 return false
 end
+
 function setAnchorState()
-if unloadDone then
-return
-end
+if unloadDone then return end
 local want = hitungBeku()
 if want then
 bekukanKarakter()
 elseif BEKU.on then
 lebaskanKarakter()
-else
-local hrp = getRoot(myChar())
-if hrp and hrp.Anchored then
-hrp.AssemblyLinearVelocity = Vector3.zero
-hrp.Anchored = false
 end
-end
+
 if UI.gerakBtn then
-UI.gerakBtn.Text = BEKU.on and "P · GERAK ⇄ BEKU · KARAKTER: BEKU" or "P · GERAK ⇄ BEKU · KARAKTER: GERAK"
+UI.gerakBtn.Text = BEKU.on and "P · GERAK ⇄ LEPAS KENDALI · KARAKTER: LEPAS KENDALI" or "P · GERAK ⇄ LEPAS KENDALI · KARAKTER: GERAK"
 end
 end
+
 function toggleGerak()
 S.gerakMode = (BEKU.on or hitungBeku()) and "GERAK" or "BEKU"
 setAnchorState()
@@ -1297,68 +1182,50 @@ end
 return myChar()
 end
 function toggleLock()
-if not S.master then
-return
-end
+if not S.master then return end
 if S.locked then
 S.locked = false
 S.lockPlayer = nil
 updateChip()
 refreshTargetList()
-if UI.updateLockBtn then
-UI.updateLockBtn()
-end
+if UI.updateLockBtn then UI.updateLockBtn() end
 return
 end
 local best, bd = findNearestPlayer()
-if not best then
-return
-end
+if not best then return end
 S.locked = true
 S.lockMode = "TERDEKAT"
 S.lockPlayer = best
 S.selected = best
 updateChip()
 refreshTargetList()
-if UI.updateLockBtn then
-UI.updateLockBtn()
-end
+if UI.updateLockBtn then UI.updateLockBtn() end
 end
 function lockAutoToggle()
-if not S.master then
-return
-end
+if not S.master then return end
 if S.locked and S.lockMode == "AUTO" then
 S.locked = false
 S.lockPlayer = nil
 updateChip()
 refreshTargetList()
-if UI.updateLockBtn then
-UI.updateLockBtn()
-end
+if UI.updateLockBtn then UI.updateLockBtn() end
 return
 end
 local best = findNearestPlayer()
-if not best then
-return
-end
+if not best then return end
 S.locked = true
 S.lockMode = "AUTO"
 S.lockPlayer = best
 S.selected = best
 updateChip()
 refreshTargetList()
-if UI.updateLockBtn then
-UI.updateLockBtn()
-end
+if UI.updateLockBtn then UI.updateLockBtn() end
 end
 function lockPick(pl)
 if not pl or (pl == LP and S.locked and S.lockPlayer == LP) then
 S.locked = false
 S.lockPlayer = nil
-if S.selected == LP then
-S.selected = nil
-end
+if S.selected == LP then S.selected = nil end
 elseif pl == LP then
 S.locked = true
 S.lockMode = "SENDIRI"
@@ -1372,9 +1239,7 @@ S.selected = pl
 end
 updateChip()
 refreshTargetList()
-if UI.updateLockBtn then
-UI.updateLockBtn()
-end
+if UI.updateLockBtn then UI.updateLockBtn() end
 end
 function updateLockBtn()
 if UI.lockBtn then
@@ -1392,29 +1257,21 @@ local nm = (on and S.lockPlayer) and S.lockPlayer.Name or ""
 UI.autoBtn.Text = on and ("AUTO LOCK · ON → " .. nm) or "AUTO LOCK · OFF"
 UI.autoBtn.TextColor3 = on and CFG.Neon1 or CFG.TXT
 local st = UI.autoBtn:FindFirstChildOfClass("UIStroke")
-if st then
-st.Transparency = on and 0.1 or 0.55
-end
+if st then st.Transparency = on and 0.1 or 0.55 end
 end
 if UI.selfLockBtn then
 local on = S.locked and S.lockPlayer == LP
 UI.selfLockBtn.Text = on and "◉ LOCK KARAKTER SENDIRI · ON" or "◉ LOCK KARAKTER SENDIRI"
 UI.selfLockBtn.TextColor3 = on and CFG.Neon1 or CFG.TXT
 local st2 = UI.selfLockBtn:FindFirstChildOfClass("UIStroke")
-if st2 then
-st2.Transparency = on and 0.1 or 0.55
-end
+if st2 then st2.Transparency = on and 0.1 or 0.55 end
 end
 end
 UI.updateLockBtn = updateLockBtn
 function refreshTargetList()
-if not UI.tList then
-return
-end
+if not UI.tList then return end
 for _, ch in ipairs(UI.tList:GetChildren()) do
-if ch:IsA("TextButton") then
-ch:Destroy()
-end
+if ch:IsA("TextButton") then ch:Destroy() end
 end
 local myRoot = getRoot(myChar())
 local origin = myRoot and myRoot.Position or workspace.CurrentCamera.CFrame.Position
@@ -1425,27 +1282,17 @@ local d = r and math.floor((r.Position - origin).Magnitude) or -1
 table.insert(rows, { pl = pl, d = d })
 end
 table.sort(rows, function(a, b)
-if a.pl == LP then
-return false
-end
-if b.pl == LP then
-return true
-end
-if a.d < 0 then
-return false
-end
-if b.d < 0 then
-return true
-end
+if a.pl == LP then return false end
+if b.pl == LP then return true end
+if a.d < 0 then return false end
+if b.d < 0 then return true end
 return a.d < b.d
 end)
 for i, row in ipairs(rows) do
 local isLock = (S.locked and S.lockPlayer == row.pl)
 local isSel = isLock or (S.selected == row.pl)
 local label = row.pl == LP and (row.pl.Name .. "  (kamu)") or row.pl.Name
-if isLock then
-label = "● " .. label
-end
+if isLock then label = "● " .. label end
 local distTxt = row.d >= 0 and (row.d .. "m") or "-"
 local b = new("TextButton", {
 Size = UDim2.new(1, 0, 0, 26),
@@ -1492,14 +1339,10 @@ end
 end
 -- ═══════════════ TELEPORT (C) ═══════════════
 function doTeleport()
-if not S.master then
-return
-end
+if not S.master then return end
 local char = myChar()
 local hum, hrp = getHum(char), getRoot(char)
-if not (hum and hrp) then
-return
-end
+if not (hum and hrp) then return end
 local cam = workspace.CurrentCamera
 local d = math.clamp(CFG.TeleDist, 0, 30)
 local pos = (cam.CFrame * CFrame.new(0, 0, d)).Position
@@ -1507,9 +1350,7 @@ local params = RaycastParams.new()
 params.FilterType = Enum.RaycastFilterType.Exclude
 local exclude = {}
 for _, pl in ipairs(Players:GetPlayers()) do
-if pl.Character then
-table.insert(exclude, pl.Character)
-end
+if pl.Character then table.insert(exclude, pl.Character) end
 end
 params.FilterDescendantsInstances = exclude
 local ray = workspace:Raycast(pos + Vector3.new(0, 40, 0), Vector3.new(0, -240, 0), params)
@@ -1529,7 +1370,6 @@ local look = cam.CFrame.LookVector
 local yaw = math.deg(math.atan2(-look.X, -look.Z))
 flash()
 char:PivotTo(CFrame.new(pos.X, y, pos.Z) * CFrame.fromOrientation(0, math.rad(yaw), 0))
-hrp.Anchored = true
 task.delay(0.15, function()
 setAnchorState()
 end)
@@ -1573,9 +1413,7 @@ Lighting.OutdoorAmbient = ambientTarget
 end)
 end
 function matikanCahaya(silent)
-if not S.lightOn then
-return
-end
+if not S.lightOn then return end
 S.lightOn = false
 if S.lightConn then
 task.cancel(S.lightConn)
@@ -1614,9 +1452,7 @@ FogEnd = Lighting.FogEnd,
 if Lighting.FogEnd < 5000 then
 Lighting.FogEnd = CFG.FogBuka
 end
-if S.lightConn then
-task.cancel(S.lightConn)
-end
+if S.lightConn then task.cancel(S.lightConn) end
 S.lightConn = task.spawn(function()
 while S.lightOn and not unloadDone do
 langkahCahaya()
@@ -1634,13 +1470,9 @@ updateChip()
 end
 -- ═══════════════ KE KARAKTER UTAMA ═══════════════
 function goToSelf()
-if S.mode ~= "FREE" and S.mode ~= "PRO" then
-return
-end
+if S.mode ~= "FREE" and S.mode ~= "PRO" then return end
 local root = getRoot(myChar())
-if not root then
-return
-end
+if not root then return end
 local head = root.Position + Vector3.new(0, 1.5, 0)
 if S.mode == "FREE" then
 local look = CFrame.fromOrientation(S.pitch, S.yaw, 0).LookVector
@@ -1680,9 +1512,7 @@ end
 -- ═══════════════ RESET SCRIPT ═══════════════
 function resetScript()
 S.gerakMode = nil
-if S.mode ~= "NONE" then
-setMode("NONE")
-end
+if S.mode ~= "NONE" then setMode("NONE") end
 setAnchorState()
 matikanCahaya(true)
 S.locked = false
@@ -1692,61 +1522,29 @@ S.cine.manualShots = {}
 CFG.Speed = 45
 CFG.FOV = 70
 CFG.TeleDist = 7
-if UI.speedSlider then
-UI.speedSlider.Set(45)
-end
-if UI.fovSlider then
-UI.fovSlider.Set(70)
-end
-if UI.teleSlider then
-UI.teleSlider.Set(7)
-end
+if UI.speedSlider then UI.speedSlider.Set(45) end
+if UI.fovSlider then UI.fovSlider.Set(70) end
+if UI.teleSlider then UI.teleSlider.Set(7) end
 CFG.CineFovMin = 30
 CFG.CineFovMax = 70
-if UI.fovMinSlider then
-UI.fovMinSlider.Set(30)
-end
-if UI.fovMaxSlider then
-UI.fovMaxSlider.Set(70)
-end
+if UI.fovMinSlider then UI.fovMinSlider.Set(30) end
+if UI.fovMaxSlider then UI.fovMaxSlider.Set(70) end
 CFG.CineTempo = 5.5
-if UI.tempoSlider then
-UI.tempoSlider.Set(5.5)
-end
-if UI.tg.Stab then
-UI.tg.Stab.Set(true)
-end
-if UI.tg.Letterbox then
-UI.tg.Letterbox.Set(true)
-end
-if UI.tg.AntiClip then
-UI.tg.AntiClip.Set(true)
-end
-if UI.tg.LensPool then
-UI.tg.LensPool.Set(true)
-end
-if UI.tg.FarShots then
-UI.tg.FarShots.Set(true)
-end
-if UI.tg.BlurFoto then
-UI.tg.BlurFoto.Set(false)
-end
+if UI.tempoSlider then UI.tempoSlider.Set(5.5) end
+if UI.tg.Stab then UI.tg.Stab.Set(true) end
+if UI.tg.Letterbox then UI.tg.Letterbox.Set(true) end
+if UI.tg.AntiClip then UI.tg.AntiClip.Set(true) end
+if UI.tg.LensPool then UI.tg.LensPool.Set(true) end
+if UI.tg.FarShots then UI.tg.FarShots.Set(true) end
+if UI.tg.BlurFoto then UI.tg.BlurFoto.Set(false) end
 S.foto.focus = 14
 S.foto.blur = 65
-if UI.fokusSlider then
-UI.fokusSlider.Set(14)
-end
-if UI.blurSlider then
-UI.blurSlider.Set(65)
-end
+if UI.fokusSlider then UI.fokusSlider.Set(14) end
+if UI.blurSlider then UI.blurSlider.Set(65) end
 updateChip()
 refreshTargetList()
-if UI.updateLockBtn then
-UI.updateLockBtn()
-end
-if refreshShotList then
-refreshShotList()
-end
+if UI.updateLockBtn then UI.updateLockBtn() end
+if refreshShotList then refreshShotList() end
 flash()
 end
 -- ═══════════════ BLUR DOF ═══════════════
@@ -1755,12 +1553,8 @@ if S.foto.dof then
 DOF.Enabled = true
 local want = S.foto.focus
 local r = getRoot(getSubjectChar())
-if r then
-want = (Camera.CFrame.Position - r.Position).Magnitude
-end
-if not S.fotoFocus then
-S.fotoFocus = want
-end
+if r then want = (Camera.CFrame.Position - r.Position).Magnitude end
+if not S.fotoFocus then S.fotoFocus = want end
 S.fotoFocus = S.fotoFocus + (want - S.fotoFocus) * (1 - math.exp(-(dt or 0.016) * 10))
 DOF.FocusDistance = S.fotoFocus
 DOF.InFocusRadius = 6 + S.foto.blur * 0.06
@@ -1784,14 +1578,10 @@ camRay.IgnoreWater = true
 local CLIP_SAFE = 0.4
 local lastFreePos = nil
 function refreshCamFilter()
-if unloadDone then
-return
-end
+if unloadDone then return end
 local list = { workspace.CurrentCamera }
 for _, pl in ipairs(Players:GetPlayers()) do
-if pl.Character then
-table.insert(list, pl.Character)
-end
+if pl.Character then table.insert(list, pl.Character) end
 end
 local myc = myChar()
 if myc then
@@ -1800,9 +1590,7 @@ local hum = myc:FindFirstChildOfClass("Humanoid")
 local seat = hum and hum.SeatPart or nil
 if seat then
 local veh = seat:FindFirstAncestorOfClass("Model")
-if veh then
-table.insert(list, veh)
-end
+if veh then table.insert(list, veh) end
 end
 end
 local subj = getSubjectChar()
@@ -1812,9 +1600,7 @@ local shum = subj:FindFirstChildOfClass("Humanoid")
 local sseat = shum and shum.SeatPart or nil
 if sseat then
 local sveh = sseat:FindFirstAncestorOfClass("Model")
-if sveh then
-table.insert(list, sveh)
-end
+if sveh then table.insert(list, sveh) end
 end
 end
 camRay.FilterDescendantsInstances = list
@@ -1822,9 +1608,7 @@ end
 local siTembusCache = setmetatable({}, { __mode = "k" })
 local function siTembus(inst)
 local c = siTembusCache[inst]
-if c ~= nil then
-return c
-end
+if c ~= nil then return c end
 local ok = false
 if inst and inst:IsA("BasePart") then
 local m = inst:FindFirstAncestorOfClass("Model")
@@ -1853,18 +1637,14 @@ local function castClear(from, dirUnit, dist)
 local origin, remaining = from, dist
 for _ = 1, 12 do
 local hit = workspace:Raycast(origin, dirUnit * remaining, camRay)
-if not hit then
-return nil
-end
+if not hit then return nil end
 if hit.Instance.CanCollide and not (CFG.CRPass and siTembus(hit.Instance)) then
 return hit
 end
 local step = (hit.Position - origin).Magnitude + 0.15
 origin = hit.Position + dirUnit * 0.15
 remaining = remaining - step
-if remaining <= 0.2 then
-return nil
-end
+if remaining <= 0.2 then return nil end
 end
 return nil
 end
@@ -1872,25 +1652,17 @@ local function castGround(from, dirUnit, dist)
 local origin, remaining = from, dist
 for _ = 1, 4 do
 local hit = workspace:Raycast(origin, dirUnit * remaining, camRay)
-if not hit then
-return nil
-end
-if hit.Instance.CanCollide and hit.Normal.Y > 0.55 then
-return hit
-end
+if not hit then return nil end
+if hit.Instance.CanCollide and hit.Normal.Y > 0.55 then return hit end
 local step = (hit.Position - origin).Magnitude + 0.15
 origin = hit.Position + dirUnit * 0.15
 remaining = remaining - step
-if remaining <= 0.2 then
-return nil
-end
+if remaining <= 0.2 then return nil end
 end
 return nil
 end
 local function groundOnly(prevPos, pos)
-if not CFG.AntiClip or not prevPos then
-return pos
-end
+if not CFG.AntiClip or not prevPos then return pos end
 local v = pos - prevPos
 local d = v.Magnitude
 if d > 0.05 then
@@ -1903,9 +1675,7 @@ end
 return pos
 end
 local function floorGuard(pos)
-if not CFG.AntiClip then
-return pos
-end
+if not CFG.AntiClip then return pos end
 local clr = 0.3
 local hit = workspace:Raycast(pos, Vector3.new(0, -2.5, 0), camRay)
 if hit and hit.Instance.CanCollide and hit.Normal.Y > 0.55 then
@@ -1921,9 +1691,7 @@ end
 return pos
 end
 local function safeOrbit(focusPos, wantPos)
-if not CFG.AntiClip then
-return wantPos
-end
+if not CFG.AntiClip then return wantPos end
 local v = wantPos - focusPos
 local d = v.Magnitude
 if d > 1 then
@@ -1943,9 +1711,7 @@ end
 -- ═══════════════ FREE CAM ═══════════════
 local function lerpAngle(a, b, t)
 local diff = (b - a) % (2 * math.pi)
-if diff > math.pi then
-diff = diff - 2 * math.pi
-end
+if diff > math.pi then diff = diff - 2 * math.pi end
 return a + diff * t
 end
 local function freeUpdate(dt)
@@ -1965,35 +1731,19 @@ S.pitch = f.fromPitch + (f.toPitch - f.fromPitch) * k
 S.yawT = S.yaw
 S.pitchT = S.pitch
 Camera.CFrame = CFrame.fromOrientation(S.pitch, S.yaw, 0) + S.freePos
-if f.t >= f.dur then
-S.fly = nil
-end
+if f.t >= f.dur then S.fly = nil end
 else
 local cf = CFrame.fromOrientation(S.pitch, S.yaw, 0)
 local f, r = cf.LookVector, cf.RightVector
 local move = Vector3.new(0, 0, 0)
-if keys[Enum.KeyCode.W] then
-move = move + f
-end
-if keys[Enum.KeyCode.S] then
-move = move - f
-end
-if keys[Enum.KeyCode.A] then
-move = move - r
-end
-if keys[Enum.KeyCode.D] then
-move = move + r
-end
-if keys[Enum.KeyCode.E] then
-move = move + Vector3.new(0, 1, 0)
-end
-if keys[Enum.KeyCode.Q] then
-move = move - Vector3.new(0, 1, 0)
-end
+if keys[Enum.KeyCode.W] then move = move + f end
+if keys[Enum.KeyCode.S] then move = move - f end
+if keys[Enum.KeyCode.A] then move = move - r end
+if keys[Enum.KeyCode.D] then move = move + r end
+if keys[Enum.KeyCode.E] then move = move + Vector3.new(0, 1, 0) end
+if keys[Enum.KeyCode.Q] then move = move - Vector3.new(0, 1, 0) end
 local spd = CFG.Speed * (S.turbo and CFG.TurboMult or 1) * (S.ctrlDown and CFG.SlowMult or 1)
-if move.Magnitude > 0.001 then
-move = move.Unit * spd
-end
+if move.Magnitude > 0.001 then move = move.Unit * spd end
 S.freeVel = S.freeVel:Lerp(move, alpha)
 S.freePos = floorGuard(freeClip(S.freePos + S.freeVel * dt))
 if S.locked and S.lockPlayer then
@@ -2002,9 +1752,7 @@ local h = c and getHum(c) or nil
 local tr = (c and c.Parent and h and h.Health > 0) and c:FindFirstChild("HumanoidRootPart") or nil
 if tr then
 local tp = tr.Position + Vector3.new(0, 1.5, 0)
-if not S.aimY then
-S.aimY = tp.Y
-end
+if not S.aimY then S.aimY = tp.Y end
 local ay = 1 - math.exp(-dt / CFG.AimYDamp)
 S.aimY = S.aimY + (tp.Y - S.aimY) * ay
 local dir = Vector3.new(tp.X, S.aimY, tp.Z) - S.freePos
@@ -2027,9 +1775,7 @@ end
 local function proUpdate(dt)
 local char = getSubjectChar()
 local root = getRoot(char)
-if not root then
-return
-end
+if not root then return end
 local la = 1 - math.exp(-dt / CFG.ProLook)
 S.proYaw = lerpAngle(S.proYaw, S.proYawT, la)
 S.proPitch = S.proPitch + (S.proPitchT - S.proPitch) * la
@@ -2044,9 +1790,7 @@ local k0 = math.clamp(g.t / g.dur, 0, 1)
 local k = k0 * k0 * (3 - 2 * k0)
 S.proPivot = g.fromPivot:Lerp(targetPivot, k)
 S.proPivotVel = Vector3.new(0, 0, 0)
-if g.t >= g.dur then
-S.proGlide = nil
-end
+if g.t >= g.dur then S.proGlide = nil end
 else
 if not S.proPivot then
 S.proPivot = targetPivot
@@ -2071,9 +1815,7 @@ end
 local aH = 1 - math.exp(-dt / CFG.ProVelH)
 local aV = 1 - math.exp(-dt / CFG.ProVelV)
 local vy = math.clamp(vel.Y, -CFG.ProVelYMax, CFG.ProVelYMax)
-if stabY then
-vy = 0
-end
+if stabY then vy = 0 end
 local pv = S.proPivotVel or Vector3.new(0, 0, 0)
 S.proPivotVel = Vector3.new(
 pv.X + (vel.X - pv.X) * aH,
@@ -3285,7 +3027,6 @@ table.insert(list, name)
 added = true
 end
 if refreshShotList then refreshShotList() end
--- ⚡ v1.0.15.1: LANGSUNG MAIN — kalau shot baru ditambahkan & CINE aktif, langsung cut ke shot itu
 if added and S.mode == "CINE" then
 startShot()
 end
@@ -3306,7 +3047,6 @@ end
 end
 local auto = isAutoMode()
 local count = #S.cine.manualShots
--- tombol AUTO
 local autoBtn = new("TextButton", {
 Size = UDim2.new(1, 0, 0, 32),
 BackgroundColor3 = auto and CFG.Neon1 or CFG.BGCard,
@@ -3325,7 +3065,6 @@ stroke(autoBtn, auto and CFG.Neon1 or CFG.Neon2, 1, 0.4)
 autoBtn.MouseButton1Click:Connect(function()
 clearManualShots()
 end)
--- tombol CLEAR (hanya muncul kalau ada pilihan)
 if not auto then
 local clearBtn = new("TextButton", {
 Size = UDim2.new(1, 0, 0, 26),
@@ -3346,7 +3085,6 @@ clearBtn.MouseButton1Click:Connect(function()
 clearManualShots()
 end)
 end
--- kelompokkan shot per kategori
 local grouped = {}
 for _, cat in ipairs(SHOT_CATEGORIES) do
 grouped[cat.id] = {}
@@ -3408,20 +3146,17 @@ end
 function startShot()
 local ctx = cineCtx()
 local name
--- v1.0.15.1: kalau user pilih shot (bisa >1), random dari list itu saja
 if #S.cine.manualShots > 0 then
 local list = S.cine.manualShots
--- hindari pengulangan berturut-turut kalau bisa
 local pool = {}
 for _, n in ipairs(list) do
 if SHOTS[n] and n ~= S.cine.lastName then
 table.insert(pool, n)
 end
 end
-if #pool == 0 then pool = list end -- fallback kalau cuma 1 shot
+if #pool == 0 then pool = list end
 name = pool[math.random(1, #pool)]
 else
--- AUTO: random cerdas sesuai kondisi
 local crowd = crowdCount(ctx.root)
 local cat = (crowd >= 2) and "WIDE" or "CLOSE"
 name = pickShot(cat)
@@ -3437,7 +3172,6 @@ S.cine.crowd = crowdCount(ctx.root)
 local raw = math.min((ctx.distK or 1) * (1 + math.min(S.cine.crowd, 6) * 0.12), 2.1)
 S.cine.P = { crowd = S.cine.crowd, dm = 1 + (raw - 1) * (def.dmK or 1), wide = false }
 S.cine.lens = nil
--- v1.0.15.1: lens pool cuma aktif kalau AUTO
 if CFG.LensPool and #S.cine.manualShots == 0 then
 local roll = math.random() * 100
 local lens
@@ -3511,9 +3245,7 @@ S.cine.focusDist = (Camera.CFrame.Position - ctx.head).Magnitude
 end
 -- ═══════════════ SPACE (TAHAN) = TURBO ═══════════════
 local function bindSpace()
-if boundSpace then
-return
-end
+if boundSpace then return end
 boundSpace = true
 ContextActionService:BindAction("CAMERA_TURBO", function(_, state)
 if state == Enum.UserInputState.Begin then
@@ -3532,9 +3264,7 @@ return Enum.ContextActionResult.Pass
 end, false, Enum.KeyCode.Space)
 end
 local function unbindSpace()
-if not boundSpace then
-return
-end
+if not boundSpace then return end
 boundSpace = false
 S.turbo = false
 pcall(function()
@@ -3553,21 +3283,13 @@ dur = math.max(CFG.ModeBlend, 0.05),
 end
 end
 function setMode(m)
-if m ~= "NONE" and not S.master then
-return
-end
-if m ~= "NONE" and S.mode == m then
-m = "NONE"
-end
-if m ~= "NONE" then
-S.lastMode = m
-end
+if m ~= "NONE" and not S.master then return end
+if m ~= "NONE" and S.mode == m then m = "NONE" end
+if m ~= "NONE" then S.lastMode = m end
 if S.mode == "NONE" and m ~= "NONE" then
 S.savedCam = { CFrame = workspace.CurrentCamera.CFrame }
 end
-if S.mode == "FREE" or S.mode == "PRO" then
-unbindSpace()
-end
+if S.mode == "FREE" or S.mode == "PRO" then unbindSpace() end
 S.mode = m
 lastFreePos = nil
 S.exitGlide = nil
@@ -3600,18 +3322,14 @@ Camera.CFrame = sc.CFrame
 task.defer(function()
 Camera.CameraType = Enum.CameraType.Custom
 local hum = getHum(myChar())
-if hum then
-Camera.CameraSubject = hum
-end
+if hum then Camera.CameraSubject = hum end
 Camera.FieldOfView = CFG.FOV
 end)
 end
 else
 Camera.CameraType = Enum.CameraType.Custom
 local hum = getHum(myChar())
-if hum then
-Camera.CameraSubject = hum
-end
+if hum then Camera.CameraSubject = hum end
 Camera.FieldOfView = CFG.FOV
 end
 elseif m == "FREE" then
@@ -3671,16 +3389,14 @@ function setMaster(on)
 S.master = on and true or false
 S.uiHidden = false
 if UI.sub then
-UI.sub.Text = S.master and "v1.0.15.1 · MASTER ON · 1/2/3 = MODE" or "v1.0.15.1 · CAPSLOCK OFF — keybind kamera terkunci"
+UI.sub.Text = S.master and "v1.0.15.3 · MASTER ON · 1/2/3 = MODE" or "v1.0.15.3 · CAPSLOCK OFF — keybind kamera terkunci"
 end
 if S.master then
 S.gerakMode = nil
 setAnchorState()
 applyUIVisibility()
 else
-if S.mode ~= "NONE" then
-setMode("NONE")
-end
+if S.mode ~= "NONE" then setMode("NONE") end
 if UI.tg.BlurFoto then
 UI.tg.BlurFoto.Set(false)
 else
@@ -3690,9 +3406,7 @@ if S.locked then
 S.locked = false
 S.lockPlayer = nil
 refreshTargetList()
-if UI.updateLockBtn then
-UI.updateLockBtn()
-end
+if UI.updateLockBtn then UI.updateLockBtn() end
 end
 S.rmb = false
 S.turbo = false
@@ -3716,9 +3430,7 @@ end)
 end
 return
 end
-if gp then
-return
-end
+if gp then return end
 local kc = input.KeyCode
 if input.UserInputType == Enum.UserInputType.Keyboard and kc then
 keys[kc] = true
@@ -3731,18 +3443,9 @@ if kc == Enum.KeyCode.CapsLock then
 setMaster(not S.master)
 return
 end
-if kc == Enum.KeyCode.T then
-toggleCahaya()
-return
-end
-if kc == Enum.KeyCode.G then
-togglePanel()
-return
-end
-if kc == Enum.KeyCode.P then
-toggleGerak()
-return
-end
+if kc == Enum.KeyCode.T then toggleCahaya() return end
+if kc == Enum.KeyCode.G then togglePanel() return end
+if kc == Enum.KeyCode.P then toggleGerak() return end
 if kc == Enum.KeyCode.K then
 local now = os.clock()
 if now - S.lastK < 2 then
@@ -3752,23 +3455,14 @@ S.lastK = now
 end
 return
 end
-if not S.master then
-return
-end
-if kc == Enum.KeyCode.One then
-setMode("FREE")
-elseif kc == Enum.KeyCode.Two then
-setMode("PRO")
-elseif kc == Enum.KeyCode.Three then
-setMode("CINE")
-elseif kc == Enum.KeyCode.F then
-toggleLock()
-elseif kc == Enum.KeyCode.C then
-doTeleport()
-elseif kc == Enum.KeyCode.H then
-toggleHideUI()
-elseif kc == Enum.KeyCode.LeftControl then
-S.ctrlDown = true
+if not S.master then return end
+if kc == Enum.KeyCode.One then setMode("FREE")
+elseif kc == Enum.KeyCode.Two then setMode("PRO")
+elseif kc == Enum.KeyCode.Three then setMode("CINE")
+elseif kc == Enum.KeyCode.F then toggleLock()
+elseif kc == Enum.KeyCode.C then doTeleport()
+elseif kc == Enum.KeyCode.H then toggleHideUI()
+elseif kc == Enum.KeyCode.LeftControl then S.ctrlDown = true
 end
 end))
 table.insert(CONNS, UserInputService.InputEnded:Connect(function(input)
@@ -3780,9 +3474,7 @@ end)
 end
 if input.KeyCode then
 keys[input.KeyCode] = nil
-if input.KeyCode == Enum.KeyCode.LeftControl then
-S.ctrlDown = false
-end
+if input.KeyCode == Enum.KeyCode.LeftControl then S.ctrlDown = false end
 end
 end))
 table.insert(CONNS, UserInputService.WindowFocusReleased:Connect(function()
@@ -3812,9 +3504,7 @@ elseif input.UserInputType == Enum.UserInputType.MouseWheel then
 local z = input.Position.Z
 if S.mode == "FREE" then
 CFG.FOV = math.clamp(CFG.FOV - z * 3, 30, 105)
-if UI.fovSlider then
-UI.fovSlider.Set(CFG.FOV)
-end
+if UI.fovSlider then UI.fovSlider.Set(CFG.FOV) end
 elseif S.mode == "PRO" then
 S.proDistT = math.clamp(S.proDistT - z * 2.5, 4, 80)
 end
@@ -3845,27 +3535,20 @@ S.lockPlayer = best
 S.selected = best
 updateChip()
 refreshTargetList()
-if UI.updateLockBtn then
-UI.updateLockBtn()
-end
+if UI.updateLockBtn then UI.updateLockBtn() end
 end
 else
 S.locked = false
 S.lockPlayer = nil
 updateChip()
 refreshTargetList()
-if UI.updateLockBtn then
-UI.updateLockBtn()
+if UI.updateLockBtn then UI.updateLockBtn() end
 end
 end
 end
-end
-if S.mode == "FREE" then
-freeUpdate(dt)
-elseif S.mode == "PRO" then
-proUpdate(dt)
-elseif S.mode == "CINE" then
-cineUpdate(dt)
+if S.mode == "FREE" then freeUpdate(dt)
+elseif S.mode == "PRO" then proUpdate(dt)
+elseif S.mode == "CINE" then cineUpdate(dt)
 end
 if S.trans then
 local tr = S.trans
@@ -3874,9 +3557,7 @@ local a = math.min(tr.t / tr.dur, 1)
 local e = a * a * (3 - 2 * a)
 Camera.CFrame = tr.from:Lerp(Camera.CFrame, e)
 Camera.FieldOfView = tr.fromFov + (Camera.FieldOfView - tr.fromFov) * e
-if a >= 1 then
-S.trans = nil
-end
+if a >= 1 then S.trans = nil end
 end
 if S.exitGlide then
 local g = S.exitGlide
@@ -3893,9 +3574,7 @@ if a >= 1 then
 S.exitGlide = nil
 Camera.CameraType = Enum.CameraType.Custom
 local humE = getHum(myChar())
-if humE then
-Camera.CameraSubject = humE
-end
+if humE then Camera.CameraSubject = humE end
 Camera.FieldOfView = CFG.FOV
 end
 end
@@ -3928,29 +3607,21 @@ S.locked = false
 S.lockPlayer = nil
 end
 updateChip()
-if UI.updateLockBtn then
-UI.updateLockBtn()
+if UI.updateLockBtn then UI.updateLockBtn() end
 end
-end
-if S.selected == pl then
-S.selected = nil
-end
+if S.selected == pl then S.selected = nil end
 refreshTargetList()
 end))
 local vpConnCam = workspace.CurrentCamera
 table.insert(CONNS, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
 Camera = workspace.CurrentCamera
-if Camera and Camera ~= vpConnCam then
-vpConnCam = Camera
-end
+if Camera and Camera ~= vpConnCam then vpConnCam = Camera end
 end))
 -- ═══════════════ UNLOAD ═══════════════
 function unloadAll()
 unloadDone = true
 for _, c in ipairs(CONNS) do
-pcall(function()
-c:Disconnect()
-end)
+pcall(function() c:Disconnect() end)
 end
 table.clear(CONNS)
 unbindSpace()
@@ -3973,15 +3644,11 @@ Lighting.ExposureCompensation = S.oLight.ExposureCompensation
 Lighting.FogEnd = S.oLight.FogEnd
 end
 end)
-pcall(function()
-DOF:Destroy()
-end)
+pcall(function() DOF:Destroy() end)
 pcall(function()
 Camera.CameraType = Enum.CameraType.Custom
 local hum = getHum(myChar())
-if hum then
-Camera.CameraSubject = hum
-end
+if hum then Camera.CameraSubject = hum end
 Camera.FieldOfView = 70
 UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 end)
@@ -4002,7 +3669,7 @@ gui:Destroy()
 end)
 _G.CAMERA_V101_UNLOAD = nil
 _G.SIIILAU_CAM_UNLOAD = nil
-print("[CAMERA v1.0.15.1] script dihapus — sampai jumpa!")
+print("[CAMERA v1.0.15.3] script dihapus — sampai jumpa!")
 end
 _G.CAMERA_V101_UNLOAD = unloadAll
 -- ═══════════════ INISIALISASI ═══════════════
@@ -4013,8 +3680,6 @@ refreshModeUI()
 applyLetterbox()
 applyUIVisibility()
 task.defer(function()
-if refreshShotList then
-refreshShotList()
-end
+if refreshShotList then refreshShotList() end
 end)
 dbg("3: SEMUA SIAP — tekan G untuk buka panel")
