@@ -1,10 +1,11 @@
 --========================================================
---  SILAU V1.0 — LOCAL ONLY
+--  SILAU V1.2 — LOCAL ONLY
 --  Tab: MOVEMENT & VISUAL • ANIMASI • EMOTE • TITIK • SYSTEM
+--  Baru V1.2: TITIK bisa Ekspor/Impor kode → kebawa saat pindah device
 --  Keybind: G=GUI  Q=Speed  J=Jump  C=Shift  LShift=Tengah
 --           F=Moon  R=Hide  Z=HideAtas  T=Cahaya  X=Dinding  K×2=Rejoin
 --========================================================
-print("[SILAU V1.0] load mulai...")
+print("[SILAU V1.2] load mulai...")
 
 -- [0] DIAGNOSTIK -----------------------------------------
 local diagSet, diagHapus
@@ -57,7 +58,7 @@ do
   end
 end
 
-local VERSI = "V1.1"
+local VERSI = "V1.2"
 local __SILAU_LOAD_OK__ = xpcall(function()
 
 -- [1] PENGAMAN DASAR ------------------------------------
@@ -480,6 +481,181 @@ local function titikPosisiKarakter()
   if hit then return hit.Position, hit.Normal end
   return hrp.Position, Vector3.new(0, 1, 0)
 end
+
+-- [6b] TITIK TRANSFER ANTAR DEVICE -----------------------
+-- Titik disimpan ke file lokal (writefile) yang sifatnya PER-DEVICE.
+-- Supaya bisa kebawa saat pindah HP/PC, titik dijadiin satu KODE (base64
+-- dari JSON) lewat Ekspor → copy/simpan ke notes/Discord → di device lain
+-- paste kodenya ke kotak → Impor.
+local TITIK_KODE_PREFIX = "SILAU-T1:"
+local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local B64REV = {}
+for i = 1, #B64 do B64REV[B64:sub(i, i)] = i - 1 end
+
+local function b64enc(src)
+  src = tostring(src or "")
+  local out, len = {}, #src
+  local i = 1
+  while i + 2 <= len do
+    local a, b, c = src:byte(i, i + 2)
+    local n = a * 65536 + b * 256 + c
+    out[#out + 1] = B64:sub(math.floor(n / 262144) % 64 + 1, math.floor(n / 262144) % 64 + 1)
+    out[#out + 1] = B64:sub(math.floor(n / 4096) % 64 + 1, math.floor(n / 4096) % 64 + 1)
+    out[#out + 1] = B64:sub(math.floor(n / 64) % 64 + 1, math.floor(n / 64) % 64 + 1)
+    out[#out + 1] = B64:sub(n % 64 + 1, n % 64 + 1)
+    i = i + 3
+  end
+  local rem = len - i + 1
+  if rem == 1 then
+    local a = src:byte(i)
+    local n = a * 65536
+    out[#out + 1] = B64:sub(math.floor(n / 262144) % 64 + 1, math.floor(n / 262144) % 64 + 1)
+    out[#out + 1] = B64:sub(math.floor(n / 4096) % 64 + 1, math.floor(n / 4096) % 64 + 1)
+    out[#out + 1] = "="
+    out[#out + 1] = "="
+  elseif rem == 2 then
+    local a, b = src:byte(i, i + 1)
+    local n = a * 65536 + b * 256
+    out[#out + 1] = B64:sub(math.floor(n / 262144) % 64 + 1, math.floor(n / 262144) % 64 + 1)
+    out[#out + 1] = B64:sub(math.floor(n / 4096) % 64 + 1, math.floor(n / 4096) % 64 + 1)
+    out[#out + 1] = B64:sub(math.floor(n / 64) % 64 + 1, math.floor(n / 64) % 64 + 1)
+    out[#out + 1] = "="
+  end
+  return table.concat(out)
+end
+
+local function b64dec(src)
+  src = tostring(src or "")
+  src = src:gsub("%s", ""):gsub("[^A-Za-z0-9%+%/%=]", "")
+  local out, len = {}, #src
+  if len < 4 then return nil end
+  local i = 1
+  while i + 3 <= len do
+    local c1 = B64REV[src:sub(i, i)]
+    local c2 = B64REV[src:sub(i + 1, i + 1)]
+    if c1 == nil or c2 == nil then return nil end
+    local c3ch = src:sub(i + 2, i + 2)
+    local c4ch = src:sub(i + 3, i + 3)
+    local c3 = B64REV[c3ch]
+    local c4 = B64REV[c4ch]
+    local n = c1 * 262144 + c2 * 4096 + (c3 or 0) * 64 + (c4 or 0)
+    out[#out + 1] = string.char(math.floor(n / 65536) % 256)
+    if c3ch ~= "=" then
+      out[#out + 1] = string.char(math.floor(n / 256) % 256)
+      if c4ch ~= "=" then
+        out[#out + 1] = string.char(n % 256)
+      end
+    end
+    i = i + 4
+  end
+  return table.concat(out)
+end
+
+-- Hasilkan kode transfer dari titik yang tersimpan.
+-- return: kode (string), jumlah (number)
+local function titikEksporKode()
+  local data = {}
+  for _, p in ipairs(TITIK.poin) do
+    local normal = p.normal or Vector3.new(0, 1, 0)
+    data[#data + 1] = {
+      id = p.id, name = p.name,
+      x = p.pos.X, y = p.pos.Y, z = p.pos.Z,
+      nx = normal.X, ny = normal.Y, nz = normal.Z,
+    }
+  end
+  local json = HttpService:JSONEncode(data)
+  return TITIK_KODE_PREFIX .. b64enc(json), #data
+end
+
+-- Terjemahkan kode transfer jadi titik.
+-- Titik dengan id yang sudah ada → DIPERBARUI (posisi & normal).
+-- Titik dengan nama yang sudah dipakai → diberi suffix " (2)", " (3)", dst.
+-- return: ditambah (number), diperbarui (number), err (string|nil)
+local function titikImporKode(kode)
+  kode = tostring(kode or "")
+  local awal = kode:find(TITIK_KODE_PREFIX, 1, true)
+  if not awal then
+    return 0, 0, "Kode tidak dikenali (tidak ada penanda SILAU)."
+  end
+  local b64 = kode:sub(awal + #TITIK_KODE_PREFIX)
+  local capture = b64:match("([A-Za-z0-9%+%/%=]+)")
+  if not capture or #capture < 8 then
+    return 0, 0, "Isi kode kosong / rusak."
+  end
+  local json = b64dec(capture)
+  if not json then
+    return 0, 0, "Gagal decode kode (base64 rusak)."
+  end
+  local ok, data = pcall(function() return HttpService:JSONDecode(json) end)
+  if not ok or type(data) ~= "table" then
+    return 0, 0, "Gagal decode kode (JSON rusak)."
+  end
+
+  local sudahAda = {}
+  for _, p in ipairs(TITIK.poin) do sudahAda[tostring(p.id)] = p end
+
+  local ditambah, diperbarui = 0, 0
+  for _, v in ipairs(data) do
+    local x, y, z = tonumber(v.x), tonumber(v.y), tonumber(v.z)
+    if x and y and z then
+      local idLama = tostring(v.id or "")
+      local normal = Vector3.new(tonumber(v.nx) or 0, tonumber(v.ny) or 1, tonumber(v.nz) or 0)
+      if idLama ~= "" and sudahAda[idLama] then
+        -- titik dengan id sama → perbarui posisi & normal (jangan timpuk nama)
+        local p = sudahAda[idLama]
+        p.pos = Vector3.new(x, y, z)
+        p.normal = normal
+        diperbarui = diperbarui + 1
+      else
+        local nama = tostring(v.name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        local defaultName = nama == ""
+        if defaultName then
+          nama = namaDefaultBerikutnya()
+        elseif namaTitikDipakai(nama) then
+          local base, n = nama, 1
+          while namaTitikDipakai(nama) do n = n + 1; nama = base .. " (" .. n .. ")" end
+          defaultName = namaDefaultTitik(nama)
+        end
+        local idBaru = (idLama ~= "") and idLama
+          or (tostring(os.time()) .. "-" .. tostring(math.random(100000, 999999)))
+        local pBaru = {
+          id = idBaru, name = nama, defaultName = defaultName,
+          pos = Vector3.new(x, y, z),
+          normal = normal,
+        }
+        TITIK.poin[#TITIK.poin + 1] = pBaru
+        sudahAda[idBaru] = pBaru
+        ditambah = ditambah + 1
+      end
+    end
+  end
+
+  if ditambah > 0 or diperbarui > 0 then
+    titikSimpan()
+    titikRefreshDot()
+    titikRenderUI()
+  end
+  return ditambah, diperbarui, nil
+end
+
+-- Akses cadangan dari CONSOLE executor (tanpa klik UI):
+--   _G.SILAU_TitikKode()            -> cetak & return kode transfer
+--   _G.SILAU_TitikImpor("KODE...")  -> impor titik dari kode
+-- Kalau _G.SILAU_TitikKode == nil  -> kamu belum jalanin V1.2 (masih V1.1).
+pcall(function()
+  _G.SILAU_TitikKode = function()
+    local kode, n = titikEksporKode()
+    print("[SILAU] KODE TITIK (" .. n .. " titik):")
+    print(tostring(kode))
+    return kode, n
+  end
+  _G.SILAU_TitikImpor = function(kode)
+    local a, b, err = titikImporKode(kode)
+    if err then warn("[SILAU] IMPOR GAGAL: " .. tostring(err))
+    else print(("[SILAU] IMPOR OK: +%d baru, %d diperbarui"):format(a, b)) end
+    return a, b, err
+  end
+end)
 
 titikMuat()
 titikSimpan()
@@ -2105,6 +2281,78 @@ local function buildUI()
     titikRenderUI()
     if type(toast)=="function" then toast("✓ Tiang diurutkan",Warna.Hijau) end
   end).LayoutOrder=titikNext()
+
+  -- ===== PINDAH DEVICE: EKSPOR / IMPOR TITIK =====
+  local ketTransfer = buat("TextLabel", {
+    BackgroundColor3 = Warna.AbuItem,
+    Size = UDim2.new(1, 0, 0, 0),
+    AutomaticSize = Enum.AutomaticSize.Y,
+    FontFace = fnt("reg"), TextSize = 10, TextColor3 = Warna.AbuTeks,
+    TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "PINDAH DEVICE: Ekpor titik jadi KODE → copy/simpan ke notes/Discord → di device lain, paste kodenya ke kotak → Impor.",
+    LayoutOrder = titikNext(),
+  }, scrollTitik)
+  buat("UICorner", {CornerRadius = UDim.new(0, 8)}, ketTransfer)
+  buat("UIPadding", {PaddingLeft = UDim.new(0, 8), PaddingTop = UDim.new(0, 5), PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 5)}, ketTransfer)
+
+  local kodeBox = buat("TextBox", {
+    BackgroundColor3 = Warna.Hitam2,
+    Size = UDim2.new(1, 0, 0, 90),
+    FontFace = fnt("reg"), TextSize = 10, TextColor3 = Warna.Putih,
+    PlaceholderText = "Ekpor: kode muncul di sini. Impor: paste kode dari device lain di sini.",
+    PlaceholderColor3 = Warna.AbuGelap,
+    Text = "", ClearTextOnFocus = false,
+    MultiLine = true, TextWrapped = true,
+    LayoutOrder = titikNext(),
+  }, scrollTitik)
+  buat("UICorner", {CornerRadius = UDim.new(0, 8)}, kodeBox)
+  buat("UIPadding", {PaddingLeft = UDim.new(0, 6), PaddingTop = UDim.new(0, 4), PaddingRight = UDim.new(0, 6), PaddingBottom = UDim.new(0, 4)}, kodeBox)
+
+  buatActionRow(scrollTitik, "📤 EKPOR TITIK → KODE", Warna.Biru, function()
+    if #TITIK.poin == 0 then
+      titikStatusUI("Belum ada titik untuk diekspor")
+      pcall(function() if type(toast) == "function" then toast("Belum ada titik untuk diekspor", Warna.Kuning) end end)
+      return
+    end
+    local kode, n = titikEksporKode()
+    kodeBox.Text = kode
+    titikStatusUI("Kode dibuat: " .. n .. " titik • copy lalu bawa ke device lain")
+    pcall(function() if type(toast) == "function" then toast("✓ Kode " .. n .. " titik dibuat — copy lalu pindah device", Warna.Hijau) end end)
+  end).LayoutOrder = titikNext()
+
+  buatActionRow(scrollTitik, "📋 COPY KODE KE CLIPBOARD", Warna.Ungu2, function()
+    local teks = kodeBox.Text or ""
+    if teks == "" then
+      pcall(function() if type(toast) == "function" then toast("Kotak kode kosong — klik Ekpor dulu", Warna.Kuning) end end)
+      return
+    end
+    local ok = false
+    pcall(function()
+      if type(setclipboard) == "function" then setclipboard(teks); ok = true
+      elseif type(toclipboard) == "function" then toclipboard(teks); ok = true end
+    end)
+    if ok then
+      pcall(function() if type(toast) == "function" then toast("✓ Kode tersalin ke clipboard", Warna.Hijau) end end)
+    else
+      pcall(function() if type(toast) == "function" then toast("Clipboard tidak didukung — pilih manual di kotak kode", Warna.Kuning) end end)
+    end
+  end).LayoutOrder = titikNext()
+
+  buatActionRow(scrollTitik, "📥 IMPOR TITIK DARI KODE", Warna.Hijau2, function()
+    local teks = kodeBox.Text or ""
+    if teks == "" then
+      pcall(function() if type(toast) == "function" then toast("Paste kode dulu di kotak atas", Warna.Kuning) end end)
+      return
+    end
+    local ditambah, diperbarui, err = titikImporKode(teks)
+    if err then
+      titikStatusUI("Impor gagal: " .. err)
+      pcall(function() if type(toast) == "function" then toast("✗ " .. err, Warna.Merah) end end)
+    else
+      titikStatusUI("Impor: +" .. ditambah .. " baru • " .. diperbarui .. " diperbarui")
+      pcall(function() if type(toast) == "function" then toast("✓ Impor: +" .. ditambah .. " baru • " .. diperbarui .. " diperbarui", Warna.Hijau) end end)
+    end
+  end).LayoutOrder = titikNext()
 
   local titikList = buat("Frame", {
     BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
