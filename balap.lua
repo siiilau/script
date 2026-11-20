@@ -1,43 +1,18 @@
 --========================================================
---  BALAP V1.5 — TEMA: SILAU NEON (ungu/biru LED) — LOCAL ONLY
+--  SILAU V1.0 — LOCAL ONLY
 --  Tab: MOVEMENT & VISUAL • ANIMASI • EMOTE • TITIK • SYSTEM
---
---  Keybind:
---    G = buka/tutup GUI      Q = Speed          J = JumpPower
---    C = Shiftlock Mobile    LShift/RShift = Shiftlock Tengah
---    F = Moonwalk            R = Hide           Z = Hide Atas
---    T = Cahaya Auto         X = Dinding Batas  K = Rejoin (tekan 2x)
---
---  Riwayat:
---    v1.1 benang/garis dihapus
---    v1.2 emote/paket bisa dihapus
---    v1.3 Cloud Titik, Label Jarak & Panah Deteksi dihapus demi performa
---    v1.4 emote favorit pindah grup ★, hapus emote/paket/bundle dibuang,
---         RESET/ASLI benar-benar balik ke animasi asli (baseline disimpan
---         ke file), kolom TAMBAH EMOTE dibuang
---    v1.5 FILTER ANIMASI + RINGAN + 24 EMOTE:
---         • EMOTE_PRESET difilter: IDLE=Vampire, RUN=Ninja+Mage,
---           JUMP/FALL=Oldschool, WALK/SWIM/CLIMB=KOSONG
---         • BUNDLE_ANIMATIONS difilter: IDLE=Adidas Community+Vampire,
---           RUN=11 bundle, JUMP/FALL=Oldschool+Wickled Popular,
---           WALK/SWIM/CLIMB=KOSONG
---         • EMOTE_CATALOG difilter: hanya 24 emote pilihan user
---         • HAPUS dekorasi berat: partikel ambient, marquee teks
---           berjalan, bracket pulse, title glow loop, header sparkle
---         • Virtual scroll Emote (max 40 button sekaligus)
---         • Optimize HideAtas (DescendantAdded ganti Heartbeat)
---         • Optimize Vehicle hide (radius 20→12, cek 0.3→0.8 dtk)
---         • Reset baseline safeguard: kebal ternoda
+--  Keybind: G=GUI  Q=Speed  J=Jump  C=Shift  LShift=Tengah
+--           F=Moon  R=Hide  Z=HideAtas  T=Cahaya  X=Dinding  K×2=Rejoin
 --========================================================
-print("[BALAP V1.5] load mulai...")
+print("[SILAU V1.0] load mulai...")
 
--- [0] DIAGNOSTIK ON-SCREEN ------------------------------------
+-- [0] DIAGNOSTIK -----------------------------------------
 local diagSet, diagHapus
 do
   local __dGui, __dLbl
   pcall(function()
     __dGui = Instance.new("ScreenGui")
-    __dGui.Name = "BALAP_DIAG"
+    __dGui.Name = "SILAU_DIAG"
     __dGui.ResetOnSpawn = false
     __dGui.DisplayOrder = 1000000
     __dLbl = Instance.new("TextLabel")
@@ -51,7 +26,7 @@ do
     __dLbl.TextSize = 14
     __dLbl.TextWrapped = true
     __dLbl.ClipsDescendants = true
-    __dLbl.Text = "BALAP: memulai..."
+    __dLbl.Text = "SILAU: memulai..."
     __dLbl.Parent = __dGui
     local cr = Instance.new("UICorner")
     cr.CornerRadius = UDim.new(0, 8)
@@ -69,7 +44,7 @@ do
     end
   end)
   diagSet = function(teks, warna)
-    print("[BALAP-DIAG] " .. tostring(teks))
+    print("[SILAU-DIAG] " .. tostring(teks))
     pcall(function()
       if __dGui and __dGui.Parent and __dLbl then
         __dLbl.Text = tostring(teks)
@@ -82,17 +57,17 @@ do
   end
 end
 
-local VERSI = "V1.5"
-local __BALAP_LOAD_OK__ = xpcall(function()
+local VERSI = "V1.0"
+local __SILAU_LOAD_OK__ = xpcall(function()
 
--- [1] PENGAMAN DASAR --------------------------------------
+-- [1] PENGAMAN DASAR ------------------------------------
 local RunService = game:GetService("RunService")
 if not RunService:IsClient() then
-  warn("[BALAP] GAGAL: harus jalan di CLIENT (executor / LocalScript), bukan server!")
+  warn("[SILAU] GAGAL: harus jalan di CLIENT!")
   return
 end
 if not game:IsLoaded() then
-  diagSet("menunggu game load... (nyangkut di sini = game belum selesai load)")
+  diagSet("menunggu game load...")
   game.Loaded:Wait()
 end
 
@@ -107,48 +82,36 @@ local Workspace        = game:GetService("Workspace")
 diagSet("menunggu LocalPlayer...")
 local LocalPlayer = Players.LocalPlayer or Players:WaitForChild("LocalPlayer", 15)
 if not LocalPlayer then
-  warn("[BALAP] GAGAL: LocalPlayer belum ada.")
-  diagSet("GAGAL: LocalPlayer tidak ada (dapat nil)", Color3.fromRGB(239, 68, 68))
+  warn("[SILAU] GAGAL: LocalPlayer belum ada.")
+  diagSet("GAGAL: LocalPlayer tidak ada", Color3.fromRGB(239, 68, 68))
   return
 end
 
 diagSet("cek Terrain...")
 local Terrain = Workspace:FindFirstChildOfClass("Terrain") or Workspace:WaitForChild("Terrain", 10)
 if not Terrain then
-  warn("[BALAP] Terrain tidak ketemu (10 dtk) — lanjut tanpa Terrain.")
-  diagSet("Terrain tidak ketemu — lanjut tanpa Terrain")
+  warn("[SILAU] Terrain tidak ketemu — lanjut tanpa Terrain.")
 end
 
 local MY_TOKEN = {}
-_G.__BALAP_TOKEN__ = MY_TOKEN
-_G.__BALAP_MAIN__ = true
+_G.__SILAU_TOKEN__ = MY_TOKEN
+_G.__SILAU_MAIN__ = true
 
--- [2] KONFIGURASI -----------------------------------------
+-- [2] KONFIGURASI ---------------------------------------
 local CFG = {
   TOGGLE_KEY      = Enum.KeyCode.G,
-  LED_TEXT        = "⚡ B A L A P ⚡",
+  LED_TEXT        = "⚡ S I L A U ⚡",
   SOUND_ON        = true,
   FX_LEVEL        = 1,
-  SPEED_OFF   = 17.15,
-  SPEED_ON_1  = 17.25,
-  SPEED_ON_2  = 40,
-  ON_JUMP_MIN = 51.25,
-  ON_JUMP_MAX = 70,
-  ON_JUMP     = 65.25,
-  ON_JUMP_H_MIN = 6.69,
-  ON_JUMP_H   = 8.50,
-  ON_JUMP_H_MAX = 12.49,
-  MOON_TURN_MAX = 12,
-  MOON_SMOOTH = 10,
-  SLT_WAKTU   = 0.25,
-  SLT_DOT     = 7,
-  SLT_DOT_Y   = 0.60,
+  SPEED_OFF   = 17.15, SPEED_ON_1  = 17.25, SPEED_ON_2  = 40,
+  ON_JUMP_MIN = 51.25, ON_JUMP_MAX = 70, ON_JUMP     = 65.25,
+  ON_JUMP_H_MIN = 6.69, ON_JUMP_H   = 8.50, ON_JUMP_H_MAX = 12.49,
+  MOON_TURN_MAX = 12, MOON_SMOOTH = 10,
+  SLT_WAKTU   = 0.25, SLT_DOT     = 7, SLT_DOT_Y   = 0.60,
   EMOTE_TUNGGAK    = 0.25,
   SWIM_BONUS         = 1.025,
-  UI_LEBAR     = 360,
-  UI_TINGGI    = 720,
-  UI_SCALE_MIN = 0.45,
-  UI_SCALE_MAX = 1.25,
+  UI_LEBAR     = 360, UI_TINGGI    = 720,
+  UI_SCALE_MIN = 0.45, UI_SCALE_MAX = 1.25,
   SND_PING   = "rbxasset://sounds/electronicpingshort.wav",
   SND_SNAP   = "rbxasset://sounds/snap.mp3",
 }
@@ -180,7 +143,7 @@ local Warna = {
   Card2     = Color3.fromRGB(40, 40, 62),
 }
 
--- [3] FONT KOMPATIBEL -------------------------------------
+-- [3] FONT KOMPATIBEL -----------------------------------
 local FONT_OK = pcall(function()
   return Font.new("rbxasset://fonts/families/Bangers.json", Enum.FontWeight.Regular)
 end)
@@ -200,19 +163,15 @@ do
         reg   = "rbxasset://fonts/families/Montserrat.json",
       }
       local wts = {
-        judul = Enum.FontWeight.Regular,
-        bold  = Enum.FontWeight.Bold,
-        semi  = Enum.FontWeight.SemiBold,
-        med   = Enum.FontWeight.Medium,
+        judul = Enum.FontWeight.Regular, bold  = Enum.FontWeight.Bold,
+        semi  = Enum.FontWeight.SemiBold, med   = Enum.FontWeight.Medium,
         reg   = Enum.FontWeight.Regular,
       }
       v = Font.new(fam[k], wts[k])
     else
       local legacy = {
-        judul = Enum.Font.Bangers,
-        bold  = Enum.Font.GothamBold,
-        semi  = Enum.Font.GothamSemibold,
-        med   = Enum.Font.GothamMedium,
+        judul = Enum.Font.Bangers, bold  = Enum.Font.GothamBold,
+        semi  = Enum.Font.GothamSemibold, med   = Enum.Font.GothamMedium,
         reg   = Enum.Font.Gotham,
       }
       v = legacy[k]
@@ -222,7 +181,7 @@ do
   end
 end
 
--- [4] HELPER ----------------------------------------------
+-- [4] HELPER --------------------------------------------
 local rnd = math.random
 pcall(function()
   math.randomseed(os.time() + math.floor((os.clock() % 1) * 100000))
@@ -266,17 +225,11 @@ end
 
 diagSet("dasar OK — siapkan helper GUI...")
 
--- [5] REGISTRY KONEKSI & FORWARD DECLARE ------------------
+-- [5] REGISTRY KONEKSI ----------------------------------
 local semuaKoneksi = {}
 local function catat(conn)
   table.insert(semuaKoneksi, conn)
   return conn
-end
-
-local function putuskan(conn)
-  local i = table.find(semuaKoneksi, conn)
-  if i then table.remove(semuaKoneksi, i) end
-  pcall(function() conn:Disconnect() end)
 end
 
 local State = { Removed = false }
@@ -309,8 +262,8 @@ local function getHum()
   return c and c:FindFirstChildOfClass("Humanoid")
 end
 
--- [6] TITIK LOKAL -----------------------------------------
-local TITIK_FILE = "BALAP_TITIK.json"
+-- [6] TITIK LOKAL ---------------------------------------
+local TITIK_FILE = "SILAU_TITIK.json"
 local TITIK = { poin = {}, hapus = {}, aktif = false, tampilTitik = true, folder = nil }
 local titikRenderUI = function() end
 local titikStatusUI = function() end
@@ -355,7 +308,7 @@ end
 local function titikFolder()
   if TITIK.folder and TITIK.folder.Parent then return TITIK.folder end
   local f = Instance.new("Folder")
-  f.Name = "BALAP_TITIK_MARKERS"
+  f.Name = "SILAU_TITIK_MARKERS"
   f.Parent = Workspace
   TITIK.folder = f
   return f
@@ -367,7 +320,7 @@ local function titikSimpan()
     local normal = p.normal or Vector3.new(0, 1, 0)
     data[#data + 1] = {id = p.id, name = p.name, x = p.pos.X, y = p.pos.Y, z = p.pos.Z, nx = normal.X, ny = normal.Y, nz = normal.Z}
   end
-  getgenv().BALAP_TITIK_DATA = data
+  getgenv().SILAU_TITIK_DATA = data
   if type(writefile) == "function" then
     pcall(function() writefile(TITIK_FILE, HttpService:JSONEncode(data)) end)
   end
@@ -380,7 +333,7 @@ local function titikMuat()
       if isfile(TITIK_FILE) then data = HttpService:JSONDecode(readfile(TITIK_FILE)) end
     end)
   end
-  if type(data) ~= "table" then data = rawget(getgenv(), "BALAP_TITIK_DATA") end
+  if type(data) ~= "table" then data = rawget(getgenv(), "SILAU_TITIK_DATA") end
   if type(data) == "table" then
     for _, v in ipairs(data) do
       local x, y, z = tonumber(v.x), tonumber(v.y), tonumber(v.z)
@@ -462,7 +415,7 @@ local function titikTambah(name, pos, normal)
   local id = tostring(os.time()) .. "-" .. tostring(math.random(100000, 999999))
   TITIK.poin[#TITIK.poin + 1] = {id = id, name = name, defaultName = defaultName or namaDefaultTitik(name), pos = pos, normal = normal}
   titikSimpan()
-  pcall(function() if type(toast) == "function" then toast("✓ Titik disimpan lokal: " .. name, Warna.Hijau) end end)
+  pcall(function() if type(toast) == "function" then toast("✓ Titik disimpan: " .. name, Warna.Hijau) end end)
   titikRefreshDot()
   titikRenderUI()
   titikStatusUI("Titik ditambahkan: " .. name)
@@ -475,7 +428,7 @@ local function titikHapus(nomor)
     local id = TITIK.poin[nomor].id or nama
     table.remove(TITIK.poin, nomor)
     TITIK.hapus[#TITIK.hapus + 1] = tostring(id)
-    titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Titik dihapus dan disimpan lokal", Warna.Hijau) end end); titikRefreshDot(); titikRenderUI()
+    titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Titik dihapus", Warna.Hijau) end end); titikRefreshDot(); titikRenderUI()
     titikStatusUI("Titik dihapus: " .. nama)
   end
 end
@@ -532,7 +485,7 @@ titikMuat()
 titikSimpan()
 titikRefreshDot()
 
--- [7] EFEK LED & UI HELPER --------------------------------
+-- [7] EFEK LED & UI HELPER ------------------------------
 local function ledSweep(inst, base, bandA, bandB, dur)
   local g = buat("UIGradient", {
     Color = ColorSequence.new({
@@ -627,24 +580,9 @@ local function efekTombol(btn, skalaHover)
   end)
 end
 
-local function sorotInput(box, stroke, rest)
-  box.Focused:Connect(function()
-    tween(stroke, TweenInfo.new(0.15), {Transparency = 0})
-  end)
-  box.FocusLost:Connect(function()
-    tween(stroke, TweenInfo.new(0.2), {Transparency = rest})
-  end)
-end
-
-local function gayaToggle(btn, on)
-  btn.BackgroundColor3 = on and Warna.Hijau or Warna.Merah
-  btn.BackgroundTransparency = on and 0.78 or 0.82
-  btn.TextColor3 = on and Warna.HijauMuda or Warna.MerahMuda
-end
-
--- [8] SCREENGUI -------------------------------------------
+-- [8] SCREENGUI -----------------------------------------
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BalapMain"
+screenGui.Name = "SilauMain"
 screenGui.ResetOnSpawn = false
 screenGui.DisplayOrder = 9999
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -657,7 +595,7 @@ pcall(function() table.insert(kandidatParent, LocalPlayer:WaitForChild("PlayerGu
 
 for _, t in ipairs(kandidatParent) do
   pcall(function()
-    local lama = t:FindFirstChild("BalapMain")
+    local lama = t:FindFirstChild("SilauMain")
     if lama then lama:Destroy() end
   end)
 end
@@ -672,7 +610,7 @@ for _, t in ipairs(kandidatParent) do
 end
 
 if not terpasang then
-  warn("[BALAP] GAGAL: tidak bisa memasang GUI.")
+  warn("[SILAU] GAGAL: tidak bisa memasang GUI.")
   return
 end
 
@@ -687,7 +625,7 @@ local function bunyi(id, vol, pitch)
   task.delay(3, function() s:Destroy() end)
 end
 
--- [9] BANGUN UI: ROOT + OUTER + PANEL ---------------------
+-- [9] BANGUN UI: ROOT + OUTER + PANEL -------------------
 local root = buat("Frame", {
   Size = UDim2.fromOffset(CFG.UI_LEBAR, CFG.UI_TINGGI),
   Position = UDim2.new(0.5, 0, 0.10, 0),
@@ -766,8 +704,6 @@ local partBox = buat("Frame", {
   ClipsDescendants = true,
 }, panel)
 
--- v1.5: HAPUS stripe dekorasi (berat, tidak perlu)
-
 local header = buat("Frame", {
   Size = UDim2.new(1, 0, 0, 46),
   BackgroundColor3 = Warna.Hitam2,
@@ -787,14 +723,13 @@ local title = buat("TextLabel", {
   Position = UDim2.new(0, 12, 0, 0),
   Size = UDim2.new(1, -104, 1, 0),
   FontFace = fnt("judul"),
-  Text = "⚡ BALAP " .. VERSI .. " ⚡",
+  Text = "⚡ SILAU " .. VERSI .. " ⚡",
   TextColor3 = Warna.Putih,
   TextSize = 22,
   TextXAlignment = Enum.TextXAlignment.Left,
 }, header)
 ledSweep(title, Warna.Putih, Warna.Ungu2, Warna.Biru2, 2.2)
 
--- v1.5: titleGlow STATIS (tanpa loop tween — hemat CPU)
 local titleGlow = buat("UIStroke", {Name = "NoFade", Color = Warna.Ungu2, Thickness = 1, Transparency = 0.5}, title)
 
 local minBtn = buat("TextButton", {
@@ -818,15 +753,7 @@ local accent = buat("Frame", {
 }, panel)
 ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
 
--- [10] MODUL ANIMASI (tab ANIMASI) — v1.5 FILTERED --------
--- v1.5: EMOTE_PRESET difilter sesuai permintaan user:
---   IDLE: Vampire
---   WALK: KOSONG
---   RUN: Ninja, Mage
---   JUMP: Oldschool
---   FALL: Oldschool
---   CLIMB: KOSONG
---   SWIM: KOSONG
+-- [10] MODUL ANIMASI (FILTERED) -------------------------
 local EMOTE_PRESET = {
   idle = {
     { n = "Vampire", i15 = 1083445855, i6 = 1113742618 },
@@ -846,19 +773,10 @@ local EMOTE_PRESET = {
   swim = {},
 }
 
--- v1.5: BUNDLE_ANIMATIONS difilter sesuai permintaan user:
---   IDLE: Adidas Community, Vampire
---   RUN: Wickled Popular, Unboxed, Stylized Female, Sneaky, Mr. Toilet,
---        Bold, Adidas Sports, Adidas Community, Adidas Aura, Ninja, Mage
---   JUMP: Oldschool, Wickled Popular
---   FALL: Oldschool, Wickled Popular
---   WALK/SWIM/CLIMB: KOSONG (field di-set 0)
 local BUNDLE_ANIMATIONS = {
   Emotes = {Weight=9, Weight2=1},
-  -- IDLE
   ['Adidas Community'] = {Idle=122257458498464, Idle2=102357151005774, Idle3=89262795687364, Walk=0, Run=0, Jump=0, Climb=0, Fall=0, Swim=0, SwimIdle=0, Weight=9, Weight2=1},
   ['Vampire'] = {Idle=1083445855, Idle2=1083450166, Idle3=1088037547, Walk=0, Run=0, Jump=0, Climb=0, Fall=0, Swim=0, SwimIdle=0, Weight=9, Weight2=1},
-  -- RUN
   ['Wickled Popular'] = {Idle=0, Idle2=0, Idle3=0, Walk=0, Run=72301599441680, Jump=104325245285198, Climb=0, Fall=121152442762481, Swim=0, SwimIdle=0, Weight=9, Weight2=1},
   ['Unboxed'] = {Idle=0, Idle2=0, Idle3=0, Walk=0, Run=134824450619865, Jump=121454505477205, Climb=0, Fall=94788218468396, Swim=0, SwimIdle=0, Weight=9, Weight2=1},
   ['Stylized Female'] = {Idle=0, Idle2=0, Idle3=0, Walk=0, Run=4708192705, Jump=4708188025, Climb=0, Fall=4708186162, Swim=0, SwimIdle=0, Weight=9, Weight2=1},
@@ -869,11 +787,10 @@ local BUNDLE_ANIMATIONS = {
   ['Adidas Aura'] = {Idle=0, Idle2=0, Idle3=0, Walk=0, Run=118320322718866, Jump=109996626521204, Climb=0, Fall=95603166884636, Swim=0, SwimIdle=0, Weight=9, Weight2=1},
   ['Ninja'] = {Idle=0, Idle2=0, Idle3=0, Walk=0, Run=656118852, Jump=656117878, Climb=0, Fall=656115606, Swim=0, SwimIdle=0, Weight=9, Weight2=1},
   ['Mage'] = {Idle=0, Idle2=0, Idle3=0, Walk=0, Run=707861613, Jump=707853694, Climb=0, Fall=707829716, Swim=0, SwimIdle=0, Weight=9, Weight2=1},
-  -- JUMP/FALL
   ['Oldschool'] = {Idle=0, Idle2=0, Idle3=0, Walk=0, Run=0, Jump=5319841935, Climb=0, Fall=5319839762, Swim=0, SwimIdle=0, Weight=9, Weight2=1},
 }
 
--- v1.5: EMOTE_CATALOG difilter — hanya 24 emote pilihan user
+-- 24 EMOTE PILIHAN USER
 local EMOTE_CATALOG = {
   ["Baby Dance"] = 4265725525;
   ["Beckon"] = 5230598276;
@@ -901,13 +818,13 @@ local EMOTE_CATALOG = {
   ["TWICE-Fancy"] = 13520524517;
 }
 
-local EMOTE_FAV_FILE = "balap_emote_favorit.json"
+local EMOTE_FAV_FILE = "silau_emote_favorit.json"
 local EMOTE_SESSION = { favorites = {}, loop = false, track = nil, name = nil }
 local emoteMotionConn
 local emoteLoopUIRefresh = function() end
 
 local function emoteFavSave()
-  getgenv().BALAP_EMOTE_FAVORITES = EMOTE_SESSION.favorites
+  getgenv().SILAU_EMOTE_FAVORITES = EMOTE_SESSION.favorites
   if type(writefile) == "function" then
     pcall(function()
       writefile(EMOTE_FAV_FILE, HttpService:JSONEncode(EMOTE_SESSION.favorites))
@@ -925,7 +842,7 @@ local function emoteFavLoad()
     end)
   end
   if type(data) ~= "table" then
-    data = rawget(getgenv(), "BALAP_EMOTE_FAVORITES")
+    data = rawget(getgenv(), "SILAU_EMOTE_FAVORITES")
   end
   if type(data) == "table" then
     for k, v in pairs(data) do
@@ -1052,7 +969,7 @@ local function emoteJumlahAktif()
 end
 
 local function emoteSimpan()
-  getgenv().BALAP_EMOTE_DATA = { master = EMOTE.master, preset = EMOTE.preset, bundle = EMOTE.bundle }
+  getgenv().SILAU_EMOTE_DATA = { master = EMOTE.master, preset = EMOTE.preset, bundle = EMOTE.bundle }
 end
 
 local function emoteDeteksiRig(char)
@@ -1081,7 +998,7 @@ for _, b in pairs(BUNDLE_ANIMATIONS) do
   end
 end
 
-local BASELINE_FILE = "balap_animasi_asli.json"
+local BASELINE_FILE = "silau_animasi_asli.json"
 local GAME_KEY = tostring(game.PlaceId)
 local BASELINE_SIMPAN = {}
 
@@ -1094,7 +1011,7 @@ local function emoteBaselineMuat()
       end
     end)
   end
-  if type(data) ~= "table" then data = rawget(getgenv(), "BALAP_ANIMASI_ASLI") end
+  if type(data) ~= "table" then data = rawget(getgenv(), "SILAU_ANIMASI_ASLI") end
   if type(data) == "table" and type(data[GAME_KEY]) == "table" then
     for rig, slotData in pairs(data[GAME_KEY]) do
       if type(slotData) == "table" then BASELINE_SIMPAN[rig] = slotData end
@@ -1103,7 +1020,7 @@ local function emoteBaselineMuat()
 end
 
 local function emoteBaselineSimpan(urut)
-  local data = rawget(getgenv(), "BALAP_ANIMASI_ASLI")
+  local data = rawget(getgenv(), "SILAU_ANIMASI_ASLI")
   if type(data) ~= "table" then data = {} end
   local rigData = data[GAME_KEY]
   if type(rigData) ~= "table" then rigData = {} end
@@ -1114,7 +1031,7 @@ local function emoteBaselineSimpan(urut)
   end
   data[GAME_KEY] = rigData
   BASELINE_SIMPAN[EMOTE.rig] = rigData
-  getgenv().BALAP_ANIMASI_ASLI = data
+  getgenv().SILAU_ANIMASI_ASLI = data
   if type(writefile) == "function" then
     pcall(function() writefile(BASELINE_FILE, HttpService:JSONEncode(data)) end)
   end
@@ -1122,8 +1039,6 @@ end
 
 emoteBaselineMuat()
 
--- v1.5: SAFEGUARD tambahan — kalau baseline ternoda & tidak ada backup,
--- WARNING user untuk respawn. Baseline ternoda tidak akan disimpan.
 local function emoteCaptureBaseline(char)
   local a = char and char:FindFirstChild("Animate")
   if not a then return end
@@ -1154,11 +1069,10 @@ local function emoteCaptureBaseline(char)
     if not bersih then break end
   end
 
-  -- SAFEGUARD: kalau ternoda, pakai backup dari file
   local sumber = not bersih and BASELINE_SIMPAN[EMOTE.rig] or nil
 
   if not bersih and not sumber then
-    warn("[BALAP] Baseline ternoda & tidak ada backup — RESET mungkin tidak sempurna. Respawn karakter untuk baseline bersih.")
+    warn("[SILAU] Baseline ternoda & tidak ada backup — respawn karakter untuk baseline bersih.")
   end
 
   for k, arr in pairs(urut) do
@@ -1172,12 +1086,11 @@ local function emoteCaptureBaseline(char)
     EMOTE.baseline[k] = simpan
   end
 
-  -- simpan hanya baseline yang benar-benar asli
   if bersih then
     emoteBaselineSimpan(urut)
-    print("[BALAP] Baseline asli tersimpan untuk rig " .. EMOTE.rig)
+    print("[SILAU] Baseline asli tersimpan untuk rig " .. EMOTE.rig)
   else
-    print("[BALAP] Baseline ternoda — pakai backup dari file")
+    print("[SILAU] Baseline ternoda — pakai backup dari file")
   end
 end
 
@@ -1251,9 +1164,9 @@ emoteSetMaster = function(on, silent)
   emoteTerapkanSemua()
   if not silent then
     if on then
-      toast("⚡ Animasi kustom ON — gaya pilihanmu aktif", Warna.Hijau)
+      toast("⚡ Animasi kustom ON", Warna.Hijau)
     else
-      toast("⚡ Animasi kustom OFF — balik ke animasi game", Warna.Kuning)
+      toast("⚡ Animasi kustom OFF", Warna.Kuning)
     end
   end
   if Switches["Emote"] then Switches["Emote"].set(on) end
@@ -1334,11 +1247,11 @@ task.spawn(function()
   if char then emoteInitCharacter(char) end
 end)
 
-print("[BALAP-EMOTE] siap — 7 slot • master "
+print("[SILAU-EMOTE] siap — 7 slot • master "
   .. (EMOTE.master and "ON" or "OFF")
   .. " • aktif " .. emoteJumlahAktif() .. "/7")
 
--- [13] TAB BAR (5 TAB) ------------------------------------
+-- [13] TAB BAR ------------------------------------------
 local function buildUI()
   tabBtns = {}
   local tabLabels = {"MOVEMENT & VISUAL", "ANIMASI", "EMOTE", "TITIK", "SYSTEM"}
@@ -1383,7 +1296,7 @@ local function buildUI()
     end)
   end
 
-  -- [14] KONTEN TAB 1: MOVEMENT & VISUAL ----------------
+  -- [14] TAB 1: MOVEMENT & VISUAL ---------------------
   kontenMove = buat("Frame", {
     Position = UDim2.new(0, 0, 0, 80),
     Size = UDim2.new(1, 0, 1, -110),
@@ -1568,7 +1481,7 @@ local function buildUI()
     return btn
   end
 
-  -- ===== init State =====
+  -- init State
   State.SpeedOn = false
   State.SpeedValue = CFG.SPEED_ON_1
   State.JumpOn  = false
@@ -1596,7 +1509,7 @@ local function buildUI()
   }
   lightConn = nil
 
-  -- ===== baris TAB 1 =====
+  -- Baris TAB 1
   buatHeader(scrollMove, "Player")
   local _, speedLbl = buatToggleRow(scrollMove, "Speed (Q): OFF (" .. fmtNum(CFG.SPEED_OFF) .. ")", "Q", "Speed")
   SpeedLabel = speedLbl
@@ -1638,7 +1551,7 @@ local function buildUI()
   buatHeader(scrollMove, "Map")
   buatToggleRow(scrollMove, "Dinding Batas", "X", "Walls")
 
-  -- [15] KONTEN TAB 5: SYSTEM ---------------------------
+  -- [15] TAB 5: SYSTEM ----------------------------------
   kontenSistem = buat("Frame", {
     Position = UDim2.new(0, 0, 0, 80),
     Size = UDim2.new(1, 0, 1, -110),
@@ -1659,7 +1572,7 @@ local function buildUI()
   }, kontenSistem)
   buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollSistem)
 
-  -- [16] KONTEN TAB 2: ANIMASI ----
+  -- [16] TAB 2: ANIMASI ---------------------------------
   kontenAnim = buat("Frame", {
     Position = UDim2.new(0, 0, 0, 80),
     Size = UDim2.new(1, 0, 1, -110),
@@ -1752,7 +1665,7 @@ local function buildUI()
       end
     end
     local n = emoteJumlahAktif()
-    emoteStatus.Text = "Rig: " .. tostring(EMOTE.rig) .. " • " .. n .. "/7 slot gaya baru • "
+    emoteStatus.Text = "Rig: " .. tostring(EMOTE.rig) .. " • " .. n .. "/7 slot • "
       .. (EMOTE.master and "master ON" or "master OFF")
   end
 
@@ -1777,7 +1690,6 @@ local function buildUI()
   }, kontenEmote)
   buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollEmote)
 
-  -- ===== EMOTE FAVORIT / LOOP =====
   buatHeader(scrollEmote, "Emote Catalog")
   local emoteSearch = buat("TextBox", {
     BackgroundColor3 = Warna.Hitam2, Size = UDim2.new(1, 0, 0, 28),
@@ -1816,8 +1728,6 @@ local function buildUI()
   buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, emoteListFrame)
 
   local emoteOrder = 0
-
-  -- v1.5: VIRTUAL SCROLL — max 40 button sekaligus (hemat 80% CPU)
   local EMOTE_VISIBLE_LIMIT = 40
 
   renderEmoteList = function()
@@ -1910,7 +1820,7 @@ local function buildUI()
         BackgroundTransparency = 1, Size = UDim2.new(1, -6, 0, 22),
         FontFace = fnt("med"), TextSize = 10, TextColor3 = Warna.AbuGelap,
         TextXAlignment = Enum.TextXAlignment.Center,
-        Text = "⚡ " .. sisa .. " emote lagi — ketik di kotak cari untuk filter",
+        Text = "⚡ " .. sisa .. " emote lagi — ketik di kotak cari",
         LayoutOrder = emoteOrder,
       }, emoteListFrame)
     end
@@ -1937,14 +1847,13 @@ local function buildUI()
   emoteSearch:GetPropertyChangedSignal("Text"):Connect(renderEmoteList)
   renderEmoteList()
 
-  -- RESET SEMUA — konfirmasi 2 langkah
   local armResetEmote = 0
   local btnResetEmote = buatActionRow(scrollAnim, "↺ RESET SEMUA → ANIMASI ASLI", Warna.Merah, function()
     local now = os.clock()
     if now - armResetEmote > 3 then
       armResetEmote = now
       btnResetEmote.Text = "⚠️ YAKIN? TEKAN LAGI"
-      toast("Semua slot balik ke animasi ASLI — tekan lagi", Warna.Kuning)
+      toast("Tekan lagi untuk konfirmasi", Warna.Kuning)
       task.delay(3, function()
         if btnResetEmote.Parent and btnResetEmote.Text ~= "↺ RESET SEMUA → ANIMASI ASLI" then
           btnResetEmote.Text = "↺ RESET SEMUA → ANIMASI ASLI"
@@ -1964,7 +1873,6 @@ local function buildUI()
     end
   end)
 
-  -- Tombol RESET BASELINE (untuk kasus edge: baseline ternoda)
   buatActionRow(scrollAnim, "🔄 RESET BASELINE (dari file)", Warna.Biru, function()
     emoteBaselineMuat()
     local char = getChar()
@@ -1972,31 +1880,10 @@ local function buildUI()
       emoteCaptureBaseline(char)
       emoteTerapkanSemua(char)
     end
-    toast("Baseline di-reset dari file backup", Warna.Hijau)
+    toast("Baseline di-reset dari file", Warna.Hijau)
   end)
 
-  buat("TextLabel", {
-    BackgroundTransparency = 1,
-    Size = UDim2.new(1, 0, 0, 40),
-    FontFace = fnt("reg"), TextSize = 10,
-    TextColor3 = Warna.AbuTeks, TextWrapped = true,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Text = "Bundle dan emote ini dipakai lokal untuk karakter kamu. "
-      .. "Bundle gaya gerak jadi opsi PER KATEGORI di tiap slot (IDLE, "
-      .. "JALAN, LARI, dst — bisa dicampur, bukan 1 set). Emote yang "
-      .. "di★-kan pindah ke grup ★ FAVORIT (beda lokasi daftar) supaya "
-      .. "gampang dicari; favorit tersimpan lokal. Daftar emote, paket, "
-      .. "dan bundle selalu utuh — tidak ada fitur hapus. RESET SEMUA / "
-      .. "pilihan ASLI memulihkan animasi asli game (animasi asli "
-      .. "tersimpan sekali ke file, aman walau script dijalankan ulang). "
-      .. "Animasi dipasang lagi setelah mati/respawn; awal load selalu "
-      .. "OFF + semua slot ASLI — nyalakan ⚡ master dulu, gaya "
-      .. "pilihanmu aktif selama sesi saja (script dijalankan ulang = "
-      .. "balik default).",
-    LayoutOrder = nextOrder(),
-  }, scrollAnim)
-
-  -- ===== POPUP PILIH GAYA =====
+  -- Popup pilih gaya
   local chooserBackdrop = buat("TextButton", {
     Visible = false, ZIndex = 60,
     BackgroundColor3 = Warna.Hitam, BackgroundTransparency = 0.35,
@@ -2139,7 +2026,7 @@ local function buildUI()
     chooser.Visible = false
   end)
 
-  -- ===== TAB TITIK ================================================
+  -- TAB TITIK
   kontenTitik = buat("Frame", {
     Position = UDim2.new(0, 0, 0, 80), Size = UDim2.new(1, 0, 1, -110),
     BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false,
@@ -2184,7 +2071,7 @@ local function buildUI()
   end
   modeTitikBtn.MouseButton1Click:Connect(function()
     TITIK.aktif = not TITIK.aktif; refreshModeTitik()
-    titikStatusUI(TITIK.aktif and "Aktif: tahan CTRL lalu klik kiri permukaan dunia" or "Mode penempatan dimatikan")
+    titikStatusUI(TITIK.aktif and "Aktif: tahan CTRL + klik kiri" or "Mode penempatan dimatikan")
   end)
 
   buatActionRow(scrollTitik, "➕ TAMBAH DARI POSISI SAYA", Warna.Biru, function()
@@ -2193,16 +2080,16 @@ local function buildUI()
     namaTitikBox.Text = ""
   end).LayoutOrder = titikNext()
 
-  buatActionRow(scrollTitik, "● TITIK: TAMPILKAN / SEMBUNYIKAN", Warna.Ungu2, function()
+  buatActionRow(scrollTitik, "● TITIK: TAMPIL / SEMBUNYI", Warna.Ungu2, function()
     TITIK.tampilTitik = not TITIK.tampilTitik; titikRefreshDot()
-    titikStatusUI(TITIK.tampilTitik and "Titik kecil ditampilkan" or "Titik kecil disembunyikan")
+    titikStatusUI(TITIK.tampilTitik and "Titik ditampilkan" or "Titik disembunyikan")
   end).LayoutOrder = titikNext()
 
   buatActionRow(scrollTitik, "🗑 HAPUS SEMUA TITIK", Warna.Merah, function()
     for _, p in ipairs(TITIK.poin) do TITIK.hapus[#TITIK.hapus + 1] = tostring(p.id or p.name) end
     table.clear(TITIK.poin)
     titikSimpan()
-    pcall(function() if type(toast) == "function" then toast("✓ Semua titik dihapus dan disimpan lokal", Warna.Hijau) end end)
+    pcall(function() if type(toast) == "function" then toast("✓ Semua titik dihapus", Warna.Hijau) end end)
     titikRefreshDot()
     titikRenderUI()
     titikStatusUI("Semua titik dihapus")
@@ -2214,7 +2101,7 @@ local function buildUI()
     titikRefreshDot()
     titikSimpan()
     titikRenderUI()
-    if type(toast)=="function" then toast("✓ Tiang diurutkan berdasarkan jarak terdekat",Warna.Hijau) end
+    if type(toast)=="function" then toast("✓ Tiang diurutkan",Warna.Hijau) end
   end).LayoutOrder=titikNext()
 
   local titikList = buat("Frame", {
@@ -2253,7 +2140,7 @@ local function buildUI()
         else
           point.name = nama
           point.defaultName = namaDefaultTitik(nama)
-          titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Nama titik disimpan", Warna.Hijau) end end); titikRefreshDot(); titikStatusUI("Nama titik diubah")
+          titikSimpan(); pcall(function() if type(toast) == "function" then toast("✓ Nama disimpan", Warna.Hijau) end end); titikRefreshDot(); titikStatusUI("Nama diubah")
         end
       end)
       local go = buat("TextButton", {
@@ -2285,7 +2172,7 @@ local function buildUI()
     BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 42),
     FontFace = fnt("reg"), TextSize = 10, TextColor3 = Warna.AbuTeks,
     TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
-    Text = "Aktifkan mode, lalu tahan CTRL + klik kiri pada tanah atau dinding untuk menempelkan titik kecil. Titik tidak melayang dan semua perpindahan hanya untuk karakter kamu.",
+    Text = "Aktifkan mode, lalu tahan CTRL + klik kiri pada tanah/dinding untuk menempelkan titik.",
     LayoutOrder = titikNext(),
   }, scrollTitik)
 
@@ -2307,7 +2194,7 @@ local function buildUI()
     TextXAlignment = Enum.TextXAlignment.Left,
     TextYAlignment = Enum.TextYAlignment.Top,
     TextWrapped = true,
-    Text = "⚡ BALAP v" .. VERSI .. "\n"
+    Text = "⚡ SILAU v" .. VERSI .. "\n"
       .. "👤 User: " .. tostring(LocalPlayer.Name) .. " (" .. tostring(LocalPlayer.DisplayName) .. ")\n"
       .. "💻 Device: " .. (UserInputService.TouchEnabled and not UserInputService.MouseEnabled
       and "HP" or "PC"),
@@ -2372,13 +2259,13 @@ local function buildUI()
   buatHeader(scrollSistem, "Aksi")
   buatActionRow(scrollSistem, "🔁 REJOIN SERVER  [K×2]", Warna.Biru, function() rejoin() end)
   buatActionRow(scrollSistem, "🗑️ HAPUS SCRIPT", Warna.Merah, function()
-    if not _G.__KS_DELETE_ARMED__ then
-      _G.__KS_DELETE_ARMED__ = true
+    if not _G.__SILAU_DELETE_ARMED__ then
+      _G.__SILAU_DELETE_ARMED__ = true
       bunyi(CFG.SND_SNAP, 0.3, 0.8)
-      toast("Tekan HAPUS sekali lagi untuk konfirmasi", Warna.Merah)
-      task.delay(3, function() _G.__KS_DELETE_ARMED__ = nil end)
+      toast("Tekan HAPUS sekali lagi", Warna.Merah)
+      task.delay(3, function() _G.__SILAU_DELETE_ARMED__ = nil end)
     else
-      _G.__KS_DELETE_ARMED__ = nil
+      _G.__SILAU_DELETE_ARMED__ = nil
       unloadScript()
     end
   end)
@@ -2387,7 +2274,7 @@ end -- akhir buildUI()
 buildUI()
 diagSet("GUI utama OK — bikin efek & notif...")
 
--- [17] FOOTER + LED (v1.5: tanpa marquee loop, tanpa bracket pulse) -----
+-- [17] FOOTER + LED (ringan, tanpa marquee loop) --------
 local function buildFX()
   local footer = buat("Frame", {
     Size = UDim2.new(1, 0, 0, 30),
@@ -2416,7 +2303,7 @@ local function buildFX()
   local ledGlow = buat("UIStroke", {Name = "NoFade", Color = Warna.Ungu2, Thickness = 1, Transparency = 0.4}, ledLabel)
   cycleColor(ledLabel, "TextColor3", {Warna.Putih, Warna.Ungu2, Warna.Biru2, Warna.Ungu2}, 0.4)
 
-  -- v1.5: marquee STATIS (tanpa loop tween — hemat CPU)
+  -- marquee STATIS (tanpa loop tween)
   local marqueeClip = buat("Frame", {
     Position = UDim2.new(0, 6, 0, 17),
     Size = UDim2.new(1, -12, 0, 13),
@@ -2434,7 +2321,7 @@ local function buildFX()
     TextXAlignment = Enum.TextXAlignment.Center,
   }, marqueeClip)
 
-  -- bracket pojok STATIS (tanpa pulse loop)
+  -- bracket pojok STATIS
   local function bracket(ax, ay, px, py, warna)
     local bar1 = buat("Frame", {Name = "NoFade", AnchorPoint = Vector2.new(ax, ay),
       Position = UDim2.new(px, ax == 1 and -8 or 8, py, ay == 1 and -8 or 8),
@@ -2453,7 +2340,7 @@ end
 buildFX()
 diagSet("efek OK — pasang logika fitur...")
 
--- [19] BURST FX ---------------------------------------
+-- [19] BURST FX -----------------------------------------
 local paletKonfeti = {Warna.Ungu, Warna.Ungu2, Warna.Biru, Warna.Biru2, Warna.Putih, Warna.Hijau2}
 konfeti = function(parent, pos, n)
   for _ = 1, n do
@@ -2513,7 +2400,7 @@ pusatDiRoot = function(gui)
     0, gui.AbsolutePosition.Y - root.AbsolutePosition.Y + sz.Y / 2)
 end
 
--- [20] TOAST — KANAN ATAS LAYAR ----------------------
+-- [20] TOAST --------------------------------------------
 local notifHolder = buat("Frame", {
   Name = "NotifHolder",
   AnchorPoint = Vector2.new(1, 0),
@@ -2591,10 +2478,9 @@ end
 
 diagSet("efek OK — pasang logika fitur...")
 
--- [21] LOGIKA UTAMA ---------------------------------------
+-- [21] LOGIKA UTAMA -------------------------------------
 local function initLogic()
 
-  -- SPEED & JUMP
   applySpeed = function()
     local hum = getHum()
     if not hum then return end
@@ -2704,8 +2590,8 @@ local function initLogic()
       if State.TengahOn then setFeature("Tengah", false, true) end
       local hum = getHum()
       if hum then hum.AutoRotate = false end
-      pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
-      RunService:BindToRenderStep("KS_SHIFTLOCK", Enum.RenderPriority.Character.Value + 1, function()
+      pcall(function() RunService:UnbindFromRenderStep("SILAU_SHIFTLOCK") end)
+      RunService:BindToRenderStep("SILAU_SHIFTLOCK", Enum.RenderPriority.Character.Value + 1, function()
         local char = getChar()
         local h = char and char:FindFirstChildOfClass("Humanoid")
         local r = char and char:FindFirstChild("HumanoidRootPart")
@@ -2721,7 +2607,7 @@ local function initLogic()
         end
       end)
     else
-      RunService:UnbindFromRenderStep("KS_SHIFTLOCK")
+      RunService:UnbindFromRenderStep("SILAU_SHIFTLOCK")
       local hum = getHum()
       if hum then hum.AutoRotate = true end
       applySpeed()
@@ -2736,8 +2622,8 @@ local function initLogic()
       if State.TengahOn then setFeature("Tengah", false, true) end
       local hum = getHum()
       if hum then hum.AutoRotate = false end
-      pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
-      RunService:BindToRenderStep("KS_MOONWALK", Enum.RenderPriority.Character.Value + 1, function(dt)
+      pcall(function() RunService:UnbindFromRenderStep("SILAU_MOONWALK") end)
+      RunService:BindToRenderStep("SILAU_MOONWALK", Enum.RenderPriority.Character.Value + 1, function(dt)
         local char = getChar()
         local h = char and char:FindFirstChildOfClass("Humanoid")
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -2761,14 +2647,13 @@ local function initLogic()
         end
       end)
     else
-      RunService:UnbindFromRenderStep("KS_MOONWALK")
+      RunService:UnbindFromRenderStep("SILAU_MOONWALK")
       local hum = getHum()
       if hum then hum.AutoRotate = true end
     end
     syncNotify("Moon", v, silent, "Moonwalk")
   end
 
-  -- SHIFTLOCK TENGAH
   local sltTween, sltTweening, sltOffsetAsli = nil, false, nil
   local sltDotGui, sltDot
   local sltUGS
@@ -2777,7 +2662,7 @@ local function initLogic()
   local function sltDotShow()
     if sltDot then sltDot.Visible = true return end
     sltDotGui = buat("ScreenGui", {
-      Name = "BALAP_TengahDot",
+      Name = "SILAU_TengahDot",
       ResetOnSpawn = false,
       DisplayOrder = 99999,
       IgnoreGuiInset = true,
@@ -2800,7 +2685,7 @@ local function initLogic()
     pcall(function() table.insert(kandidat, LocalPlayer:WaitForChild("PlayerGui")) end)
     for _, t in ipairs(kandidat) do
       pcall(function()
-        local lama = t:FindFirstChild("BALAP_TengahDot")
+        local lama = t:FindFirstChild("SILAU_TengahDot")
         if lama and lama ~= sltDotGui then lama:Destroy() end
       end)
     end
@@ -2831,8 +2716,8 @@ local function initLogic()
         sltTween:Play()
         sltTween.Completed:Connect(function() sltTweening = false end)
       end
-      pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
-      RunService:BindToRenderStep("KS_TENGAH", Enum.RenderPriority.Camera.Value + 1, function()
+      pcall(function() RunService:UnbindFromRenderStep("SILAU_TENGAH") end)
+      RunService:BindToRenderStep("SILAU_TENGAH", Enum.RenderPriority.Camera.Value + 1, function()
         local h = getHum()
         if h and h.Health > 0 then
           UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
@@ -2847,7 +2732,7 @@ local function initLogic()
       pcall(function() UserInputService.MouseIconEnabled = false end)
       sltDotShow()
     else
-      pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
+      pcall(function() RunService:UnbindFromRenderStep("SILAU_TENGAH") end)
       UserInputService.MouseBehavior = Enum.MouseBehavior.Default
       if sltUGS then
         pcall(function() sltUGS.RotationType = Enum.RotationType.MovementRelative end)
@@ -2976,7 +2861,6 @@ local function initLogic()
     overlapParams.FilterType = Enum.RaycastFilterType.Exclude
     overlapParams.FilterDescendantsInstances = char and {char} or {}
     local near = {}
-    -- v1.5: radius 20 → 12 (hemat CPU)
     for _, part in ipairs(Workspace:GetPartBoundsInRadius(r.Position, 12, overlapParams)) do
       local m = vehicleModelFromPart(part)
       if m and not isMyStuff(m) then near[m] = true end
@@ -3014,8 +2898,11 @@ local function initLogic()
     syncNotify("Hide", v, silent, "Hide Player + Kendaraan")
   end
 
-  -- HIDE BADAN ATAS
-  local atasConn, atasT = nil, 0
+  -- HIDE BADAN ATAS — 3 LAPIS PERTAHANAN
+  local atasConn = nil
+  local atasSweepConn = nil
+  local atasCharConn = nil
+  local atasPending = false
   local atasDecalOrig = {}
   local ATAS_R15 = {
     Head = true, UpperTorso = true,
@@ -3059,6 +2946,68 @@ local function initLogic()
     return nil
   end
 
+  local function atasKlasifikasi(d, petaIkat, batasY)
+    if not d:IsA("BasePart") or d.Name == "HumanoidRootPart" then return false end
+    if BADAN_KENAL[d.Name] then
+      return (ATAS_R15[d.Name] or ATAS_R6[d.Name]) and true or false
+    end
+    local tubuh = atasIkat(d, 0)
+    if tubuh then
+      return (ATAS_R15[tubuh] or ATAS_R6[tubuh]) and true or false
+    end
+    local acc = atasCariAcc(d)
+    local att = acc and acc:FindFirstChildWhichIsA("Attachment", true) or nil
+    local owner = att and petaIkat[att.Name] or nil
+    if owner then
+      return (ATAS_R15[owner] or ATAS_R6[owner]) and true or false
+    end
+    local okP, pos = pcall(function() return d.Position end)
+    if okP and pos and batasY then
+      return pos.Y > batasY
+    end
+    return true
+  end
+
+  local function atasSapuPart(d)
+    if not State.HideAtasOn or State.Removed then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    local batasY = nil
+    pcall(function()
+      local hrp = char:FindFirstChild("HumanoidRootPart")
+      if hrp then batasY = hrp.Position.Y - 1.0 end
+    end)
+    local petaIkat = {}
+    for _, bp in ipairs(char:GetDescendants()) do
+      pcall(function()
+        if bp:IsA("BasePart") and BADAN_KENAL[bp.Name] then
+          for _, c in ipairs(bp:GetChildren()) do
+            if c:IsA("Attachment") then petaIkat[c.Name] = bp.Name end
+          end
+        end
+      end)
+    end
+    if d:IsA("BasePart") then
+      if atasKlasifikasi(d, petaIkat, batasY) then
+        d.LocalTransparencyModifier = 1
+        for _, c in ipairs(d:GetDescendants()) do
+          if c:IsA("Decal") then
+            if atasDecalOrig[c] == nil then atasDecalOrig[c] = c.Transparency end
+            c.Transparency = 1
+          end
+        end
+      end
+    elseif d:IsA("Decal") then
+      local parent = d.Parent
+      if parent and parent:IsA("BasePart") then
+        if atasKlasifikasi(parent, petaIkat, batasY) then
+          if atasDecalOrig[d] == nil then atasDecalOrig[d] = d.Transparency end
+          d.Transparency = 1
+        end
+      end
+    end
+  end
+
   local function atasSapu(on)
     local char = LocalPlayer.Character
     if not char then return end
@@ -3080,29 +3029,7 @@ local function initLogic()
     for _, d in ipairs(char:GetDescendants()) do
       pcall(function()
         if d:IsA("BasePart") and d.Name ~= "HumanoidRootPart" then
-          local sembunyi = false
-          if BADAN_KENAL[d.Name] then
-            sembunyi = (ATAS_R15[d.Name] or ATAS_R6[d.Name]) and true or false
-          else
-            local tubuh = atasIkat(d, 0)
-            if tubuh then
-              sembunyi = (ATAS_R15[tubuh] or ATAS_R6[tubuh]) and true or false
-            else
-              local acc = atasCariAcc(d)
-              local att = acc and acc:FindFirstChildWhichIsA("Attachment", true) or nil
-              local owner = att and petaIkat[att.Name] or nil
-              if owner then
-                sembunyi = (ATAS_R15[owner] or ATAS_R6[owner]) and true or false
-              else
-                local okP, pos = pcall(function() return d.Position end)
-                if okP and pos and batasY then
-                  sembunyi = pos.Y > batasY
-                else
-                  sembunyi = true
-                end
-              end
-            end
-          end
+          local sembunyi = atasKlasifikasi(d, petaIkat, batasY)
           if on then
             if sembunyi then
               d.LocalTransparencyModifier = 1
@@ -3127,28 +3054,66 @@ local function initLogic()
     end
   end
 
-  -- v1.5: HideAtas pakai DescendantAdded (hemat 90% CPU)
+  -- 3 LAPIS PERTAHANAN HIDEATAS
   Setters.HideAtas = function(v, silent)
     if State.HideAtasOn == v then return end
     State.HideAtasOn = v
+
     if v then
-      atasSapu(true)
       local char = getChar()
       if char then
+        -- LAPIS 1: DescendantAdded (instan)
         if atasConn then atasConn:Disconnect() end
         atasConn = catat(char.DescendantAdded:Connect(function(d)
           if not State.HideAtasOn or State.Removed then return end
-          task.defer(function()
-            if d:IsA("BasePart") or d:IsA("Decal") then
-              atasSapu(true)
-            end
-          end)
+          if d:IsA("BasePart") or d:IsA("Decal") then
+            task.defer(function()
+              if not State.HideAtasOn then return end
+              atasSapuPart(d)
+            end)
+          end
         end))
+        atasSapu(true)
       end
+
+      -- LAPIS 2: Periodic sweep (safety net, tiap 1dtk)
+      if atasSweepConn then task.cancel(atasSweepConn) end
+      atasSweepConn = task.spawn(function()
+        while State.HideAtasOn and not State.Removed do
+          task.wait(1.0)
+          if State.HideAtasOn and not State.Removed then
+            pcall(atasSapu, true)
+          end
+        end
+      end)
+
+      -- LAPIS 3: CharacterAdded hook (anti character-replace)
+      if atasCharConn then atasCharConn:Disconnect() end
+      atasCharConn = catat(LocalPlayer.CharacterAdded:Connect(function(newChar)
+        if not State.HideAtasOn or State.Removed then return end
+        task.wait(0.5)
+        if not State.HideAtasOn or State.Removed then return end
+        if atasConn then atasConn:Disconnect() end
+        atasConn = catat(newChar.DescendantAdded:Connect(function(d)
+          if not State.HideAtasOn or State.Removed then return end
+          if d:IsA("BasePart") or d:IsA("Decal") then
+            task.defer(function()
+              if not State.HideAtasOn then return end
+              atasSapuPart(d)
+            end)
+          end
+        end))
+        pcall(atasSapu, true)
+        print("[SILAU] HideAtas: character baru ter-hook")
+      end))
+
     else
       if atasConn then atasConn:Disconnect() atasConn = nil end
+      if atasSweepConn then task.cancel(atasSweepConn) atasSweepConn = nil end
+      if atasCharConn then atasCharConn:Disconnect() atasCharConn = nil end
       atasSapu(false)
     end
+
     syncNotify("HideAtas", v, silent, "Hide Badan Atas")
   end
 
@@ -3348,9 +3313,8 @@ local function initLogic()
     syncNotify("Light", v, silent, "Cahaya Auto")
   end
 
-  -- REJOIN
   rejoin = function()
-    toast("🔁 Rejoin: balik ke server dalam 3 detik...", Warna.Biru)
+    toast("🔁 Rejoin dalam 3 detik...", Warna.Biru)
     task.delay(3, function()
       local ok = pcall(function()
         TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
@@ -3361,7 +3325,6 @@ local function initLogic()
     end)
   end
 
-  -- UNLOAD SCRIPT
   unloadScript = function(tenang)
     if State.Removed then return end
     State.Removed = true
@@ -3376,13 +3339,16 @@ local function initLogic()
     pcall(setFeature, "Light", false, true)
     pcall(setFeature, "HideAtas", false, true)
     pcall(setFeature, "Emote", false, true)
-    pcall(function() RunService:UnbindFromRenderStep("KS_SHIFTLOCK") end)
-    pcall(function() RunService:UnbindFromRenderStep("KS_MOONWALK") end)
-    pcall(function() RunService:UnbindFromRenderStep("KS_TENGAH") end)
+    pcall(function() RunService:UnbindFromRenderStep("SILAU_SHIFTLOCK") end)
+    pcall(function() RunService:UnbindFromRenderStep("SILAU_MOONWALK") end)
+    pcall(function() RunService:UnbindFromRenderStep("SILAU_TENGAH") end)
     pcall(function()
       if sltDotGui then sltDotGui:Destroy() end
       sltDotGui, sltDot = nil, nil
     end)
+    if atasConn then pcall(function() atasConn:Disconnect() end) atasConn = nil end
+    if atasSweepConn then pcall(function() task.cancel(atasSweepConn) end) atasSweepConn = nil end
+    if atasCharConn then pcall(function() atasCharConn:Disconnect() end) atasCharConn = nil end
     if not tenang then
       pcall(function() UserInputService.MouseBehavior = Enum.MouseBehavior.Default end)
       pcall(function()
@@ -3432,22 +3398,21 @@ local function initLogic()
       end)
     end
     pcall(function() if screenGui then screenGui:Destroy() end end)
-    _G.__BALAP_MAIN__ = nil
-    _G.__KS_DELETE_ARMED__ = nil
+    _G.__SILAU_MAIN__ = nil
+    _G.__SILAU_DELETE_ARMED__ = nil
     pcall(function()
       if script and script.Parent then
         script.Disabled = true
         script:Destroy()
       end
     end)
-    print("[BALAP] Script dihapus total — semua dibersihkan ✔")
+    print("[SILAU] Script dihapus total ✔")
   end
 
-  -- WATCHDOG TAKEOVER
   task.spawn(function()
     while not State.Removed do
-      if _G.__BALAP_TOKEN__ ~= MY_TOKEN or not screenGui.Parent then
-        local adaPenerus = (_G.__BALAP_TOKEN__ ~= MY_TOKEN)
+      if _G.__SILAU_TOKEN__ ~= MY_TOKEN or not screenGui.Parent then
+        local adaPenerus = (_G.__SILAU_TOKEN__ ~= MY_TOKEN)
         pcall(function() unloadScript(adaPenerus) end)
         break
       end
@@ -3455,7 +3420,6 @@ local function initLogic()
     end
   end)
 
-  -- KARAKTER RESPAWN
   local initedChar
   local function initCharacter(char)
     if State.Removed then return end
@@ -3504,7 +3468,6 @@ local function initLogic()
     if plr.Character then unhideCharacter(plr.Character) end
   end))
 
-  -- v1.5: task.wait 0.3 → 0.8 (hemat CPU)
   task.spawn(function()
     while not State.Removed do
       if State.HideOn then pcall(updateVehicles) end
@@ -3512,7 +3475,6 @@ local function initLogic()
     end
   end)
 
-  -- BUKA / TUTUP GUI
   local function minimizeGui()
     if not root.Visible then return end
     bunyi(CFG.SND_PING, 0.3, 0.75)
@@ -3540,7 +3502,6 @@ local function initLogic()
 
   buatDraggable(header, root)
 
-  -- CTRL + KLIK
   catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed or State.Removed or not TITIK.aktif then return end
     if input.UserInputType == Enum.UserInputType.MouseButton1
@@ -3551,7 +3512,6 @@ local function initLogic()
     end
   end))
 
-  -- KEYBIND
   local lastK = 0
   catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.KeyCode == Enum.KeyCode.S
@@ -3603,22 +3563,21 @@ local function initLogic()
     local okG, errG = pcall(bukaGui)
     if not okG then
       diagSet("GUI gagal terbuka: " .. tostring(errG), Color3.fromRGB(239, 68, 68))
-      warn("[BALAP] bukaGui error: " .. tostring(errG))
+      warn("[SILAU] bukaGui error: " .. tostring(errG))
     end
   end)
 
-  print("[BALAP " .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
-  print("[BALAP] MOVE&VISUAL | ANIMASI | EMOTE | TITIK | SYSTEM")
+  print("[SILAU " .. VERSI .. "] SIAP ✔ — G = GUI | K×2 = rejoin")
   diagHapus()
-end -- akhir initLogic()
+end
 
 initLogic()
-getgenv().BALAP_API = { Setters = Setters, State = State }
+getgenv().SILAU_API = { Setters = Setters, State = State }
 
 end, function(e)
   local teks = tostring(e)
   print("==================================================")
-  print("[BALAP " .. VERSI .. "] ERROR SAAT LOAD — kirim teks ini ke dev:")
+  print("[SILAU " .. VERSI .. "] ERROR SAAT LOAD:")
   print(teks)
   pcall(function() print(debug.traceback("", 2)) end)
   print("==================================================")
@@ -3627,6 +3586,6 @@ end, function(e)
   end)
 end)
 
-if not __BALAP_LOAD_OK__ then
-  warn("[BALAP " .. VERSI .. "] Script GAGAL load — banner MERAH di layar berisi errornya.")
+if not __SILAU_LOAD_OK__ then
+  warn("[SILAU " .. VERSI .. "] Script GAGAL load — banner MERAH di layar berisi errornya.")
 end
