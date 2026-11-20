@@ -57,7 +57,7 @@ do
   end
 end
 
-local VERSI = "V1.0"
+local VERSI = "V1.1"
 local __SILAU_LOAD_OK__ = xpcall(function()
 
 -- [1] PENGAMAN DASAR ------------------------------------
@@ -1498,6 +1498,7 @@ local function buildUI()
   State.MoonOn  = false
   State.TengahOn = false
   State.HideAtasOn = false
+  State.CuacaOn    = false
 
   oLight = {
     Brightness = Lighting.Brightness,
@@ -1546,6 +1547,7 @@ local function buildUI()
   buatToggleRow(scrollMove, "Hide Player + Kendaraan", "R", "Hide")
   buatToggleRow(scrollMove, "Hide Badan Atas (kaki tetap)", "Z", "HideAtas")
   buatToggleRow(scrollMove, "Cahaya Auto (2 arah)", "T", "Light")
+  buatToggleRow(scrollMove, "Remove Cuaca (kabut/awan)", nil, "Cuaca")
   buatHeader(scrollMove, "Lightweight")
   buatToggleRow(scrollMove, "Partikel / Bayangan / Efek", nil, "LW")
   buatHeader(scrollMove, "Map")
@@ -3117,6 +3119,58 @@ local function initLogic()
     syncNotify("HideAtas", v, silent, "Hide Badan Atas")
   end
 
+  -- REMOVE CUACA (Atmosphere & Clouds) — Toggle Baru, 100% lokal
+  local weatherHidden = {}
+  local weatherFolder = Instance.new("Folder")
+  weatherFolder.Name = "__SILAU_CUACA_HIDDEN__"
+  weatherFolder.Parent = Lighting
+  local weatherConn = nil
+  local CUACA_CONTAINERS = { Lighting, Workspace, Terrain }
+
+  local function sapuCuaca()
+    for _, container in ipairs(CUACA_CONTAINERS) do
+      for _, obj in ipairs(container:GetChildren()) do
+        if (obj:IsA("Atmosphere") or obj:IsA("Clouds")) and obj.Parent ~= weatherFolder then
+          weatherHidden[obj] = obj.Parent
+          obj.Parent = weatherFolder
+        end
+      end
+    end
+  end
+
+  local function kembalikanCuaca()
+    for obj, asli in pairs(weatherHidden) do
+      pcall(function()
+        if obj.Parent and asli then obj.Parent = asli end
+      end)
+    end
+    table.clear(weatherHidden)
+  end
+
+  Setters.Cuaca = function(v, silent)
+    if State.CuacaOn == v then return end
+    State.CuacaOn = v
+    if v then
+      sapuCuaca()
+      weatherConn = Lighting.DescendantAdded:Connect(function(obj)
+        if not State.CuacaOn or State.Removed then return end
+        if obj:IsA("Atmosphere") or obj:IsA("Clouds") then
+          task.defer(function()
+            if not State.CuacaOn or State.Removed then return end
+            if obj.Parent and obj.Parent ~= weatherFolder then
+              weatherHidden[obj] = obj.Parent
+              obj.Parent = weatherFolder
+            end
+          end)
+        end
+      end)
+    else
+      if weatherConn then weatherConn:Disconnect() weatherConn = nil end
+      kembalikanCuaca()
+    end
+    syncNotify("Cuaca", v, silent, "Remove Cuaca")
+  end
+
   -- LIGHTWEIGHT
   local lwEffects, lwConns = {}, {}
   local function lwDisable(obj)
@@ -3338,6 +3392,7 @@ local function initLogic()
     pcall(setFeature, "Walls", false, true)
     pcall(setFeature, "Light", false, true)
     pcall(setFeature, "HideAtas", false, true)
+    pcall(setFeature, "Cuaca", false, true)
     pcall(setFeature, "Emote", false, true)
     pcall(function() RunService:UnbindFromRenderStep("SILAU_SHIFTLOCK") end)
     pcall(function() RunService:UnbindFromRenderStep("SILAU_MOONWALK") end)
@@ -3359,6 +3414,7 @@ local function initLogic()
     pcall(emoteStopTrack)
     pcall(function() if TITIK.folder then TITIK.folder:Destroy(); TITIK.folder = nil end end)
     if lightConn then pcall(function() task.cancel(lightConn) end) lightConn = nil end
+    pcall(function() if weatherFolder then weatherFolder:Destroy() weatherFolder = nil end end)
     for _, c in ipairs(semuaKoneksi) do
       pcall(function() c:Disconnect() end)
     end
