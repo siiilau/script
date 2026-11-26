@@ -1,10 +1,10 @@
 --========================================================
---  ABSOLUTE V1.0 — LOCAL ONLY
+--  ABSOLUTE V1.3 — LOCAL ONLY
 --  Tab: MOVEMENT & VISUAL • TITIK • SYSTEM
 --  Keybind: G=GUI  Q=Speed  C=Shift  LShift=Tengah
---           F=Moon  R=Hide  T=Cahaya  K×2=Rejoin
+--           F=Moon  R=Hide  T=Cahaya  X=Dinding  K×2=Rejoin
 --========================================================
-print("[Absolute V1.0] load mulai...")
+print("[Absolute V1.3] load mulai...")
 
 -- [0] DIAGNOSTIK -----------------------------------------
 local diagSet, diagHapus
@@ -57,7 +57,7 @@ do
   end
 end
 
-local VERSI = "V1.0"
+local VERSI = "V1.3"
 local __ABSOLUTE_LOAD_OK__ = xpcall(function()
 
 -- [1] PENGAMAN DASAR ------------------------------------
@@ -888,6 +888,89 @@ local function buildUI()
     return row, label
   end
 
+  local function buatSliderRow(parent, labelText, minVal, maxVal, defaultVal, onChange)
+    local row = buat("Frame", {
+      BackgroundColor3 = Warna.AbuItem,
+      Size = UDim2.new(1, 0, 0, 40),
+      LayoutOrder = nextOrder(),
+    }, parent)
+    buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
+    local label = buat("TextLabel", {
+      BackgroundTransparency = 1,
+      Position = UDim2.new(0, 10, 0, 4),
+      Size = UDim2.new(1, -20, 0, 16),
+      FontFace = fnt("med"),
+      TextSize = 12,
+      TextColor3 = Warna.TeksGelap,
+      TextXAlignment = Enum.TextXAlignment.Left,
+      Text = labelText,
+    }, row)
+    local track = buat("Frame", {
+      BackgroundColor3 = Warna.Card2,
+      Size = UDim2.new(1, -20, 0, 6),
+      Position = UDim2.new(0, 10, 0, 26),
+      BorderSizePixel = 0,
+    }, row)
+    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, track)
+    local fill = buat("Frame", {
+      BackgroundColor3 = Warna.Ungu,
+      Size = UDim2.new(0, 0, 1, 0),
+      BorderSizePixel = 0,
+    }, track)
+    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, fill)
+    local knob = buat("TextButton", {
+      BackgroundColor3 = Color3.fromRGB(235, 235, 240),
+      Size = UDim2.new(0, 14, 0, 14),
+      AnchorPoint = Vector2.new(0.5, 0.5),
+      Position = UDim2.new(0, 0, 0.5, 0),
+      Text = "",
+      AutoButtonColor = false,
+    }, track)
+    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, knob)
+
+    local function apply(v)
+      v = math.clamp(v, minVal, maxVal)
+      local pct = (maxVal == minVal) and 0 or (v - minVal) / (maxVal - minVal)
+      fill.Size = UDim2.new(pct, 0, 1, 0)
+      knob.Position = UDim2.new(pct, 0, 0.5, 0)
+      label.Text = labelText .. ": " .. tostring(v) .. "%"
+      onChange(v)
+    end
+
+    local dragging = false
+    local function setFromInput(input)
+      local x = input.Position.X - track.AbsolutePosition.X
+      local w = track.AbsoluteSize.X
+      local pct = math.clamp(x / math.max(w, 1), 0, 1)
+      apply(minVal + pct * (maxVal - minVal))
+    end
+    local function onBegin(input)
+      if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        return true
+      end
+      return false
+    end
+    knob.InputBegan:Connect(function(input)
+      if onBegin(input) then dragging = true end
+    end)
+    track.InputBegan:Connect(function(input)
+      if onBegin(input) then setFromInput(input); dragging = true end
+    end)
+    catat(UserInputService.InputChanged:Connect(function(input)
+      if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        setFromInput(input)
+      end
+    end))
+    catat(UserInputService.InputEnded:Connect(function(input)
+      if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        dragging = false
+      end
+    end))
+
+    apply(defaultVal)
+    return row
+  end
+
   local function buatStepperRow(parent, labelText, getV, setV)
     local row = buat("Frame", {
       BackgroundColor3 = Warna.AbuItem,
@@ -985,6 +1068,8 @@ local function buildUI()
   State.MoonOn  = false
   State.TengahOn = false
   State.CuacaOn    = false
+  State.WallsOn    = false
+  State.WallThick  = 0
 
   oLight = {
     Brightness = Lighting.Brightness,
@@ -1013,8 +1098,12 @@ local function buildUI()
   buatToggleRow(scrollMove, "Shiftlock Tengah", "Shift", "Tengah")
   buatToggleRow(scrollMove, "Moonwalk", "F", "Moon")
   buatHeader(scrollMove, "Visual")
-  buatToggleRow(scrollMove, "Hide Player + Kendaraan", "R", "Hide")
+  buatToggleRow(scrollMove, "Hide Player + Kendaraan + GUI", "R", "Hide")
   buatToggleRow(scrollMove, "Cahaya Auto (2 arah)", "T", "Light")
+  buatToggleRow(scrollMove, "Dinding Batas", "X", "Walls")
+  buatSliderRow(scrollMove, "Tebal & Panjang Dinding", 0, 20, 0, function(pct)
+    setFeature("WallsThick", pct)
+  end)
   buatToggleRow(scrollMove, "Remove Cuaca (kabut/awan)", nil, "Cuaca")
   buatHeader(scrollMove, "Lightweight")
   buatToggleRow(scrollMove, "Partikel / Bayangan / Efek", nil, "LW")
@@ -1327,7 +1416,7 @@ local function buildFX()
     BackgroundTransparency = 1,
     Size = UDim2.new(1, 0, 1, 0),
     FontFace = fnt("med"),
-    Text = "G=GUI • Q=Speed • C=Shift • F=Moon • R=Hide • T=Cahaya • K×2=Rejoin",
+    Text = "G=GUI • Q=Speed • C=Shift • F=Moon • R=Hide • T=Cahaya • X=Dinding • K×2=Rejoin",
     TextColor3 = Warna.AbuGelap,
     TextSize = 10,
     TextXAlignment = Enum.TextXAlignment.Center,
@@ -1786,11 +1875,16 @@ local function initLogic()
       for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then hideCharacter(plr.Character) end
       end
+      -- sembunyikan GUI juga = layar benar-benar bersih
+      root.Visible = false
+      panelScale.Scale = 1
     else
       unhideAll()
       restoreAllVehicles()
+      fitPanel()
+      root.Visible = true
     end
-    syncNotify("Hide", v, silent, "Hide Player + Kendaraan")
+    syncNotify("Hide", v, silent, "Hide Player + Kendaraan + GUI")
   end
 
   -- REMOVE CUACA (Atmosphere & Clouds) — Toggle 100% lokal
@@ -1936,6 +2030,96 @@ local function initLogic()
       Lighting.Ambient = ambientTarget
       Lighting.OutdoorAmbient = ambientTarget
     end)
+  end
+
+  -- DINDING BATAS
+  local wallOriginal = {}
+  local wallBoxes = {}
+  local wallConn
+  local WALL_ISI  = Color3.fromRGB(70, 70, 70)
+  local WALL_TEPI = Color3.fromRGB(150, 150, 150)
+
+  local function isWallCandidate(part)
+    if not part:IsA("BasePart") or part == Terrain then return false end
+    if part.Transparency < 0.95 then return false end
+    if not part.CanCollide then return false end
+    local m = part:FindFirstAncestorOfClass("Model")
+    if m and Players:GetPlayerFromCharacter(m) then return false end
+    return true
+  end
+
+  -- 0% = tebal garis & ukuran asli, 20% = garis 2x & ukuran +20%
+  local function wallThickOf(pct)
+    return 0.05 + (math.clamp(pct, 0, 20) / 20) * 0.05
+  end
+  local function wallScaleOf(pct)
+    return 1 + (math.clamp(pct, 0, 20) / 100)
+  end
+
+  local function wallify(part)
+    if wallOriginal[part] then return end
+    wallOriginal[part] = {Transparency = part.Transparency, Color = part.Color, Size = part.Size}
+    local sc = wallScaleOf(State.WallThick)
+    part.Transparency = 0.6
+    part.Color = WALL_ISI
+    pcall(function() part.Size = part.Size * sc end)
+    pcall(function()
+      local box = Instance.new("SelectionBox")
+      box.Adornee = part
+      box.LineThickness = wallThickOf(State.WallThick)
+      box.Color3 = WALL_TEPI
+      box.SurfaceTransparency = 1
+      box.Visible = true
+      box.Parent = part
+      wallBoxes[part] = box
+    end)
+  end
+
+  local function applyWallThick(pct)
+    State.WallThick = math.clamp(pct, 0, 20)
+    local sc = wallScaleOf(State.WallThick)
+    local lt = wallThickOf(State.WallThick)
+    for part, d in pairs(wallOriginal) do
+      pcall(function() if part.Parent then part.Size = d.Size * sc end end)
+      local box = wallBoxes[part]
+      if box then pcall(function() box.LineThickness = lt end) end
+    end
+  end
+
+  Setters.Walls = function(v, silent)
+    if State.WallsOn == v then return end
+    State.WallsOn = v
+    if v then
+      for _, obj in ipairs(Workspace:GetDescendants()) do
+        if isWallCandidate(obj) then wallify(obj) end
+      end
+      wallConn = Workspace.DescendantAdded:Connect(function(obj)
+        task.defer(function()
+          if State.WallsOn and isWallCandidate(obj) then wallify(obj) end
+        end)
+      end)
+    else
+      if wallConn then wallConn:Disconnect() wallConn = nil end
+      for part, d in pairs(wallOriginal) do
+        pcall(function()
+          if part.Parent then
+            part.Transparency = d.Transparency
+            part.Color = d.Color
+            part.Size = d.Size
+          end
+        end)
+      end
+      for _, box in pairs(wallBoxes) do
+        pcall(function() box:Destroy() end)
+      end
+      table.clear(wallOriginal)
+      table.clear(wallBoxes)
+    end
+    syncNotify("Walls", v, silent, "Dinding Batas")
+  end
+
+  Setters.WallsThick = function(pct)
+    applyWallThick(pct)
   end
 
   Setters.Light = function(v, silent)
@@ -2184,6 +2368,8 @@ local function initLogic()
       setFeature("Hide", not State.HideOn)
     elseif input.KeyCode == Enum.KeyCode.T then
       setFeature("Light", not State.LightOn)
+    elseif input.KeyCode == Enum.KeyCode.X then
+      setFeature("Walls", not State.WallsOn)
     elseif input.KeyCode == Enum.KeyCode.K then
       local now = os.clock()
       if now - lastK < 0.45 then
