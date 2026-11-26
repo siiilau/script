@@ -1098,7 +1098,7 @@ local function buildUI()
   buatToggleRow(scrollMove, "Shiftlock Tengah", "Shift", "Tengah")
   buatToggleRow(scrollMove, "Moonwalk", "F", "Moon")
   buatHeader(scrollMove, "Visual")
-  buatToggleRow(scrollMove, "Hide Player + Kendaraan + GUI", "R", "Hide")
+  buatToggleRow(scrollMove, "Hide Player + Kendaraan", "R", "Hide")
   buatToggleRow(scrollMove, "Cahaya Auto (2 arah)", "T", "Light")
   buatToggleRow(scrollMove, "Dinding Batas", "X", "Walls")
   buatSliderRow(scrollMove, "Tebal & Panjang Dinding", 0, 20, 0, function(pct)
@@ -1875,16 +1875,11 @@ local function initLogic()
       for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then hideCharacter(plr.Character) end
       end
-      -- sembunyikan GUI juga = layar benar-benar bersih
-      root.Visible = false
-      panelScale.Scale = 1
     else
       unhideAll()
       restoreAllVehicles()
-      fitPanel()
-      root.Visible = true
     end
-    syncNotify("Hide", v, silent, "Hide Player + Kendaraan + GUI")
+    syncNotify("Hide", v, silent, "Hide Player + Kendaraan")
   end
 
   -- REMOVE CUACA (Atmosphere & Clouds) — Toggle 100% lokal
