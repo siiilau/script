@@ -2,7 +2,7 @@
 --  ABSOLUTE V1.3 — LOCAL ONLY
 --  Tab: MOVEMENT & VISUAL • TITIK • SYSTEM
 --  Keybind: G=GUI  Q=Speed  C=Shift  LShift=Tengah
---           F=Moon  R=Hide  T=Cahaya  X=Tangga&Tali  K×2=Rejoin
+--           F=Moon  R=Hide  T=Cahaya  X=Resize  K×2=Rejoin
 --========================================================
 print("[Absolute V1.3] load mulai...")
 
@@ -57,7 +57,7 @@ do
   end
 end
 
-local VERSI = "V1.3"
+local VERSI = "V1.4"
 local __ABSOLUTE_LOAD_OK__ = xpcall(function()
 
 -- [1] PENGAMAN DASAR ------------------------------------
@@ -103,7 +103,7 @@ local CFG = {
   LED_TEXT        = "⚡ A B S O L U T E ⚡",
   SOUND_ON        = true,
   FX_LEVEL        = 1,
-  SPEED_OFF   = 17.15, SPEED_ON_1  = 17.25, SPEED_ON_2  = 40,
+  SPEED_OFF   = 17.125, SPEED_ON_1  = 17.25, SPEED_ON_2  = 40,
   MOON_TURN_MAX = 12, MOON_SMOOTH = 10,
   SLT_WAKTU   = 0.25, SLT_DOT     = 7, SLT_DOT_Y   = 0.60,
   SWIM_BONUS         = 1.025,
@@ -1220,6 +1220,8 @@ local function buildUI()
   State.TanggaOn    = false
   State.TanggaThick = 1
   State.TaliThick   = 1
+  State.PapanThick  = 5
+  State.BatuThick   = 5
 
   oLight = {
     Brightness = Lighting.Brightness,
@@ -1250,12 +1252,18 @@ local function buildUI()
   buatHeader(scrollMove, "Visual")
   buatToggleRow(scrollMove, "Hide Player + Kendaraan", "R", "Hide")
   buatToggleRow(scrollMove, "Cahaya Auto (2 arah)", "T", "Light")
-  buatToggleRow(scrollMove, "Tangga & Tali", "X", "Tangga")
+  buatToggleRow(scrollMove, "Tangga/Tali/Papan/Batu", "X", "Tangga")
   buatSliderRow(scrollMove, "Tangga", 0.5, 10, 1, function(pct)
     setFeature("TanggaThick", pct)
   end)
   buatSliderRow(scrollMove, "Tali/Kayu", 1, 50, 1, function(pct)
     setFeature("TaliThick", pct)
+  end)
+  buatSliderRow(scrollMove, "Papan", 1, 20, 5, function(pct)
+    setFeature("PapanThick", pct)
+  end)
+  buatSliderRow(scrollMove, "Batu", 1, 20, 5, function(pct)
+    setFeature("BatuThick", pct)
   end)
   buatToggleRow(scrollMove, "Remove Cuaca (kabut/awan)", nil, "Cuaca")
   buatHeader(scrollMove, "Lightweight")
@@ -1569,7 +1577,7 @@ local function buildFX()
     BackgroundTransparency = 1,
     Size = UDim2.new(1, 0, 1, 0),
     FontFace = fnt("med"),
-    Text = "G=GUI • Q=Speed • C=Shift • F=Moon • R=Hide • T=Cahaya • X=Tangga&Tali • K×2=Rejoin",
+    Text = "G=GUI • Q=Speed • C=Shift • F=Moon • R=Hide • T=Cahaya • X=Resize • K×2=Rejoin",
     TextColor3 = Warna.AbuGelap,
     TextSize = 10,
     TextXAlignment = Enum.TextXAlignment.Center,
@@ -2180,16 +2188,54 @@ local function initLogic()
     end)
   end
 
-  -- TANGGA (LADDER LENGTHENER)
-  local tanggaOriginal = {}
+  -- TANGGA / TALI / PAPAN / BATU (PART RESIZER) — deteksi NAME/ANCESTOR
+  -- (data asli Expedition Antarctica via InspectExpedition.lua)
+  -- satu toggle X, 4 nilai terpisah. Eksklusi karakter + body-part. Anti-tabrakan.
+  local tanggaOriginal, taliOriginal, papanOriginal, batuOriginal = {}, {}, {}, {}
   local tanggaConn
-  local TANGGA_MAX_AXIS = 60  -- filter: hanya part ukuran kecil & sedang (skala tangga)
+  local BATU_MAX_AXIS = 30  -- batu: skip es terrain raksasa (Ice_Boulder 12-24 lolos)
 
-  local function tanggaScaleOf(pct)
-    return 1 + (math.clamp(pct, 0.5, 10) / 100)  -- 0,5% = 1.005x, 10% = 1.10x
+  -- nama body-part R6/R15 (anti salah tangkap tubuh avatar/NPC)
+  local BODY_PARTS = {
+    HumanoidRootPart=true, Torso=true, Head=true, UpperTorso=true, LowerTorso=true,
+    Waist=true, Root=true, LeftArm=true, RightArm=true, LeftLeg=true, RightLeg=true,
+    LeftUpperArm=true, RightUpperArm=true, LeftLowerArm=true, RightLowerArm=true,
+    LeftHand=true, RightHand=true, LeftUpperLeg=true, RightUpperLeg=true,
+    LeftLowerLeg=true, RightLowerLeg=true, LeftFoot=true, RightFoot=true,
+  }
+
+  -- skip karakter (pemain lokal + NPC/hewan) + body-part lepas
+  local function inCharacter(part)
+    if BODY_PARTS[part.Name] then return true end
+    local node = part.Parent
+    while node and node ~= Workspace do
+      if node:IsA("Model") and node:FindFirstChildOfClass("Humanoid") then return true end
+      node = node.Parent
+    end
+    return false
   end
 
-  -- skala hanya sumbu terpanjang (panjang tangga); tebal & lebar tetap
+  -- guard: satu part hanya di-claim satu fitur (anti double-resize)
+  local function sudahDiklaim(part)
+    return tanggaOriginal[part] or taliOriginal[part]
+        or papanOriginal[part] or batuOriginal[part]
+  end
+
+  -- cek name atau ancestor mengandung keyword (case-insensitive)
+  local function namaAtauAncestor(part, kw)
+    if string.find(string.lower(part.Name or ""), kw, 1, true) then return true end
+    local node = part.Parent
+    while node and node ~= Workspace do
+      if string.find(string.lower(node.Name or ""), kw, 1, true) then return true end
+      node = node.Parent
+    end
+    return false
+  end
+
+  -- TANGGA: panjangkan sumbu terpanjang. Deteksi: name/ancestor "ladder".
+  local function tanggaScaleOf(pct)
+    return 1 + (math.clamp(pct, 0.5, 10) / 100)
+  end
   local function tanggaScaledSize(orig, f)
     local xs, ys, zs = orig.X, orig.Y, orig.Z
     local m = math.max(xs, ys, zs)
@@ -2197,50 +2243,29 @@ local function initLogic()
     elseif m == ys then return Vector3.new(xs, ys * f, zs)
     else return Vector3.new(xs, ys, zs * f) end
   end
-
   local function isLadderCandidate(part)
     if not part:IsA("BasePart") or part == Terrain then return false end
-    local s = part.Size
-    local longest = math.max(s.X, s.Y, s.Z)
-    if longest > TANGGA_MAX_AXIS then return false end  -- skip bangunan/terrain besar
-    local nm = string.lower(part.Name or "")
-    if nm:find("ladder", 1, true) or nm:find("tangga", 1, true)
-       or nm:find("truss", 1, true) or nm:find("panjat", 1, true) then
-      return true
-    end
-    if part:IsA("TrussPart") then return true end
-    local ax = {s.X, s.Y, s.Z}
-    table.sort(ax)
-    if longest >= 2.5 * ax[2] and longest >= 2 then return true end
-    return false
+    if sudahDiklaim(part) or inCharacter(part) then return false end
+    return namaAtauAncestor(part, "ladder")
   end
-
   local function tanggaApply(part)
-    if tanggaOriginal[part] then return end
+    if sudahDiklaim(part) then return end
     tanggaOriginal[part] = part.Size
-    pcall(function()
-      part.Size = tanggaScaledSize(part.Size, tanggaScaleOf(State.TanggaThick))
-    end)
+    pcall(function() part.Size = tanggaScaledSize(part.Size, tanggaScaleOf(State.TanggaThick)) end)
   end
-
   local function tanggaApplyAll(pct)
     State.TanggaThick = math.clamp(pct, 0.5, 10)
     local f = tanggaScaleOf(State.TanggaThick)
     for part, orig in pairs(tanggaOriginal) do
-      pcall(function()
-        if part.Parent then part.Size = tanggaScaledSize(orig, f) end
-      end)
+      pcall(function() if part.Parent then part.Size = tanggaScaledSize(orig, f) end end)
     end
   end
 
-  -- TALI/KAYU (ROPE WIDENER) — memperlebar cross-section tali, panjang tetap
-  local taliOriginal = {}
-
+  -- TALI: lebarkan cross-section (dua sumbu terkecil). Deteksi: name "rope"
+  -- atau ancestor "tight_rope"/"rope_fence".
   local function taliScaleOf(pct)
-    return 1 + (math.clamp(pct, 1, 50) / 100)  -- 1% = 1.01x, 50% = 1.5x lebih lebar
+    return 1 + (math.clamp(pct, 1, 50) / 100)
   end
-
-  -- skala dua sumbu terkecil (lebar/diameter tali), sumbu terpanjang (panjang) tetap
   local function taliScaledSize(orig, f)
     local xs, ys, zs = orig.X, orig.Y, orig.Z
     local m = math.max(xs, ys, zs)
@@ -2248,39 +2273,103 @@ local function initLogic()
     elseif m == ys then return Vector3.new(xs * f, ys, zs * f)
     else return Vector3.new(xs * f, ys * f, zs) end
   end
-
   local function isTaliCandidate(part)
     if not part:IsA("BasePart") or part == Terrain then return false end
-    local s = part.Size
-    local ax = {s.X, s.Y, s.Z}
-    table.sort(ax)
-    local longest, second = ax[3], ax[2]
-    local nm = string.lower(part.Name or "")
-    if nm:find("rope", 1, true) or nm:find("tali", 1, true) or nm:find("wire", 1, true)
-       or nm:find("slack", 1, true) or nm:find("bridge", 1, true)
-       or nm:find("titian", 1, true) or nm:find("jembatan", 1, true) then
-      return second <= 8
-    end
-    -- heuristik: sangat memanjang & tipis (rope-like)
-    if second <= 5 and longest >= 8 * second and longest >= 8 then return true end
+    if sudahDiklaim(part) or inCharacter(part) then return false end
+    if string.find(string.lower(part.Name or ""), "rope", 1, true) then return true end
+    if namaAtauAncestor(part, "tight_rope") then return true end
+    if namaAtauAncestor(part, "rope_fence") then return true end
     return false
   end
-
   local function taliApply(part)
-    if taliOriginal[part] then return end
+    if sudahDiklaim(part) then return end
     taliOriginal[part] = part.Size
-    pcall(function()
-      part.Size = taliScaledSize(part.Size, taliScaleOf(State.TaliThick))
-    end)
+    pcall(function() part.Size = taliScaledSize(part.Size, taliScaleOf(State.TaliThick)) end)
   end
-
   local function taliApplyAll(pct)
     State.TaliThick = math.clamp(pct, 1, 50)
     local f = taliScaleOf(State.TaliThick)
     for part, orig in pairs(taliOriginal) do
-      pcall(function()
-        if part.Parent then part.Size = taliScaledSize(orig, f) end
-      end)
+      pcall(function() if part.Parent then part.Size = taliScaledSize(orig, f) end end)
+    end
+  end
+
+  -- PAPAN: lebarkan sumbu tengah (lebar permukaan). Deteksi: name plank/board/dock,
+  -- step di atas rope-bridge, atau geometri flat-plank (tipis<=1, lebar 1.5-4, panjang 4-30).
+  local function papanScaleOf(pct)
+    return 1 + (math.clamp(pct, 1, 20) / 100)
+  end
+  local function papanScaledSize(orig, f)
+    local xs, ys, zs = orig.X, orig.Y, orig.Z
+    local ax = {{xs, 1}, {ys, 2}, {zs, 3}}
+    table.sort(ax, function(a, b) return a[1] < b[1] end)
+    local out = {xs, ys, zs}
+    out[ax[2][2]] = ax[2][1] * f  -- sumbu tengah (lebar)
+    return Vector3.new(out[1], out[2], out[3])
+  end
+  local function isPapanCandidate(part)
+    if not part:IsA("BasePart") or part == Terrain then return false end
+    if sudahDiklaim(part) or inCharacter(part) then return false end
+    if namaAtauAncestor(part, "ladder") then return false end  -- milik tangga
+    local nm = string.lower(part.Name or "")
+    if nm:find("plank", 1, true) or nm:find("board", 1, true) or nm:find("dock", 1, true) then
+      return true
+    end
+    if nm:find("step", 1, true) and namaAtauAncestor(part, "rope") then return true end
+    local s = part.Size
+    local ax = {s.X, s.Y, s.Z}
+    table.sort(ax)
+    local tipis, lebar, panjang = ax[1], ax[2], ax[3]
+    if tipis <= 1 and lebar >= 1.5 and lebar <= 4 and panjang >= 4
+       and panjang <= 30 and panjang >= 2 * lebar then
+      return true
+    end
+    return false
+  end
+  local function papanApply(part)
+    if sudahDiklaim(part) then return end
+    papanOriginal[part] = part.Size
+    pcall(function() part.Size = papanScaledSize(part.Size, papanScaleOf(State.PapanThick)) end)
+  end
+  local function papanApplyAll(pct)
+    State.PapanThick = math.clamp(pct, 1, 20)
+    local f = papanScaleOf(State.PapanThick)
+    for part, orig in pairs(papanOriginal) do
+      pcall(function() if part.Parent then part.Size = papanScaledSize(orig, f) end end)
+    end
+  end
+
+  -- BATU: membesar seragam. Deteksi: name/ancestor "boulder"/"iceberg", chunky, <=30 stud.
+  local function batuScaleOf(pct)
+    return 1 + (math.clamp(pct, 1, 20) / 100)
+  end
+  local function batuScaledSize(orig, f)
+    return Vector3.new(orig.X * f, orig.Y * f, orig.Z * f)
+  end
+  local function isBatuCandidate(part)
+    if not part:IsA("BasePart") or part == Terrain then return false end
+    if sudahDiklaim(part) or inCharacter(part) then return false end
+    if not (namaAtauAncestor(part, "boulder") or namaAtauAncestor(part, "iceberg")) then
+      return false
+    end
+    local s = part.Size
+    local ax = {s.X, s.Y, s.Z}
+    table.sort(ax)
+    local shortest, longest = ax[1], ax[3]
+    if longest > BATU_MAX_AXIS then return false end          -- skip es raksasa
+    if longest > 2.5 * shortest then return false end         -- skip memanjang (icicle)
+    return true
+  end
+  local function batuApply(part)
+    if sudahDiklaim(part) then return end
+    batuOriginal[part] = part.Size
+    pcall(function() part.Size = batuScaledSize(part.Size, batuScaleOf(State.BatuThick)) end)
+  end
+  local function batuApplyAll(pct)
+    State.BatuThick = math.clamp(pct, 1, 20)
+    local f = batuScaleOf(State.BatuThick)
+    for part, orig in pairs(batuOriginal) do
+      pcall(function() if part.Parent then part.Size = batuScaledSize(orig, f) end end)
     end
   end
 
@@ -2291,36 +2380,37 @@ local function initLogic()
       for _, obj in ipairs(Workspace:GetDescendants()) do
         if isLadderCandidate(obj) then tanggaApply(obj) end
         if isTaliCandidate(obj) then taliApply(obj) end
+        if isPapanCandidate(obj) then papanApply(obj) end
+        if isBatuCandidate(obj) then batuApply(obj) end
       end
       tanggaConn = Workspace.DescendantAdded:Connect(function(obj)
         task.defer(function()
           if State.TanggaOn then
             if isLadderCandidate(obj) then tanggaApply(obj) end
             if isTaliCandidate(obj) then taliApply(obj) end
+            if isPapanCandidate(obj) then papanApply(obj) end
+            if isBatuCandidate(obj) then batuApply(obj) end
           end
         end)
       end)
     else
       if tanggaConn then tanggaConn:Disconnect() tanggaConn = nil end
-      for part, orig in pairs(tanggaOriginal) do
-        pcall(function() if part.Parent then part.Size = orig end end)
-      end
+      for part, orig in pairs(tanggaOriginal) do pcall(function() if part.Parent then part.Size = orig end end) end
       table.clear(tanggaOriginal)
-      for part, orig in pairs(taliOriginal) do
-        pcall(function() if part.Parent then part.Size = orig end end)
-      end
+      for part, orig in pairs(taliOriginal) do pcall(function() if part.Parent then part.Size = orig end end) end
       table.clear(taliOriginal)
+      for part, orig in pairs(papanOriginal) do pcall(function() if part.Parent then part.Size = orig end end) end
+      table.clear(papanOriginal)
+      for part, orig in pairs(batuOriginal) do pcall(function() if part.Parent then part.Size = orig end end) end
+      table.clear(batuOriginal)
     end
-    syncNotify("Tangga", v, silent, "Tangga & Tali")
+    syncNotify("Tangga", v, silent, "Tangga/Tali/Papan/Batu")
   end
 
-  Setters.TanggaThick = function(pct)
-    tanggaApplyAll(pct)
-  end
-
-  Setters.TaliThick = function(pct)
-    taliApplyAll(pct)
-  end
+  Setters.TanggaThick = function(pct) tanggaApplyAll(pct) end
+  Setters.TaliThick   = function(pct) taliApplyAll(pct) end
+  Setters.PapanThick  = function(pct) papanApplyAll(pct) end
+  Setters.BatuThick   = function(pct) batuApplyAll(pct) end
 
   Setters.Light = function(v, silent)
     if State.LightOn == v then return end
