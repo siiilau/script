@@ -2,7 +2,7 @@
 --  ABSOLUTE V1.3 — LOCAL ONLY
 --  Tab: MOVEMENT & VISUAL • TITIK • SYSTEM
 --  Keybind: G=GUI  Q=Speed  C=Shift  LShift=Tengah
---           F=Moon  R=Hide  T=Cahaya  X=Dinding  K×2=Rejoin
+--           F=Moon  R=Hide  T=Cahaya  X=Tangga&Tali  K×2=Rejoin
 --========================================================
 print("[Absolute V1.3] load mulai...")
 
@@ -930,10 +930,12 @@ local function buildUI()
 
     local function apply(v)
       v = math.clamp(v, minVal, maxVal)
+      v = math.floor(v * 10 + 0.5) / 10
+      v = math.clamp(v, minVal, maxVal)
       local pct = (maxVal == minVal) and 0 or (v - minVal) / (maxVal - minVal)
       fill.Size = UDim2.new(pct, 0, 1, 0)
       knob.Position = UDim2.new(pct, 0, 0.5, 0)
-      label.Text = labelText .. ": " .. tostring(v) .. "%"
+      label.Text = labelText .. ": " .. string.format("%.1f", v):gsub("%.", ",") .. "%"
       onChange(v)
     end
 
@@ -968,6 +970,153 @@ local function buildUI()
     end))
 
     apply(defaultVal)
+    return row
+  end
+
+  local function buatToggleSliderRow(parent, labelText, featureName, keyText, minVal, maxVal, defaultVal, onChange)
+    local row = buat("Frame", {
+      BackgroundColor3 = Warna.AbuItem,
+      Size = UDim2.new(1, 0, 0, 44),
+      LayoutOrder = nextOrder(),
+    }, parent)
+    buat("UICorner", {CornerRadius = UDim.new(0, 8)}, row)
+
+    local function fmtPct(v)
+      local s = string.format("%.1f", math.abs(v)):gsub("%.", ",")
+      if minVal < 0 then
+        if v > 0.0001 then return "+" .. s .. "%"
+        elseif v < -0.0001 then return "-" .. s .. "%"
+        else return s .. "%" end
+      else
+        return s .. "%"
+      end
+    end
+
+    local label = buat("TextLabel", {
+      BackgroundTransparency = 1,
+      Position = UDim2.new(0, 10, 0, 3),
+      Size = UDim2.new(1, -20, 0, 15),
+      FontFace = fnt("med"),
+      TextSize = 12,
+      TextColor3 = Warna.TeksGelap,
+      TextXAlignment = Enum.TextXAlignment.Left,
+      Text = labelText,
+    }, row)
+
+    if keyText then
+      local cw = math.max(24, 14 + #keyText * 8)
+      local chip = buat("TextLabel", {
+        BackgroundColor3 = Warna.Card2,
+        Size = UDim2.new(0, cw, 0, 14),
+        Position = UDim2.new(1, -10 - cw, 0, 3),
+        FontFace = fnt("bold"),
+        TextSize = 11,
+        TextColor3 = Warna.AbuGelap,
+        Text = keyText,
+      }, row)
+      buat("UICorner", {CornerRadius = UDim.new(0, 6)}, chip)
+    end
+
+    local track = buat("Frame", {
+      BackgroundColor3 = Warna.Card2,
+      Size = UDim2.new(1, -70, 0, 8),
+      Position = UDim2.new(0, 10, 0, 28),
+      BorderSizePixel = 0,
+    }, row)
+    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, track)
+    local fill = buat("Frame", {
+      BackgroundColor3 = Warna.Ungu,
+      Size = UDim2.new(0, 0, 1, 0),
+      BorderSizePixel = 0,
+    }, track)
+    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, fill)
+    local knob = buat("TextButton", {
+      BackgroundColor3 = Color3.fromRGB(235, 235, 240),
+      Size = UDim2.new(0, 14, 0, 14),
+      AnchorPoint = Vector2.new(0.5, 0.5),
+      Position = UDim2.new(0.5, 0, 0.5, 0),
+      Text = "",
+      AutoButtonColor = false,
+    }, track)
+    buat("UICorner", {CornerRadius = UDim.new(1, 0)}, knob)
+
+    local sw = buat("TextButton", {
+      BackgroundColor3 = Warna.Gray,
+      Size = UDim2.new(0, 40, 0, 20),
+      Position = UDim2.new(1, -50, 0, 22),
+      Text = "",
+      AutoButtonColor = false,
+    }, row)
+    buat("UICorner", {CornerRadius = UDim.new(0, 10)}, sw)
+    local sknob = buat("Frame", {
+      BackgroundColor3 = Color3.fromRGB(235, 235, 240),
+      Size = UDim2.new(0, 14, 0, 14),
+      Position = UDim2.new(0, 3, 0.5, -7),
+    }, sw)
+    buat("UICorner", {CornerRadius = UDim.new(0, 10)}, sknob)
+
+    local val = defaultVal
+    local function valText()
+      return labelText .. ": " .. fmtPct(val)
+    end
+
+    local function applyValue(v)
+      v = math.clamp(v, minVal, maxVal)
+      v = math.floor(v * 10 + 0.5) / 10
+      v = math.clamp(v, minVal, maxVal)
+      val = v
+      local pct = (maxVal == minVal) and 0 or (v - minVal) / (maxVal - minVal)
+      fill.Size = UDim2.new(pct, 0, 1, 0)
+      knob.Position = UDim2.new(pct, 0, 0.5, 0)
+      if State[featureName .. "On"] then
+        label.Text = valText()
+      end
+      onChange(v)
+    end
+
+    local api = {}
+    function api.set(on)
+      tween(sw, TweenInfo.new(0.15), {BackgroundColor3 = on and Warna.Hijau or Warna.Gray})
+      tween(sknob, TweenInfo.new(0.15), {
+        Position = on and UDim2.new(1, -17, 0.5, -7) or UDim2.new(0, 3, 0.5, -7)
+      })
+      fill.BackgroundColor3 = on and Warna.Ungu or Warna.Gray
+      label.Text = on and valText() or (labelText .. ": OFF")
+    end
+    Switches[featureName] = api
+
+    local dragging = false
+    local function setFromInput(input)
+      local x = input.Position.X - track.AbsolutePosition.X
+      local w = track.AbsoluteSize.X
+      local pct = math.clamp(x / math.max(w, 1), 0, 1)
+      applyValue(minVal + pct * (maxVal - minVal))
+    end
+    local function onBegin(input)
+      return input.UserInputType == Enum.UserInputType.MouseButton1
+          or input.UserInputType == Enum.UserInputType.Touch
+    end
+    knob.InputBegan:Connect(function(input)
+      if onBegin(input) then dragging = true end
+    end)
+    track.InputBegan:Connect(function(input)
+      if onBegin(input) then setFromInput(input); dragging = true end
+    end)
+    catat(UserInputService.InputChanged:Connect(function(input)
+      if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+          or input.UserInputType == Enum.UserInputType.Touch) then
+        setFromInput(input)
+      end
+    end))
+    catat(UserInputService.InputEnded:Connect(function(input)
+      if dragging and onBegin(input) then dragging = false end
+    end))
+    sw.MouseButton1Click:Connect(function()
+      setFeature(featureName, not State[featureName .. "On"])
+    end)
+
+    applyValue(defaultVal)
+    api.set(State[featureName .. "On"])
     return row
   end
 
@@ -1068,8 +1217,9 @@ local function buildUI()
   State.MoonOn  = false
   State.TengahOn = false
   State.CuacaOn    = false
-  State.WallsOn    = false
-  State.WallThick  = 0
+  State.TanggaOn    = false
+  State.TanggaThick = 1
+  State.TaliThick   = 1
 
   oLight = {
     Brightness = Lighting.Brightness,
@@ -1100,9 +1250,12 @@ local function buildUI()
   buatHeader(scrollMove, "Visual")
   buatToggleRow(scrollMove, "Hide Player + Kendaraan", "R", "Hide")
   buatToggleRow(scrollMove, "Cahaya Auto (2 arah)", "T", "Light")
-  buatToggleRow(scrollMove, "Dinding Batas", "X", "Walls")
-  buatSliderRow(scrollMove, "Tebal & Panjang Dinding", 0, 20, 0, function(pct)
-    setFeature("WallsThick", pct)
+  buatToggleRow(scrollMove, "Tangga & Tali", "X", "Tangga")
+  buatSliderRow(scrollMove, "Tangga", 0.5, 10, 1, function(pct)
+    setFeature("TanggaThick", pct)
+  end)
+  buatSliderRow(scrollMove, "Tali/Kayu", 1, 50, 1, function(pct)
+    setFeature("TaliThick", pct)
   end)
   buatToggleRow(scrollMove, "Remove Cuaca (kabut/awan)", nil, "Cuaca")
   buatHeader(scrollMove, "Lightweight")
@@ -1416,7 +1569,7 @@ local function buildFX()
     BackgroundTransparency = 1,
     Size = UDim2.new(1, 0, 1, 0),
     FontFace = fnt("med"),
-    Text = "G=GUI • Q=Speed • C=Shift • F=Moon • R=Hide • T=Cahaya • X=Dinding • K×2=Rejoin",
+    Text = "G=GUI • Q=Speed • C=Shift • F=Moon • R=Hide • T=Cahaya • X=Tangga&Tali • K×2=Rejoin",
     TextColor3 = Warna.AbuGelap,
     TextSize = 10,
     TextXAlignment = Enum.TextXAlignment.Center,
@@ -2027,94 +2180,146 @@ local function initLogic()
     end)
   end
 
-  -- DINDING BATAS
-  local wallOriginal = {}
-  local wallBoxes = {}
-  local wallConn
-  local WALL_ISI  = Color3.fromRGB(70, 70, 70)
-  local WALL_TEPI = Color3.fromRGB(150, 150, 150)
+  -- TANGGA (LADDER LENGTHENER)
+  local tanggaOriginal = {}
+  local tanggaConn
+  local TANGGA_MAX_AXIS = 60  -- filter: hanya part ukuran kecil & sedang (skala tangga)
 
-  local function isWallCandidate(part)
+  local function tanggaScaleOf(pct)
+    return 1 + (math.clamp(pct, 0.5, 10) / 100)  -- 0,5% = 1.005x, 10% = 1.10x
+  end
+
+  -- skala hanya sumbu terpanjang (panjang tangga); tebal & lebar tetap
+  local function tanggaScaledSize(orig, f)
+    local xs, ys, zs = orig.X, orig.Y, orig.Z
+    local m = math.max(xs, ys, zs)
+    if m == xs then return Vector3.new(xs * f, ys, zs)
+    elseif m == ys then return Vector3.new(xs, ys * f, zs)
+    else return Vector3.new(xs, ys, zs * f) end
+  end
+
+  local function isLadderCandidate(part)
     if not part:IsA("BasePart") or part == Terrain then return false end
-    if part.Transparency < 0.95 then return false end
-    if not part.CanCollide then return false end
-    local m = part:FindFirstAncestorOfClass("Model")
-    if m and Players:GetPlayerFromCharacter(m) then return false end
-    return true
+    local s = part.Size
+    local longest = math.max(s.X, s.Y, s.Z)
+    if longest > TANGGA_MAX_AXIS then return false end  -- skip bangunan/terrain besar
+    local nm = string.lower(part.Name or "")
+    if nm:find("ladder", 1, true) or nm:find("tangga", 1, true)
+       or nm:find("truss", 1, true) or nm:find("panjat", 1, true) then
+      return true
+    end
+    if part:IsA("TrussPart") then return true end
+    local ax = {s.X, s.Y, s.Z}
+    table.sort(ax)
+    if longest >= 2.5 * ax[2] and longest >= 2 then return true end
+    return false
   end
 
-  -- 0% = tebal garis & ukuran asli, 20% = garis 2x & ukuran +20%
-  local function wallThickOf(pct)
-    return 0.05 + (math.clamp(pct, 0, 20) / 20) * 0.05
-  end
-  local function wallScaleOf(pct)
-    return 1 + (math.clamp(pct, 0, 20) / 100)
-  end
-
-  local function wallify(part)
-    if wallOriginal[part] then return end
-    wallOriginal[part] = {Transparency = part.Transparency, Color = part.Color, Size = part.Size}
-    local sc = wallScaleOf(State.WallThick)
-    part.Transparency = 0.6
-    part.Color = WALL_ISI
-    pcall(function() part.Size = part.Size * sc end)
+  local function tanggaApply(part)
+    if tanggaOriginal[part] then return end
+    tanggaOriginal[part] = part.Size
     pcall(function()
-      local box = Instance.new("SelectionBox")
-      box.Adornee = part
-      box.LineThickness = wallThickOf(State.WallThick)
-      box.Color3 = WALL_TEPI
-      box.SurfaceTransparency = 1
-      box.Visible = true
-      box.Parent = part
-      wallBoxes[part] = box
+      part.Size = tanggaScaledSize(part.Size, tanggaScaleOf(State.TanggaThick))
     end)
   end
 
-  local function applyWallThick(pct)
-    State.WallThick = math.clamp(pct, 0, 20)
-    local sc = wallScaleOf(State.WallThick)
-    local lt = wallThickOf(State.WallThick)
-    for part, d in pairs(wallOriginal) do
-      pcall(function() if part.Parent then part.Size = d.Size * sc end end)
-      local box = wallBoxes[part]
-      if box then pcall(function() box.LineThickness = lt end) end
+  local function tanggaApplyAll(pct)
+    State.TanggaThick = math.clamp(pct, 0.5, 10)
+    local f = tanggaScaleOf(State.TanggaThick)
+    for part, orig in pairs(tanggaOriginal) do
+      pcall(function()
+        if part.Parent then part.Size = tanggaScaledSize(orig, f) end
+      end)
     end
   end
 
-  Setters.Walls = function(v, silent)
-    if State.WallsOn == v then return end
-    State.WallsOn = v
+  -- TALI/KAYU (ROPE WIDENER) — memperlebar cross-section tali, panjang tetap
+  local taliOriginal = {}
+
+  local function taliScaleOf(pct)
+    return 1 + (math.clamp(pct, 1, 50) / 100)  -- 1% = 1.01x, 50% = 1.5x lebih lebar
+  end
+
+  -- skala dua sumbu terkecil (lebar/diameter tali), sumbu terpanjang (panjang) tetap
+  local function taliScaledSize(orig, f)
+    local xs, ys, zs = orig.X, orig.Y, orig.Z
+    local m = math.max(xs, ys, zs)
+    if m == xs then return Vector3.new(xs, ys * f, zs * f)
+    elseif m == ys then return Vector3.new(xs * f, ys, zs * f)
+    else return Vector3.new(xs * f, ys * f, zs) end
+  end
+
+  local function isTaliCandidate(part)
+    if not part:IsA("BasePart") or part == Terrain then return false end
+    local s = part.Size
+    local ax = {s.X, s.Y, s.Z}
+    table.sort(ax)
+    local longest, second = ax[3], ax[2]
+    local nm = string.lower(part.Name or "")
+    if nm:find("rope", 1, true) or nm:find("tali", 1, true) or nm:find("wire", 1, true)
+       or nm:find("slack", 1, true) or nm:find("bridge", 1, true)
+       or nm:find("titian", 1, true) or nm:find("jembatan", 1, true) then
+      return second <= 8
+    end
+    -- heuristik: sangat memanjang & tipis (rope-like)
+    if second <= 5 and longest >= 8 * second and longest >= 8 then return true end
+    return false
+  end
+
+  local function taliApply(part)
+    if taliOriginal[part] then return end
+    taliOriginal[part] = part.Size
+    pcall(function()
+      part.Size = taliScaledSize(part.Size, taliScaleOf(State.TaliThick))
+    end)
+  end
+
+  local function taliApplyAll(pct)
+    State.TaliThick = math.clamp(pct, 1, 50)
+    local f = taliScaleOf(State.TaliThick)
+    for part, orig in pairs(taliOriginal) do
+      pcall(function()
+        if part.Parent then part.Size = taliScaledSize(orig, f) end
+      end)
+    end
+  end
+
+  Setters.Tangga = function(v, silent)
+    if State.TanggaOn == v then return end
+    State.TanggaOn = v
     if v then
       for _, obj in ipairs(Workspace:GetDescendants()) do
-        if isWallCandidate(obj) then wallify(obj) end
+        if isLadderCandidate(obj) then tanggaApply(obj) end
+        if isTaliCandidate(obj) then taliApply(obj) end
       end
-      wallConn = Workspace.DescendantAdded:Connect(function(obj)
+      tanggaConn = Workspace.DescendantAdded:Connect(function(obj)
         task.defer(function()
-          if State.WallsOn and isWallCandidate(obj) then wallify(obj) end
+          if State.TanggaOn then
+            if isLadderCandidate(obj) then tanggaApply(obj) end
+            if isTaliCandidate(obj) then taliApply(obj) end
+          end
         end)
       end)
     else
-      if wallConn then wallConn:Disconnect() wallConn = nil end
-      for part, d in pairs(wallOriginal) do
-        pcall(function()
-          if part.Parent then
-            part.Transparency = d.Transparency
-            part.Color = d.Color
-            part.Size = d.Size
-          end
-        end)
+      if tanggaConn then tanggaConn:Disconnect() tanggaConn = nil end
+      for part, orig in pairs(tanggaOriginal) do
+        pcall(function() if part.Parent then part.Size = orig end end)
       end
-      for _, box in pairs(wallBoxes) do
-        pcall(function() box:Destroy() end)
+      table.clear(tanggaOriginal)
+      for part, orig in pairs(taliOriginal) do
+        pcall(function() if part.Parent then part.Size = orig end end)
       end
-      table.clear(wallOriginal)
-      table.clear(wallBoxes)
+      table.clear(taliOriginal)
     end
-    syncNotify("Walls", v, silent, "Dinding Batas")
+    syncNotify("Tangga", v, silent, "Tangga & Tali")
   end
 
-  Setters.WallsThick = function(pct)
-    applyWallThick(pct)
+  Setters.TanggaThick = function(pct)
+    tanggaApplyAll(pct)
+  end
+
+  Setters.TaliThick = function(pct)
+    taliApplyAll(pct)
   end
 
   Setters.Light = function(v, silent)
@@ -2364,7 +2569,7 @@ local function initLogic()
     elseif input.KeyCode == Enum.KeyCode.T then
       setFeature("Light", not State.LightOn)
     elseif input.KeyCode == Enum.KeyCode.X then
-      setFeature("Walls", not State.WallsOn)
+      setFeature("Tangga", not State.TanggaOn)
     elseif input.KeyCode == Enum.KeyCode.K then
       local now = os.clock()
       if now - lastK < 0.45 then
