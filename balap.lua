@@ -1,10 +1,10 @@
 --========================================================
---  ABSOLUTE V1.3 — LOCAL ONLY
+--  ABSOLUTE V1.4.1 — LOCAL ONLY
 --  Tab: MOVEMENT & VISUAL • TITIK • SYSTEM
 --  Keybind: G=GUI  Q=Speed  C=Shift  LShift=Tengah
 --           F=Moon  R=Hide  T=Cahaya  X=Resize  K×2=Rejoin
 --========================================================
-print("[Absolute V1.3] load mulai...")
+print("[Absolute V1.4.1] load mulai...")
 
 -- [0] DIAGNOSTIK -----------------------------------------
 local diagSet, diagHapus
@@ -57,7 +57,7 @@ do
   end
 end
 
-local VERSI = "V1.4"
+local VERSI = "V1.4.1"
 local __ABSOLUTE_LOAD_OK__ = xpcall(function()
 
 -- [1] PENGAMAN DASAR ------------------------------------
@@ -96,6 +96,10 @@ end
 local MY_TOKEN = {}
 _G.__ABSOLUTE_TOKEN__ = MY_TOKEN
 _G.__ABSOLUTE_MAIN__ = true
+
+-- [1b] GLOBAL ENV AMAN — jangan panggil getgenv() langsung,
+-- biar script tidak crash di environment tanpa getgenv (fallback _G)
+local GENVS = (type(getgenv) == "function") and getgenv() or _G
 
 -- [2] KONFIGURASI ---------------------------------------
 local CFG = {
@@ -311,7 +315,7 @@ local function titikSimpan()
     local normal = p.normal or Vector3.new(0, 1, 0)
     data[#data + 1] = {id = p.id, name = p.name, x = p.pos.X, y = p.pos.Y, z = p.pos.Z, nx = normal.X, ny = normal.Y, nz = normal.Z}
   end
-  getgenv().ABSOLUTE_TITIK_DATA = data
+  GENVS.ABSOLUTE_TITIK_DATA = data
   if type(writefile) == "function" then
     pcall(function() writefile(TITIK_FILE, HttpService:JSONEncode(data)) end)
   end
@@ -324,7 +328,7 @@ local function titikMuat()
       if isfile(TITIK_FILE) then data = HttpService:JSONDecode(readfile(TITIK_FILE)) end
     end)
   end
-  if type(data) ~= "table" then data = rawget(getgenv(), "ABSOLUTE_TITIK_DATA") end
+  if type(data) ~= "table" then data = rawget(GENVS, "ABSOLUTE_TITIK_DATA") end
   if type(data) == "table" then
     for _, v in ipairs(data) do
       local x, y, z = tonumber(v.x), tonumber(v.y), tonumber(v.z)
@@ -355,11 +359,14 @@ local function titikBuatDot(p, nomor)
   normal = normal.Unit
   local base = p.pos + normal * 0.025
   local tiangTinggi, tiangLebar = 1/3, 0.08
-  local orient = CFrame.lookAt(base, base + normal) * CFrame.Angles(math.pi/2, 0, 0)
+  -- FIX: silinder Roblox panjangnya di sumbu X, jadi X harus mengarah ke normal
+  -- (kode lama: size tertukar + rotasi pi/2 salah arah -> tiang jadi disc tipis)
+  local pusat = base + normal * (tiangTinggi / 2)
+  local orient = CFrame.lookAt(pusat, pusat + normal) * CFrame.Angles(0, math.pi/2, 0)
   local tiang = Instance.new("Part")
   tiang.Name = "Tiang_" .. tostring(nomor); tiang.Shape = Enum.PartType.Cylinder; tiang.Anchored = true
   tiang.CanCollide = false; tiang.CanTouch = false; tiang.CanQuery = false; tiang.CastShadow = false
-  tiang.Material = Enum.Material.Neon; tiang.Color = Warna.Ungu2; tiang.Size = Vector3.new(tiangLebar, tiangTinggi, tiangLebar)
+  tiang.Material = Enum.Material.Neon; tiang.Color = Warna.Ungu2; tiang.Size = Vector3.new(tiangTinggi, tiangLebar, tiangLebar)
   tiang.CFrame = orient; tiang.Parent = folder
   local dot = Instance.new("Part")
   dot.Name = "Titik_" .. tostring(nomor); dot.Shape = Enum.PartType.Ball; dot.Anchored = true
@@ -582,7 +589,7 @@ pcall(function() screenGui.OnTopOfCoreBlur = true end)
 local kandidatParent = {}
 pcall(function() if gethui then table.insert(kandidatParent, gethui()) end end)
 pcall(function() table.insert(kandidatParent, game:GetService("CoreGui")) end)
-pcall(function() table.insert(kandidatParent, LocalPlayer:WaitForChild("PlayerGui")) end)
+pcall(function() table.insert(kandidatParent, LocalPlayer:WaitForChild("PlayerGui", 5)) end)
 
 for _, t in ipairs(kandidatParent) do
   pcall(function()
@@ -1219,7 +1226,7 @@ local function buildUI()
   State.CuacaOn    = false
   State.TanggaOn    = false
   State.TanggaThick = 1
-  State.TaliThick   = 1
+  State.TaliThick   = 50 / 3  -- ikut slider gabungan: 1% tangga = 16,67% tali
   State.PapanThick  = 5
   State.BatuThick   = 5
 
@@ -1253,17 +1260,12 @@ local function buildUI()
   buatToggleRow(scrollMove, "Hide Player + Kendaraan", "R", "Hide")
   buatToggleRow(scrollMove, "Cahaya Auto (2 arah)", "T", "Light")
   buatToggleRow(scrollMove, "Tangga/Tali/Papan/Batu", "X", "Tangga")
-  buatSliderRow(scrollMove, "Tangga", 0.5, 10, 1, function(pct)
+  -- 1 slider gabungan Tangga + Tali: nilai = % tangga, tali otomatis x 50/3
+  -- (0,5%->8,33%, 1%->16,67%, 2%->33,33%, 3%->50%, 5%->83,33%).
+  -- Papan & Batu tanpa slider, pakai nilai tetap (State.PapanThick / State.BatuThick).
+  buatSliderRow(scrollMove, "Tangga & Tali", 0.5, 5, 1, function(pct)
     setFeature("TanggaThick", pct)
-  end)
-  buatSliderRow(scrollMove, "Tali/Kayu", 1, 50, 1, function(pct)
-    setFeature("TaliThick", pct)
-  end)
-  buatSliderRow(scrollMove, "Papan", 1, 20, 5, function(pct)
-    setFeature("PapanThick", pct)
-  end)
-  buatSliderRow(scrollMove, "Batu", 1, 20, 5, function(pct)
-    setFeature("BatuThick", pct)
+    setFeature("TaliThick", pct * 50 / 3)
   end)
   buatToggleRow(scrollMove, "Remove Cuaca (kabut/awan)", nil, "Cuaca")
   buatHeader(scrollMove, "Lightweight")
@@ -1337,6 +1339,7 @@ local function buildUI()
     TITIK.aktif = not TITIK.aktif; refreshModeTitik()
     titikStatusUI(TITIK.aktif and "Aktif: tahan CTRL + klik kiri" or "Mode penempatan dimatikan")
   end)
+  refreshModeTitik() -- sinkronkan tampilan tombol dengan status awal (OFF)
 
   buatActionRow(scrollTitik, "➕ TAMBAH DARI POSISI SAYA", Warna.Biru, function()
     local pos, normal = titikPosisiKarakter()
@@ -1655,15 +1658,19 @@ toast = function(teks, aksen)
     TextTruncate = Enum.TextTruncate.AtEnd,
     TextXAlignment = Enum.TextXAlignment.Left,
   }, t)
-  t.Position = UDim2.new(1, 20, 0, 0)
+  -- FIX: posisi toast dikontrol UIListLayout, jadi tween Position tidak ber efek.
+  -- Animasi masuk/keluar pakai UIScale + fade.
+  local tScale = buat("UIScale", {Scale = 0.6}, t)
   local ti = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-  tween(t,   ti, {BackgroundTransparency = 0.05, Position = UDim2.new(1, 0, 0, 0)})
+  tween(t,      ti, {BackgroundTransparency = 0.05})
+  tween(tScale, ti, {Scale = 1})
   tween(st,  ti, {Transparency = 0.15})
   tween(dot, ti, {BackgroundTransparency = 0})
   tween(lb,  ti, {TextTransparency = 0})
   task.delay(1.6, function()
     local to = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-    tween(t,   to, {BackgroundTransparency = 1, Position = UDim2.new(1, 20, 0, 0)})
+    tween(t,      to, {BackgroundTransparency = 1})
+    tween(tScale, to, {Scale = 0.6})
     tween(st,  to, {Transparency = 1})
     tween(dot, to, {BackgroundTransparency = 1})
     tween(lb,  to, {TextTransparency = 1})
@@ -1751,8 +1758,10 @@ local function initLogic()
         if h and h.AutoRotate then h.AutoRotate = false end
         if h and r and h.Health > 0 then
           local cam = Workspace.CurrentCamera
-          local _, yaw = cam.CFrame:ToOrientation()
-          r.CFrame = CFrame.new(r.Position) * CFrame.Angles(0, yaw, 0)
+          if cam then -- guard: kamera bisa sempat nil saat respawn
+            local _, yaw = cam.CFrame:ToOrientation()
+            r.CFrame = CFrame.new(r.Position) * CFrame.Angles(0, yaw, 0)
+          end
         end
       end)
     else
@@ -1831,7 +1840,7 @@ local function initLogic()
     local kandidat = {}
     pcall(function() if gethui then table.insert(kandidat, gethui()) end end)
     pcall(function() table.insert(kandidat, game:GetService("CoreGui")) end)
-    pcall(function() table.insert(kandidat, LocalPlayer:WaitForChild("PlayerGui")) end)
+    pcall(function() table.insert(kandidat, LocalPlayer:WaitForChild("PlayerGui", 5)) end)
     for _, t in ipairs(kandidat) do
       pcall(function()
         local lama = t:FindFirstChild("ABSOLUTE_TengahDot")
@@ -1863,7 +1872,10 @@ local function initLogic()
           TweenInfo.new(CFG.SLT_WAKTU, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
           {CameraOffset = Vector3.zero})
         sltTween:Play()
-        sltTween.Completed:Connect(function() sltTweening = false end)
+        local tweenIni = sltTween -- guard: Completed tween lama tidak boleh ganggu tween baru
+        sltTween.Completed:Connect(function()
+          if sltTween == tweenIni then sltTweening = false end
+        end)
       end
       pcall(function() RunService:UnbindFromRenderStep("ABSOLUTE_TENGAH") end)
       RunService:BindToRenderStep("ABSOLUTE_TENGAH", Enum.RenderPriority.Camera.Value + 1, function()
@@ -2112,10 +2124,12 @@ local function initLogic()
     if v then
       Original.GlobalShadows = Lighting.GlobalShadows
       Lighting.GlobalShadows = false
-      Original.WaterWaveSize = Terrain.WaterWaveSize
-      Original.WaterWaveSpeed = Terrain.WaterWaveSpeed
-      Terrain.WaterWaveSize = 0
-      Terrain.WaterWaveSpeed = 0
+      if Terrain then -- guard: script tetap jalan walau Terrain tidak ada
+        Original.WaterWaveSize = Terrain.WaterWaveSize
+        Original.WaterWaveSpeed = Terrain.WaterWaveSpeed
+        Terrain.WaterWaveSize = 0
+        Terrain.WaterWaveSpeed = 0
+      end
       for _, obj in ipairs(Workspace:GetDescendants()) do lwDisable(obj) end
       for _, obj in ipairs(Lighting:GetDescendants()) do lwDisable(obj) end
       table.insert(lwConns, Workspace.DescendantAdded:Connect(function(obj) task.defer(lwDisable, obj) end))
@@ -2193,7 +2207,7 @@ local function initLogic()
   -- satu toggle X, 4 nilai terpisah. Eksklusi karakter + body-part. Anti-tabrakan.
   local tanggaOriginal, taliOriginal, papanOriginal, batuOriginal = {}, {}, {}, {}
   local tanggaConn
-  local BATU_MAX_AXIS = 30  -- batu: skip es terrain raksasa (Ice_Boulder 12-24 lolos)
+  local BATU_MAX_AXIS = 40  -- data asli: Iceberg_01 terbesar (24.76, 36.64, 17.09) -> cap lama 30 bikin iceberg besar terlewat
 
   -- nama body-part R6/R15 (anti salah tangkap tubuh avatar/NPC)
   local BODY_PARTS = {
@@ -2234,7 +2248,7 @@ local function initLogic()
 
   -- TANGGA: panjangkan sumbu terpanjang. Deteksi: name/ancestor "ladder".
   local function tanggaScaleOf(pct)
-    return 1 + (math.clamp(pct, 0.5, 10) / 100)
+    return 1 + (math.clamp(pct, 0.5, 5) / 100)
   end
   local function tanggaScaledSize(orig, f)
     local xs, ys, zs = orig.X, orig.Y, orig.Z
@@ -2246,6 +2260,9 @@ local function initLogic()
   local function isLadderCandidate(part)
     if not part:IsA("BasePart") or part == Terrain then return false end
     if sudahDiklaim(part) or inCharacter(part) then return false end
+    -- data asli: TrussPart "Truss" (2, 14.5, 2) = tangga yang bisa dipanjat;
+    -- panjangkan sumbu terpanjang saja, ukuran TrussPart tetap valid
+    if part:IsA("TrussPart") then return true end
     return namaAtauAncestor(part, "ladder")
   end
   local function tanggaApply(part)
@@ -2254,17 +2271,20 @@ local function initLogic()
     pcall(function() part.Size = tanggaScaledSize(part.Size, tanggaScaleOf(State.TanggaThick)) end)
   end
   local function tanggaApplyAll(pct)
-    State.TanggaThick = math.clamp(pct, 0.5, 10)
+    State.TanggaThick = math.clamp(pct, 0.5, 5)
     local f = tanggaScaleOf(State.TanggaThick)
     for part, orig in pairs(tanggaOriginal) do
       pcall(function() if part.Parent then part.Size = tanggaScaledSize(orig, f) end end)
     end
   end
 
-  -- TALI: lebarkan cross-section (dua sumbu terkecil). Deteksi: name "rope"
-  -- atau ancestor "tight_rope"/"rope_fence".
+  -- TALI: lebarkan cross-section (dua sumbu terkecil). Data asli: tali = part "Rope"
+  -- (cross 0.05-0.20), tali tenda "Part" di bawah model "Rope" (0.05), tightrope
+  -- "Tight_Rope1-7" (0.45-0.53) -> cukup keyword "rope" di nama/ancestor (menutup
+  -- tight_rope & rope_fence sekaligus). Nilai ikut slider gabungan:
+  -- tali = tangga x 50/3 (3% -> 50%, maks slider 5% -> 83,33%).
   local function taliScaleOf(pct)
-    return 1 + (math.clamp(pct, 1, 50) / 100)
+    return 1 + (math.clamp(pct, 1, 84) / 100)
   end
   local function taliScaledSize(orig, f)
     local xs, ys, zs = orig.X, orig.Y, orig.Z
@@ -2276,10 +2296,9 @@ local function initLogic()
   local function isTaliCandidate(part)
     if not part:IsA("BasePart") or part == Terrain then return false end
     if sudahDiklaim(part) or inCharacter(part) then return false end
-    if string.find(string.lower(part.Name or ""), "rope", 1, true) then return true end
-    if namaAtauAncestor(part, "tight_rope") then return true end
-    if namaAtauAncestor(part, "rope_fence") then return true end
-    return false
+    -- FIX data asli: dulu cek "tight_rope"/"rope_fence" saja, tali tenda "Part"
+    -- di bawah model "Rope" lolos. "rope" di nama/ancestor menangkap semuanya.
+    return namaAtauAncestor(part, "rope")
   end
   local function taliApply(part)
     if sudahDiklaim(part) then return end
@@ -2287,15 +2306,16 @@ local function initLogic()
     pcall(function() part.Size = taliScaledSize(part.Size, taliScaleOf(State.TaliThick)) end)
   end
   local function taliApplyAll(pct)
-    State.TaliThick = math.clamp(pct, 1, 50)
+    State.TaliThick = math.clamp(pct, 1, 84)
     local f = taliScaleOf(State.TaliThick)
     for part, orig in pairs(taliOriginal) do
       pcall(function() if part.Parent then part.Size = taliScaledSize(orig, f) end end)
     end
   end
 
-  -- PAPAN: lebarkan sumbu tengah (lebar permukaan). Deteksi: name plank/board/dock,
-  -- step di atas rope-bridge, atau geometri flat-plank (tipis<=1, lebar 1.5-4, panjang 4-30).
+  -- PAPAN: lebarkan sumbu tengah (lebar permukaan). Data asli: Plank1-11
+  -- (model "WobblingPlanks"), MeshPart kayu 5-9 x 0.5 x 2.25 (model "160"/"170"/"230"),
+  -- Board/BoardIce/BoardNonIcy/VerticalSoundBoard, Step slate Deathwall_Steps_Hard%.
   local function papanScaleOf(pct)
     return 1 + (math.clamp(pct, 1, 20) / 100)
   end
@@ -2312,15 +2332,22 @@ local function initLogic()
     if sudahDiklaim(part) or inCharacter(part) then return false end
     if namaAtauAncestor(part, "ladder") then return false end  -- milik tangga
     local nm = string.lower(part.Name or "")
+    -- FIX data asli: "Cardboard_Box_Closed/Open" ikut ke-keyword "board" -> prop kotak
+    -- kartu di camp ikut melebar. Kecualikan.
+    if nm:find("cardboard", 1, true) then return false end
     if nm:find("plank", 1, true) or nm:find("board", 1, true) or nm:find("dock", 1, true) then
       return true
     end
+    -- FIX data asli: papan di model "WobblingPlanks" sebagian bernama generik "MeshPart"
+    if namaAtauAncestor(part, "plank") then return true end
     if nm:find("step", 1, true) and namaAtauAncestor(part, "rope") then return true end
     local s = part.Size
     local ax = {s.X, s.Y, s.Z}
     table.sort(ax)
     local tipis, lebar, panjang = ax[1], ax[2], ax[3]
-    if tipis <= 1 and lebar >= 1.5 and lebar <= 4 and panjang >= 4
+    -- data asli: papan sungguhan tipis 0.25-1.0, lebar 1.5-5.0, panjang 4-30
+    -- (cap lebar 4 -> 5 biar Step Deathwall (4.50, 1.00, 18.11) ikut)
+    if tipis <= 1 and lebar >= 1.5 and lebar <= 5 and panjang >= 4
        and panjang <= 30 and panjang >= 2 * lebar then
       return true
     end
@@ -2339,7 +2366,8 @@ local function initLogic()
     end
   end
 
-  -- BATU: membesar seragam. Deteksi: name/ancestor "boulder"/"iceberg", chunky, <=30 stud.
+  -- BATU: membesar seragam. Deteksi: name/ancestor "boulder"/"iceberg", chunky
+  -- (data asli: Ice_Boulder di "Ice_Boulders%", Iceberg_01/02/03 di model "440").
   local function batuScaleOf(pct)
     return 1 + (math.clamp(pct, 1, 20) / 100)
   end
@@ -2377,12 +2405,6 @@ local function initLogic()
     if State.TanggaOn == v then return end
     State.TanggaOn = v
     if v then
-      for _, obj in ipairs(Workspace:GetDescendants()) do
-        if isLadderCandidate(obj) then tanggaApply(obj) end
-        if isTaliCandidate(obj) then taliApply(obj) end
-        if isPapanCandidate(obj) then papanApply(obj) end
-        if isBatuCandidate(obj) then batuApply(obj) end
-      end
       tanggaConn = Workspace.DescendantAdded:Connect(function(obj)
         task.defer(function()
           if State.TanggaOn then
@@ -2392,6 +2414,18 @@ local function initLogic()
             if isBatuCandidate(obj) then batuApply(obj) end
           end
         end)
+      end)
+      -- FIX: sapuan awal dipindah ke task.spawn supaya klik toggle tidak freeze 1 frame,
+      -- dan berhenti kalau toggle dimatikan/di-unload di tengah jalan
+      task.spawn(function()
+        if not State.TanggaOn or State.Removed then return end
+        for _, obj in ipairs(Workspace:GetDescendants()) do
+          if not State.TanggaOn or State.Removed then return end
+          if isLadderCandidate(obj) then tanggaApply(obj) end
+          if isTaliCandidate(obj) then taliApply(obj) end
+          if isPapanCandidate(obj) then papanApply(obj) end
+          if isBatuCandidate(obj) then batuApply(obj) end
+        end
       end)
     else
       if tanggaConn then tanggaConn:Disconnect() tanggaConn = nil end
@@ -2471,6 +2505,7 @@ local function initLogic()
     pcall(setFeature, "Moon", false, true)
     pcall(setFeature, "Tengah", false, true)
     pcall(setFeature, "Hide", false, true)
+    pcall(setFeature, "Tangga", false, true) -- FIX: restore ukuran part tangga/tali/papan/batu
     pcall(setFeature, "LW", false, true)
     pcall(setFeature, "Light", false, true)
     pcall(setFeature, "Cuaca", false, true)
@@ -2527,6 +2562,7 @@ local function initLogic()
     pcall(function() if screenGui then screenGui:Destroy() end end)
     _G.__ABSOLUTE_MAIN__ = nil
     _G.__ABSOLUTE_DELETE_ARMED__ = nil
+    pcall(function() GENVS.ABSOLUTE_API = nil end)
     pcall(function()
       if script and script.Parent then
         script.Disabled = true
@@ -2689,7 +2725,7 @@ local function initLogic()
 end
 
 initLogic()
-getgenv().ABSOLUTE_API = { Setters = Setters, State = State }
+GENVS.ABSOLUTE_API = { Setters = Setters, State = State }
 
 end, function(e)
   local teks = tostring(e)
