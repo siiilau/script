@@ -1,10 +1,10 @@
 --========================================================
---  ABSOLUTE V1.4.1 — LOCAL ONLY
+--  ABSOLUTE V1.0 — LOCAL ONLY
 --  Tab: MOVEMENT & VISUAL • TITIK • SYSTEM
 --  Keybind: G=GUI  Q=Speed  C=Shift  LShift=Tengah
 --           F=Moon  R=Hide  T=Cahaya  X=Resize  K×2=Rejoin
 --========================================================
-print("[Absolute V1.4.1] load mulai...")
+print("[Absolute V1.0] load mulai...")
 
 -- [0] DIAGNOSTIK -----------------------------------------
 local diagSet, diagHapus
@@ -57,7 +57,7 @@ do
   end
 end
 
-local VERSI = "V1.4.1"
+local VERSI = "V1.0"
 local __ABSOLUTE_LOAD_OK__ = xpcall(function()
 
 -- [1] PENGAMAN DASAR ------------------------------------
@@ -357,23 +357,19 @@ local function titikBuatDot(p, nomor)
   local normal = p.normal or Vector3.new(0, 1, 0)
   if normal.Magnitude < 0.01 then normal = Vector3.new(0, 1, 0) end
   normal = normal.Unit
-  local base = p.pos + normal * 0.025
-  local tiangTinggi, tiangLebar = 1/3, 0.08
-  -- FIX: silinder Roblox panjangnya di sumbu X, jadi X harus mengarah ke normal
-  -- (kode lama: size tertukar + rotasi pi/2 salah arah -> tiang jadi disc tipis)
-  local pusat = base + normal * (tiangTinggi / 2)
-  local orient = CFrame.lookAt(pusat, pusat + normal) * CFrame.Angles(0, math.pi/2, 0)
-  local tiang = Instance.new("Part")
-  tiang.Name = "Tiang_" .. tostring(nomor); tiang.Shape = Enum.PartType.Cylinder; tiang.Anchored = true
-  tiang.CanCollide = false; tiang.CanTouch = false; tiang.CanQuery = false; tiang.CastShadow = false
-  tiang.Material = Enum.Material.Neon; tiang.Color = Warna.Ungu2; tiang.Size = Vector3.new(tiangTinggi, tiangLebar, tiangLebar)
-  tiang.CFrame = orient; tiang.Parent = folder
+  -- DOME 0.44 STUD TANPA TIANG: bola diameter 0.44 stud ditancapkan 50% ke
+  -- permukaan (pusat bola tepat di permukaan) -> yang terlihat cuma
+  -- setengah lingkaran, tanpa tiang. CanCollide ON -> bisa diinjak,
+  -- tidak tembus. Arah dome mengikuti permukaan tempat dia menempel.
   local dot = Instance.new("Part")
-  dot.Name = "Titik_" .. tostring(nomor); dot.Shape = Enum.PartType.Ball; dot.Anchored = true
-  dot.CanCollide = false; dot.CanTouch = false; dot.CanQuery = false; dot.CastShadow = false
+  dot.Name = "Titik_" .. tostring(nomor)
+  dot:SetAttribute("id", tostring(p.id or nomor))
+  dot.Shape = Enum.PartType.Ball; dot.Anchored = true
+  dot.CanCollide = true; dot.CanTouch = false; dot.CanQuery = true; dot.CastShadow = false
   dot.Material = Enum.Material.Neon; dot.Color = Warna.Ungu2; dot.Size = Vector3.new(0.44, 0.44, 0.44)
-  dot.Position = base + normal * tiangTinggi
+  dot.CFrame = CFrame.new(p.pos + normal * 0.02) -- 0.02: cegah z-fighting di permukaan
   dot.Parent = folder
+  return dot
 end
 
 local function titikUrutkanTerdekat()
@@ -478,6 +474,506 @@ local function titikPosisiKarakter()
   if hit then return hit.Position, hit.Normal end
   return hrp.Position, Vector3.new(0, 1, 0)
 end
+
+-- [6b] TITIK TRANSFER ANTAR DEVICE -----------------------
+-- Titik disimpan ke file lokal (writefile) yang sifatnya PER-DEVICE.
+-- Supaya bisa kebawa saat pindah HP/PC, titik dijadiin KODE ultra-pendek
+-- (format T2, ~34 karakter/titik) yang dibelah otomatis jadi potongan
+-- <= ~360 karakter -> aman di-copy walaupun clipboard cuma kuat 400-an.
+-- Alternatif tanpa limit karakter: simpan/load lewat FILE.
+-- (Kode lama format T1 base64-JSON TETAP bisa diimpor.)
+local TITIK_KODE_PREFIX = "ABSOLUTE-T1:"
+local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local B64REV = {}
+for i = 1, #B64 do B64REV[B64:sub(i, i)] = i - 1 end
+
+local function b64enc(src)
+  src = tostring(src or "")
+  local out, len = {}, #src
+  local i = 1
+  while i + 2 <= len do
+    local a, b, c = src:byte(i, i + 2)
+    local n = a * 65536 + b * 256 + c
+    out[#out + 1] = B64:sub(math.floor(n / 262144) % 64 + 1, math.floor(n / 262144) % 64 + 1)
+    out[#out + 1] = B64:sub(math.floor(n / 4096) % 64 + 1, math.floor(n / 4096) % 64 + 1)
+    out[#out + 1] = B64:sub(math.floor(n / 64) % 64 + 1, math.floor(n / 64) % 64 + 1)
+    out[#out + 1] = B64:sub(n % 64 + 1, n % 64 + 1)
+    i = i + 3
+  end
+  local rem = len - i + 1
+  if rem == 1 then
+    local a = src:byte(i)
+    local n = a * 65536
+    out[#out + 1] = B64:sub(math.floor(n / 262144) % 64 + 1, math.floor(n / 262144) % 64 + 1)
+    out[#out + 1] = B64:sub(math.floor(n / 4096) % 64 + 1, math.floor(n / 4096) % 64 + 1)
+    out[#out + 1] = "="
+    out[#out + 1] = "="
+  elseif rem == 2 then
+    local a, b = src:byte(i, i + 1)
+    local n = a * 65536 + b * 256
+    out[#out + 1] = B64:sub(math.floor(n / 262144) % 64 + 1, math.floor(n / 262144) % 64 + 1)
+    out[#out + 1] = B64:sub(math.floor(n / 4096) % 64 + 1, math.floor(n / 4096) % 64 + 1)
+    out[#out + 1] = B64:sub(math.floor(n / 64) % 64 + 1, math.floor(n / 64) % 64 + 1)
+    out[#out + 1] = "="
+  end
+  return table.concat(out)
+end
+
+local function b64dec(src)
+  src = tostring(src or "")
+  src = src:gsub("%s", ""):gsub("[^A-Za-z0-9%+%/%=]", "")
+  local out, len = {}, #src
+  if len < 4 then return nil end
+  local i = 1
+  while i + 3 <= len do
+    local c1 = B64REV[src:sub(i, i)]
+    local c2 = B64REV[src:sub(i + 1, i + 1)]
+    if c1 == nil or c2 == nil then return nil end
+    local c3ch = src:sub(i + 2, i + 2)
+    local c4ch = src:sub(i + 3, i + 3)
+    local c3 = B64REV[c3ch]
+    local c4 = B64REV[c4ch]
+    local n = c1 * 262144 + c2 * 4096 + (c3 or 0) * 64 + (c4 or 0)
+    out[#out + 1] = string.char(math.floor(n / 65536) % 256)
+    if c3ch ~= "=" then
+      out[#out + 1] = string.char(math.floor(n / 256) % 256)
+      if c4ch ~= "=" then
+        out[#out + 1] = string.char(n % 256)
+      end
+    end
+    i = i + 4
+  end
+  return table.concat(out)
+end
+
+-- Format T2 (ultra-pendek): 1 titik = "x,y,z;nx,ny,nz;NAMA"
+-- (posisi 1 desimal, normal dibulatkan ke persen), antar titik dipisah "|".
+-- Contoh: "5488.7,580.2,57.1;56,48,-67;Tali" -> ~34 karakter per titik.
+local T2_PREFIX = "ABSOLUTE-T2:"
+local T2_MAX = 340 -- isi data per potongan; header "ABSOLUTE-T2:i/n#" +-20 -> total <= ~360
+
+local function t2Angka(v) -- 1 desimal, buang ".0" biar pendek
+  local s = string.format("%.1f", v)
+  if s:sub(-2) == ".0" then s = s:sub(1, -3) end
+  if s == "-0" then s = "0" end
+  return s
+end
+
+-- Bangun kode T2 PENUH (tanpa potongan) dari titik yang tersimpan.
+local function titikKodeT2()
+  local bagian = {}
+  for _, p in ipairs(TITIK.poin) do
+    local n = p.normal or Vector3.new(0, 1, 0)
+    local nama = tostring(p.name or ""):gsub("[;|#%c]", ""):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s", "~")
+    bagian[#bagian + 1] = t2Angka(p.pos.X) .. "," .. t2Angka(p.pos.Y) .. "," .. t2Angka(p.pos.Z)
+      .. ";" .. math.floor(n.X * 100 + 0.5) .. "," .. math.floor(n.Y * 100 + 0.5) .. "," .. math.floor(n.Z * 100 + 0.5)
+      .. ";" .. nama
+  end
+  return T2_PREFIX .. table.concat(bagian, "|")
+end
+
+-- Belah kode T2 jadi potongan <= ~360 karakter, dipotong di batas antar
+-- titik (tidak pernah membelah data 1 titik jadi 2 potongan).
+-- return: list potongan "ABSOLUTE-T2:3/14#..."
+local function titikPotonganT2()
+  local isi = titikKodeT2():sub(#T2_PREFIX + 1)
+  local entri = {}
+  for e in isi:gmatch("[^|]+") do entri[#entri + 1] = e end
+  local kelompok, sekarang = {}, nil
+  for _, e in ipairs(entri) do
+    if sekarang == nil or #sekarang + 1 + #e > T2_MAX then
+      sekarang = e
+      kelompok[#kelompok + 1] = e
+    else
+      sekarang = sekarang .. "|" .. e
+      kelompok[#kelompok] = sekarang
+    end
+  end
+  local n = #kelompok
+  local out = {}
+  for i, k in ipairs(kelompok) do
+    out[i] = T2_PREFIX .. i .. "/" .. n .. "#" .. k
+  end
+  return out
+end
+
+-- Terjemahkan isi T2 (tanpa prefix/header) jadi list entry titik.
+-- return: entries (table), gagal (number)
+local function t2ParseIsi(isi)
+  local entries, gagal = {}, 0
+  for entri in isi:gmatch("[^|]+") do
+    local pos, nor, nama = entri:match("^([^;]*);([^;]*);(.*)$")
+    if pos then
+      local x, y, z = pos:match("^([^,]+),([^,]+),([^,]+)$")
+      local a, b, c = nor:match("^([^,]+),([^,]+),([^,]+)$")
+      x, y, z = tonumber(x), tonumber(y), tonumber(z)
+      a, b, c = tonumber(a), tonumber(b), tonumber(c)
+      if x and y and z and a and b and c then
+        entries[#entries + 1] = {
+          nama = tostring(nama or ""):gsub("~", " "), -- spasi dikodekan jadi "~"
+          pos = Vector3.new(x, y, z),
+          normal = Vector3.new(a / 100, b / 100, c / 100),
+        }
+      else
+        gagal = gagal + 1
+      end
+    else
+      gagal = gagal + 1
+    end
+  end
+  return entries, gagal
+end
+
+-- Masukkan list entry ke TITIK.poin.
+-- Nama yang sudah ada -> posisi & normal DIPERBARUI (tidak jadi dobel).
+-- return: ditambah, diperbarui
+local function titikImporData(entries)
+  local ditambah, diperbarui = 0, 0
+  for _, e in ipairs(entries) do
+    local nama = tostring(e.nama or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local target = nil
+    if nama ~= "" then
+      for _, p in ipairs(TITIK.poin) do
+        if tostring(p.name or ""):lower() == nama:lower() then target = p; break end
+      end
+    end
+    if target then
+      target.pos = e.pos
+      target.normal = e.normal
+      diperbarui = diperbarui + 1
+    else
+      local defaultName = nama == ""
+      if defaultName then nama = namaDefaultBerikutnya() end
+      TITIK.poin[#TITIK.poin + 1] = {
+        id = tostring(os.time()) .. "-" .. tostring(math.random(100000, 999999)) .. "-" .. tostring(#TITIK.poin + 1),
+        name = nama,
+        defaultName = defaultName or namaDefaultTitik(nama),
+        pos = e.pos,
+        normal = e.normal,
+      }
+      ditambah = ditambah + 1
+    end
+  end
+  if ditambah > 0 or diperbarui > 0 then
+    titikSimpan()
+    titikRefreshDot()
+    titikRenderUI()
+  end
+  return ditambah, diperbarui
+end
+
+-- Impor T2: terima kode PENUH atau SATU POTONGAN "ABSOLUTE-T2:i/n#...".
+-- Potongan dikumpulkan di TITIK.chunkT2; begitu i/n lengkap semua,
+-- langsung disusun & diimpor otomatis.
+-- return: ok (bool), info (string), ditambah (number|nil), diperbarui (number|nil)
+local function titikImporT2(teks)
+  teks = tostring(teks or ""):gsub("%s", "")
+  local awal = teks:find(T2_PREFIX, 1, true)
+  if not awal then return false, "bukan kode T2" end
+  local isi = teks:sub(awal + #T2_PREFIX)
+  local iStr, nStr, data = isi:match("^(%d+)/(%d+)#(.+)$")
+  if iStr then
+    local potKe, potDari = tonumber(iStr), tonumber(nStr)
+    if not potKe or not potDari or potKe < 1 or potDari < 1 or potKe > potDari then
+      return false, "nomor potongan rusak"
+    end
+    TITIK.chunkT2 = TITIK.chunkT2 or {}
+    TITIK.chunkT2[potDari] = TITIK.chunkT2[potDari] or {}
+    TITIK.chunkT2[potDari][potKe] = data
+    local terkumpul = 0
+    for _ in pairs(TITIK.chunkT2[potDari]) do terkumpul = terkumpul + 1 end
+    if terkumpul < potDari then
+      return true, "potongan " .. potKe .. "/" .. potDari .. " diterima (terkumpul " .. terkumpul .. "/" .. potDari .. ")"
+    end
+    local susun = {}
+    for i = 1, potDari do susun[i] = TITIK.chunkT2[potDari][i] end
+    isi = table.concat(susun, "|")
+    TITIK.chunkT2[potDari] = nil
+  end
+  local entries, gagal = t2ParseIsi(isi)
+  if #entries == 0 then
+    return false, "Tidak ada titik terbaca dari kode T2."
+  end
+  local ditambah, diperbarui = titikImporData(entries)
+  return true, gagal > 0 and ("selesai, " .. gagal .. " entri rusak dilewati") or "selesai", ditambah, diperbarui
+end
+
+-- Transfer lewat FILE: kirim 1 file kecil, tanpa limit karakter sama sekali.
+local TITIK_FILE_EXPORT = "ABSOLUTE_TITIK_EXPORT.txt"
+
+local function titikSimpanFile()
+  if type(writefile) ~= "function" then
+    titikStatusUI("writefile tidak didukung executor ini")
+    pcall(function() if type(toast) == "function" then toast("writefile tidak didukung — pakai Ekspor potongan", Warna.Kuning) end end)
+    return false
+  end
+  local kode = titikKodeT2()
+  local ok = pcall(function() writefile(TITIK_FILE_EXPORT, kode) end)
+  if ok then
+    titikStatusUI("Tersimpan: " .. TITIK_FILE_EXPORT .. " (" .. #TITIK.poin .. " titik)")
+    pcall(function() if type(toast) == "function" then toast("✓ File dibuat: " .. TITIK_FILE_EXPORT .. " — kirim file-nya ke device lain", Warna.Hijau) end end)
+  else
+    titikStatusUI("Gagal menulis file " .. TITIK_FILE_EXPORT)
+    pcall(function() if type(toast) == "function" then toast("Gagal menulis file", Warna.Merah) end end)
+  end
+  return ok
+end
+
+local function titikImporFile()
+  if type(readfile) ~= "function" or type(isfile) ~= "function" then
+    pcall(function() if type(toast) == "function" then toast("readfile/isfile tidak didukung executor ini", Warna.Kuning) end end)
+    return false
+  end
+  if not isfile(TITIK_FILE_EXPORT) then
+    titikStatusUI("File tidak ada: " .. TITIK_FILE_EXPORT)
+    pcall(function() if type(toast) == "function" then toast("File tidak ada — taruh " .. TITIK_FILE_EXPORT .. " di folder executor dulu", Warna.Kuning) end end)
+    return false
+  end
+  local kode = ""
+  pcall(function() kode = readfile(TITIK_FILE_EXPORT) end)
+  local ok, info, ditambah, diperbarui = titikImporT2(kode)
+  if ok and ditambah then
+    titikStatusUI("Impor file: +" .. ditambah .. " baru • " .. diperbarui .. " diperbarui")
+    pcall(function() if type(toast) == "function" then toast("✓ Impor file: +" .. ditambah .. " baru • " .. diperbarui .. " diperbarui", Warna.Hijau) end end)
+  else
+    titikStatusUI("Impor file gagal: " .. tostring(info))
+    pcall(function() if type(toast) == "function" then toast("Impor file gagal: " .. tostring(info), Warna.Merah) end end)
+  end
+  return ok
+end
+
+-- Terjemahkan kode transfer jadi titik.
+-- Titik dengan id yang sudah ada -> DIPERBARUI (posisi & normal).
+-- Titik dengan nama yang sudah dipakai -> diberi suffix " (2)", " (3)", dst.
+-- return: ditambah (number), diperbarui (number), err (string|nil)
+local function titikImporKode(kode)
+  kode = tostring(kode or "")
+  local awal = kode:find(TITIK_KODE_PREFIX, 1, true)
+  if not awal then
+    return 0, 0, "Kode tidak dikenali (tidak ada penanda ABSOLUTE)."
+  end
+  local b64 = kode:sub(awal + #TITIK_KODE_PREFIX)
+  local capture = b64:match("([A-Za-z0-9%+%/%=]+)")
+  if not capture or #capture < 8 then
+    return 0, 0, "Isi kode kosong / rusak."
+  end
+  local json = b64dec(capture)
+  if not json then
+    return 0, 0, "Gagal decode kode (base64 rusak)."
+  end
+  local ok, data = pcall(function() return HttpService:JSONDecode(json) end)
+  if not ok or type(data) ~= "table" then
+    return 0, 0, "Gagal decode kode (JSON rusak)."
+  end
+
+  local sudahAda = {}
+  for _, p in ipairs(TITIK.poin) do sudahAda[tostring(p.id)] = p end
+
+  local ditambah, diperbarui = 0, 0
+  for _, v in ipairs(data) do
+    local x, y, z = tonumber(v.x), tonumber(v.y), tonumber(v.z)
+    if x and y and z then
+      local idLama = tostring(v.id or "")
+      local normal = Vector3.new(tonumber(v.nx) or 0, tonumber(v.ny) or 1, tonumber(v.nz) or 0)
+      if idLama ~= "" and sudahAda[idLama] then
+        -- titik dengan id sama -> perbarui posisi & normal (jangan timpuk nama)
+        local p = sudahAda[idLama]
+        p.pos = Vector3.new(x, y, z)
+        p.normal = normal
+        diperbarui = diperbarui + 1
+      else
+        local nama = tostring(v.name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        local defaultName = nama == ""
+        if defaultName then
+          nama = namaDefaultBerikutnya()
+        elseif namaTitikDipakai(nama) then
+          local base, n = nama, 1
+          while namaTitikDipakai(nama) do n = n + 1; nama = base .. " (" .. n .. ")" end
+          defaultName = namaDefaultTitik(nama)
+        end
+        local idBaru = (idLama ~= "") and idLama
+          or (tostring(os.time()) .. "-" .. tostring(math.random(100000, 999999)))
+        local pBaru = {
+          id = idBaru, name = nama, defaultName = defaultName,
+          pos = Vector3.new(x, y, z),
+          normal = normal,
+        }
+        TITIK.poin[#TITIK.poin + 1] = pBaru
+        sudahAda[idBaru] = pBaru
+        ditambah = ditambah + 1
+      end
+    end
+  end
+
+  if ditambah > 0 or diperbarui > 0 then
+    titikSimpan()
+    titikRefreshDot()
+    titikRenderUI()
+  end
+  return ditambah, diperbarui, nil
+end
+
+-- Akses cadangan dari CONSOLE executor (tanpa klik UI):
+--   _G.ABSOLUTE_TitikKode()            -> cetak & return kode T2 penuh
+--   _G.ABSOLUTE_TitikImpor("KODE...")  -> impor (T2 penuh/potongan, atau T1 lama)
+pcall(function()
+  _G.ABSOLUTE_TitikKode = function()
+    local kode = titikKodeT2()
+    print("[Absolute] KODE TITIK T2 (" .. #TITIK.poin .. " titik, " .. #kode .. " karakter):")
+    print(kode)
+    return kode
+  end
+  _G.ABSOLUTE_TitikImpor = function(teks)
+    local ok, info, a, b = titikImporT2(teks)
+    if ok and a then
+      print(("[Absolute] IMPOR T2 OK: +%d baru, %d diperbarui"):format(a, b))
+      return a, b, nil
+    elseif ok then
+      print("[Absolute] " .. tostring(info))
+      return 0, 0, nil
+    end
+    local a1, b1, err = titikImporKode(teks)
+    if err then warn("[Absolute] IMPOR GAGAL: " .. tostring(err))
+    else print(("[Absolute] IMPOR OK: +%d baru, %d diperbarui"):format(a1, b1)) end
+    return a1, b1, err
+  end
+end)
+
+-- [6c] GESER & HAPUS TITIK LANGSUNG DI DUNIA --------------
+-- Semua interaksi butuh MODE CTRL+KLIK ON (TITIK.aktif):
+--  - CTRL + klik kiri pada permukaan    -> pasang titik baru
+--  - CTRL + tahan pada titik lalu geser -> titik ikut mouse (jadi transparan);
+--    klik dilepas: kena permukaan = nempel di situ, TIDAK kena permukaan =
+--    balik ke posisi semula (anti melayang)
+--  - klik kiri 2x pada titik            -> hapus titik
+local titikDrag = nil
+local titikLastDot, titikLastKlik = nil, 0
+
+local function titikMouseRay()
+  local mouse = LocalPlayer:GetMouse()
+  if not mouse or not mouse.UnitRay then return nil end
+  return mouse.UnitRay
+end
+
+-- Ray yang TIDAK mengecualikan folder titik, supaya ray bisa mengenai
+-- dot buat dipindah/dihapus (titikRaycast biasa mengecualikan folder).
+local function titikRaycastDot(origin, direction)
+  local params = RaycastParams.new()
+  params.FilterType = Enum.RaycastFilterType.Exclude
+  local filter = {}
+  local char = getChar()
+  if char then filter[#filter + 1] = char end
+  params.FilterDescendantsInstances = filter
+  return Workspace:Raycast(origin, direction, params)
+end
+
+-- Kenali titik dari hasil ray (part dome punya Attribute "id").
+local function titikDariHit(hit)
+  if not hit or not hit.Instance then return nil end
+  local obj = hit.Instance
+  local id = obj:GetAttribute("id")
+  if id == nil then return nil end
+  if (obj.Name or ""):match("^Titik_%d+$") == nil then return nil end
+  id = tostring(id)
+  for _, p in ipairs(TITIK.poin) do
+    if tostring(p.id) == id then return p end
+  end
+  return nil
+end
+
+local function titikDragMulai(point, part)
+  titikDrag = {
+    point = point,
+    part = part,
+    posAwal = point.pos,
+    normalAwal = point.normal or Vector3.new(0, 1, 0),
+    hitTerakhir = nil,
+  }
+  -- selama digeser: transparan + tembus, biar gak menghalangi ray & pandangan
+  part.Transparency = 0.5
+  part.CanCollide = false
+  part.CanQuery = false
+  titikStatusUI("Geser titik: " .. tostring(point.name) .. " — lepas klik untuk menempel")
+end
+
+local function titikDragGerak()
+  if not titikDrag then return end
+  local ray = titikMouseRay()
+  if not ray then return end
+  local hit = titikRaycast(ray.Origin, ray.Direction * 2000)
+  if hit then
+    titikDrag.hitTerakhir = hit
+    local normal = hit.Normal.Unit
+    titikDrag.part.CFrame = CFrame.new(hit.Position + normal * 0.02)
+  end
+end
+
+local function titikDragSelesai()
+  if not titikDrag then return end
+  local drag = titikDrag
+  titikDrag = nil
+  local point = drag.point
+  local hit = drag.hitTerakhir
+  if hit then
+    local normal = hit.Normal.Unit
+    point.pos = hit.Position
+    point.normal = normal
+    titikSimpan()
+    titikRefreshDot()
+    titikRenderUI()
+    titikStatusUI("Titik dipindah: " .. tostring(point.name))
+    pcall(function() if type(toast) == "function" then toast("✓ Titik digeser: " .. tostring(point.name), Warna.Hijau) end end)
+  else
+    -- tidak pernah kena permukaan selama digeser -> posisi data tidak berubah
+    titikRefreshDot()
+    titikStatusUI("Tidak ada permukaan — titik balik ke posisi semula")
+    pcall(function() if type(toast) == "function" then toast("Tidak ada permukaan — titik tidak jadi dipindah", Warna.Kuning) end end)
+  end
+end
+
+local function titikWireInput()
+  catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed or State.Removed or not TITIK.aktif then return end
+    if UserInputService:GetFocusedTextBox() then return end
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    local ray = titikMouseRay()
+    if not ray then return end
+    local hit = titikRaycastDot(ray.Origin, ray.Direction * 2000)
+    local point = hit and titikDariHit(hit) or nil
+    local ctrl = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+      or UserInputService:IsKeyDown(Enum.KeyCode.RightControl)
+    if ctrl then
+      if point then
+        -- CTRL + klik pada titik = MULAI GESER titik itu
+        titikDragMulai(point, hit.Instance)
+      else
+        -- CTRL + klik pada permukaan = pasang titik baru
+        titikKlikDunia()
+      end
+      return
+    end
+    -- klik polos (tanpa CTRL): dobel klik pada titik = HAPUS
+    local now = os.clock()
+    if point and titikLastDot == point and (now - titikLastKlik) <= 0.35 then
+      local index = titikCariIndex(point)
+      if index then titikHapus(index) end
+      titikLastDot, titikLastKlik = nil, 0
+      return
+    end
+    titikLastDot, titikLastKlik = point, now
+  end))
+  catat(UserInputService.InputChanged:Connect(function(input)
+    if titikDrag and input.UserInputType == Enum.UserInputType.MouseMovement then
+      titikDragGerak()
+    end
+  end))
+  catat(UserInputService.InputEnded:Connect(function(input)
+    if titikDrag and input.UserInputType == Enum.UserInputType.MouseButton1 then
+      titikDragSelesai()
+    end
+  end))
+end
+titikWireInput()
 
 titikMuat()
 titikSimpan()
@@ -1337,7 +1833,7 @@ local function buildUI()
   end
   modeTitikBtn.MouseButton1Click:Connect(function()
     TITIK.aktif = not TITIK.aktif; refreshModeTitik()
-    titikStatusUI(TITIK.aktif and "Aktif: tahan CTRL + klik kiri" or "Mode penempatan dimatikan")
+    titikStatusUI(TITIK.aktif and "Aktif: CTRL+klik pasang • CTRL+tahan pada titik geser • dobel klik hapus" or "Mode penempatan dimatikan")
   end)
   refreshModeTitik() -- sinkronkan tampilan tombol dengan status awal (OFF)
 
@@ -1362,14 +1858,122 @@ local function buildUI()
     titikStatusUI("Semua titik dihapus")
   end).LayoutOrder = titikNext()
 
-  buatActionRow(scrollTitik,"↻ URUTKAN TIANG TERDEKAT",Warna.Biru,function()
+  buatActionRow(scrollTitik,"↻ URUTKAN TITIK TERDEKAT",Warna.Biru,function()
     titikUrutkanTerdekat()
     rapikanNomorTitik()
     titikRefreshDot()
     titikSimpan()
     titikRenderUI()
-    if type(toast)=="function" then toast("✓ Tiang diurutkan",Warna.Hijau) end
+    if type(toast)=="function" then toast("✓ Titik diurutkan",Warna.Hijau) end
   end).LayoutOrder=titikNext()
+
+  -- ===== PINDAH DEVICE: EKSPOR / IMPOR TITIK =====
+  local ketTransfer = buat("TextLabel", {
+    BackgroundColor3 = Warna.AbuItem,
+    Size = UDim2.new(1, 0, 0, 0),
+    AutomaticSize = Enum.AutomaticSize.Y,
+    FontFace = fnt("reg"), TextSize = 10, TextColor3 = Warna.AbuTeks,
+    TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "PINDAH DEVICE: Ekspor menghasilkan KODE PENDEK yang dibelah otomatis jadi potongan ≤ ~360 karakter (limit salin aman). Klik Ekspor berulang = potongan berikutnya; salin satu per satu ke Notes/Discord. Di device lain: paste tiap potongan ke kotak → Impor (urutan bebas, terkumpul otomatis, lengkap = langsung masuk). Alternatif TANPA limit: SIMPAN KE FILE → kirim file-nya (WA/Discord) → IMPOR DARI FILE. Kode lama format T1 (base64) tetap bisa diimpor.",
+    LayoutOrder = titikNext(),
+  }, scrollTitik)
+  buat("UICorner", {CornerRadius = UDim.new(0, 8)}, ketTransfer)
+  buat("UIPadding", {PaddingLeft = UDim.new(0, 8), PaddingTop = UDim.new(0, 5), PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 5)}, ketTransfer)
+
+  local kodeBox = buat("TextBox", {
+    BackgroundColor3 = Warna.Hitam2,
+    Size = UDim2.new(1, 0, 0, 90),
+    FontFace = fnt("reg"), TextSize = 10, TextColor3 = Warna.Putih,
+    PlaceholderText = "Ekspor: potongan kode muncul di sini. Impor: paste potongan/kode satu per satu di sini.",
+    PlaceholderColor3 = Warna.AbuGelap,
+    Text = "", ClearTextOnFocus = false,
+    MultiLine = true, TextWrapped = true,
+    LayoutOrder = titikNext(),
+  }, scrollTitik)
+  buat("UICorner", {CornerRadius = UDim.new(0, 8)}, kodeBox)
+  buat("UIPadding", {PaddingLeft = UDim.new(0, 6), PaddingTop = UDim.new(0, 4), PaddingRight = UDim.new(0, 6), PaddingBottom = UDim.new(0, 4)}, kodeBox)
+
+  local t2Siklus = 0
+  buatActionRow(scrollTitik, "📤 EKSPOR TITIK → KODE", Warna.Biru, function()
+    if #TITIK.poin == 0 then
+      titikStatusUI("Belum ada titik untuk diekspor")
+      pcall(function() if type(toast) == "function" then toast("Belum ada titik untuk diekspor", Warna.Kuning) end end)
+      return
+    end
+    local potongan = titikPotonganT2()
+    if #potongan <= 1 then
+      t2Siklus = 0
+      kodeBox.Text = potongan[1] or T2_PREFIX
+      titikStatusUI("Kode " .. #TITIK.poin .. " titik (" .. #kodeBox.Text .. " karakter) — copy lalu bawa ke device lain")
+      pcall(function() if type(toast) == "function" then toast("✓ Kode " .. #TITIK.poin .. " titik dibuat — copy lalu pindah device", Warna.Hijau) end end)
+    else
+      t2Siklus = (t2Siklus % #potongan) + 1
+      kodeBox.Text = potongan[t2Siklus]
+      titikStatusUI("Potongan " .. t2Siklus .. "/" .. #potongan .. " (" .. #kodeBox.Text .. " karakter) — copy, lalu klik Ekspor lagi untuk potongan berikutnya")
+      pcall(function() if type(toast) == "function" then toast("Potongan " .. t2Siklus .. "/" .. #potongan .. " — copy ini, klik Ekspor lagi buat berikutnya", Warna.Hijau) end end)
+    end
+  end).LayoutOrder = titikNext()
+
+  buatActionRow(scrollTitik, "📋 COPY KODE KE CLIPBOARD", Warna.Ungu2, function()
+    local teks = kodeBox.Text or ""
+    if teks == "" then
+      pcall(function() if type(toast) == "function" then toast("Kotak kode kosong — klik Ekspor dulu", Warna.Kuning) end end)
+      return
+    end
+    local ok = false
+    pcall(function()
+      if type(setclipboard) == "function" then setclipboard(teks); ok = true
+      elseif type(toclipboard) == "function" then toclipboard(teks); ok = true end
+    end)
+    if ok then
+      pcall(function() if type(toast) == "function" then toast("✓ Kode tersalin ke clipboard", Warna.Hijau) end end)
+    else
+      pcall(function() if type(toast) == "function" then toast("Clipboard tidak didukung — pilih manual di kotak kode", Warna.Kuning) end end)
+    end
+  end).LayoutOrder = titikNext()
+
+  buatActionRow(scrollTitik, "📥 IMPOR TITIK DARI KODE", Warna.Hijau2, function()
+    local teks = kodeBox.Text or ""
+    if teks == "" then
+      pcall(function() if type(toast) == "function" then toast("Paste kode dulu di kotak atas", Warna.Kuning) end end)
+      return
+    end
+    -- coba format T2 (kode penuh atau potongan) dulu
+    local ok, info, ditambah, diperbarui = titikImporT2(teks)
+    if ok then
+      if ditambah then
+        titikStatusUI("Impor: +" .. ditambah .. " baru • " .. diperbarui .. " diperbarui" ..
+          (info ~= "selesai" and (" — " .. info) or ""))
+        pcall(function() if type(toast) == "function" then toast("✓ Impor: +" .. ditambah .. " baru • " .. diperbarui .. " diperbarui", Warna.Hijau) end end)
+      else
+        titikStatusUI(info) -- potongan diterima, tunggu potongan lain
+        pcall(function() if type(toast) == "function" then toast("✓ " .. info, Warna.Hijau) end end)
+      end
+      return
+    end
+    -- bukan T2 -> coba format lama T1 (base64)
+    local a, b, err = titikImporKode(teks)
+    if err then
+      titikStatusUI("Impor gagal: " .. err)
+      pcall(function() if type(toast) == "function" then toast("Impor gagal: " .. err, Warna.Merah) end end)
+    else
+      titikStatusUI("Impor: +" .. a .. " baru • " .. b .. " diperbarui")
+      pcall(function() if type(toast) == "function" then toast("✓ Impor: +" .. a .. " baru • " .. b .. " diperbarui", Warna.Hijau) end end)
+    end
+  end).LayoutOrder = titikNext()
+
+  buatActionRow(scrollTitik, "💾 SIMPAN TITIK KE FILE (tanpa limit)", Warna.Ungu2, function()
+    if #TITIK.poin == 0 then
+      titikStatusUI("Belum ada titik untuk disimpan")
+      pcall(function() if type(toast) == "function" then toast("Belum ada titik untuk disimpan", Warna.Kuning) end end)
+      return
+    end
+    titikSimpanFile()
+  end).LayoutOrder = titikNext()
+
+  buatActionRow(scrollTitik, "📂 IMPOR TITIK DARI FILE", Warna.Hijau2, function()
+    titikImporFile()
+  end).LayoutOrder = titikNext()
 
   local titikList = buat("Frame", {
     BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
@@ -1436,10 +2040,11 @@ local function buildUI()
   titikRenderUI()
 
   buat("TextLabel", {
-    BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 42),
+    BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0),
+    AutomaticSize = Enum.AutomaticSize.Y,
     FontFace = fnt("reg"), TextSize = 10, TextColor3 = Warna.AbuTeks,
     TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
-    Text = "Aktifkan mode, lalu tahan CTRL + klik kiri pada tanah/dinding untuk menempelkan titik.",
+    Text = "MODE CTRL + KLIK ON dulu, lalu:\n• CTRL + klik kiri pada tanah/dinding → pasang titik (dome solid, bisa diinjak)\n• CTRL + tahan pada titik lalu geser → pindahkan; lepas = nempel di permukaan, kalau tanpa permukaan balik ke posisi awal\n• Klik kiri 2× pada titik → hapus",
     LayoutOrder = titikNext(),
   }, scrollTitik)
 
@@ -2659,15 +3264,8 @@ local function initLogic()
 
   buatDraggable(header, root)
 
-  catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed or State.Removed or not TITIK.aktif then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-    and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
-    or UserInputService:IsKeyDown(Enum.KeyCode.RightControl))
-    and not UserInputService:GetFocusedTextBox() then
-      titikKlikDunia()
-    end
-  end))
+  -- Penempatan / geser / hapus titik kini ditangani di [6c] (dibangun bareng
+  -- logika TITIK supaya akses state titik & raycast-nya langsung).
 
   local lastK = 0
   catat(UserInputService.InputBegan:Connect(function(input, gameProcessed)
