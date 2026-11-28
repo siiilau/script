@@ -3199,12 +3199,14 @@ local function initLogic()
   local CAHAYA = {
     JAM_MALAM_MULAI = 18,
     JAM_MALAM_AKHIR = 6,
-    -- Malam: brightness diangkat agar BENAR-BENAR lebih terang dari default,
-    -- tapi contrast positif + saturation sedikit naik jaga bentuk & warna
-    -- supaya tetap enak dipandang — tidak putih/flat dan tidak jadi siang.
-    NIGHT_BRIGHTNESS = 0.30,
-    NIGHT_CONTRAST = 0.08,
-    NIGHT_SATURATION = 0.10,
+    -- Malam: BENAR-BENAR terang (bisa kelihatan), TAPI BUKAN putih/bleached.
+    -- Contrast DINAIKKAN (kunci anti-putih: jaga kedalaman & bayangan),
+    -- brightness secukupnya angkat gelap, saturation jaga warna hidup,
+    -- tint warm amber = kehangatan lampu (bukan putih steril).
+    NIGHT_BRIGHTNESS = 0.18,
+    NIGHT_CONTRAST = 0.16,
+    NIGHT_SATURATION = 0.08,
+    NIGHT_TINT = Color3.fromRGB(255, 235, 205),
   }
   local autoLightEffect
 
@@ -3221,14 +3223,15 @@ local function initLogic()
       autoLightEffect.Brightness = CAHAYA.NIGHT_BRIGHTNESS
       autoLightEffect.Contrast = CAHAYA.NIGHT_CONTRAST
       autoLightEffect.Saturation = CAHAYA.NIGHT_SATURATION
+      autoLightEffect.TintColor = CAHAYA.NIGHT_TINT
       autoLightEffect.Enabled = false
       autoLightEffect.Parent = Lighting
     end
     -- 06:00 sampai sebelum 18:00: biarkan siang asli tanpa efek.
-    -- Malam: efek lokal yang membuat gelap lebih terang (brightness naik) tapi tetap
-    -- enak dipandang — contrast positif jaga kedalaman bentuk (anti putih/flat),
-    -- saturation sedikit diangkat supaya warna tetap hidup. ClockTime & Lighting
-    -- asli tidak disentuh, jadi bukan dijadikan siang.
+    -- Malam: efek lokal yang membuat gelap BENAR-BENAR terang (brightness naik)
+    -- TAPI BUKAN putih/bleached — contrast tinggi jaga kedalaman & bayangan,
+    -- tint warm amber beri kehangatan lampu, saturation jaga warna hidup.
+    -- ClockTime & Lighting asli tidak disentuh, jadi bukan dijadikan siang.
     autoLightEffect.Enabled = apakahMalam()
   end
 
