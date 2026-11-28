@@ -1,10 +1,10 @@
 --========================================================
---  ABSOLUTE V1.0 — LOCAL ONLY
---  Tab: MOVEMENT & VISUAL • TITIK • SYSTEM
+--  ABSOLUTE V1.1 — LOCAL ONLY
+--  Tab: MOVE/VISUAL • EMOTE • TITIK • SYSTEM
 --  Keybind: G=GUI  Q=Speed  C=Shift  LShift=Tengah
 --           F=Moon  R=Hide  T=Cahaya  X=Resize  K×2=Rejoin
 --========================================================
-print("[Absolute V1.0] load mulai...")
+print("[Absolute V1.1] load mulai...")
 
 -- [0] DIAGNOSTIK -----------------------------------------
 local diagSet, diagHapus
@@ -57,7 +57,7 @@ do
   end
 end
 
-local VERSI = "V1.0"
+local VERSI = "V1.1"
 local __ABSOLUTE_LOAD_OK__ = xpcall(function()
 
 -- [1] PENGAMAN DASAR ------------------------------------
@@ -239,7 +239,7 @@ local Setters, Switches = {}, {}
 local effGradients, effTweens = {}, {}
 local setFeature, togglePanel, rejoin, unloadScript
 local applySpeed, RefreshSpeed, SpeedLabel
-local oLight, lightConn
+local lightConn
 local toast
 local tabBtns, kontenTabs, setTab
 local kontenMove, scrollMove
@@ -255,6 +255,620 @@ local function getChar() return LocalPlayer.Character end
 local function getHum()
   local c = getChar()
   return c and c:FindFirstChildOfClass("Humanoid")
+end
+
+local EMOTE_CATALOG = {
+        ["Fashion"] = 3333331310,
+        ["Baby Dance"] = 4265725525,
+        ["Cha-Cha"] = 6862001787,
+        ["Monkey"] = 3333499508,
+        ["Shuffle"] = 4349242221,
+        ["Top Rock"] = 3361276673,
+        ["Around Town"] = 3303391864,
+        ["Fancy Feet"] = 3333432454,
+        ["Hype Dance"] = 3695333486,
+        ["Bodybuilder"] = 3333387824,
+        ["Idol"] = 4101966434,
+        ["Curtsy"] = 4555816777,
+        ["Happy"] = 4841405708,
+        ["Quiet Waves"] = 7465981288,
+        ["Sleep"] = 4686925579,
+        ["Floss Dance"] = 5917459365,
+        ["Shy"] = 3337978742,
+        ["Godlike"] = 3337994105,
+        ["Hero Landing"] = 5104344710,
+        ["High Wave"] = 5915690960,
+        ["Cower"] = 4940563117,
+        ["Bored"] = 5230599789,
+        ["Show Dem Wrists -KSI"] = 7198989668,
+        ["Celebrate"] = 3338097973,
+        ["Dash"] = 582855105,
+        ["Beckon"] = 5230598276,
+        ["Haha"] = 3337966527,
+        ["Lasso Turn - Tai Verdes"] = 7942896991,
+        ["Line Dance"] = 4049037604,
+        ["Shrug"] = 3334392772,
+        ["Point2"] = 3344585679,
+        ["Stadium"] = 3338055167,
+        ["Confused"] = 4940561610,
+        ["Side to Side"] = 3333136415,
+        ["Old Town Road Dance - Lil Nas X\""] = 5937560570,
+        ["Hello"] = 3344650532,
+        ["Dolphin Dance"] = 5918726674,
+        ["Samba"] = 6869766175,
+        ["Break Dance"] = 5915648917,
+        ["Hips Poppin' - Zara Larsson"] = 6797888062,
+        ["Wake Up Call - KSI"] = 7199000883,
+        ["Greatest"] = 3338042785,
+        ["On The Outside - Twenty One"] = 7422779536,
+        ["Boxing Punch - KSI"] = 7202863182,
+        ["Sad"] = 4841407203,
+        ["Flowing Breeze"] = 7465946930,
+        ["Twirl"] = 3334968680,
+        ["Jumping Wave"] = 4940564896,
+        ["HOLIDAY Dance - Lil Nas X (LNX)"] = 5937558680,
+        ["Take Me Under - Zara Larsson"] = 6797890377,
+        ["Dizzy"] = 3361426436,
+        ["Dancing' Shoes - Twenty One"] = 7404878500,
+        ["Fashionable"] = 3333331310,
+        ["Fast Hands"] = 4265701731,
+        ["Tree"] = 4049551434,
+        ["Agree"] = 4841397952,
+        ["Power Blast"] = 4841403964,
+        ["Swoosh"] = 3361481910,
+        ["Jumping Cheer"] = 5895324424,
+        ["Disagree"] = 4841401869,
+        ["Rodeo Dance - Lil Nas X (LNX)"] = 5918728267,
+        ["It Ain't My Fault - Zara Larsson"] = 6797891807,
+        ["Rock On"] = 5915714366,
+        ["Block Partier"] = 6862022283,
+        ["Dorky Dance"] = 4212455378,
+        ["Zombie"] = 4210116953,
+        ["AOK - Tai Verdes"] = 7942885103,
+        ["T"] = 3338010159,
+        ["Cobra Arms - Tai   Verdes"] = 7942890105,
+        ["Panini Dance - Lil Nas X (LNX)"] = 5915713518,
+        ["Fishing"] = 3334832150,
+        ["Robot"] = 3338025566,
+        ["Saturday Dance - Twenty One"] = 7422807549,
+        ["Keeping Time"] = 4555808220,
+        ["Air Dance"] = 4555782893,
+        ["Rock Guitar - Royal Blood"] = 6532134724,
+        ["Borock's Rage"] = 3236842542,
+        ["Ud'zal's Summoning"] = 3303161675,
+        ["Y"] = 4349285876,
+        ["Swan Dance"] = 7465997989,
+        ["Louder"] = 3338083565,
+        ["Up and Down - Twenty One"] = 7422797678,
+        ["Swish"] = 3361481910,
+        ["Drummer Moves - Twenty One"] = 7422527690,
+        ["Sneaky"] = 3334424322,
+        ["Heisman Pose"] = 3695263073,
+        ["Jacks"] = 3338066331,
+        ["Cha-Cha 2"] = 3695322025,
+        ["BURBERRY LOLA ATTITUDE - NIMBUS"] = 10147821284,
+        ["BURBERRY LOLA  ATTITUDE - GEM"] = 10147815602,
+        ["BURBERRY LOLA ATTITUDE - HYDRO"] = 10147823318,
+        ["BURBERRY LOLA ATTITUDE - BLOOM"] = 10147817997,
+        ["Superhero Reveal"] = 3695373233,
+        ["Air Guitar"] = 3695300085,
+        ["Dismissive Wave"] = 3333272779,
+        ["Country Line  Dance - Lil Nas X"] = 5915712534,
+        ["Salute"] = 3333474484,
+        ["Applaud"] = 5915693819,
+        ["Get Out"] = 3333272779,
+        ["Hwaiting (화이팅)"] = 9527885267,
+        ["Annyeong (안녕)"] = 9527883498,
+        ["Bunny Hop"] = 4641985101,
+        ["Sandwich Dance"] = 4406555273,
+        ["Hyperfast  5G Dance Move"] = 9408617181,
+        ["Victory - 24kGoldn"] = 9178377686,
+        ["Tantrum"] = 5104341999,
+        ["Rock Star - Royal Blood"] = 10714400171,
+        ["Drum Solo - Royal Blood"] = 6532839007,
+        ["Drum Master - Royal Blood"] = 6531483720,
+        ["High Hands"] = 9710985298,
+        ["Tilt"] = 3334538554,
+        ["Gashina - SUNMI"] = 9527886709,
+        ["Chicken Dance"] = 4841399916,
+        ["You can't sit with us - Sunmi"] = 9983520970,
+        ["Frosty Flair - Tommy Hilfiger"] = 10214311282,
+        ["Floor Rock Freeze - Tommy Hilfiger"] = 10214314957,
+        ["Boom Boom Clap - George Ezra"] = 10370346995,
+        ["Cartwheel - George Ezra"] = 10370351535,
+        ["Chill Vibes - George Ezra"] = 10370353969,
+        ["Sidekicks - George Ezra"] = 10370362157,
+        ["The Conductor - George Ezra"] = 10370359115,
+        ["Super Charge"] = 10478338114,
+        ["Swag Walk"] = 10478341260,
+        ["Mean Mug - Tommy Hilfiger"] = 10214317325,
+        ["V Pose - Tommy Hilfiger"] = 10214319518,
+        ["Uprise - Tommy Hilfiger"] = 10275008655,
+        ["2 Baddies Dance Move - NCT 127"] = 12259828678,
+        ["Kick It Dance Move - NCT 127"] = 12259826609,
+        ["Sticker Dance Move - NCT 127"] = 12259825026,
+        ["Elton John - Rock Out"] = 11753474067,
+        ["Elton John - Heart Skip"] = 11309255148,
+        ["Elton John - Still Standing"] = 11444443576,
+        ["Elton John - Elevate"] = 11394033602,
+        ["Elton John - Cat Man"] = 11444441914,
+        ["Elton John - Piano Jump"] = 11453082181,
+        ["Alo Yoga Pose - Triangle"] = 12507084541,
+        ["Alo Yoga Pose - Warrior II"] = 12507083048,
+        ["Alo Yoga Pose - Lotus Position"] = 12507085924,
+        ["TWICE-Moonlight-Sunrise"] = 12714233242,
+        ["TWICE-Set-Me-Free-Dance-1"] = 12714228341,
+        ["TWICE-Set-Me-Free-Dance-2"] = 12714231087,
+        ["Ay-Yo-Dance-Move-NCT-127"] = 12804157977,
+        ["TWICE-The-Feels"] = 12874447851,
+        ["Rise-Above-The-Chainsmokers"] = 12992262118,
+        ["TWICE-What-Is-Love"] = 13327655243,
+        ["Man-City-Bicycle-Kick"] = 13421057998,
+        ["TWICE-Fancy"] = 13520524517,
+        ["TWICE Pop by Nayeon"] = 13768941455,
+        ["Tommy - Archer"] = 13823324057,
+        ["TWICE-Pop-by-Nayeon"] = 13768941455,
+        ["Man City Backflip"] = 13694100677,
+        ["Man-City-Scorpion-Kick"] = 13694096724,
+        ["Arm Twist"] = 10713968716,
+        ["YUNGBLUD – HIGH KICK"] = 14022936101,
+        ["TWICE Like Ooh-Ahh"] = 14123781004,
+        ["Baby Queen - Air Guitar & Knee Slide"] = 14352335202,
+        ["Baby Queen - Dramatic Bow"] = 14352337694,
+        ["Baby Queen - Face Frame"] = 14352340648,
+        ["Baby Queen - Bouncy Twirl"] = 14352343065,
+        ["Baby Queen - Strut"] = 14352362059,
+        ["BLACKPINK Pink Venom - Get em Get em Get em"] = 14548619594,
+        ["BLACKPINK Pink Venom - I Bring the Pain Like…"] = 14548620495,
+        ["BLACKPINK Pink Venom - Straight to Ya Dome"] = 14548621256,
+        ["TWICE LIKEY"] = 14899979575,
+        ["TWICE Feel Special"] = 14899980745,
+        ["BLACKPINK Shut Down - Part 1"] = 14901306096,
+        ["BLACKPINK Shut Down - Part 2"] = 14901308987,
+        ["Bone Chillin' Bop"] = 15122972413,
+        ["Paris Hilton - Sliving For The Groove"] = 15392759696,
+        ["Paris Hilton - Iconic IT-Grrrl"] = 15392756794,
+        ["Paris Hilton - Checking My Angles"] = 15392752812,
+        ["BLACKPINK JISOO Flower"] = 15439354020,
+        ["BLACKPINK JENNIE You and Me"] = 15439356296,
+        ["Rock n Roll"] = 15505458452,
+        ["Victory Dance"] = 15505456446,
+        ["Flex Walk"] = 15505459811,
+        ["Olivia Rodrigo Head Bop"] = 15517864808,
+        ["Olivia Rodrigo good 4 u"] = 15517862739,
+        ["Olivia Rodrigo Fall Back to Float"] = 15549124879,
+        ["Nicki Minaj That's That Super Bass"] = 15571446961,
+        ["Nicki Minaj Boom Boom Boom"] = 15571448688,
+        ["Nicki Minaj Anaconda"] = 15571450952,
+        ["Nicki Minaj Starships"] = 15571453761,
+        ["Yungblud Happier Jump"] = 15609995579,
+        ["Festive Dance"] = 15679621440,
+        ["BLACKPINK LISA Money"] = 15679623052,
+        ["BLACKPINK ROSÉ On The Ground"] = 15679624464,
+        ["Imagine Dragons - “Bones” Dance"] = 15689279687,
+        ["GloRilla - \"Tomorrow\" Dance"] = 15689278184,
+        ["d4vd - Backflip"] = 15693621070,
+        ["ericdoa - dance"] = 15698402762,
+        ["Cuco - Levitate"] = 15698404340,
+        ["Mean Girls Dance Break"] = 15963314052,
+        ["Paris Hilton Sanasa"] = 16126469463,
+        ["BLACKPINK Ice Cream"] = 16181797368,
+        ["BLACKPINK Kill This Love"] = 16181798319,
+        ["TWICE I GOT YOU part 1"] = 16215030041,
+        ["TWICE I GOT YOU part 2"] = 16256203246,
+        ["Dave's Spin Move - Glass Animals"] = 16272432203,
+        ["Sol de Janeiro - Samba"] = 16270690701,
+        ["Beauty Touchdown"] = 16302968986,
+        ["Skadoosh Emote - Kung Fu Panda 4"] = 16371217304,
+        ["Jawny - Stomp"] = 16392075853,
+        ["Mae Stephens - Piano Hands"] = 16553163212,
+        ["BLACKPINK Boombayah Emote"] = 16553164850,
+        ["BLACKPINK DDU-DU DDU-DU"] = 16553170471,
+        ["HIPMOTION - Amaarae"] = 16572740012,
+        ["Mae Stephens – Arm Wave"] = 16584481352,
+        ["Wanna play?"] = 16646423316,
+        ["BLACKPINK-How-You-Like-That"] = 16874470507,
+        ["BLACKPINK - Lovesick Girls"] = 16874472321,
+        ["Mini Kong"] = 17000021306,
+        ["HUGO Let's Drive!"] = 17360699557,
+        ["Wisp - air guitar"] = 17370775305,
+        ["Vans Ollie"] = 18305395285,
+        ["Sturdy Dance - Ice Spice"] = 17746180844,
+        ["Rolling Stones Guitar Strum"] = 18148804340,
+        ["Rock Out - Bebe Rexha"] = 18225053113,
+        ["SpongeBob Imaginaaation 🌈"] = 18443237526,
+        ["SpongeBob Dance"] = 18443245017,
+        ["Shrek Roar"] = 18524313628,
+        ["Team USA Breaking Emote"] = 18526288497,
+        ["NBA WNBA Fadeaway"] = 18526362841,
+        ["Vroom Vroom"] = 18526397037,
+        ["TMNT Dance"] = 18665811005,
+        ["Olympic Dismount"] = 18665825805,
+        ["BLACKPINK As If It's Your Last"] = 18855536648,
+        ["BLACKPINK Don't know what to do"] = 18855531354,
+        ["TWICE ABCD by Nayeon"] = 18933706381,
+        ["Charli xcx - Apple Dance"] = 18946844622,
+        ["The Zabb"] = 129470135909814,
+        ["Fashion Klossette - Runway my way"] = 80995190624232,
+        ["ALTÉGO - Couldn’t Care Less"] = 107875941017127,
+        ["Fashion Roadkill"] = 136831243854748,
+        ["Skibidi Toilet - Titan Speakerman Laser Spin"] = 134283166482394,
+        ["Chappell Roan HOT TO GO!"] = 85267023718407,
+        ["Secret Handshake Dance"] = 71243990877913,
+        ["KATSEYE - Touch"] = 135876612109535,
+        ["Fashion Spin"] = 131669256082047,
+        ["TWICE Strategy"] = 97311229290836,
+        ["NBA Monster Dunk"] = 132748833449150,
+        ["DearALICE - Ariana"] = 134318425949290,
+        ["The Weeknd Starboy Strut"] = 71105746210464,
+        ["The Weeknd Opening Night"] = 133110725387025,
+        ["Robot M3GAN"] = 125803725853577,
+        ["M3GAN's Dance"] = 99649534578309,
+        ["Rasputin – Boney M."] = 114872820353992,
+        ["Thanos Happy Jump - Squid Game"] = 97611664803614,
+        ["Young-hee Head Spin - Squid Game"] = 112011282168475,
+        ["TWICE Takedown"] = 140182843839424,
+        ["Stray Kids Walkin On Water"] = 125064469983655,
+        ["TWICE TAKEDOWN DANCE 2"] = 127104635954695,
+    -- Emote katalog VeD_DeV's UGC (diambil dari halaman grup yang diberikan).
+        ["Work to the Beat"] = 110916565568239,
+        ["Queen Reaction"] = 125318390383124,
+        ["Jester Dance"] = 126623565701035,
+        ["I Got Like Hella Money"] = 87442380257737,
+        ["Baki Stance"] = 103475321456595,
+        ["Muscle Flex Pose"] = 114054085739682,
+        ["Silent Aura Sit"] = 126590120863723,
+        ["Faceless Aura"] = 103981563274328,
+        ["Floating Aura Pose"] = 88318250668110,
+        ["Aura Farming Idle"] = 101227355599411,
+        ["Sukuna Aura Farming"] = 92116889798388,
+        ["Wall Aura Farm Pose"] = 93581572441300,
+        ["Effortless Aura Flex"] = 85788129274230,
+        ["Unbothered Aura Float"] = 95867809775448,
+        ["Ice Skater Girl Pose"] = 131531945412990,
+        ["Shy Girl Idle Pose"] = 77917651634775,
+        ["Pretty Girl Pose"] = 132887307829946,
+        ["Cute Look Back Pose"] = 140302970466671,
+        ["Cute Kitty Profile Pose"] = 118845595931772,
+        ["Cute Heart Profile Pose"] = 113800874984638,
+        ["Cute Christmas Girl Pose"] = 136940300821501,
+        ["Model Pose"] = 70943834108410,
+        ["Cute Lay Pose"] = 132433066284463,
+        ["Cute Awkward Pose"] = 91814759881689,
+        ["Boxing Stance"] = 122385472327774,
+        ["Rage"] = 101184193349085,
+        ["Aura Float"] = 112320691444823,
+        ["Hand Trick"] = 101882564339351,
+        ["Effortless Chill Pose"] = 97611075942788,
+        ["Silence Aura"] = 91872156092808,
+        ["Stylish King Pose"] = 139518154452057,
+        ["Trendy Girl Pose"] = 137347006574582,
+        ["Princess Lift Pose (Her)"] = 134218794353681,
+        ["Princess Lift Pose (Him)"] = 99148343267254,
+        ["Cute Attitude Pose"] = 72288169534176,
+        ["Cute Shy Sit Pose"] = 99425439298305,
+        ["Cute Cheer Pose"] = 100388302207715,
+        ["Nonchalant Sit Pose"] = 87727495516744,
+        ["Shy Cute Pose"] = 115033828324156,
+        ["Cute Wink Pose"] = 77584528615852,
+        ["Cute Reading Pose"] = 98047692063407,
+        ["Commander Pose"] = 105430065366949,
+        ["Cute Charming Pose"] = 72233887202122,
+        ["Scene Profile Pose"] = 73739070097590,
+        ["Cute Cozy Sit Pose"] = 79241076686419,
+        ["Aura Farm Pose"] = 76675061535236,
+        ["Cute Diva Pose"] = 77226082404881,
+        ["Cute Stylish Girl Pose"] = 123672539410540,
+        ["Vibe Together"] = 134039908282524,
+        ["Fashion Icon"] = 87265350253553,
+        ["Charming Pose"] = 108345521565245,
+        ["Head Dribbler"] = 88570040903137,
+        ["Jumpstyle"] = 136233115143594,
+        ["Cute Shy Pose"] = 107553661249594,
+        ["Y2K Diva Pose"] = 72536537086237,
+        ["Lonely Diva"] = 121345143294764,
+        ["Sweet Float"] = 77189464822321,
+        ["Diva Aura"] = 118846519181951,
+        ["Broom Ride"] = 98996901011057,
+        ["Broken Doll"] = 106656091796877,
+        ["Headless Sit"] = 125738566021330,
+        ["Chill Float Aura"] = 125758135397088,
+        ["Zombie Bite"] = 95187763336586,
+        ["Birdbrain Teto Dance"] = 94772165174765,
+        ["Cute Wave Pose"] = 130172138277900,
+        ["Cute Standing Pose"] = 108406173041178,
+        ["Cute Sit Pose"] = 129439026995374,
+        ["Careless Pose"] = 80824749417885,
+        ["Float Aura Pose"] = 81430482677973,
+        ["Die Lit"] = 87720597592069,
+        ["Head Toss"] = 115824298590524,
+        ["Chill Sit Pose"] = 133202507266051,
+        ["Cutesy Profile Pose"] = 90818316906415,
+        ["Cute Floating Girl Pose"] = 90784014332944,
+        ["Diva Pose"] = 80314311457178,
+        ["Sniper Pose"] = 85939916737284,
+        ["Divine Reach (Right)"] = 134738715839868,
+        ["Divine Reach (Left)"] = 97678489670395,
+        ["Attitude Pose"] = 123241895006025,
+        ["Aura Gainer"] = 125717501705233,
+        ["Fusion Pose Right"] = 140072974566572,
+        ["Fusion Pose Left"] = 108617205666723,
+        ["Crying Pose"] = 97438764759898,
+        ["Chill Aura Pose"] = 86027369368143,
+        ["Chill Guy Pose"] = 101634813744727,
+    -- Emote tambahan dari katalog grup Reta's.
+        ["Reta's | Baddies Pic"] = 81773345255689,
+        ["Reta's | Heavy Sword Stance"] = 109863797124787,
+        ["Reta's | Cat Bath Taunt"] = 114429261687802,
+        ["Reta's | Jiggly Legs."] = 80274541429619,
+        ["Reta's | Sitting.."] = 129305096889843,
+        ["Reta's | LOL"] = 85963358462938,
+        ["Reta's | Laid Upp"] = 89554364494587,
+        ["Reta's | Head Pats"] = 93794354591321,
+        ["Reta's | JL"] = 77078698776251,
+        ["Reta's | adorable little wave"] = 92471100000155,
+        ["Reta's | Mad at U"] = 115155614205644,
+        ["Reta's | Bored Leg Tap Alt"] = 130586900210533,
+        ["Reta's | Just Shy Alt"] = 75433402279848,
+        ["Reta's | Ingrid Game Over"] = 125526859063735,
+        ["Reta's | Juri Stretch"] = 115147831847291,
+        ["Reta's | Wag your tail"] = 104126258946744,
+        ["Reta's | Laid Up"] = 99290955128393,
+        ["Reta's | Cute Cat"] = 125464132574625,
+        ["Reta's | Security Idle"] = 135830891114268,
+        ["Reta's | Jiggly Legs"] = 117316439301810,
+        ["Reta's | Laid Up V"] = 88675405644507,
+        ["Reta's | Modelling Crouch (Unlimited)"] = 126335458682361,
+        ["Reta's | Just Hug"] = 131102522311417,
+        ["Reta's | BP 3"] = 110659885831434,
+        ["Reta's | Pain of Pains"] = 132985306809464,
+        ["Reta's | Cute N Calm 5"] = 75386024870561,
+        ["Reta's | Ready Sword Stance"] = 114024982246546,
+        ["Reta's | Cute Jiggle Bounce"] = 82182731995970,
+        ["Reta's | Floating Diva 2"] = 96422023282360,
+        ["Reta's | Party Hips"] = 120838357550882,
+        ["Reta's | Laid Up #2"] = 128441796287480,
+        ["Reta's | Point Pose"] = 81199088812254,
+        ["Reta's | Sittin' Pose"] = 91189411027558,
+        ["Reta's | Girly Tantrum"] = 73396092699919,
+        ["Reta's | Arm Swing Idle"] = 117264576689408,
+        ["Reta's | Spooky Jumpscare"] = 137115650395648,
+        ["Reta's | Cool Boss Seat"] = 105450918840703,
+        ["Reta's | Carried Duo"] = 92152430524407,
+        ["Reta's | Thriller Gen Pose (Rewrite)"] = 73885313552593,
+        ["Reta's | Dual Blade Baddie"] = 135678618996304,
+        ["Reta's | Just Shy"] = 125274527479352,
+        ["Reta's | Just Bad"] = 97183249882959,
+        ["Reta's | Karate Master Stance (Ryu)"] = 79490342987819,
+        ["Reta's | Laid Up -"] = 91534885979069,
+        ["Reta's | Jiggly Legss"] = 123189636774231,
+        ["Reta's | Shoulder Buddy"] = 95582287917636,
+        ["Reta's | Bored Idle"] = 71560376738762,
+        ["Reta's | Baddies Pic #2"] = 119814993700218,
+        ["Reta's | Baddies Pic Alt"] = 92737824660542,
+        ["Reta's | Chill Sway"] = 114216478660561,
+        ["Reta's | Laid Up #3"] = 123002478872057,
+        ["Reta's | Dynamic Sword on Shoulders Idle"] = 88674191758382,
+        ["Reta's | Bored Leg Tap"] = 138290738729311,
+        ["Reta's | Baddies Pic #3"] = 92723545000845,
+        ["Reta's | Ingrid Floating Poses"] = 116182644647764,
+        ["Reta's | Ancient Splits"] = 78997259663901,
+        ["Reta's | Glamorous"] = 95390595396577,
+        ["Reta's | Cute Smirk Mouth (3D)"] = 123710434702083,
+        ["Reta's | Laid Up #4"] = 139202731871374,
+        ["Reta's | Sittin'"] = 113866563729465,
+        ["Reta's | Expert Yoga Stretch 1.0"] = 102197355815553,
+        ["Reta's | Crawl"] = 124691366629156,
+        ["Reta's | Bad Girl Pose (Juri)"] = 133172212051659,
+        ["Reta's | Cry"] = 123580782068836,
+        ["Reta's | Cute Frown Mouth w/ Single Fang (3D)"] = 81826865829437,
+        ["Reta's | Momoko's Happy Jig"] = 72365081998182,
+        ["Reta's | Juri Mock Celebration"] = 87947545440022,
+        ["Reta's | Frenni's Dance"] = 126336415456482,
+        ["Reta's | Sittin' #2"] = 130013386233535,
+        ["Reta's | Ken Stance (SF6)"] = 130646280266122,
+        ["Reta's | Magical Belly Dance (Shantae)"] = 93218598653314,
+        ["Reta's | Cute N Calm"] = 123209410385466,
+        ["Reta's | Arm on Sword Hilt Idle"] = 118358952881306,
+        ["Reta's | Sleepy Kitty (Unlimited)"] = 111129089570149,
+        ["Reta's | Cute Feral Stance v2"] = 117630565217697,
+        ["Reta's | Army Man Stance (Guile)"] = 88140102303573,
+        ["Reta's | Baddies Pic #4"] = 110464191972242,
+        ["Reta's | Ingrid Idle"] = 103902154805666,
+        ["Reta's | Versatile Ninja Pose"] = 79987061386640,
+        ["Reta's | Stop Motion Sitting"] = 107288712372579,
+        ["Reta's | Girly Clap ✨"] = 104913320289716,
+        ["Reta's | Yandere Sway"] = 129726324945594,
+        ["Reta's | Floaty Rest"] = 86313035242497,
+        ["Reta's | Missy Extra Idling"] = 75934234099196,
+        ["Reta's | Big Sweet Hug 2 (Primary)"] = 136351164174649,
+        ["Reta's | Watching You"] = 108671825043990,
+        ["Reta's | Sitting"] = 134692032255588,
+        ["Reta's | Big Hugger"] = 140141266157300,
+        ["Reta's | Aura Stance (Iori)"] = 128616676646610,
+        ["Reta's | Juri Stance (SF6)"] = 137433612403968,
+        ["Reta's | Peach Bomb"] = 125497563661249,
+        ["Reta's | Just Splits"] = 91173563184128,
+        ["Reta's | Big Cozy Hug"] = 138779667727500,
+        ["Reta's | Cute N Calm #2"] = 111110436616060,
+        ["Reta's | Laid Up 2 +"] = 75517713793873,
+        ["Reta's | Cute N Calm Alt"] = 127548006991999,
+        ["Reta's | Sittin' Zen"] = 100504880215365,
+        ["Reta's | Feminine Flex Pose"] = 75177382432855,
+        ["Reta's | Big Sweet Hug 1 (Primary) \\*Fixed\\*"] = 83543479047498,
+        ["Reta's | Ghostly Sway"] = 77742264546929,
+        ["Reta's | Glamorous #2"] = 122296714040216,
+        ["Reta's | Duo Rivalry 2"] = 77277691685073,
+        ["Reta's | Big Sweet Hug (Secondary)"] = 133841746182096,
+        ["Reta's | Cutely Kneeling"] = 137716711508834,
+        ["Reta's | Ancient Hips"] = 97695613364836,
+        ["Reta's | Happy Swing Dance"] = 124359710439604,
+        ["Reta's | Carried (Lower)"] = 127094748683643,
+        ["Reta's | Laid Up 5 +"] = 72297669105918,
+        ["Reta's | Cute N Calm #3"] = 125778150648962,
+        ["Reta's | Glamorous #3"] = 125716206794703,
+        ["Reta's | Silly Bomb Jig ✨"] = 113310868839731,
+        ["Reta's | Docile Duet Pose B"] = 121844683997429,
+        ["Reta's | Crouch Chill"] = 93859441122239,
+        ["Reta's | Cute N Calm #4"] = 117284642033644,
+        ["Reta's | Crazy Samurai Stance (Yoshimitsu)"] = 129099194997802,
+        ["Reta's | Glamorous #4"] = 95942172022610,
+        ["Reta's | lovely wave"] = 123506107931840,
+    
+        ["Animations · Anime Punches (SUPER FAST)"] = 90092259905349,
+        ["Animations · Backrooms Entity"] = 132849734668819,
+        ["Animations · Backrooms Hound"] = 103850249513690,
+        ["Animations · Big Hand L"] = 112341212652303,
+        ["Animations · Big Hand Wave"] = 105209959441169,
+        ["Animations · Bird Dance"] = 93516480495120,
+        ["Animations · Bubbly Girl Pose"] = 108437973302343,
+        ["Animations · Cat Sit"] = 109734081202577,
+        ["Animations · Chill Aura fly pose floating"] = 77584248609582,
+        ["Animations · Clown Dance"] = 98862091866980,
+        ["Animations · Crossed Arms Floating"] = 111974169586488,
+        ["Animations · Cute Floating"] = 125405104081365,
+        ["Animations · Cute Jump"] = 80556794144838,
+        ["Animations · Cute Pose ♡"] = 107933927045981,
+        ["Animations · Endless Aura Floating"] = 106708015414624,
+        ["Animations · Floating"] = 139058906415119,
+        ["Animations · Floating in Love 🥰"] = 97164262994588,
+        ["Animations · Ghost Floating"] = 75911227509248,
+        ["Animations · Hero Floating"] = 83969552849358,
+        ["Animations · hey dude man im a dudeman"] = 125991701908850,
+        ["Animations · Hopping Dance"] = 127905713410314,
+        ["Animations · inchworm"] = 95339769038863,
+        ["Animations · Jumpscare Corner"] = 93463015595243,
+        ["Animations · Kawaii Dance"] = 136000006010342,
+        ["Animations · Kawaii Wave Pose"] = 75658846908388,
+        ["Animations · Low Cortisol hip sway"] = 138149876527113,
+        ["Animations · Nervy Dance 🔥"] = 93234152211927,
+        ["Animations · Nonchalant Floating"] = 125673560857997,
+        ["Animations · Oldschool Sit"] = 115909789985663,
+        ["Animations · Shuba Duck Dance"] = 109600145307918,
+        ["Animations · Shuba Duck Dance (Player)"] = 121085835214010,
+        ["Animations · Shy Girl Pose"] = 137536949887961,
+        ["Animations · Stargaze Floating"] = 131978813166232,
+        ["Animations · Tall Scary Creature"] = 79216795769647,
+        ["Animations · Witch Flying Broomstick"] = 86598690263133,
+    }
+
+local EMOTE_CATALOG_NAMES = {}
+for name in pairs(EMOTE_CATALOG) do table.insert(EMOTE_CATALOG_NAMES, name) end
+table.sort(EMOTE_CATALOG_NAMES, function(a, b) return a:lower() < b:lower() end)
+local EMOTE_PAGE_SIZE = 24
+local EMOTE_FAVORITES = (type(GENVS.ABSOLUTE_EMOTE_FAVORITES) == "table")
+  and GENVS.ABSOLUTE_EMOTE_FAVORITES or {}
+local emoteLoop = false
+local activeEmoteTrack, activeEmoteAnimation
+local emoteStatusLabel
+local emoteStop
+
+local function currentRigName()
+  local hum = getHum()
+  if not hum then return "belum siap" end
+  if hum.RigType == Enum.HumanoidRigType.R6 then return "R6" end
+  if hum.RigType == Enum.HumanoidRigType.R15 then return "R15" end
+  return "tidak diketahui"
+end
+
+local function setEmoteStatus(text)
+  if emoteStatusLabel and emoteStatusLabel.Parent then
+    emoteStatusLabel.Text = tostring(text)
+  end
+end
+
+local function emoteIsMoving(hum)
+  if not hum then return false end
+  local moved = false
+  pcall(function()
+    local state = hum:GetState()
+    moved = hum.MoveDirection.Magnitude > 0.05
+      or state == Enum.HumanoidStateType.Jumping
+      or state == Enum.HumanoidStateType.Freefall
+      or state == Enum.HumanoidStateType.FallingDown
+      or state == Enum.HumanoidStateType.Climbing
+      or state == Enum.HumanoidStateType.Swimming
+      or state == Enum.HumanoidStateType.Dead
+  end)
+  return moved
+end
+
+emoteStop = function(reason)
+  local track, animation = activeEmoteTrack, activeEmoteAnimation
+  activeEmoteTrack, activeEmoteAnimation = nil, nil
+  if track then
+    pcall(function() track:Stop(0.12) end)
+    pcall(function() track:Destroy() end)
+  end
+  if animation then pcall(function() animation:Destroy() end) end
+  if not track and not animation then return end
+  if reason == "unload" then
+    setEmoteStatus("Emote dihentikan · script dibersihkan")
+  elseif reason and reason ~= "selesai" then
+    setEmoteStatus("Emote dihentikan · " .. tostring(reason))
+  elseif reason == "selesai" then
+    setEmoteStatus("Emote selesai")
+  else
+    setEmoteStatus("Tidak ada emote aktif")
+  end
+end
+
+local function playSingleEmote(name)
+  local assetId = EMOTE_CATALOG[name]
+  if not assetId then return end
+  local char = getChar()
+  local hum = char and char:FindFirstChildOfClass("Humanoid")
+  if not hum or hum.Health <= 0 then
+    setEmoteStatus("Karakter belum siap")
+    if toast then toast("Karakter belum siap untuk emote", Warna.Kuning) end
+    return
+  end
+  if emoteIsMoving(hum) then
+    setEmoteStatus("Berhenti bergerak dulu untuk emote")
+    if toast then toast("Berhenti dulu untuk memainkan emote", Warna.Kuning) end
+    return
+  end
+
+  if emoteStop then emoteStop("ganti emote") end
+  local animation = Instance.new("Animation")
+  animation.AnimationId = "rbxassetid://" .. tostring(assetId)
+  local animator = hum:FindFirstChildOfClass("Animator")
+  if not animator then
+    animator = Instance.new("Animator")
+    animator.Parent = hum
+  end
+  local ok, track = pcall(function() return animator:LoadAnimation(animation) end)
+  if (not ok or not track) then
+    ok, track = pcall(function() return hum:LoadAnimation(animation) end)
+  end
+  if not ok or not track then
+    pcall(function() animation:Destroy() end)
+    setEmoteStatus("Emote gagal dimuat · cek izin asset/game")
+    if toast then toast("Emote tidak bisa dimuat oleh Roblox", Warna.Merah) end
+    return
+  end
+
+  activeEmoteTrack, activeEmoteAnimation = track, animation
+  local played = pcall(function()
+    track.Priority = Enum.AnimationPriority.Action
+    track.Looped = emoteLoop
+    track:Play(0.15, 1, 1)
+  end)
+  if not played then
+    if emoteStop then emoteStop("tidak bisa diputar") end
+    if toast then toast("Emote tidak bisa diputar oleh Roblox", Warna.Merah) end
+    return
+  end
+  setEmoteStatus("Memutar: " .. tostring(name) .. " · Rig " .. currentRigName())
+  task.delay(2.5, function()
+    if activeEmoteTrack ~= track then return end
+    local okPlaying, playing = pcall(function() return track.IsPlaying end)
+    local okLength, length = pcall(function() return track.Length end)
+    if not okPlaying or not playing or (okLength and length <= 0) then
+      if emoteStop then emoteStop("asset ditolak/tidak cocok dengan rig atau game") end
+      if toast then toast("Emote mungkin tidak cocok dengan rig atau tidak diizinkan game", Warna.Merah) end
+    end
+  end)
 end
 
 -- [6] TITIK LOKAL ---------------------------------------
@@ -1250,13 +1864,13 @@ ledSweep(accent, Warna.Biru, Warna.Putih, Warna.Ungu2, 2.6)
 -- [13] TAB BAR ------------------------------------------
 local function buildUI()
   tabBtns = {}
-  local tabLabels = {"MOVEMENT & VISUAL", "TITIK", "SYSTEM"}
-  local tabColors = {Warna.Ungu2, Warna.Hijau2, Warna.AbuGelap}
+  local tabLabels = {"MOVE / VISUAL", "EMOTE", "TITIK", "SYSTEM"}
+  local tabColors = {Warna.Ungu2, Warna.Biru2, Warna.Hijau2, Warna.AbuGelap}
   kontenTabs = {}
   for i, lbl in ipairs(tabLabels) do
     local tab = buat("TextButton", {
-      Size = UDim2.new(1 / 3, -3.2, 0, 24),
-      Position = UDim2.new((i - 1) * (1 / 3), 2.8 + (i - 1) * 1.4, 0, 50),
+      Size = UDim2.new(1 / #tabLabels, -4, 0, 24),
+      Position = UDim2.new((i - 1) * (1 / #tabLabels), 2, 0, 50),
       BackgroundColor3 = (i == 1) and tabColors[i] or Warna.AbuMuda,
       BorderSizePixel = 0,
       FontFace = fnt("bold"),
@@ -1726,14 +2340,6 @@ local function buildUI()
   State.PapanThick  = 5
   State.BatuThick   = 5
 
-  oLight = {
-    Brightness = Lighting.Brightness,
-    Ambient = Lighting.Ambient,
-    OutdoorAmbient = Lighting.OutdoorAmbient,
-    ClockTime = Lighting.ClockTime,
-    ExposureCompensation = Lighting.ExposureCompensation,
-    FogEnd = Lighting.FogEnd,
-  }
   lightConn = nil
 
   -- Baris TAB 1
@@ -1754,7 +2360,7 @@ local function buildUI()
   buatToggleRow(scrollMove, "Moonwalk", "F", "Moon")
   buatHeader(scrollMove, "Visual")
   buatToggleRow(scrollMove, "Hide Player + Kendaraan", "R", "Hide")
-  buatToggleRow(scrollMove, "Cahaya Auto (2 arah)", "T", "Light")
+  buatToggleRow(scrollMove, "Cahaya Auto (siang/malam)", "T", "Light")
   buatToggleRow(scrollMove, "Tangga/Tali/Papan/Batu", "X", "Tangga")
   -- 1 slider gabungan Tangga + Tali: nilai = % tangga, tali otomatis x 50/3
   -- (0,5%->8,33%, 1%->16,67%, 2%->33,33%, 3%->50%, 5%->83,33%).
@@ -2048,7 +2654,310 @@ local function buildUI()
     LayoutOrder = titikNext(),
   }, scrollTitik)
 
+  -- [15b] TAB 2: EMOTE / ANIMASI -------------------------
+  local kontenEmote = buat("Frame", {
+    Position = UDim2.new(0, 0, 0, 80),
+    Size = UDim2.new(1, 0, 1, -110),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    Visible = false,
+  }, panel)
+  local scrollEmote = buat("ScrollingFrame", {
+    Position = UDim2.new(0, 12, 0, 2),
+    Size = UDim2.new(1, -24, 1, -6),
+    BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Warna.Ungu2,
+    ScrollingDirection = Enum.ScrollingDirection.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+  }, kontenEmote)
+  buat("UIListLayout", {Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder}, scrollEmote)
+
+  buatHeader(scrollEmote, "Browser Animasi / Emote")
+  local emoteRigInfo = buat("TextLabel", {
+    BackgroundColor3 = Warna.AbuItem,
+    Size = UDim2.new(1, 0, 0, 34),
+    FontFace = fnt("med"), TextSize = 10,
+    TextColor3 = Warna.TeksGelap,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Text = "489 emote • termasuk 35 dari katalog grup 2637925 • Rig " .. currentRigName(),
+    LayoutOrder = nextOrder(),
+  }, scrollEmote)
+  buat("UICorner", {CornerRadius = UDim.new(0, 8)}, emoteRigInfo)
+  buat("UIPadding", {PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 7)}, emoteRigInfo)
+
+  emoteStatusLabel = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 20),
+    FontFace = fnt("med"), TextSize = 10,
+    TextColor3 = Warna.AbuTeks,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextTruncate = Enum.TextTruncate.AtEnd,
+    Text = "Tidak ada emote aktif",
+    LayoutOrder = nextOrder(),
+  }, scrollEmote)
+
+  local emoteControls = buat("Frame", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 32),
+    LayoutOrder = nextOrder(),
+  }, scrollEmote)
+  local btnLoopEmote = buat("TextButton", {
+    BackgroundColor3 = Warna.Gray,
+    Size = UDim2.new(0.5, -3, 1, 0),
+    FontFace = fnt("bold"), TextSize = 10,
+    TextColor3 = Warna.Putih,
+    Text = "↻ LOOP: OFF",
+    AutoButtonColor = false,
+  }, emoteControls)
+  buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnLoopEmote)
+  local emoteFavoritesOnly = false
+  local btnEmoteFavorites = buat("TextButton", {
+    BackgroundColor3 = Warna.Card2,
+    Position = UDim2.new(0.5, 3, 0, 0),
+    Size = UDim2.new(0.5, -3, 1, 0),
+    FontFace = fnt("bold"), TextSize = 9,
+    TextColor3 = Warna.Putih,
+    Text = "★ FAVORIT SAJA",
+    AutoButtonColor = false,
+  }, emoteControls)
+  buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnEmoteFavorites)
+
+  local btnStopEmote = buat("TextButton", {
+    BackgroundColor3 = Warna.Merah,
+    Size = UDim2.new(1, 0, 0, 28),
+    FontFace = fnt("bold"), TextSize = 10,
+    TextColor3 = Warna.Putih,
+    Text = "■ STOP EMOTE",
+    AutoButtonColor = false,
+    LayoutOrder = nextOrder(),
+  }, scrollEmote)
+  buat("UICorner", {CornerRadius = UDim.new(0, 8)}, btnStopEmote)
+
+  local emoteSearchBox = buat("TextBox", {
+    BackgroundColor3 = Warna.AbuItem,
+    Size = UDim2.new(1, 0, 0, 30),
+    FontFace = fnt("med"), TextSize = 11,
+    TextColor3 = Warna.TeksGelap,
+    PlaceholderText = "Cari dari 489 emote...",
+    PlaceholderColor3 = Warna.AbuTeks,
+    Text = "", ClearTextOnFocus = false,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    LayoutOrder = nextOrder(),
+  }, scrollEmote)
+  buat("UICorner", {CornerRadius = UDim.new(0, 8)}, emoteSearchBox)
+  buat("UIPadding", {PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10)}, emoteSearchBox)
+
+  local emoteList = buat("ScrollingFrame", {
+    Name = "AbsoluteEmoteList",
+    BackgroundColor3 = Warna.AbuItem,
+    BackgroundTransparency = 0.15,
+    Size = UDim2.new(1, 0, 0, 360),
+    BorderSizePixel = 0,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = Warna.Ungu2,
+    ScrollingDirection = Enum.ScrollingDirection.Y,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    LayoutOrder = nextOrder(),
+  }, scrollEmote)
+  buat("UICorner", {CornerRadius = UDim.new(0, 8)}, emoteList)
+  buat("UIListLayout", {Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder}, emoteList)
+
+  local emotePage = 1
+  local emotePageControls = buat("Frame", {
+    BackgroundTransparency = 1,
+    Size = UDim2.new(1, 0, 0, 28),
+    LayoutOrder = nextOrder(),
+  }, scrollEmote)
+  local btnEmotePrev = buat("TextButton", {
+    BackgroundColor3 = Warna.Card2,
+    Size = UDim2.new(0.28, -2, 1, 0),
+    FontFace = fnt("bold"), TextSize = 10,
+    TextColor3 = Warna.Putih, Text = "‹ SEBELUM",
+    AutoButtonColor = false,
+  }, emotePageControls)
+  buat("UICorner", {CornerRadius = UDim.new(0, 7)}, btnEmotePrev)
+  local emotePageLabel = buat("TextLabel", {
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0.28, 0, 0, 0),
+    Size = UDim2.new(0.44, 0, 1, 0),
+    FontFace = fnt("med"), TextSize = 9,
+    TextColor3 = Warna.AbuTeks,
+    TextWrapped = true,
+    Text = "...",
+  }, emotePageControls)
+  local btnEmoteNext = buat("TextButton", {
+    BackgroundColor3 = Warna.Card2,
+    Position = UDim2.new(0.72, 2, 0, 0),
+    Size = UDim2.new(0.28, -2, 1, 0),
+    FontFace = fnt("bold"), TextSize = 10,
+    TextColor3 = Warna.Putih, Text = "LANJUT ›",
+    AutoButtonColor = false,
+  }, emotePageControls)
+  buat("UICorner", {CornerRadius = UDim.new(0, 7)}, btnEmoteNext)
+
+  local function setEmoteLoop(on)
+    emoteLoop = on and true or false
+    btnLoopEmote.Text = emoteLoop and "↻ LOOP: ON" or "↻ LOOP: OFF"
+    btnLoopEmote.BackgroundColor3 = emoteLoop and Warna.Hijau2 or Warna.Gray
+    if activeEmoteTrack then pcall(function() activeEmoteTrack.Looped = emoteLoop end) end
+  end
+
+  local function renderEmoteList(resetPage)
+    if not emoteList or not emoteList.Parent then return end
+    if resetPage then emotePage = 1 end
+    local query = string.lower(tostring(emoteSearchBox.Text or ""))
+    local matched = {}
+    for _, name in ipairs(EMOTE_CATALOG_NAMES) do
+      if (not emoteFavoritesOnly or EMOTE_FAVORITES[name])
+        and (query == "" or string.find(string.lower(name), query, 1, true)) then
+        table.insert(matched, name)
+      end
+    end
+    local totalPages = math.max(1, math.ceil(#matched / EMOTE_PAGE_SIZE))
+    emotePage = math.clamp(emotePage, 1, totalPages)
+    for _, child in ipairs(emoteList:GetChildren()) do
+      if child.Name == "AbsoluteEmoteRow" or child.Name == "AbsoluteEmoteEmpty" then
+        child:Destroy()
+      end
+    end
+    if #matched == 0 then
+      buat("TextLabel", {
+        Name = "AbsoluteEmoteEmpty",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -8, 0, 34),
+        FontFace = fnt("med"), TextSize = 10,
+        TextColor3 = Warna.AbuTeks,
+        Text = "Tidak ada emote yang cocok",
+        LayoutOrder = 1,
+      }, emoteList)
+    else
+      local first = (emotePage - 1) * EMOTE_PAGE_SIZE + 1
+      local last = math.min(first + EMOTE_PAGE_SIZE - 1, #matched)
+      local order = 0
+      for index = first, last do
+        order += 1
+        local name = matched[index]
+        local row = buat("Frame", {
+          Name = "AbsoluteEmoteRow",
+          BackgroundColor3 = Warna.Card2,
+          Size = UDim2.new(1, -6, 0, 28),
+          BorderSizePixel = 0,
+          LayoutOrder = order,
+        }, emoteList)
+        buat("UICorner", {CornerRadius = UDim.new(0, 7)}, row)
+        local playButton = buat("TextButton", {
+          BackgroundTransparency = 1,
+          Size = UDim2.new(1, -38, 1, 0),
+          FontFace = fnt("med"), TextSize = 10,
+          TextColor3 = Warna.Putih,
+          TextXAlignment = Enum.TextXAlignment.Left,
+          TextTruncate = Enum.TextTruncate.AtEnd,
+          Text = "▶  " .. name,
+          AutoButtonColor = false,
+        }, row)
+        local favButton = buat("TextButton", {
+          BackgroundTransparency = 1,
+          Position = UDim2.new(1, -36, 0, 0),
+          Size = UDim2.fromOffset(32, 28),
+          FontFace = fnt("bold"), TextSize = 16,
+          TextColor3 = EMOTE_FAVORITES[name] and Warna.Kuning or Warna.AbuGelap,
+          Text = EMOTE_FAVORITES[name] and "★" or "☆",
+          AutoButtonColor = false,
+        }, row)
+        playButton.MouseButton1Click:Connect(function()
+          ripple(playButton, Warna.Ungu2)
+          playSingleEmote(name)
+        end)
+        favButton.MouseButton1Click:Connect(function()
+          if EMOTE_FAVORITES[name] then
+            EMOTE_FAVORITES[name] = nil
+          else
+            EMOTE_FAVORITES[name] = true
+          end
+          pcall(function() GENVS.ABSOLUTE_EMOTE_FAVORITES = EMOTE_FAVORITES end)
+          if emoteFavoritesOnly then renderEmoteList(false) else
+            favButton.Text = EMOTE_FAVORITES[name] and "★" or "☆"
+            favButton.TextColor3 = EMOTE_FAVORITES[name] and Warna.Kuning or Warna.AbuGelap
+          end
+        end)
+      end
+    end
+    local firstShown = #matched == 0 and 0 or ((emotePage - 1) * EMOTE_PAGE_SIZE + 1)
+    local lastShown = math.min(emotePage * EMOTE_PAGE_SIZE, #matched)
+    emotePageLabel.Text = string.format("%d–%d / %d · %d/%d", firstShown, lastShown, #matched, emotePage, totalPages)
+    btnEmotePrev.AutoButtonColor = emotePage > 1
+    btnEmoteNext.AutoButtonColor = emotePage < totalPages
+    emoteRigInfo.Text = "489 emote • 35 dari katalog grup 2637925 • Rig " .. currentRigName()
+  end
+
+  btnLoopEmote.MouseButton1Click:Connect(function()
+    setEmoteLoop(not emoteLoop)
+    toast(emoteLoop and "Auto loop emote ON" or "Auto loop emote OFF", emoteLoop and Warna.Hijau or Warna.Kuning)
+  end)
+  btnEmoteFavorites.MouseButton1Click:Connect(function()
+    emoteFavoritesOnly = not emoteFavoritesOnly
+    btnEmoteFavorites.Text = emoteFavoritesOnly and "★ SEMUA EMOTE" or "★ FAVORIT SAJA"
+    btnEmoteFavorites.BackgroundColor3 = emoteFavoritesOnly and Warna.Ungu or Warna.Card2
+    renderEmoteList(true)
+  end)
+  btnStopEmote.MouseButton1Click:Connect(function()
+    if emoteStop then emoteStop("dihentikan manual") end
+  end)
+  emoteSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+    renderEmoteList(true)
+  end)
+  btnEmotePrev.MouseButton1Click:Connect(function()
+    emotePage = math.max(1, emotePage - 1)
+    renderEmoteList(false)
+  end)
+  btnEmoteNext.MouseButton1Click:Connect(function()
+    emotePage += 1
+    renderEmoteList(false)
+  end)
+  renderEmoteList(true)
+
+  local emoteMotionConnections = {}
+  local function hookEmoteCharacter(char)
+    for _, connection in ipairs(emoteMotionConnections) do
+      pcall(function() connection:Disconnect() end)
+    end
+    table.clear(emoteMotionConnections)
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    local runningConn = hum.Running:Connect(function(speed)
+      if speed > 0.5 and emoteStop then emoteStop("bergerak") end
+    end)
+    table.insert(emoteMotionConnections, runningConn)
+    catat(runningConn)
+    local stateConn = hum.StateChanged:Connect(function(_, state)
+      if state == Enum.HumanoidStateType.Jumping
+        or state == Enum.HumanoidStateType.Freefall
+        or state == Enum.HumanoidStateType.FallingDown
+        or state == Enum.HumanoidStateType.Climbing
+        or state == Enum.HumanoidStateType.Swimming
+        or state == Enum.HumanoidStateType.Dead then
+        if emoteStop then emoteStop("karakter bergerak") end
+      end
+    end)
+    table.insert(emoteMotionConnections, stateConn)
+    catat(stateConn)
+    setEmoteStatus("Siap memainkan emote · Rig " .. currentRigName())
+  end
+  if LocalPlayer.Character then hookEmoteCharacter(LocalPlayer.Character) end
+  catat(LocalPlayer.CharacterAdded:Connect(function(char)
+    if emoteStop then emoteStop("respawn") end
+    task.defer(function()
+      if not State.Removed then hookEmoteCharacter(char) end
+    end)
+  end))
+
   -- urutan kontenTabs
+  table.insert(kontenTabs, kontenEmote)
   table.insert(kontenTabs, kontenTitik)
   table.insert(kontenTabs, kontenSistem)
 
@@ -2753,58 +3662,46 @@ local function initLogic()
     syncNotify("LW", v, silent, "Lightweight")
   end
 
-  -- CAHAYA AUTO
+  -- CAHAYA AUTO — tidak pernah mengubah ClockTime atau memulihkan snapshot lama.
   local CAHAYA = {
-    JAM_MALAM_MULAI  = 18,
-    JAM_MALAM_AKHIR  = 6,
-    CLOCK_TERANGI    = 14,
-    BRIGHT_TERANGI   = 2.5,
-    AMBIENT_TERANGI  = Color3.fromRGB(140, 140, 165),
-    CLOCK_ANTISILAU  = 17.5,
-    BRIGHT_ANTISILAU = 1.6,
-    AMBIENT_LEMBUT   = Color3.fromRGB(110, 110, 120),
-    FOG_BUKA         = 100000,
+    JAM_MALAM_MULAI = 18,
+    JAM_MALAM_AKHIR = 6,
+    NIGHT_BRIGHTNESS = 0.12,
+    NIGHT_CONTRAST = -0.02,
   }
-  local lightPernahAktif = false
+  local autoLightEffect
 
   local function apakahMalam()
-    local t = Lighting.ClockTime
-    return t >= CAHAYA.JAM_MALAM_MULAI or t < CAHAYA.JAM_MALAM_AKHIR
+    local jam = Lighting.ClockTime
+    return jam >= CAHAYA.JAM_MALAM_MULAI or jam < CAHAYA.JAM_MALAM_AKHIR
   end
 
-  local function targetCahaya()
-    if apakahMalam() then
-      return CAHAYA.CLOCK_TERANGI, CAHAYA.BRIGHT_TERANGI, CAHAYA.AMBIENT_TERANGI
+  local function perbaruiCahayaAuto()
+    if not State.LightOn or State.Removed then return end
+    if not autoLightEffect or not autoLightEffect.Parent then
+      autoLightEffect = Instance.new("ColorCorrectionEffect")
+      autoLightEffect.Name = "ABSOLUTE_AUTO_LIGHT"
+      autoLightEffect.Brightness = CAHAYA.NIGHT_BRIGHTNESS
+      autoLightEffect.Contrast = CAHAYA.NIGHT_CONTRAST
+      autoLightEffect.Saturation = 0
+      autoLightEffect.Enabled = false
+      autoLightEffect.Parent = Lighting
     end
-    return CAHAYA.CLOCK_ANTISILAU, CAHAYA.BRIGHT_ANTISILAU, CAHAYA.AMBIENT_LEMBUT
+    -- 06:00 sampai sebelum 18:00: biarkan siang asli tanpa efek.
+    -- Malam: efek lokal ringan; waktu dan konfigurasi Lighting asli tidak disentuh.
+    autoLightEffect.Enabled = apakahMalam()
   end
 
-  local function langkahCahaya()
-    local jamTarget, brightTarget, ambientTarget = targetCahaya()
-    local jam0 = Lighting.ClockTime
-    local delta = jamTarget - jam0
-    if delta > 12 then delta -= 24 elseif delta < -12 then delta += 24 end
-    local bright0 = Lighting.Brightness
-    local ambient0 = Lighting.Ambient
-    local out0 = Lighting.OutdoorAmbient
-    local jumlah = 22
-    for i = 1, jumlah do
-      if not State.LightOn or State.Removed then return end
-      local a = i / jumlah
-      pcall(function()
-        Lighting.ClockTime = (jam0 + delta * a) % 24
-        Lighting.Brightness = bright0 + (brightTarget - bright0) * a
-        Lighting.Ambient = ambient0:Lerp(ambientTarget, a)
-        Lighting.OutdoorAmbient = out0:Lerp(ambientTarget, a)
-      end)
-      task.wait(0.05)
+  local function bersihkanCahayaAuto()
+    if lightConn then
+      pcall(function() lightConn:Disconnect() end)
+      lightConn = nil
     end
-    pcall(function()
-      Lighting.ClockTime = jamTarget % 24
-      Lighting.Brightness = brightTarget
-      Lighting.Ambient = ambientTarget
-      Lighting.OutdoorAmbient = ambientTarget
-    end)
+    if autoLightEffect then
+      pcall(function() autoLightEffect.Enabled = false end)
+      pcall(function() autoLightEffect:Destroy() end)
+      autoLightEffect = nil
+    end
   end
 
   -- TANGGA / TALI / PAPAN / BATU (PART RESIZER) — deteksi NAME/ANCESTOR
@@ -3052,40 +3949,22 @@ local function initLogic()
   Setters.BatuThick   = function(pct) batuApplyAll(pct) end
 
   Setters.Light = function(v, silent)
-    if State.LightOn == v then return end
+    if State.LightOn == v then
+      if not v then bersihkanCahayaAuto() end
+      return
+    end
     State.LightOn = v
     if v then
-      lightPernahAktif = true
-      oLight.Brightness = Lighting.Brightness
-      oLight.Ambient = Lighting.Ambient
-      oLight.OutdoorAmbient = Lighting.OutdoorAmbient
-      oLight.ClockTime = Lighting.ClockTime
-      oLight.ExposureCompensation = Lighting.ExposureCompensation
-      oLight.FogEnd = Lighting.FogEnd
-      if Lighting.FogEnd < 5000 then
-        Lighting.FogEnd = CAHAYA.FOG_BUKA
-      end
-      if lightConn then task.cancel(lightConn) end
-      lightConn = task.spawn(function()
-        while State.LightOn and not State.Removed do
-          langkahCahaya()
-          local tunggu = 0
-          while tunggu < 2 and State.LightOn and not State.Removed do
-            task.wait(0.25)
-            tunggu += 0.25
-          end
+      perbaruiCahayaAuto()
+      if lightConn then pcall(function() lightConn:Disconnect() end) end
+      lightConn = Lighting:GetPropertyChangedSignal("ClockTime"):Connect(function()
+        if State.LightOn and not State.Removed then
+          pcall(perbaruiCahayaAuto)
         end
       end)
     else
-      if lightConn then task.cancel(lightConn) lightConn = nil end
-      pcall(function()
-        Lighting.ClockTime = oLight.ClockTime
-        Lighting.Brightness = oLight.Brightness
-        Lighting.Ambient = oLight.Ambient
-        Lighting.OutdoorAmbient = oLight.OutdoorAmbient
-        Lighting.ExposureCompensation = oLight.ExposureCompensation
-        Lighting.FogEnd = oLight.FogEnd
-      end)
+      -- Hapus efek saat itu juga; nilai real-time game tidak di-restore dari snapshot.
+      bersihkanCahayaAuto()
     end
     syncNotify("Light", v, silent, "Cahaya Auto")
   end
@@ -3113,6 +3992,8 @@ local function initLogic()
     pcall(setFeature, "Tangga", false, true) -- FIX: restore ukuran part tangga/tali/papan/batu
     pcall(setFeature, "LW", false, true)
     pcall(setFeature, "Light", false, true)
+    pcall(function() if emoteStop then emoteStop("unload") end end)
+    pcall(bersihkanCahayaAuto)
     pcall(setFeature, "Cuaca", false, true)
     pcall(function() RunService:UnbindFromRenderStep("ABSOLUTE_SHIFTLOCK") end)
     pcall(function() RunService:UnbindFromRenderStep("ABSOLUTE_MOONWALK") end)
@@ -3129,22 +4010,11 @@ local function initLogic()
       pcall(function() UserInputService.MouseIconEnabled = true end)
     end
     pcall(function() if TITIK.folder then TITIK.folder:Destroy(); TITIK.folder = nil end end)
-    if lightConn then pcall(function() task.cancel(lightConn) end) lightConn = nil end
     pcall(function() if weatherFolder then weatherFolder:Destroy() weatherFolder = nil end end)
     for _, c in ipairs(semuaKoneksi) do
       pcall(function() c:Disconnect() end)
     end
     table.clear(semuaKoneksi)
-    pcall(function()
-      if lightPernahAktif and oLight then
-        Lighting.ClockTime = oLight.ClockTime
-        Lighting.Brightness = oLight.Brightness
-        Lighting.Ambient = oLight.Ambient
-        Lighting.OutdoorAmbient = oLight.OutdoorAmbient
-        Lighting.ExposureCompensation = oLight.ExposureCompensation
-        Lighting.FogEnd = oLight.FogEnd
-      end
-    end)
     pcall(function()
       if Original then
         if Original.GlobalShadows ~= nil then Lighting.GlobalShadows = Original.GlobalShadows end
