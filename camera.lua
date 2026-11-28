@@ -1746,8 +1746,8 @@ if isDay then
 -- Siang: biarkan asli tanpa efek (netral).
 goals = { Brightness = 0, Contrast = 0, Saturation = 0, TintColor = Color3.fromRGB(255, 255, 255) }
 else
--- Malam: benar-benar lebih terang tapi tetap enak dipandang — contrast positif jaga kedalaman bentuk (anti putih/flat), saturation sedikit naik agar warna hidup. TintColor putih (tanpa cast). ClockTime tak diubah = bukan siang.
-goals = { Brightness = 0.30, Contrast = 0.08, Saturation = 0.10, TintColor = Color3.fromRGB(255, 255, 255) }
+-- Malam: BENAR-BENAR terang (bisa kelihatan), TAPI BUKAN putih/bleached — contrast DINAIKKAN (kunci anti-putih: jaga kedalaman & bayangan), brightness secukupnya angkat gelap, tint warm amber (kehangatan lampu, bukan putih steril), saturation jaga warna hidup. ClockTime tak diubah = bukan siang.
+goals = { Brightness = 0.18, Contrast = 0.16, Saturation = 0.08, TintColor = Color3.fromRGB(255, 235, 205) }
 end
 local ok, tw = pcall(function()
 return TweenService:Create(AUTO_LIGHT_EFFECT, TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), goals)
